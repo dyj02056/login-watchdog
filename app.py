@@ -152,8 +152,13 @@ def signup_submit():
 
 @app.route("/login", methods=["GET"])
 def login():
-    """감시 대상 로그인 화면을 보여준다."""
-    return render_template("login.html")
+    """감시 대상 로그인 화면을 보여준다.
+
+    화면 자체는 관리자 로그인과 똑같은 login_form.html을 공유하지만(겉보기로는
+    구분이 안 됨), form_action만 이 라우트로("/login") 지정해서 실제 제출은
+    login_submit()이 처리하게 한다.
+    """
+    return render_template("login_form.html", form_action=url_for("login_submit"))
 
 
 @app.route("/login", methods=["POST"])
@@ -177,7 +182,7 @@ def login_submit():
     # 2) 이미 잠긴 IP라면 계정 검증 자체를 건너뛰고 즉시 거부
     if detector.is_locked(ip):
         flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
-        return render_template("login.html")
+        return render_template("login_form.html", form_action=url_for("login_submit"))
 
     username = request.form.get("username", "")
     password = request.form.get("password", "")
@@ -187,7 +192,7 @@ def login_submit():
 
     if success:
         flash("로그인 성공")
-        return render_template("login.html")
+        return render_template("login_form.html", form_action=url_for("login_submit"))
 
     # 실패했다면, 이 실패로 인해 방금 임계값을 넘었는지 확인한다.
     suspicious, failure_count = detector.is_suspicious(ip)
@@ -199,7 +204,7 @@ def login_submit():
         # 공격자에게 힌트를 주게 되므로, 항상 똑같은 문구로만 실패를 알린다.
         flash("아이디 또는 비밀번호가 올바르지 않습니다.")
 
-    return render_template("login.html")
+    return render_template("login_form.html", form_action=url_for("login_submit"))
 
 
 # ============================================================================
@@ -209,10 +214,16 @@ def login_submit():
 
 @app.route("/admin/login", methods=["GET"])
 def admin_login():
-    """관리자 로그인 화면을 보여준다. 이미 로그인된 상태라면 대시보드로 바로 보낸다."""
+    """관리자 로그인 화면을 보여준다. 이미 로그인된 상태라면 대시보드로 바로 보낸다.
+
+    화면은 /login과 똑같은 login_form.html을 공유하되, form_action만 이 라우트로
+    지정해서 실제 제출은 admin_login_submit()이 처리한다 — 겉보기로는 두 로그인
+    화면을 구분할 수 없지만, 뒤에서 어떤 표(users vs admin_users)와 비교하고 IP
+    잠금이 적용되는지는 여전히 완전히 분리되어 있다.
+    """
     if "admin_username" in session:
         return redirect(url_for("dashboard"))
-    return render_template("admin_login.html")
+    return render_template("login_form.html", form_action=url_for("admin_login_submit"))
 
 
 @app.route("/admin/login", methods=["POST"])
@@ -235,7 +246,7 @@ def admin_login_submit():
         return redirect(url_for("dashboard"))
 
     flash("아이디 또는 비밀번호가 올바르지 않습니다.")
-    return render_template("admin_login.html")
+    return render_template("login_form.html", form_action=url_for("admin_login_submit"))
 
 
 @app.route("/admin/logout", methods=["POST"])

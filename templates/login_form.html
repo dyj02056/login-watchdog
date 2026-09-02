@@ -1,0 +1,54 @@
+<!--
+  login_form.html — 로그인 화면 하나를 /login과 /admin/login 두 라우트가 함께 쓴다
+
+  왜 파일을 하나로 합쳤나: 예전에는 login.html(감시 대상)과 admin_login.html(관리자)
+  두 파일이 거의 똑같은 내용을 각자 따로 갖고 있었다. 이러면 나중에 디자인을
+  하나만 살짝 고치고 다른 하나를 깜빡하는 실수로 두 화면이 미묘하게 달라질 위험이
+  있다. 화면을 "겉보기에 완전히 똑같게" 만들고 싶다면, 애초에 파일을 하나만 두고
+  "어디로 제출할지"(form_action)만 파이썬 쪽에서 다르게 넘겨주는 게 훨씬 안전하다.
+
+  주의: 화면만 하나로 합쳤을 뿐, 실제 인증 로직(app.py의 login_submit()과
+  admin_login_submit())은 여전히 완전히 분리되어 있다. 아이디/비밀번호를 어느
+  표(users vs admin_users)와 비교하는지, IP 브루트포스 잠금이 적용되는지는
+  이 화면과 무관하게 서버 쪽 코드가 결정한다.
+-->
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <title>로그인 워치독 — 로그인</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+</head>
+<body>
+    <div class="auth-card">
+        <h1>로그인</h1>
+
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <ul class="flash-list">
+                    {% for message in messages %}
+                        <li>{{ message }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
+
+        <!-- form_action : 이 폼을 어디로 제출할지는 화면 자체가 아니라, 이 템플릿을
+             불러온 라우트(app.py의 login() 또는 admin_login())가 결정해서 넘겨준다.
+             즉 화면 모양은 하나지만, 실제로 어떤 서버 로직이 처리할지는 그대로 나뉜다. -->
+        <form method="post" action="{{ form_action }}">
+            <label for="username">아이디</label>
+            <input type="text" id="username" name="username" required>
+
+            <label for="password">비밀번호</label>
+            <input type="password" id="password" name="password" required>
+
+            <button type="submit">로그인</button>
+        </form>
+
+        <div class="auth-links">
+            <a href="{{ url_for('signup') }}">회원가입</a>
+        </div>
+    </div>
+</body>
+</html>
