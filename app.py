@@ -28,7 +28,13 @@ import db
 import detector
 import soar
 
-app = Flask(__name__)
+# static_folder="public", static_url_path="": 기본값이면 Flask가 "static/" 폴더를
+# "/static/파일명" 주소로 서빙하는데, Vercel은 CSS/JS 같은 정적 파일을 "public/" 폴더에서
+# 찾아 "/파일명" 형태의 루트 경로로 서빙하는 게 규칙이다(Vercel 배포 시 설명 참고).
+# 로컬 개발 서버와 Vercel 배포본이 똑같은 주소 구조를 쓰도록, Flask도 처음부터
+# "public/" 폴더를 "/파일명" 경로로 서빙하게 맞춰뒀다 — 이러면 템플릿 코드는
+# 하나도 안 고쳐도 된다(url_for('static', ...)가 알아서 "/css/auth.css" 형태로 바뀜).
+app = Flask(__name__, static_folder="public", static_url_path="")
 
 # Flask가 로그인 상태를 기억하기 위해 사용하는 "세션 쿠키"에 서명(위조 방지)할 때
 # 쓰는 비밀 값. 이 값이 없으면 세션(로그인 유지) 기능 자체가 동작하지 않는다.
