@@ -319,3 +319,59 @@ def verify_user_credentials(username: str, password: str) -> bool:
     if user is None:
         return False  # 그런 아이디로 가입한 사람이 없음
     return check_password_hash(user["password_hash"], password)
+
+
+def list_users(limit: int = 100) -> list[dict]:
+    """가입된 회원 목록을 최신 가입순으로 가져온다 (관리자 대시보드 표시용).
+
+    password_hash 칸은 일부러 요청하지 않는다 — 암호화된 값이라 그 자체로는
+    안전하지만, 화면에 굳이 내보낼 이유가 없는 값은 애초에 조회 단계에서부터
+    빼두는 게 "혹시 모를 실수로 노출되는 사고"를 막는 가장 확실한 방법이다.
+    """
+    res = (
+        get_client()
+        .table("users")
+        .select("id, username, email, created_at")
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return res.data
+
+
+def delete_user(user_id: int) -> bool:
+    """회원 계정을 하나 삭제한다 (관리자 전용 기능).
+
+    삭제된 사람의 과거 로그인 시도 기록(login_attempts)은 그대로 남는다 —
+    그 표는 username을 문자열로만 저장하고 users 표와 연결(FK)되어 있지 않기
+    때문이다(3단계 설명 참고). 즉 계정을 지워도 "이 아이디가 예전에 시도했던
+    기록" 자체는 감사 로그로 계속 남는다.
+
+    반환값: 실제로 삭제된 행이 있었으면 True, 애초에 그런 id가 없었으면 False.
+    """
+    res = get_client().table("users").delete().eq("id", user_id).execute()
+    return len(res.data) > 0
+
+
+# ============================================================================
+# app_settings 표 관련 함수 — 서버 전체가 공유하는 설정값 (지금은 회원가입 On/Off 하나)
+# ============================================================================
+
+def get_signup_enabled() -> bool:
+    """지금 회원가입을 받고 있는지(True) 막아뒀는지(False) 확인한다.
+
+    이 값을 파이썬 변수(메모리)에만 저장해두면 안 되는 이유: 이 프로젝트는
+    로컬 컴퓨터, Vercel 등 여러 곳에서 서버가 동시에 돌아갈 수 있는데, 메모리는
+    각 서버(프로세스)마다 따로따로 존재한다. 관리자가 한 곳에서 "회원가입 끄기"를
+    눌러도 다른 곳에서 돌고 있는 서버는 그 사실을 전혀 모른다. 그래서 모두가
+    공유해서 보는 단 하나의 장소인 Supabase에 이 값을 저장해둔다.
+    """
+    res = get_client().table("app_settings").select("signup_enabled").eq("id", 1).limit(1).execute()
+    if not res.data:
+        return True  # 설정 행이 아직 없다면(예외 상황) 기본값은 "허용"으로 안전하게 처리
+    return res.data[0]["signup_enabled"]
+
+
+def set_signup_enabled(enabled: bool) -> None:
+    """회원가입 허용 여부를 켜거나 끈다 (관리자가 대시보드에서 호출)."""
+    get_client().table("app_settings").update({"signup_enabled": enabled}).eq("id", 1).execute()

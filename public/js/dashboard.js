@@ -13,6 +13,11 @@
 // 이 파일이 채워넣는다 — 이런 방식을 "화면을 자바스크립트로 동적으로 그린다"고 한다.
 // ============================================================================
 
+// 회원가입 토글 버튼을 누르면 "지금 상태의 반대"로 바꿔야 하는데, 그러려면
+// "지금 상태가 뭔지"를 어딘가 기억해둬야 한다. renderSignupStatus()가 매번
+// 이 변수를 최신 값으로 갱신해둔다.
+let currentSignupEnabled = true;
+
 /**
  * 서버에게 "지금 최신 상태가 어때?"라고 물어보고, 그 답으로 화면을 새로 그린다.
  *
@@ -33,6 +38,8 @@ async function fetchStatus() {
     renderLockoutCards(data.active_lockouts);
     renderAttemptsTable(data.recent_attempts);
     renderAdminLoginLog(data.admin_login_log);
+    renderUsersTable(data.users);
+    renderSignupStatus(data.signup_enabled);
 }
 
 /**
@@ -108,6 +115,49 @@ function renderAdminLoginLog(log) {
 }
 
 /**
+ * 가입된 회원 목록 표를 채운다. 각 줄에 "삭제" 버튼이 붙는다.
+ * @param {Array} users - [{id, username, email, created_at}, ...]
+ */
+function renderUsersTable(users) {
+    const tbody = document.getElementById("users-table-body");
+
+    if (users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty-state">가입된 회원이 없습니다.</td></tr>';
+        return;
+    }
+
+    // data-user-id / data-username 속성에 값을 심어두면, 아래 이벤트 처리에서
+    // "어느 줄의 삭제 버튼이 눌렸는지"를 알 수 있다(잠금 카드의 data-ip와 같은 방식).
+    tbody.innerHTML = users
+        .map(
+            (user) => `
+                <tr>
+                    <td>${formatTime(user.created_at)}</td>
+                    <td>${user.username}</td>
+                    <td>${user.email}</td>
+                    <td>
+                        <button data-user-id="${user.id}" data-username="${user.username}" class="delete-user-btn">삭제</button>
+                    </td>
+                </tr>
+            `
+        )
+        .join("");
+}
+
+/**
+ * 회원가입 On/Off 현재 상태를 문구와 버튼에 반영한다.
+ * @param {boolean} enabled
+ */
+function renderSignupStatus(enabled) {
+    currentSignupEnabled = enabled; // 토글 버튼을 눌렀을 때 "반대로 바꿔라"고 계산하려면 현재 값을 기억해둬야 한다
+    const statusEl = document.getElementById("signup-status");
+    const buttonEl = document.getElementById("signup-toggle-btn");
+
+    statusEl.textContent = enabled ? "허용 중" : "중단됨";
+    buttonEl.textContent = enabled ? "회원가입 끄기" : "회원가입 켜기";
+}
+
+/**
  * 관리자가 "즉시 해제" 버튼을 눌렀을 때, 그 IP를 서버에 풀어달라고 요청한다.
  * @param {string} ip
  */
@@ -122,6 +172,41 @@ async function unlockIp(ip) {
     });
     // 해제 요청이 끝나면 화면을 바로 한 번 더 갱신해서, 다음 폴링 주기를
     // 기다리지 않고도 즉시 카드가 사라지는 걸 볼 수 있게 한다.
+    fetchStatus();
+}
+
+/**
+ * 관리자가 회원 목록의 "삭제" 버튼을 눌렀을 때, 확인을 한 번 거친 뒤 삭제를 요청한다.
+ * @param {string} userId
+ * @param {string} username
+ */
+async function deleteUser(userId, username) {
+    // confirm()은 브라우저가 기본으로 제공하는 "확인/취소" 팝업이다. 회원 삭제는
+    // 되돌릴 수 없는 작업이라, 실수로 버튼을 잘못 눌렀을 때를 대비한 최소한의
+    // 안전장치를 넣어뒀다. 사용자가 "취소"를 누르면 confirm()이 false를 돌려주고,
+    // 그러면 아래 요청은 아예 보내지 않는다.
+    const confirmed = confirm(`"${username}" 회원을 정말 삭제할까요? 이 작업은 되돌릴 수 없습니다.`);
+    if (!confirmed) {
+        return;
+    }
+
+    await fetch("/api/users/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_id: Number(userId) }),
+    });
+    fetchStatus();
+}
+
+/**
+ * 회원가입 토글 버튼을 눌렀을 때, 현재 상태의 반대값으로 바꿔달라고 서버에 요청한다.
+ */
+async function toggleSignup() {
+    await fetch("/api/settings/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !currentSignupEnabled }),
+    });
     fetchStatus();
 }
 
@@ -143,6 +228,18 @@ document.getElementById("lockout-list").addEventListener("click", (event) => {
         unlockIp(ip);
     }
 });
+
+// 회원 목록의 "삭제" 버튼도 위와 똑같은 이벤트 위임 방식을 쓴다.
+document.getElementById("users-table-body").addEventListener("click", (event) => {
+    if (event.target.classList.contains("delete-user-btn")) {
+        const userId = event.target.getAttribute("data-user-id");
+        const username = event.target.getAttribute("data-username");
+        deleteUser(userId, username);
+    }
+});
+
+// 회원가입 토글 버튼은 화면에 딱 하나뿐이라 이벤트 위임 없이 바로 걸어도 된다.
+document.getElementById("signup-toggle-btn").addEventListener("click", toggleSignup);
 
 fetchStatus(); // 화면이 열리자마자 한 번 즉시 데이터를 가져온다.
 setInterval(fetchStatus, 10000); // 이후로는 10초마다 계속 반복해서 최신 상태로 갱신한다.

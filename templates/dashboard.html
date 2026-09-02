@@ -25,6 +25,14 @@
 
     <main>
         <section>
+            <h2>회원가입 설정</h2>
+            <!-- id="signup-status" : dashboard.js가 여기 현재 상태(허용/중단)를 문구로 채우고,
+                 id="signup-toggle-btn" 버튼을 누르면 반대 상태로 바꾸는 API를 호출한다. -->
+            <p>현재 상태: <span id="signup-status">확인 중...</span></p>
+            <button id="signup-toggle-btn" type="button">불러오는 중...</button>
+        </section>
+
+        <section>
             <h2>현재 잠긴 IP</h2>
             <!-- id="lockout-list" : dashboard.js가 이 id를 찾아서 그 안에
                  잠금 카드(div)들을 자바스크립트로 하나씩 만들어 넣는다. -->
@@ -45,6 +53,21 @@
                 <!-- tbody(표의 몸통)를 비워두고 id만 달아둔다. dashboard.js가 여기에
                      <tr> 줄들을 채워넣는다. -->
                 <tbody id="attempts-table-body"></tbody>
+            </table>
+        </section>
+
+        <section>
+            <h2>등록된 회원</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>가입일</th>
+                        <th>아이디</th>
+                        <th>이메일</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="users-table-body"></tbody>
             </table>
         </section>
 

@@ -46,3 +46,13 @@ create table admin_login_log (
   ip_address text not null,
   attempted_at timestamptz not null default now()
 );
+
+-- 앱 전역 설정 (딱 1행만 사용). 로컬/Vercel 등 여러 곳에서 서버가 동시에 돌아도
+-- "회원가입 켜짐/꺼짐" 같은 상태를 서버 메모리가 아니라 여기 저장해야
+-- 모든 서버 인스턴스가 항상 같은 값을 보게 된다 (11단계 참고).
+create table app_settings (
+  id int primary key default 1,
+  signup_enabled boolean not null default true,
+  constraint app_settings_singleton check (id = 1)
+);
+insert into app_settings (id, signup_enabled) values (1, true);

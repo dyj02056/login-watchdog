@@ -23,23 +23,31 @@
             {% endif %}
         {% endwith %}
 
-        <!-- 이 폼을 제출하면 /signup 주소로 POST 요청이 가고,
-             app.py의 signup_submit() 함수가 아이디/이메일 중복 확인 후 계정을 생성한다. -->
-        <form method="post" action="{{ url_for('signup_submit') }}">
-            <label for="username">아이디</label>
-            <input type="text" id="username" name="username" required>
+        <!-- signup_enabled : app.py가 db.get_signup_enabled()로 Supabase에서 읽어와
+             넘겨주는 값. 관리자가 대시보드에서 회원가입을 꺼뒀으면(False), 폼 대신
+             안내 문구만 보여준다 — 조건문으로 "이 조건일 때만 이 부분을 보여줘라"를
+             표현한다. -->
+        {% if signup_enabled %}
+            <!-- 이 폼을 제출하면 /signup 주소로 POST 요청이 가고,
+                 app.py의 signup_submit() 함수가 아이디/이메일 중복 확인 후 계정을 생성한다. -->
+            <form method="post" action="{{ url_for('signup_submit') }}">
+                <label for="username">아이디</label>
+                <input type="text" id="username" name="username" required>
 
-            <label for="email">이메일</label>
-            <input type="email" id="email" name="email" required>
+                <label for="email">이메일</label>
+                <input type="email" id="email" name="email" required>
 
-            <label for="password">비밀번호</label>
-            <input type="password" id="password" name="password" required>
+                <label for="password">비밀번호</label>
+                <input type="password" id="password" name="password" required>
 
-            <label for="password_confirm">비밀번호 확인</label>
-            <input type="password" id="password_confirm" name="password_confirm" required>
+                <label for="password_confirm">비밀번호 확인</label>
+                <input type="password" id="password_confirm" name="password_confirm" required>
 
-            <button type="submit">가입하기</button>
-        </form>
+                <button type="submit">가입하기</button>
+            </form>
+        {% else %}
+            <p class="signup-disabled-notice">현재 관리자가 회원가입을 잠시 중단해뒀습니다. 잠시 후 다시 시도해주세요.</p>
+        {% endif %}
 
         <div class="auth-links">
             <a href="{{ url_for('login') }}">이미 계정이 있으신가요? 로그인</a>

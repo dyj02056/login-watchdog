@@ -111,8 +111,13 @@ def index():
 
 @app.route("/signup", methods=["GET"])
 def signup():
-    """회원가입 폼 화면을 보여준다. (아직 아무것도 제출하지 않은 상태)"""
-    return render_template("signup.html")
+    """회원가입 폼 화면을 보여준다. (아직 아무것도 제출하지 않은 상태)
+
+    관리자가 대시보드에서 회원가입을 꺼뒀다면(db.get_signup_enabled()가 False),
+    폼 대신 "지금은 가입할 수 없습니다"라는 안내만 보여준다. 실제로 화면 안의
+    무엇을 보여줄지는 signup.html이 signup_enabled 값을 보고 스스로 결정한다.
+    """
+    return render_template("signup.html", signup_enabled=db.get_signup_enabled())
 
 
 @app.route("/signup", methods=["POST"])
@@ -124,6 +129,12 @@ def signup_submit():
     빈 폼을 보여주고, 이 주소로 폼 데이터를 제출하면 그때는 처리 로직을 실행해라"
     는 뜻이다.
     """
+    # 화면에서 폼 자체를 숨겨뒀더라도, 누군가 개발자 도구 등으로 이 주소에 직접
+    # 요청을 보낼 수 있으므로 서버 쪽에서도 다시 한번 막아준다(이중 안전장치).
+    if not db.get_signup_enabled():
+        flash("현재 회원가입이 잠시 중단되어 있습니다.")
+        return render_template("signup.html", signup_enabled=False)
+
     username = request.form.get("username", "").strip()
     email = request.form.get("email", "").strip()
     password = request.form.get("password", "")
@@ -131,16 +142,16 @@ def signup_submit():
 
     if not username or not email or not password:
         flash("아이디, 이메일, 비밀번호를 모두 입력해주세요.")
-        return render_template("signup.html")
+        return render_template("signup.html", signup_enabled=True)
 
     if password != password_confirm:
         flash("비밀번호와 비밀번호 확인이 일치하지 않습니다.")
-        return render_template("signup.html")
+        return render_template("signup.html", signup_enabled=True)
 
     created = db.create_user(username, email, password)
     if not created:
         flash("이미 사용 중인 아이디 또는 이메일입니다.")
-        return render_template("signup.html")
+        return render_template("signup.html", signup_enabled=True)
 
     flash("회원가입이 완료되었습니다. 로그인해주세요.")
     return redirect(url_for("login"))
@@ -284,6 +295,8 @@ def api_status():
             "recent_attempts": db.list_recent_attempts(50),
             "active_lockouts": db.list_active_lockouts(),
             "admin_login_log": db.list_admin_login_log(20),
+            "users": db.list_users(100),
+            "signup_enabled": db.get_signup_enabled(),
         }
     )
 
@@ -304,6 +317,42 @@ def api_unlock():
 
     released = soar.manual_release(ip)
     return jsonify({"success": released})
+
+
+@app.route("/api/users/delete", methods=["POST"])
+@login_required
+def api_users_delete():
+    """대시보드의 회원 목록에서 "삭제" 버튼을 눌렀을 때 호출되는 API.
+
+    /api/unlock과 똑같은 패턴이다 — login_required가 이미 "로그인된 관리자의
+    요청"임을 보장해주므로, 이 함수는 삭제 실행에만 집중한다.
+    """
+    data = request.get_json(silent=True) or {}
+    user_id = data.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "user_id 값이 필요합니다."}), 400
+
+    deleted = db.delete_user(user_id)
+    return jsonify({"success": deleted})
+
+
+@app.route("/api/settings/signup", methods=["POST"])
+@login_required
+def api_settings_signup():
+    """대시보드의 "회원가입 켜기/끄기" 토글을 눌렀을 때 호출되는 API.
+
+    {"enabled": true} 또는 {"enabled": false}를 받아 db.set_signup_enabled()로
+    Supabase에 반영한다. 이 값을 서버 메모리가 아니라 Supabase에 저장해두는
+    이유는 db.get_signup_enabled() 설명(db.py) 참고 — 로컬/Vercel 등 여러 곳에서
+    서버가 동시에 돌아도 항상 같은 값을 보게 하기 위함이다.
+    """
+    data = request.get_json(silent=True) or {}
+    enabled = data.get("enabled")
+    if not isinstance(enabled, bool):
+        return jsonify({"success": False, "error": "enabled(true/false) 값이 필요합니다."}), 400
+
+    db.set_signup_enabled(enabled)
+    return jsonify({"success": True, "signup_enabled": enabled})
 
 
 if __name__ == "__main__":
