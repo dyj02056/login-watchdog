@@ -1,0 +1,114 @@
+/* ============================================================================
+   dashboard.css — 관리자 대시보드 화면의 최소 스타일
+   ============================================================================ */
+
+body {
+    font-family: -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+    background: #f4f5f7;
+    margin: 0;
+    color: #1f2328;
+}
+
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #111827;
+    color: white;
+    padding: 16px 24px;
+}
+
+.topbar h1 {
+    font-size: 18px;
+    margin: 0;
+}
+
+.logout-btn {
+    background: #ef4444;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 14px;
+    cursor: pointer;
+}
+
+main {
+    padding: 24px;
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+section {
+    background: white;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+section h2 {
+    font-size: 15px;
+    margin-top: 0;
+}
+
+/* 잠긴 IP 카드들을 감싸는 영역. 카드가 여러 개면 옆으로 나란히, 줄바꿈되게 배치 */
+.lockout-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+/* dashboard.js가 자바스크립트로 만들어 넣는 잠금 카드 하나 */
+.lockout-card {
+    border: 1px solid #fecaca;
+    background: #fef2f2;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 13px;
+    min-width: 180px;
+}
+
+.lockout-card .ip {
+    font-weight: bold;
+}
+
+.lockout-card button {
+    margin-top: 8px;
+    background: #2563eb;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.empty-state {
+    color: #6b7280;
+    font-size: 13px;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.data-table th, .data-table td {
+    text-align: left;
+    padding: 6px 8px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.data-table th {
+    color: #6b7280;
+    font-weight: 600;
+}
+
+.success-true {
+    color: #16a34a;
+}
+
+.success-false {
+    color: #dc2626;
+}

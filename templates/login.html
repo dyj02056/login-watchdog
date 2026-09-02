@@ -1,0 +1,55 @@
+<!--
+  login.html — 감시 대상이 되는 "가짜" 로그인 화면
+
+  이 파일은 HTML(화면의 뼈대)에 Jinja2라는 "템플릿 문법"이 섞여 있다.
+  이중 중괄호로 감싼 부분  : 파이썬 값을 화면에 끼워넣을 때 쓴다.
+  중괄호+퍼센트로 감싼 부분 : if/for 같은 로직(조건, 반복)을 쓸 때 쓴다.
+  두 문법 다 Flask가 render_template()을 호출하는 순간, 실제 값으로 바뀐 뒤
+  진짜 HTML로 완성돼서 브라우저에 전달된다 — 즉 브라우저는 이 특수 문법을
+  전혀 모르고, 이미 변환이 끝난 결과물만 받는다.
+-->
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <title>로그인 워치독 — 로그인</title>
+    <!-- url_for('static', filename=...) : "static 폴더 안의 이 파일 경로를 찾아줘"라는 뜻.
+         파일 경로를 직접 "/static/css/auth.css"처럼 문자열로 적어도 되지만, url_for를 쓰면
+         나중에 폴더 구조가 바뀌어도 Flask가 알아서 올바른 경로를 계산해준다. -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+</head>
+<body>
+    <div class="auth-card">
+        <h1>로그인 (감시 대상)</h1>
+
+        <!-- get_flashed_messages() : 서버가 flash("메시지")로 남겨둔 안내문을 전부 꺼내온다.
+             예: app.py의 login_submit()에서 flash("잠긴 계정입니다...")라고 하면 그 문구가 여기 나타남. -->
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <ul class="flash-list">
+                    <!-- for 문: 메시지가 여러 개일 수도 있으니 하나씩 꺼내며 <li> 태그로 반복 출력 -->
+                    {% for message in messages %}
+                        <li>{{ message }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
+
+        <!-- 이 폼을 제출(submit)하면 브라우저가 /login 주소로 POST 요청을 보낸다.
+             app.py의 @app.route("/login", methods=["POST"]) 함수가 그 요청을 받아 처리한다. -->
+        <form method="post" action="{{ url_for('login_submit') }}">
+            <label for="username">아이디</label>
+            <input type="text" id="username" name="username" required>
+
+            <label for="password">비밀번호</label>
+            <input type="password" id="password" name="password" required>
+
+            <button type="submit">로그인</button>
+        </form>
+
+        <div class="auth-links">
+            <a href="{{ url_for('signup') }}">회원가입</a>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,43 @@
+<!--
+  admin_login.html — 관리자 전용 로그인 화면
+
+  감시 대상 화면(login.html)과 주소(/admin/login)도, 계정 표(admin_users)도 완전히 다르다.
+  그래서 감시 대상 쪽에서 아무리 로그인을 틀려서 IP가 잠기더라도, 이 화면과는 전혀 무관하다
+  (plan.md가 "라우트 분리로 IP 잠금 예외를 해결한다"고 한 부분이 바로 이 지점).
+-->
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <title>로그인 워치독 — 관리자 로그인</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+</head>
+<body>
+    <div class="auth-card">
+        <h1>관리자 로그인</h1>
+
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <ul class="flash-list">
+                    {% for message in messages %}
+                        <li>{{ message }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
+
+        <!-- 이 폼을 제출하면 /admin/login 주소로 POST 요청이 가고,
+             app.py의 admin_login_submit() 함수가 db.verify_admin_credentials()로 검증한다.
+             성공하면 session에 관리자 아이디가 저장되어 대시보드 접근이 열린다. -->
+        <form method="post" action="{{ url_for('admin_login_submit') }}">
+            <label for="username">관리자 아이디</label>
+            <input type="text" id="username" name="username" required>
+
+            <label for="password">비밀번호</label>
+            <input type="password" id="password" name="password" required>
+
+            <button type="submit">로그인</button>
+        </form>
+    </div>
+</body>
+</html>

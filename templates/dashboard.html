@@ -1,0 +1,72 @@
+<!--
+  dashboard.html — 관리자 모니터링 화면의 "뼈대"
+
+  중요한 특징: 이 화면 안의 표들은 처음엔 전부 비어있다. 화면이 열리자마자
+  static/js/dashboard.js가 /api/status를 호출해서 데이터를 받아온 뒤,
+  자바스크립트가 직접 표 안에 <tr> 줄들을 만들어 채워넣는다. 그래서 이 HTML
+  파일 자체에는 실제 로그 데이터가 전혀 적혀있지 않다 — 오직 "표의 틀"만 있다.
+-->
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <title>로그인 워치독 — 대시보드</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+</head>
+<body>
+    <header class="topbar">
+        <h1>로그인 워치독 대시보드</h1>
+        <!-- 로그아웃은 "링크"가 아니라 "폼 버튼"으로 만든다. 로그아웃처럼 서버 상태를
+             바꾸는 동작은 GET(단순 조회) 대신 POST로 보내는 것이 안전한 관례이기 때문이다. -->
+        <form method="post" action="{{ url_for('admin_logout') }}">
+            <button type="submit" class="logout-btn">로그아웃</button>
+        </form>
+    </header>
+
+    <main>
+        <section>
+            <h2>현재 잠긴 IP</h2>
+            <!-- id="lockout-list" : dashboard.js가 이 id를 찾아서 그 안에
+                 잠금 카드(div)들을 자바스크립트로 하나씩 만들어 넣는다. -->
+            <div id="lockout-list" class="lockout-list"></div>
+        </section>
+
+        <section>
+            <h2>최근 로그인 시도</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>시각</th>
+                        <th>IP</th>
+                        <th>아이디</th>
+                        <th>결과</th>
+                    </tr>
+                </thead>
+                <!-- tbody(표의 몸통)를 비워두고 id만 달아둔다. dashboard.js가 여기에
+                     <tr> 줄들을 채워넣는다. -->
+                <tbody id="attempts-table-body"></tbody>
+            </table>
+        </section>
+
+        <section>
+            <h2>관리자 로그인 기록</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>시각</th>
+                        <th>아이디</th>
+                        <th>IP</th>
+                        <th>결과</th>
+                    </tr>
+                </thead>
+                <tbody id="admin-log-table-body"></tbody>
+            </table>
+        </section>
+    </main>
+
+    <!-- 이 화면의 동작(2.5초마다 새로고침, 해제 버튼 클릭 처리 등)은
+         전부 dashboard.js 한 파일에 들어있다. HTML 맨 아래에 스크립트를 두면
+         화면 요소들이 먼저 다 그려진 뒤에 스크립트가 실행되어 더 안전하다. -->
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
