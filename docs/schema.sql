@@ -3,10 +3,13 @@
 -- 근거: plan.md 3-3절(로그/잠금/관리자 테이블) + 회원가입 기능 확장(users 테이블)
 
 -- 감시 대상 /login 화면에 실제로 가입해 로그인하는 사용자 계정
+-- name: 로그인 아이디(username)와 별개인 "표시 이름". 회원가입 때는 안 받고 기본값 ''(빈 문자열)로
+-- 시작하며, 회원 대시보드의 프로필 수정 화면에서 나중에 채워 넣는다(12단계 참고).
 create table users (
   id bigint generated always as identity primary key,
   username text not null unique,
   email text not null unique,
+  name text not null default '',
   password_hash text not null,
   created_at timestamptz not null default now()
 );

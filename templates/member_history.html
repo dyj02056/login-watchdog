@@ -1,0 +1,60 @@
+<!--
+  member_history.html — 회원 본인의 최근 로그인 시도 기록 (주소: /dashboard/history)
+
+  관리자 대시보드의 "최근 로그인 시도" 표와 비슷해 보이지만 중요한 차이가 있다:
+  관리자 쪽은 전체 회원의 기록을 실시간(자바스크립트 폴링)으로 보여주지만,
+  이 화면은 db.list_attempts_by_username()으로 "이 회원 본인 것만" 걸러서
+  서버가 화면을 그릴 때 한 번만 조회한다 — 계속 새로고침될 필요가 없는,
+  가볍게 훑어보는 화면이라 폴링 자바스크립트를 따로 쓰지 않았다.
+-->
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <title>로그인 워치독 — 내 로그인 기록</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/member.css') }}">
+</head>
+<body>
+    <header class="topbar">
+        <h1>로그인 워치독</h1>
+        <form method="post" action="{{ url_for('member_logout') }}">
+            <button type="submit" class="logout-btn">로그아웃</button>
+        </form>
+    </header>
+
+    <main>
+        <div class="member-card">
+            <h2>최근 로그인 기록</h2>
+
+            {% if attempts %}
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>시각</th>
+                            <th>IP</th>
+                            <th>결과</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- attempts : app.py의 member_history()가 넘겨준, 이미 "본인 것만"
+                             걸러진 목록. 여기서는 그냥 하나씩 꺼내 <tr>로 그리기만 하면 된다. -->
+                        {% for attempt in attempts %}
+                            <tr>
+                                <!-- | kr_time : app.py에 등록해둔 필터. 원본 시각 문자열을
+                                     보기 편한 형태로 바꿔서 보여준다. -->
+                                <td>{{ attempt.attempted_at | kr_time }}</td>
+                                <td>{{ attempt.ip_address }}</td>
+                                <td>{{ "성공" if attempt.success else "실패" }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p>아직 로그인 시도 기록이 없습니다.</p>
+            {% endif %}
+
+            <a class="back-link" href="{{ url_for('member_dashboard') }}">← 대시보드로 돌아가기</a>
+        </div>
+    </main>
+</body>
+</html>

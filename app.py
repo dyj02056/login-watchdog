@@ -13,6 +13,7 @@
 # ============================================================================
 
 import os
+from datetime import datetime
 from functools import wraps
 
 from dotenv import load_dotenv
@@ -43,6 +44,24 @@ app.secret_key = os.environ["SECRET_KEY"]
 # 서버가 켜질 때 딱 한 번, 관리자 계정이 하나도 없으면 .env 값으로 자동 생성한다.
 # (회원가입 화면 없이 처음부터 관리자 1명이 존재하게 만드는 장치, db.py 3단계 참고)
 db.ensure_bootstrap_admin()
+
+
+def format_kr_time(iso_string: str) -> str:
+    """Supabase가 돌려주는 "2026-09-02T15:10:24.091+00:00" 같은 시각 문자열을
+    "2026-09-02 15:10:24"처럼 사람이 읽기 편한 형태로 바꾼다.
+
+    관리자 대시보드는 이 변환을 자바스크립트(dashboard.js의 formatTime())가
+    브라우저에서 처리하지만, 회원 화면(member_history.html)은 폴링 없이 서버가
+    한 번에 화면을 그려서 보내주는 방식이라, 변환도 자바스크립트 대신 여기
+    파이썬 쪽에서 미리 해둔다.
+    """
+    return datetime.fromisoformat(iso_string).strftime("%Y-%m-%d %H:%M:%S")
+
+
+# Jinja2 필터란: 템플릿 안에서 "|" 기호로 값을 걸러/변형해서 쓸 수 있게 등록해두는
+# 함수다. 이렇게 등록해두면 템플릿에서 {{ attempt.attempted_at | kr_time }}처럼
+# 간단히 쓸 수 있다 — 변환 로직을 템플릿 여기저기에 반복해서 적을 필요가 없다.
+app.jinja_env.filters["kr_time"] = format_kr_time
 
 
 def get_request_ip() -> str:
@@ -85,6 +104,21 @@ def login_required(view):
             if request.path.startswith("/api/"):
                 return jsonify({"error": "로그인이 필요합니다."}), 401
             return redirect(url_for("admin_login"))
+        return view(*args, **kwargs)
+    return wrapped_view
+
+
+def member_login_required(view):
+    """"회원 로그인이 되어 있어야만 들어올 수 있는 방" 문지기 — login_required와
+    구조는 완전히 똑같지만, 확인하는 세션 값이 다르다("admin_username"이 아니라
+    "username"). 관리자 세션과 회원 세션은 서로 다른 키를 쓰기 때문에, 같은
+    브라우저에서 관리자로도 회원으로도 동시에 로그인된 상태가 될 수 있다 —
+    이 프로젝트에서는 문제가 되지 않는다(두 화면이 서로 다른 데이터를 다룸).
+    """
+    @wraps(view)
+    def wrapped_view(*args, **kwargs):
+        if "username" not in session:
+            return redirect(url_for("login"))
         return view(*args, **kwargs)
     return wrapped_view
 
@@ -163,12 +197,14 @@ def signup_submit():
 
 @app.route("/login", methods=["GET"])
 def login():
-    """감시 대상 로그인 화면을 보여준다.
+    """감시 대상 로그인 화면을 보여준다. 이미 로그인된 상태라면 회원 대시보드로 바로 보낸다.
 
     화면 자체는 관리자 로그인과 똑같은 login_form.html을 공유하지만(겉보기로는
     구분이 안 됨), form_action만 이 라우트로("/login") 지정해서 실제 제출은
     login_submit()이 처리하게 한다.
     """
+    if "username" in session:
+        return redirect(url_for("member_dashboard"))
     return render_template("login_form.html", form_action=url_for("login_submit"))
 
 
@@ -184,6 +220,7 @@ def login_submit():
     4. 잠긴 상태가 아니라면 실제로 아이디/비밀번호를 확인하고, 그 시도를 기록한다.
     5. 만약 이번 시도가 실패였다면 "혹시 이 IP가 수상한 수준(5회 초과)이 됐는지"
        판정하고, 그렇다면 즉시 잠근다(soar.enforce_lockout이 알림까지 같이 보냄).
+    6. 성공했다면 회원 세션을 만들어서 회원 대시보드로 이동시킨다(12단계에서 추가).
     """
     # 1) 시간이 지나 자동으로 풀려야 할 잠금들을 정리
     soar.try_release_expired_lockouts()
@@ -202,8 +239,14 @@ def login_submit():
     db.log_attempt(ip, username, success)
 
     if success:
-        flash("로그인 성공")
-        return render_template("login_form.html", form_action=url_for("login_submit"))
+        # 관리자 세션("admin_username")과는 완전히 다른 키("username")를 쓴다 —
+        # 그래야 같은 브라우저에서 관리자 세션이 있더라도 서로 섞이지 않는다.
+        # user_id도 같이 저장해두는 이유는 member_login_required 문지기 뒤에서
+        # "아이디"가 아니라 변하지 않는 "번호"로 본인 행을 정확히 찾기 위해서다.
+        user = db.get_user_by_username(username)
+        session["username"] = username
+        session["user_id"] = user["id"]
+        return redirect(url_for("member_dashboard"))
 
     # 실패했다면, 이 실패로 인해 방금 임계값을 넘었는지 확인한다.
     suspicious, failure_count = detector.is_suspicious(ip)
@@ -233,7 +276,7 @@ def admin_login():
     잠금이 적용되는지는 여전히 완전히 분리되어 있다.
     """
     if "admin_username" in session:
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("admin_dashboard"))
     return render_template("login_form.html", form_action=url_for("admin_login_submit"))
 
 
@@ -254,7 +297,7 @@ def admin_login_submit():
         # 저장 공간이다. 여기 값을 넣어두면, 같은 브라우저로 다시 요청이 올 때마다
         # Flask가 자동으로 이 값을 복원해줘서 "로그인 유지"가 가능해진다.
         session["admin_username"] = username
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("admin_dashboard"))
 
     flash("아이디 또는 비밀번호가 올바르지 않습니다.")
     return render_template("login_form.html", form_action=url_for("admin_login_submit"))
@@ -270,14 +313,18 @@ def admin_logout():
 
 # ============================================================================
 # 관리자 대시보드 화면 및 API — 전부 login_required로 보호됨
+#
+# 주소가 /dashboard가 아니라 /admin/login·/admin/logout과 같은 묶음인
+# /admin/dashboard인 이유: 12단계에서 회원(일반 사용자) 전용 대시보드를
+# /dashboard 주소에 새로 만들면서, 기존 관리자 대시보드를 이 주소로 옮겼다.
 # ============================================================================
 
-@app.route("/dashboard", methods=["GET"])
+@app.route("/admin/dashboard", methods=["GET"])
 @login_required
-def dashboard():
-    """대시보드 화면의 뼈대(HTML)만 보여준다. 실제 데이터는 화면의 자바스크립트가
-    아래 /api/status를 주기적으로 호출해서 채워넣는다(6단계에서 구현)."""
-    return render_template("dashboard.html")
+def admin_dashboard():
+    """관리자 대시보드 화면의 뼈대(HTML)만 보여준다. 실제 데이터는 화면의
+    자바스크립트가 아래 /api/status를 주기적으로 호출해서 채워넣는다(6단계에서 구현)."""
+    return render_template("admin_dashboard.html")
 
 
 @app.route("/api/status", methods=["GET"])
@@ -353,6 +400,85 @@ def api_settings_signup():
 
     db.set_signup_enabled(enabled)
     return jsonify({"success": True, "signup_enabled": enabled})
+
+
+# ============================================================================
+# 회원 대시보드 (/dashboard) — 전부 member_login_required로 보호됨
+#
+# 이름이 "/admin/dashboard"와 비슷해 보이지만 완전히 다른 화면이다. 회원은
+# 본인 계정에 관한 정보만 볼 수 있고, 다른 회원 정보나 관리자 기능(잠긴 IP,
+# 전체 회원 목록 등)에는 접근할 수 없다 — member_login_required와
+# login_required가 서로 다른 세션 키를 확인하기 때문에 이 구분이 코드 수준에서
+# 강제된다.
+# ============================================================================
+
+@app.route("/dashboard", methods=["GET"])
+@member_login_required
+def member_dashboard():
+    """로그인한 회원 본인을 위한 첫 화면. 인사말과 이동 버튼 2개만 보여준다."""
+    return render_template("member_dashboard.html", username=session["username"])
+
+
+@app.route("/dashboard/history", methods=["GET"])
+@member_login_required
+def member_history():
+    """본인의 최근 로그인 시도 기록만 보여준다.
+
+    db.list_attempts_by_username()에 session["username"]을 넘겨서, 다른 회원의
+    시도 기록은 애초에 조회조차 되지 않게 한다 — "권한 확인 후 전체를 가져와서
+    화면에서 걸러낸다"가 아니라 "애초에 본인 것만 데이터베이스에 물어본다"가
+    더 안전한 설계다.
+    """
+    attempts = db.list_attempts_by_username(session["username"], 20)
+    return render_template("member_history.html", attempts=attempts)
+
+
+@app.route("/dashboard/profile", methods=["GET"])
+@member_login_required
+def member_profile():
+    """프로필(표시 이름/이메일) 조회 및 수정 화면을 보여준다."""
+    user = db.get_user_by_id(session["user_id"])
+    return render_template("member_profile.html", user=user)
+
+
+@app.route("/dashboard/profile", methods=["POST"])
+@member_login_required
+def member_profile_submit():
+    """프로필 수정 폼 제출을 처리한다.
+
+    처리가 끝나면 render_template으로 바로 화면을 그리지 않고 redirect()로
+    /dashboard/profile을 "다시 방문"하게 만든다. 이렇게 하면 사용자가 수정 후
+    브라우저를 새로고침해도 폼이 다시 제출되며 오류가 나는 대신, 그냥 최신
+    프로필을 다시 보여준다("Post-Redirect-Get" 패턴이라고 부른다).
+    """
+    name = request.form.get("name", "").strip()
+    email = request.form.get("email", "").strip()
+
+    if not email:
+        flash("이메일을 입력해주세요.")
+        return redirect(url_for("member_profile"))
+
+    updated = db.update_user_profile(session["user_id"], name, email)
+    if not updated:
+        flash("이미 다른 회원이 사용 중인 이메일입니다.")
+        return redirect(url_for("member_profile"))
+
+    flash("프로필이 수정되었습니다.")
+    return redirect(url_for("member_profile"))
+
+
+@app.route("/dashboard/logout", methods=["POST"])
+@member_login_required
+def member_logout():
+    """회원 로그아웃 처리.
+
+    admin_logout()과 달리 session.clear()를 쓰지 않고 회원 관련 키(username,
+    user_id)만 콕 집어 지운다 — 만약 같은 브라우저에서 관리자로도 로그인되어
+    있었다면, 회원만 로그아웃하고 관리자 세션은 그대로 유지하기 위해서다.
+    """
+    session.pop("username", None)
+    session.pop("user_id", None)
+    return redirect(url_for("login"))
 
 
 if __name__ == "__main__":

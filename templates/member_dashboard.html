@@ -1,0 +1,35 @@
+<!--
+  member_dashboard.html — 로그인한 회원 본인을 위한 첫 화면 (주소: /dashboard)
+
+  관리자 대시보드(/admin/dashboard)와 이름이 비슷해서 헷갈리기 쉽지만 완전히
+  다른 화면이다. 여기엔 본인 관련 정보만 있고, 다른 회원 목록이나 IP 잠금
+  현황 같은 관리자 전용 정보는 전혀 없다.
+-->
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <title>로그인 워치독 — 내 대시보드</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/member.css') }}">
+</head>
+<body>
+    <header class="topbar">
+        <h1>로그인 워치독</h1>
+        <form method="post" action="{{ url_for('member_logout') }}">
+            <button type="submit" class="logout-btn">로그아웃</button>
+        </form>
+    </header>
+
+    <main>
+        <div class="member-card">
+            <!-- username : app.py의 member_dashboard()가 session["username"]을 그대로 넘겨준다. -->
+            <h2>안녕하세요, {{ username }}님 반갑습니다.</h2>
+
+            <div class="member-actions">
+                <a href="{{ url_for('member_history') }}">최근 로그인 기록 보기</a>
+                <a href="{{ url_for('member_profile') }}">프로필 보기 · 수정</a>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

@@ -1,21 +1,24 @@
 <!--
-  dashboard.html — 관리자 모니터링 화면의 "뼈대"
+  admin_dashboard.html — 관리자 모니터링 화면의 "뼈대" (주소: /admin/dashboard)
 
   중요한 특징: 이 화면 안의 표들은 처음엔 전부 비어있다. 화면이 열리자마자
-  static/js/dashboard.js가 /api/status를 호출해서 데이터를 받아온 뒤,
+  public/js/dashboard.js가 /api/status를 호출해서 데이터를 받아온 뒤,
   자바스크립트가 직접 표 안에 <tr> 줄들을 만들어 채워넣는다. 그래서 이 HTML
   파일 자체에는 실제 로그 데이터가 전혀 적혀있지 않다 — 오직 "표의 틀"만 있다.
+
+  12단계부터 회원 전용 화면(member_dashboard.html 등)이 /dashboard 주소를
+  대신 쓰게 되면서, 이 파일은 /admin/dashboard로 옮겨졌다.
 -->
 <!doctype html>
 <html lang="ko">
 <head>
     <meta charset="utf-8">
-    <title>로그인 워치독 — 대시보드</title>
+    <title>로그인 워치독 — 관리자 대시보드</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
 </head>
 <body>
     <header class="topbar">
-        <h1>로그인 워치독 대시보드</h1>
+        <h1>로그인 워치독 관리자 대시보드</h1>
         <!-- 로그아웃은 "링크"가 아니라 "폼 버튼"으로 만든다. 로그아웃처럼 서버 상태를
              바꾸는 동작은 GET(단순 조회) 대신 POST로 보내는 것이 안전한 관례이기 때문이다. -->
         <form method="post" action="{{ url_for('admin_logout') }}">
