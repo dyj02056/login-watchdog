@@ -1,0 +1,58 @@
+/* ============================================================================
+   tokens.css — 사이트 전체가 공유하는 "색상·글꼴·전환 효과" 한 벌
+   auth.css / dashboard.css / member.css가 전부 이 파일을 먼저 불러온 뒤,
+   여기 정의된 --이름 값들을 var(--이름)으로 가져다 쓴다. 그래서 색을 하나
+   바꾸고 싶으면 이 파일 한 곳만 고치면 로그인/회원/관리자 화면 전체에
+   한꺼번에 반영된다 — config.py가 "숫자를 한 곳에 모아두는" 것과 같은 원리를
+   색상에 적용한 것이다.
+   ============================================================================ */
+
+/* 구글 폰트 3종을 한 번에 불러온다. CSS 파일 안에서 @import로 가져오면,
+   이 파일 하나만 <link>로 걸어도 폰트까지 같이 따라온다. */
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+    /* 글꼴: 제목엔 성격 있는 Sora, 본문엔 편안한 Public Sans,
+       IP·시각처럼 숫자가 줄맞춰 나오는 곳엔 IBM Plex Mono */
+    --font-display: "Sora", "Malgun Gothic", sans-serif;
+    --font-body: "Public Sans", -apple-system, "Malgun Gothic", sans-serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+    /* 배경 — 옅은 세이지가 섞인 밝은 회색 (기존 #f4f5f7보다 "산뜻한" 느낌) */
+    --canvas: #f4f8f6;
+    --surface: #ffffff;
+    --surface-2: #eef4f1;
+
+    /* 글자색 — 순수 검정 대신 초록빛이 살짝 도는 잉크색 (더 "차분한" 느낌) */
+    --ink: #1c2a26;
+    --ink-soft: #5c6d68;
+    --ink-faint: #8a9994;
+
+    /* 포인트색 — 기존의 진한 파랑(#2563eb) 대신 차분한 틸(teal) */
+    --accent: #0f9b8b;
+    --accent-ink: #06544a;
+    --accent-soft: #dcf1ec;
+
+    --line: #dbe6e1;
+
+    /* 성공/위험 색은 포인트색과 별개로 유지 — "잠김/성공/실패" 같은 상태를
+       한눈에 구분하려면 포인트색과 헷갈리지 않는 색이어야 한다 */
+    --success: #2f9e5b;
+    --success-soft: #e4f5ea;
+    --danger: #c85a4f;
+    --danger-soft: #fbe9e6;
+
+    --shadow-card: 0 1px 3px rgba(20, 40, 35, 0.08);
+
+    --radius-s: 6px;
+    --radius-m: 10px;
+    --radius-l: 16px;
+}
+
+/* 브라우저 내장 "화면 전환" 기능. 이 세 줄만으로 /login → /dashboard 같은
+   실제 페이지 이동이 뚝 끊기지 않고 자연스럽게 넘어간다. 아직 이 기능을
+   모르는 브라우저는 이 규칙을 그냥 못 알아듣고 지나칠 뿐이라, 지금처럼
+   즉시 전환되는 것 외에 다른 부작용이 없다 — 그래서 부담 없이 켜둘 수 있다. */
+@view-transition {
+    navigation: auto;
+}

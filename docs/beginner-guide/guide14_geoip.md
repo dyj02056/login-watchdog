@@ -1,6 +1,6 @@
 # 14단계 — 로그인 IP의 국가·도시 표시 (ip-api.com 연동)
 
-[◀ 13단계](guide13_member.md) · [전체 목차](beginner-guide.md)
+[◀ 13단계](guide13_member.md) · [전체 목차](beginner-guide.md) · [15단계 ▶](guide15_design.md)
 
 
 ### 우리가 한 일

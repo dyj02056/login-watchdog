@@ -12,6 +12,7 @@
 <head>
     <meta charset="utf-8">
     <title>로그인 워치독 — 내 로그인 기록</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/member.css') }}">
 </head>
 <body>
@@ -49,8 +50,8 @@
                             <tr>
                                 <!-- | kr_time : app.py에 등록해둔 필터. 원본 시각 문자열을
                                      보기 편한 형태로 바꿔서 보여준다. -->
-                                <td>{{ attempt.attempted_at | kr_time }}</td>
-                                <td>{{ attempt.ip_address }}</td>
+                                <td class="mono">{{ attempt.attempted_at | kr_time }}</td>
+                                <td class="mono">{{ attempt.ip_address }}</td>
                                 <td>{{ attempt.location }}</td>
                                 <td>{{ "성공" if attempt.success else "실패" }}</td>
                             </tr>

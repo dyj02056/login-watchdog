@@ -1,14 +1,15 @@
 /* ============================================================================
    member.css — 회원 대시보드(/dashboard, /dashboard/history, /dashboard/profile)
-   화면들이 공통으로 쓰는 최소 스타일. auth.css/dashboard.css와 색·여백 규칙을
-   맞춰서 사이트 전체가 한 디자인처럼 보이게 했다.
+   화면들이 공통으로 쓰는 스타일. 색상·글꼴 값은 전부 tokens.css의
+   var(--이름)에서 가져온다(15단계 리디자인) — auth.css/dashboard.css와
+   같은 값을 쓰므로 세 화면이 자연히 한 디자인처럼 보인다.
    ============================================================================ */
 
 body {
-    font-family: -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
-    background: #f4f5f7;
+    font-family: var(--font-body);
+    background: var(--canvas);
     margin: 0;
-    color: #1f2328;
+    color: var(--ink);
     /* 세로 방향(위→아래)으로 topbar와 main을 쌓아두고, min-height로 화면
        전체 높이를 확보해둔다 — 아래 main의 "화면 정중앙 배치"가 이 두 가지가
        있어야 정상 동작한다. */
@@ -21,7 +22,7 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #111827;
+    background: var(--ink);
     color: white;
     padding: 16px 24px;
     /* topbar는 자기 내용물 높이만큼만 차지하고 늘어나지 않는다(main이 나머지를 다 가져감). */
@@ -29,17 +30,20 @@ body {
 }
 
 .topbar h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
     font-size: 18px;
     margin: 0;
 }
 
 .logout-btn {
-    background: #ef4444;
+    background: var(--danger);
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     padding: 8px 14px;
     cursor: pointer;
+    font-family: var(--font-body);
 }
 
 main {
@@ -56,18 +60,21 @@ main {
 }
 
 .member-card {
-    background: white;
-    border-radius: 8px;
+    background: var(--surface);
+    border-radius: var(--radius-l);
     padding: 24px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--shadow-card);
     width: 100%;
     max-width: 480px;
     box-sizing: border-box;
 }
 
 .member-card h2 {
-    font-size: 16px;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 17px;
     margin-top: 0;
+    color: var(--ink);
 }
 
 .member-actions {
@@ -80,30 +87,33 @@ main {
 .member-actions a {
     display: block;
     text-align: center;
-    background: #2563eb;
-    color: white;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
     text-decoration: none;
     padding: 12px;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
+    font-weight: 600;
     font-size: 14px;
 }
 
 .member-actions a:hover {
-    background: #1d4ed8;
+    background: var(--accent);
+    color: white;
 }
 
 .back-link {
     display: inline-block;
     margin-top: 16px;
     font-size: 13px;
-    color: #2563eb;
+    color: var(--accent-ink);
     text-decoration: none;
+    font-weight: 500;
 }
 
 .member-card label {
     display: block;
     font-size: 13px;
-    color: #444;
+    color: var(--ink-soft);
     margin-bottom: 4px;
     margin-top: 12px;
 }
@@ -112,26 +122,35 @@ main {
 .member-card input[type="email"] {
     width: 100%;
     box-sizing: border-box;
-    padding: 8px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-s);
+    font-family: var(--font-body);
+    color: var(--ink);
+    background: var(--surface);
 }
 
 .member-card input[readonly] {
-    background: #f3f4f6;
-    color: #6b7280;
+    background: var(--surface-2);
+    color: var(--ink-faint);
 }
 
 .member-card button[type="submit"] {
     margin-top: 20px;
     width: 100%;
     padding: 10px;
-    background: #2563eb;
+    background: var(--accent);
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     cursor: pointer;
+    font-family: var(--font-body);
+    font-weight: 600;
     font-size: 14px;
+}
+
+.member-card button[type="submit"]:hover {
+    background: var(--accent-ink);
 }
 
 .flash-list {
@@ -141,10 +160,10 @@ main {
 }
 
 .flash-list li {
-    background: #fff3cd;
-    color: #664d03;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
     padding: 8px 12px;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     font-size: 13px;
     margin-bottom: 6px;
 }
@@ -163,10 +182,16 @@ main {
 .data-table th, .data-table td {
     text-align: left;
     padding: 6px 8px;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid var(--line);
 }
 
 .data-table th {
-    color: #6b7280;
+    color: var(--ink-faint);
     font-weight: 600;
+}
+
+/* IP·시각처럼 자릿수가 맞춰져야 보기 편한 값에는 고정폭 글꼴을 쓴다
+   (dashboard.css와 같은 이름의 유틸리티 클래스 — 표를 그리는 쪽에서 붙여줌). */
+.mono {
+    font-family: var(--font-mono);
 }

@@ -84,8 +84,8 @@ function renderAttemptsTable(attempts) {
             // 결과를 이미 문자열로 만들어서 넣어준다 — 여기서는 그대로 꺼내 쓰기만 한다.
             return `
                 <tr>
-                    <td>${formatTime(attempt.attempted_at)}</td>
-                    <td>${attempt.ip_address}</td>
+                    <td class="mono">${formatTime(attempt.attempted_at)}</td>
+                    <td class="mono">${attempt.ip_address}</td>
                     <td>${attempt.location}</td>
                     <td>${attempt.username}</td>
                     <td class="${resultClass}">${resultText}</td>
@@ -107,9 +107,9 @@ function renderAdminLoginLog(log) {
             const resultText = entry.success ? "성공" : "실패";
             return `
                 <tr>
-                    <td>${formatTime(entry.attempted_at)}</td>
+                    <td class="mono">${formatTime(entry.attempted_at)}</td>
                     <td>${entry.username}</td>
-                    <td>${entry.ip_address}</td>
+                    <td class="mono">${entry.ip_address}</td>
                     <td class="${resultClass}">${resultText}</td>
                 </tr>
             `;
@@ -135,7 +135,7 @@ function renderUsersTable(users) {
         .map(
             (user) => `
                 <tr>
-                    <td>${formatTime(user.created_at)}</td>
+                    <td class="mono">${formatTime(user.created_at)}</td>
                     <td>${user.username}</td>
                     <td>${user.email}</td>
                     <td>

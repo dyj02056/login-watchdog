@@ -1,11 +1,12 @@
 /* ============================================================================
-   auth.css — 로그인 / 회원가입 / 관리자 로그인 화면이 공통으로 쓰는 최소한의 스타일
-   (디자인 완성도보다는 "글자가 잘 읽히고, 버튼이 버튼처럼 보이는" 수준의 기본기만 목표)
+   auth.css — 로그인 / 회원가입 / 관리자 로그인 화면이 공통으로 쓰는 스타일
+   색상·글꼴 값은 전부 tokens.css의 var(--이름)에서 가져온다(15단계 리디자인).
    ============================================================================ */
 
 body {
-    font-family: -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
-    background: #f4f5f7;
+    font-family: var(--font-body);
+    background: var(--canvas);
+    color: var(--ink);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -13,24 +14,27 @@ body {
     margin: 0;
 }
 
-/* 로그인/가입 폼을 감싸는 하얀 카드 박스 */
+/* 로그인/가입 폼을 감싸는 카드 박스 */
 .auth-card {
-    background: #ffffff;
+    background: var(--surface);
     padding: 32px;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border-radius: var(--radius-l);
+    box-shadow: var(--shadow-card);
     width: 320px;
 }
 
 .auth-card h1 {
-    font-size: 20px;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 21px;
     margin-bottom: 20px;
+    color: var(--ink);
 }
 
 .auth-card label {
     display: block;
     font-size: 13px;
-    color: #444;
+    color: var(--ink-soft);
     margin-bottom: 4px;
     margin-top: 12px;
 }
@@ -40,25 +44,30 @@ body {
 .auth-card input[type="password"] {
     width: 100%;
     box-sizing: border-box; /* padding을 넣어도 너비가 320px를 벗어나지 않게 함 */
-    padding: 8px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-s);
+    font-family: var(--font-body);
+    color: var(--ink);
+    background: var(--surface);
 }
 
 .auth-card button {
     width: 100%;
     margin-top: 20px;
     padding: 10px;
-    background: #2563eb;
+    background: var(--accent);
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     cursor: pointer;
+    font-family: var(--font-body);
+    font-weight: 600;
     font-size: 14px;
 }
 
 .auth-card button:hover {
-    background: #1d4ed8;
+    background: var(--accent-ink);
 }
 
 /* 서버가 flash()로 보내주는 안내 메시지(성공/실패/잠금) 박스 */
@@ -69,10 +78,10 @@ body {
 }
 
 .flash-list li {
-    background: #fff3cd;
-    color: #664d03;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
     padding: 8px 12px;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     font-size: 13px;
     margin-bottom: 6px;
 }
@@ -84,16 +93,17 @@ body {
 }
 
 .auth-links a {
-    color: #2563eb;
+    color: var(--accent-ink);
     text-decoration: none;
+    font-weight: 500;
 }
 
 /* 관리자가 회원가입을 꺼뒀을 때 폼 대신 보여주는 안내 문구 */
 .signup-disabled-notice {
-    background: #f3f4f6;
-    color: #4b5563;
+    background: var(--surface-2);
+    color: var(--ink-soft);
     padding: 12px;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     font-size: 13px;
     text-align: center;
 }

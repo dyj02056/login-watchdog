@@ -1,35 +1,39 @@
 /* ============================================================================
-   dashboard.css — 관리자 대시보드 화면의 최소 스타일
+   dashboard.css — 관리자 대시보드 화면의 스타일
+   색상·글꼴 값은 전부 tokens.css의 var(--이름)에서 가져온다(15단계 리디자인).
    ============================================================================ */
 
 body {
-    font-family: -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
-    background: #f4f5f7;
+    font-family: var(--font-body);
+    background: var(--canvas);
     margin: 0;
-    color: #1f2328;
+    color: var(--ink);
 }
 
 .topbar {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #111827;
+    background: var(--ink);
     color: white;
     padding: 16px 24px;
 }
 
 .topbar h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
     font-size: 18px;
     margin: 0;
 }
 
 .logout-btn {
-    background: #ef4444;
+    background: var(--danger);
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     padding: 8px 14px;
     cursor: pointer;
+    font-family: var(--font-body);
 }
 
 main {
@@ -39,16 +43,19 @@ main {
 }
 
 section {
-    background: white;
-    border-radius: 8px;
-    padding: 16px;
+    background: var(--surface);
+    border-radius: var(--radius-l);
+    padding: 16px 20px;
     margin-bottom: 20px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--shadow-card);
 }
 
 section h2 {
+    font-family: var(--font-display);
+    font-weight: 600;
     font-size: 15px;
     margin-top: 0;
+    color: var(--ink);
 }
 
 /* 잠긴 IP 카드들을 감싸는 영역. 카드가 여러 개면 옆으로 나란히, 줄바꿈되게 배치 */
@@ -60,53 +67,58 @@ section h2 {
 
 /* dashboard.js가 자바스크립트로 만들어 넣는 잠금 카드 하나 */
 .lockout-card {
-    border: 1px solid #fecaca;
-    background: #fef2f2;
-    border-radius: 6px;
+    border: 1px solid var(--danger-soft);
+    background: var(--danger-soft);
+    border-radius: var(--radius-m);
     padding: 10px 12px;
     font-size: 13px;
     min-width: 180px;
+    color: var(--ink);
 }
 
 .lockout-card .ip {
-    font-weight: bold;
+    font-family: var(--font-mono);
+    font-weight: 600;
 }
 
 .lockout-card button {
     margin-top: 8px;
-    background: #2563eb;
+    background: var(--accent);
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     padding: 6px 10px;
     cursor: pointer;
+    font-family: var(--font-body);
     font-size: 12px;
 }
 
 /* 회원가입 켜기/끄기 토글 버튼 */
 #signup-toggle-btn {
-    background: #2563eb;
+    background: var(--accent);
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     padding: 8px 14px;
     cursor: pointer;
+    font-family: var(--font-body);
     font-size: 13px;
 }
 
-/* 회원 목록의 "삭제" 버튼 — 되돌릴 수 없는 조치이므로 위험을 알리는 빨간색을 씀 */
+/* 회원 목록의 "삭제" 버튼 — 되돌릴 수 없는 조치이므로 위험을 알리는 색을 씀 */
 .delete-user-btn {
-    background: #ef4444;
+    background: var(--danger);
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: var(--radius-s);
     padding: 5px 10px;
     cursor: pointer;
+    font-family: var(--font-body);
     font-size: 12px;
 }
 
 .empty-state {
-    color: #6b7280;
+    color: var(--ink-faint);
     font-size: 13px;
 }
 
@@ -119,18 +131,28 @@ section h2 {
 .data-table th, .data-table td {
     text-align: left;
     padding: 6px 8px;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid var(--line);
 }
 
 .data-table th {
-    color: #6b7280;
+    color: var(--ink-faint);
     font-weight: 600;
 }
 
+/* IP·시각처럼 자릿수가 맞춰져야 보기 편한 값에는 고정폭 글꼴을 쓴다.
+   표마다 열 순서가 달라서 "몇 번째 칸"으로 지정하면 엉뚱한 칸에 적용될
+   위험이 있어, 해당 값을 그리는 쪽(dashboard.js)에서 이 클래스를 직접
+   붙여주는 방식을 쓴다. */
+.mono {
+    font-family: var(--font-mono);
+}
+
 .success-true {
-    color: #16a34a;
+    color: var(--success);
+    font-weight: 600;
 }
 
 .success-false {
-    color: #dc2626;
+    color: var(--danger);
+    font-weight: 600;
 }
