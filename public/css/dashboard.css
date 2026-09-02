@@ -14,8 +14,8 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: var(--ink);
-    color: white;
+    background: var(--topbar-bg);
+    color: var(--topbar-ink);
     padding: 16px 24px;
 }
 

@@ -22,6 +22,7 @@
 13. [13단계 — 회원 전용 대시보드 (`/dashboard`) 추가](guide13_member.md)
 14. [14단계 — 로그인 IP의 국가·도시 표시 (ip-api.com 연동)](guide14_geoip.md)
 15. [15단계 — 화면 리디자인 (색상 토큰 + 자연스러운 페이지 전환)](guide15_design.md)
+16. [16단계 — 다크모드 지원](guide16_darkmode.md)
 
 ---
 
@@ -1416,3 +1417,32 @@ def _attach_locations(attempts: list[dict]) -> list[dict]:
 - [public/js/dashboard.js](../../public/js/dashboard.js) (IP·시각 칸에 `.mono` 클래스 추가)
 - [templates/login_form.html](../../templates/login_form.html), [templates/signup.html](../../templates/signup.html), [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [templates/member_dashboard.html](../../templates/member_dashboard.html), [templates/member_history.html](../../templates/member_history.html), [templates/member_profile.html](../../templates/member_profile.html) (`tokens.css` 링크 추가, `member_history.html`은 `.mono` 클래스도 추가)
 - Supabase `app_settings.signup_enabled`를 다시 `true`로 되돌림 (이번 작업과 무관한 발견)
+
+## 16단계 — 다크모드 지원
+
+### 우리가 한 일
+1. `tokens.css`에 `@media (prefers-color-scheme: dark)` 블록을 추가해, 방문자의 OS/브라우저가 "어두운 화면" 설정이면 자동으로 어두운 배색이 적용되게 함
+2. 상단바(topbar) 전용 색 토큰(`--topbar-bg`, `--topbar-ink`)을 새로 분리
+3. 버튼 눌림(hover) 배경색을 `--accent-ink`가 아니라 새로 만든 `--accent-strong`으로 바꿈
+
+### 왜 했는가 (쉬운 설명)
+
+**토큰을 이미 나눠뒀던 덕분에, 다크모드는 한 파일만 고치면 끝났다**
+15단계에서 색을 전부 `tokens.css`의 `var(--이름)`으로 통일해뒀던 게 여기서 그대로 힘을 발휘했습니다. `auth.css`/`dashboard.css`/`member.css`는 "이 값이 라이트 모드 값인지 다크 모드 값인지" 전혀 몰라도 됩니다 — 그냥 `var(--canvas)`라고만 적어두면, 지금 어떤 모드인지에 따라 `tokens.css`가 알아서 다른 값을 넣어줍니다. 만약 색을 각 CSS 파일에 직접 적어뒀다면, 다크모드를 넣기 위해 세 파일을 전부 다시 고쳐야 했을 것입니다.
+
+**작업 중 발견한 문제 — "글자색"과 "배경색"을 같은 토큰으로 재사용했던 실수**
+관리자·회원 화면 상단의 어두운 막대(topbar)가 `var(--ink)`(원래 "글자색"을 담아두려고 만든 토큰)를 배경색으로 재사용하고 있었습니다. 라이트 모드에서는 `--ink`가 어두운 색이라 우연히 잘 어울렸지만, 다크모드에서는 `--ink`가 "밝은" 글자색으로 뒤집히기 때문에 그 값을 그대로 배경에 쓰면 상단바가 하얗게 깨져버립니다. 그래서 상단바 전용 색(`--topbar-bg`, `--topbar-ink`)을 따로 만들어서, 테마가 바뀌어도 상단바만큼은 항상 같은 색을 유지하도록 분리했습니다.
+
+**또 다른 문제 — 한 토큰이 "글자색"과 "버튼 눌림 배경색" 두 가지 역할을 겸하고 있었음**
+`--accent-ink`는 원래 "옅은 배경 위에 놓이는 글자색"(예: 링크 색)으로 쓰려고 만든 토큰인데, 로그인 버튼을 마우스로 누르고 있을 때(`:hover`) 배경색으로도 재사용되고 있었습니다. 다크모드에서 `--accent-ink`를 밝은 색으로 바꾸면, "글자색"으로 쓰일 땐 잘 어울리지만 "버튼 눌림 배경"으로 쓰일 땐 그 위에 항상 흰 글자(`color: white`)가 얹혀 있어서 밝은 배경 + 흰 글자 = 안 보이는 조합이 되어버립니다. 그래서 "버튼 배경으로만 쓰이는 진한 틸 색"을 `--accent-strong`이라는 별도 이름으로 떼어내고, 테마가 바뀌어도 이 값은 고정해뒀습니다.
+
+**색 하나를 두 가지 역할로 겸용하면 안 되는 이유**
+이번 두 문제 모두 같은 원인에서 나왔습니다 — "지금 당장 색이 비슷해 보인다"는 이유로 서로 다른 목적(글자색 vs 배경색, 상단바 vs 일반 텍스트)에 같은 토큰을 재사용한 것입니다. 라이트 모드 하나만 있을 때는 문제가 드러나지 않다가, 다크모드처럼 "값이 뒤집히는" 상황이 추가되자마자 바로 깨졌습니다. 그래서 토큰 이름은 "지금 어떤 색인가"가 아니라 "어떤 역할로 쓰이는가"를 기준으로 지어야 안전합니다.
+
+### 실제로 확인한 것
+브라우저의 "다크모드로 보기" 기능으로 화면 6개(로그인/회원가입/회원 대시보드/로그인 기록/프로필/관리자 대시보드) 전부를 다시 확인했습니다. 상단바가 라이트모드와 똑같이 짙은 색으로 유지되는지, 버튼에 얹힌 흰 글자가 모든 상태(기본/눌림)에서 잘 읽히는지, 표의 "성공"/"실패" 색이 어두운 배경에서도 구분되는지까지 눈으로 확인했습니다. `pytest tests/` 36개는 색만 바뀐 것이라 그대로 통과했습니다.
+
+### 이 단계에서 만들어지거나 바뀐 파일
+- [public/css/tokens.css](../../public/css/tokens.css) (다크모드 팔레트 추가, `--topbar-bg`/`--topbar-ink`/`--accent-strong` 신규)
+- [public/css/dashboard.css](../../public/css/dashboard.css), [public/css/member.css](../../public/css/member.css) (`.topbar`가 새 토큰을 쓰도록 수정)
+- [public/css/auth.css](../../public/css/auth.css), [public/css/member.css](../../public/css/member.css) (버튼 눌림 배경을 `--accent-strong`으로 수정)

@@ -1,6 +1,6 @@
 # 15단계 — 화면 리디자인 (색상 토큰 + 자연스러운 페이지 전환)
 
-[◀ 14단계](guide14_geoip.md) · [전체 목차](beginner-guide.md)
+[◀ 14단계](guide14_geoip.md) · [전체 목차](beginner-guide.md) · [16단계 ▶](guide16_darkmode.md)
 
 ### 우리가 한 일
 1. Claude Artifact로 새 디자인(색상·글꼴·화면 전환)을 먼저 미리보기로 만들어서 확인받음

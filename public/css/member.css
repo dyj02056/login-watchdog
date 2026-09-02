@@ -22,8 +22,8 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: var(--ink);
-    color: white;
+    background: var(--topbar-bg);
+    color: var(--topbar-ink);
     padding: 16px 24px;
     /* topbar는 자기 내용물 높이만큼만 차지하고 늘어나지 않는다(main이 나머지를 다 가져감). */
     flex-shrink: 0;
@@ -150,7 +150,7 @@ main {
 }
 
 .member-card button[type="submit"]:hover {
-    background: var(--accent-ink);
+    background: var(--accent-strong);
 }
 
 .flash-list {

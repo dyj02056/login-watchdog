@@ -67,7 +67,7 @@ body {
 }
 
 .auth-card button:hover {
-    background: var(--accent-ink);
+    background: var(--accent-strong);
 }
 
 /* 서버가 flash()로 보내주는 안내 메시지(성공/실패/잠금) 박스 */
