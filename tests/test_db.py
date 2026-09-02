@@ -58,6 +58,14 @@ class _FakeQuery:
         self.calls.append(("update", args, kwargs))
         return self
 
+    def upsert(self, *args, **kwargs):
+        self.calls.append(("upsert", args, kwargs))
+        return self
+
+    def in_(self, *args, **kwargs):
+        self.calls.append(("in_", args, kwargs))
+        return self
+
     def execute(self):
         return _FakeResult(self._rows)
 
@@ -207,3 +215,45 @@ def test_list_attempts_by_username_filters_by_username(monkeypatch):
 
     assert result == rows
     assert ("eq", ("username", "hyun"), {}) in fake_client.calls
+
+
+def test_get_cached_ip_locations_returns_empty_dict_for_empty_input(monkeypatch):
+    # IP 목록이 아예 비어있으면 Supabase에 물어볼 필요조차 없다 — 쿼리를 안 보내고
+    # 바로 빈 딕셔너리를 돌려줘야 한다.
+    fake_client = _FakeQuery(rows=[{"ip_address": "1.2.3.4"}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.get_cached_ip_locations([])
+
+    assert result == {}
+    assert fake_client.calls == []  # table()조차 호출되지 않아야 한다
+
+
+def test_get_cached_ip_locations_indexes_by_ip(monkeypatch):
+    rows = [
+        {"ip_address": "1.1.1.1", "country": "Australia"},
+        {"ip_address": "8.8.8.8", "country": "United States"},
+    ]
+    fake_client = _FakeQuery(rows=rows)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.get_cached_ip_locations(["1.1.1.1", "8.8.8.8"])
+
+    assert result == {"1.1.1.1": rows[0], "8.8.8.8": rows[1]}
+    assert ("in_", ("ip_address", ["1.1.1.1", "8.8.8.8"]), {}) in fake_client.calls
+
+
+def test_save_ip_location_upserts_row(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.save_ip_location("9.9.9.9", "South Korea", "Seoul", "Seoul", False)
+
+    expected = {
+        "ip_address": "9.9.9.9",
+        "country": "South Korea",
+        "region_name": "Seoul",
+        "city": "Seoul",
+        "lookup_failed": False,
+    }
+    assert ("upsert", (expected,), {}) in fake_client.calls

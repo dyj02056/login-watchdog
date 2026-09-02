@@ -27,6 +27,7 @@ load_dotenv()
 import config
 import db
 import detector
+import geoip
 import soar
 
 # static_folder="public", static_url_path="": 기본값이면 Flask가 "static/" 폴더를
@@ -62,6 +63,21 @@ def format_kr_time(iso_string: str) -> str:
 # 함수다. 이렇게 등록해두면 템플릿에서 {{ attempt.attempted_at | kr_time }}처럼
 # 간단히 쓸 수 있다 — 변환 로직을 템플릿 여기저기에 반복해서 적을 필요가 없다.
 app.jinja_env.filters["kr_time"] = format_kr_time
+
+
+def _attach_locations(attempts: list[dict]) -> list[dict]:
+    """로그인 시도 목록 각 줄에 "location"이라는 새 칸을 추가해서 돌려준다.
+
+    geoip.get_locations()는 IP 목록을 한 번에 넘기면 IP 하나당 몇 번씩
+    조회하는 게 아니라 필요한 만큼만(캐시에 없는 것만) 조회해준다. 여기서는
+    그 결과를 각 시도 기록에 사람이 읽을 문자열(geoip.format_location())로
+    바꿔 붙여주기만 한다.
+    """
+    ips = [attempt["ip_address"] for attempt in attempts]
+    locations = geoip.get_locations(ips)
+    for attempt in attempts:
+        attempt["location"] = geoip.format_location(locations[attempt["ip_address"]])
+    return attempts
 
 
 def get_request_ip() -> str:
@@ -339,7 +355,7 @@ def api_status():
     soar.try_release_expired_lockouts()
     return jsonify(
         {
-            "recent_attempts": db.list_recent_attempts(50),
+            "recent_attempts": _attach_locations(db.list_recent_attempts(50)),
             "active_lockouts": db.list_active_lockouts(),
             "admin_login_log": db.list_admin_login_log(20),
             "users": db.list_users(100),
@@ -454,7 +470,7 @@ def member_history():
     화면에서 걸러낸다"가 아니라 "애초에 본인 것만 데이터베이스에 물어본다"가
     더 안전한 설계다.
     """
-    attempts = db.list_attempts_by_username(session["username"], 20)
+    attempts = _attach_locations(db.list_attempts_by_username(session["username"], 20))
     return render_template("member_history.html", attempts=attempts)
 
 

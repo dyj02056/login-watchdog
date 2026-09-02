@@ -59,3 +59,15 @@ create table app_settings (
   constraint app_settings_singleton check (id = 1)
 );
 insert into app_settings (id, signup_enabled) values (1, true);
+
+-- IP → 국가/지역 조회 결과 캐시 (13단계). ip-api.com은 무료 사용 시 분당 45건까지만
+-- 허용하는데, 같은 IP를 매번 다시 물어보면 순식간에 한도를 넘는다. 그래서 한 번
+-- 조회한 IP는 여기 저장해두고, 다음부터는 외부 API 대신 이 표에서 바로 꺼내 쓴다.
+create table ip_locations (
+  ip_address text primary key,
+  country text,
+  region_name text,
+  city text,
+  lookup_failed boolean not null default false,
+  looked_up_at timestamptz not null default now()
+);

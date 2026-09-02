@@ -80,10 +80,13 @@ function renderAttemptsTable(attempts) {
         .map((attempt) => {
             const resultClass = attempt.success ? "success-true" : "success-false";
             const resultText = attempt.success ? "성공" : "실패";
+            // attempt.location : 서버(app.py의 _attach_locations())가 IP 위치 조회
+            // 결과를 이미 문자열로 만들어서 넣어준다 — 여기서는 그대로 꺼내 쓰기만 한다.
             return `
                 <tr>
                     <td>${formatTime(attempt.attempted_at)}</td>
                     <td>${attempt.ip_address}</td>
+                    <td>${attempt.location}</td>
                     <td>${attempt.username}</td>
                     <td class="${resultClass}">${resultText}</td>
                 </tr>

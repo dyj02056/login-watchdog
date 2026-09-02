@@ -149,10 +149,15 @@ main {
     margin-bottom: 6px;
 }
 
+.table-scroll {
+    overflow-x: auto;
+}
+
 .data-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
+    white-space: nowrap;
 }
 
 .data-table th, .data-table td {

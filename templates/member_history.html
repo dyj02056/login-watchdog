@@ -27,28 +27,37 @@
             <h2>최근 로그인 기록</h2>
 
             {% if attempts %}
+                <!-- 위치 칸까지 추가되면서 표가 카드 너비보다 넓어질 수 있어, 표만
+                     따로 가로 스크롤이 되도록 감싸뒀다(카드 자체나 화면 전체가
+                     옆으로 밀리지 않고, 표 부분만 좌우로 스크롤됨). -->
+                <div class="table-scroll">
                 <table class="data-table">
                     <thead>
                         <tr>
                             <th>시각</th>
                             <th>IP</th>
+                            <th>위치</th>
                             <th>결과</th>
                         </tr>
                     </thead>
                     <tbody>
                         <!-- attempts : app.py의 member_history()가 넘겨준, 이미 "본인 것만"
-                             걸러진 목록. 여기서는 그냥 하나씩 꺼내 <tr>로 그리기만 하면 된다. -->
+                             걸러진 목록. app.py의 _attach_locations()가 각 줄에 location
+                             칸을 미리 붙여서 넘겨주므로, 여기서는 그냥 하나씩 꺼내 <tr>로
+                             그리기만 하면 된다. -->
                         {% for attempt in attempts %}
                             <tr>
                                 <!-- | kr_time : app.py에 등록해둔 필터. 원본 시각 문자열을
                                      보기 편한 형태로 바꿔서 보여준다. -->
                                 <td>{{ attempt.attempted_at | kr_time }}</td>
                                 <td>{{ attempt.ip_address }}</td>
+                                <td>{{ attempt.location }}</td>
                                 <td>{{ "성공" if attempt.success else "실패" }}</td>
                             </tr>
                         {% endfor %}
                     </tbody>
                 </table>
+                </div>
             {% else %}
                 <p>아직 로그인 시도 기록이 없습니다.</p>
             {% endif %}
