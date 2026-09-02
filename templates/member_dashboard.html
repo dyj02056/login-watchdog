@@ -22,8 +22,10 @@
 
     <main>
         <div class="member-card">
-            <!-- username : app.py의 member_dashboard()가 session["username"]을 그대로 넘겨준다. -->
-            <h2>안녕하세요, {{ username }}님 반갑습니다.</h2>
+            <!-- display_name : app.py의 member_dashboard()가 계산해서 넘겨준다.
+                 프로필에서 "표시 이름"을 설정해뒀으면 그 이름, 아직 안 정했으면
+                 로그인 아이디를 대신 보여준다. -->
+            <h2>안녕하세요, {{ display_name }}님 반갑습니다.</h2>
 
             <div class="member-actions">
                 <a href="{{ url_for('member_history') }}">최근 로그인 기록 보기</a>

@@ -9,6 +9,12 @@ body {
     background: #f4f5f7;
     margin: 0;
     color: #1f2328;
+    /* 세로 방향(위→아래)으로 topbar와 main을 쌓아두고, min-height로 화면
+       전체 높이를 확보해둔다 — 아래 main의 "화면 정중앙 배치"가 이 두 가지가
+       있어야 정상 동작한다. */
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
 }
 
 .topbar {
@@ -18,6 +24,8 @@ body {
     background: #111827;
     color: white;
     padding: 16px 24px;
+    /* topbar는 자기 내용물 높이만큼만 차지하고 늘어나지 않는다(main이 나머지를 다 가져감). */
+    flex-shrink: 0;
 }
 
 .topbar h1 {
@@ -35,9 +43,16 @@ body {
 }
 
 main {
+    /* flex: 1 : topbar를 뺀 나머지 세로 공간을 전부 차지한다.
+       display:flex + center 두 줄 : 그 안에서 카드(.member-card)를
+       가로·세로 모두 정중앙에 배치한다 — auth.css의 로그인 카드와
+       똑같은 원리다. */
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     padding: 24px;
-    max-width: 480px;
-    margin: 0 auto;
+    box-sizing: border-box;
 }
 
 .member-card {
@@ -45,6 +60,9 @@ main {
     border-radius: 8px;
     padding: 24px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    width: 100%;
+    max-width: 480px;
+    box-sizing: border-box;
 }
 
 .member-card h2 {

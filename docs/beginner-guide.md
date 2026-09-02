@@ -1231,3 +1231,54 @@ app.jinja_env.filters["kr_time"] = format_kr_time
 - [templates/member_dashboard.html](../templates/member_dashboard.html), [templates/member_history.html](../templates/member_history.html), [templates/member_profile.html](../templates/member_profile.html) (신규)
 - [public/css/member.css](../public/css/member.css) (신규 — 회원 화면 전용 스타일)
 - [tests/test_db.py](../tests/test_db.py) (새 함수 3개에 대한 단위 테스트 5개 추가, 총 27개 통과)
+
+---
+
+## 12-1단계 — 실사용 중 발견한 버그 2개 수정
+
+12단계를 만든 직후, 실제로 화면을 써보다가 두 가지 문제가 나와서 바로 고쳤습니다.
+
+### 문제 1 — 회원 대시보드 카드가 화면 위쪽에 붙어있음
+`main { max-width: 480px; margin: 0 auto; }`는 카드를 **가로**로만 가운데 정렬할 뿐, **세로**로는 그냥 topbar 바로 아래부터 시작하는 위치에 그려집니다. 로그인 화면(`auth.css`)은 애초에 `body`를 `display: flex; align-items: center;`로 만들어서 세로 중앙까지 잡아뒀는데, 회원 화면(`member.css`)에는 이 처리가 빠져 있었습니다.
+
+**고친 방법**: `body`를 세로(topbar + main)로 쌓는 flex 컨테이너로 만들고, `main`이 `flex: 1`로 남은 세로 공간을 전부 차지하게 한 뒤 그 안에서 카드를 가로·세로 모두 중앙에 배치했습니다.
+```css
+body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+main {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+```
+
+### 문제 2 — 프로필에서 "표시 이름"을 바꿔도 인사말에 안 보임
+원인은 저장이 안 된 게 아니라(프로필 화면에는 새 이름이 정확히 떠 있었습니다), **인사말이 애초에 `name`이 아니라 로그인 아이디(`session["username"]`)만 보도록 만들어져 있었기 때문**입니다. 12단계에서 "표시 이름"을 만들 때, 인사말은 여전히 예전 방식(아이디) 그대로 두고 넘어갔던 게 원인입니다.
+
+**고친 방법**: `member_dashboard()`가 이제 실제 회원 정보를 다시 조회해서, 표시 이름이 설정돼 있으면 그 이름을, 비어있으면(기본값 `''`) 그때만 아이디로 대신 보여줍니다.
+```python
+user = db.get_user_by_id(session["user_id"])
+display_name = user["name"] if user["name"] else session["username"]
+```
+
+### 검증 도중 발견한 세 번째 문제(덤) — 삭제된 회원의 세션이 그대로 남아있으면 화면이 그냥 에러로 죽음
+이 문제를 확인하려고 실제 브라우저로 테스트하다가, 우연히 **관리자가 이미 삭제해버린 계정으로 로그인된 브라우저 탭**에서 `/dashboard`에 들어가니 화면 전체가 파이썬 에러(`TypeError: 'NoneType' object is not subscriptable`)로 멈추는 걸 발견했습니다. `db.get_user_by_id()`가 `None`을 돌려주는데, 코드가 "당연히 회원 정보가 있을 것"이라고 가정하고 `user["name"]`처럼 바로 꺼내 쓰려다가 터진 것입니다.
+
+11단계에서 만든 "회원 삭제" 기능과 정확히 맞물리는 상황입니다 — 관리자가 회원을 지운 그 순간에도, 그 회원이 다른 탭에서는 여전히 "로그인된 상태"인 세션 쿠키를 들고 있을 수 있습니다. 그래서 `member_dashboard()`, `member_profile()`처럼 회원 정보를 직접 조회하는 화면마다 "혹시 못 찾으면 세션을 지우고 다시 로그인하라고 안내"하는 코드를 추가했습니다.
+```python
+def _logout_missing_member():
+    session.pop("username", None)
+    session.pop("user_id", None)
+    flash("계정 정보를 찾을 수 없습니다. 다시 로그인해주세요.")
+    return redirect(url_for("login"))
+```
+`member_login_required`(문지기)는 "세션에 값이 들어있는지"만 확인하지, 그 값이 가리키는 회원이 **지금도 실제로 존재하는지**는 확인하지 않습니다. 그래서 문지기를 통과한 뒤에도 각 화면이 한 번 더 실제 데이터를 확인하고, 없으면 이 함수로 안전하게 빠져나가도록 만들었습니다. 이 버그는 사용자가 요청한 내용에 포함되지 않았지만, 두 가지를 검증하는 과정에서 우연히 발견해서 함께 고쳤습니다.
+
+### 이 단계에서 만들어지거나 바뀐 파일
+- [public/css/member.css](../public/css/member.css) (`body`/`main`을 flex 기반 중앙 정렬로 변경)
+- [templates/member_dashboard.html](../templates/member_dashboard.html) (`username` → `display_name`으로 변경)
+- [app.py](../app.py) (`member_dashboard()`가 표시 이름을 반영하도록 수정, `_logout_missing_member()` 신규 + `member_dashboard()`·`member_profile()`에 적용)

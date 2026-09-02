@@ -412,11 +412,36 @@ def api_settings_signup():
 # 강제된다.
 # ============================================================================
 
+def _logout_missing_member():
+    """세션은 남아있는데 실제 계정이 사라진 경우(예: 관리자가 회원 삭제 버튼을
+    눌렀는데 그 회원이 다른 탭에서 아직 로그인 상태였던 경우) 세션을 정리하고
+    로그인 화면으로 돌려보낸다.
+
+    member_login_required는 "세션에 값이 있는지"만 확인하지, 그 값이 가리키는
+    회원이 지금도 실제로 존재하는지는 확인하지 않는다 — 그래서 회원용 화면들이
+    db.get_user_by_id()로 다시 한번 확인하고, 없으면 이 함수를 부른다.
+    """
+    session.pop("username", None)
+    session.pop("user_id", None)
+    flash("계정 정보를 찾을 수 없습니다. 다시 로그인해주세요.")
+    return redirect(url_for("login"))
+
+
 @app.route("/dashboard", methods=["GET"])
 @member_login_required
 def member_dashboard():
-    """로그인한 회원 본인을 위한 첫 화면. 인사말과 이동 버튼 2개만 보여준다."""
-    return render_template("member_dashboard.html", username=session["username"])
+    """로그인한 회원 본인을 위한 첫 화면. 인사말과 이동 버튼 2개만 보여준다.
+
+    인사말에는 "표시 이름"(user.name)이 설정돼 있으면 그걸 쓰고, 아직 프로필을
+    한 번도 안 고쳐서 비어있으면(기본값 '') 로그인 아이디로 대신 보여준다.
+    (예전 버전은 항상 아이디만 보여줬는데, 프로필에서 이름을 바꿔도 인사말에
+    반영되지 않는 것처럼 보이는 문제가 있었다 — 이번에 고쳤다.)
+    """
+    user = db.get_user_by_id(session["user_id"])
+    if user is None:
+        return _logout_missing_member()
+    display_name = user["name"] if user["name"] else session["username"]
+    return render_template("member_dashboard.html", display_name=display_name)
 
 
 @app.route("/dashboard/history", methods=["GET"])
@@ -438,6 +463,8 @@ def member_history():
 def member_profile():
     """프로필(표시 이름/이메일) 조회 및 수정 화면을 보여준다."""
     user = db.get_user_by_id(session["user_id"])
+    if user is None:
+        return _logout_missing_member()
     return render_template("member_profile.html", user=user)
 
 
