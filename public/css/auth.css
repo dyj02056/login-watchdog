@@ -29,6 +29,7 @@ body {
     font-size: 21px;
     margin-bottom: 20px;
     color: var(--ink);
+    text-align: center;
 }
 
 .auth-card label {
@@ -45,7 +46,7 @@ body {
     width: 100%;
     box-sizing: border-box; /* padding을 넣어도 너비가 320px를 벗어나지 않게 함 */
     padding: 8px 10px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--input-border);
     border-radius: var(--radius-s);
     font-family: var(--font-body);
     color: var(--ink);

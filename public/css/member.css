@@ -36,6 +36,13 @@ body {
     margin: 0;
 }
 
+/* 로그아웃 버튼과 다크모드 전환 버튼을 한 줄에 나란히 묶어두는 그릇 */
+.topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
 .logout-btn {
     background: var(--danger);
     color: white;
@@ -75,6 +82,7 @@ main {
     font-size: 17px;
     margin-top: 0;
     color: var(--ink);
+    text-align: center;
 }
 
 .member-actions {
@@ -123,7 +131,7 @@ main {
     width: 100%;
     box-sizing: border-box;
     padding: 8px 10px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--input-border);
     border-radius: var(--radius-s);
     font-family: var(--font-body);
     color: var(--ink);

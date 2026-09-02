@@ -14,13 +14,17 @@
     <title>로그인 워치독 — 내 로그인 기록</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/member.css') }}">
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 </head>
 <body>
     <header class="topbar">
         <h1>로그인 워치독</h1>
-        <form method="post" action="{{ url_for('member_logout') }}">
-            <button type="submit" class="logout-btn">로그아웃</button>
-        </form>
+        <div class="topbar-actions">
+            <button id="theme-toggle" type="button" class="theme-toggle">다크 모드</button>
+            <form method="post" action="{{ url_for('member_logout') }}">
+                <button type="submit" class="logout-btn">로그아웃</button>
+            </form>
+        </div>
     </header>
 
     <main>

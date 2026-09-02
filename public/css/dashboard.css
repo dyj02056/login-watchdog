@@ -26,6 +26,13 @@ body {
     margin: 0;
 }
 
+/* 로그아웃 버튼과 다크모드 전환 버튼을 한 줄에 나란히 묶어두는 그릇 */
+.topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
 .logout-btn {
     background: var(--danger);
     color: white;

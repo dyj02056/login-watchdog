@@ -38,7 +38,12 @@
     --accent-ink: #06544a;
     --accent-soft: #dcf1ec;
 
+    /* --line: 표 구분선처럼 "있는 듯 없는 듯" 은은해야 하는 곳.
+       --input-border: 입력창처럼 "칸이 어디까지인지 눈에 띄어야" 하는 곳.
+       두 역할을 하나의 토큰으로 겸용했다가, 입력창 테두리가 너무 흐려서
+       잘 안 보인다는 문제가 있어 아예 다른 진하기의 토큰으로 분리했다. */
     --line: #dbe6e1;
+    --input-border: #a9c0b8;
 
     /* 성공/위험 색은 포인트색과 별개로 유지 — "잠김/성공/실패" 같은 상태를
        한눈에 구분하려면 포인트색과 헷갈리지 않는 색이어야 한다 */
@@ -63,14 +68,22 @@
 }
 
 /* ----------------------------------------------------------------------------
-   다크모드 — 방문자의 OS/브라우저 설정이 "어두운 화면"이면 자동으로 적용된다.
-   버튼 하나로 켜고 끄는 기능은 아직 없고, 시스템 설정을 그대로 따라간다.
-   :root의 같은 이름(--canvas 등)을 다시 정의하는 것뿐이라, 이 블록 밖의 CSS
-   (auth.css 등)는 var(--canvas)라고만 적어두면 자동으로 새 값을 받는다 —
-   페이지 CSS를 다크모드용으로 따로 만들 필요가 없다.
+   다크모드 팔레트 — 아래 색 값 자체는 두 군데에서 똑같이 쓰인다.
+
+   1) @media (prefers-color-scheme: dark) — 방문자가 켠 적 없어도, OS/브라우저
+      설정이 "어두운 화면"이면 자동으로 적용된다. :root:not([data-theme="light"])
+      로 감싸둔 이유: 방문자가 우측 상단 버튼으로 "라이트 모드"를 직접
+      선택했다면(data-theme="light"), OS가 다크모드여도 그 선택을 존중해야
+      하기 때문이다.
+   2) :root[data-theme="dark"] — 방문자가 우측 상단 버튼으로 "다크 모드"를
+      직접 선택했을 때. OS가 라이트모드여도 이 선택이 우선한다.
+
+   즉 최종 우선순위는 "방문자가 직접 고른 값 > OS 설정 > 기본값(라이트)"
+   순서다. data-theme 값은 자바스크립트(theme.js)가 localStorage에 저장해
+   두고, 페이지를 옮겨다녀도 계속 기억한다.
    ---------------------------------------------------------------------------- */
 @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
         --canvas: #10201c;
         --surface: #182a25;
         --surface-2: #1e332c;
@@ -79,22 +92,38 @@
         --ink-soft: #a9beb8;
         --ink-faint: #708a82;
 
-        /* --accent/--accent-strong/--success/--danger는 일부러 여기서 다시
-           정의하지 않는다 — 이 넷은 전부 "흰 글자를 얹는 버튼 배경"이나
-           (success/danger는) 어두운 배경 위 글자색으로도 쓰이는데, 위 :root
-           값이 이미 두 상황 모두에서 대비가 검증돼 있어서 굳이 밝게 바꿀
-           필요가 없다. --accent-ink·-soft 계열만 "옅은 배경/그 위 글자색"
-           역할이라 다크모드에서 밝기가 뒤집힌다. */
         --accent-ink: #b7ecdf;
         --accent-soft: #1c3a33;
 
         --line: #2a423a;
+        --input-border: #4a6b60;
 
         --success-soft: #1a3327;
-        --danger-soft: #3c231e;
+        --danger-soft: #3c221e;
 
         --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px -12px rgba(0, 0, 0, 0.55);
     }
+}
+
+:root[data-theme="dark"] {
+    --canvas: #10201c;
+    --surface: #182a25;
+    --surface-2: #1e332c;
+
+    --ink: #e9f3ef;
+    --ink-soft: #a9beb8;
+    --ink-faint: #708a82;
+
+    --accent-ink: #b7ecdf;
+    --accent-soft: #1c3a33;
+
+    --line: #2a423a;
+    --input-border: #4a6b60;
+
+    --success-soft: #1a3327;
+    --danger-soft: #3c221e;
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px -12px rgba(0, 0, 0, 0.55);
 }
 
 /* 브라우저 내장 "화면 전환" 기능. 이 세 줄만으로 /login → /dashboard 같은
@@ -103,4 +132,45 @@
    즉시 전환되는 것 외에 다른 부작용이 없다 — 그래서 부담 없이 켜둘 수 있다. */
 @view-transition {
     navigation: auto;
+}
+
+/* ----------------------------------------------------------------------------
+   라이트/다크 전환 버튼 — 화면 우측 상단에 고정. topbar가 있는 화면(관리자·
+   회원 대시보드)에서는 topbar 안에 자연스럽게 들어가고, topbar가 없는 화면
+   (로그인·회원가입)에서는 화면 자체의 우측 상단에 떠 있는 형태가 된다.
+   ---------------------------------------------------------------------------- */
+.theme-toggle {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-family: var(--font-body);
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.theme-toggle:hover {
+    border-color: var(--accent);
+    color: var(--accent-ink);
+}
+
+/* topbar 안에 들어갈 때는 밝은 배경 위 스타일 대신, 어두운 topbar 위에서도
+   잘 보이는 흐린 흰색 테두리를 쓴다. */
+.topbar .theme-toggle {
+    border-color: rgba(255, 255, 255, 0.35);
+    color: var(--topbar-ink);
+}
+
+.topbar .theme-toggle:hover {
+    border-color: rgba(255, 255, 255, 0.7);
+    color: var(--topbar-ink);
+}
+
+/* topbar가 없는 화면(로그인·회원가입)에서 우측 상단에 고정 배치 */
+.theme-toggle.theme-toggle--floating {
+    position: fixed;
+    top: 20px;
+    right: 20px;
 }

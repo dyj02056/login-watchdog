@@ -19,8 +19,14 @@
     <title>로그인 워치독 — 로그인</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+    <!-- theme.js를 <head>에서, 다른 스크립트보다 먼저 불러온다: 화면이 그려지기
+         전에 저장된 테마를 적용해둬야 "잠깐 라이트모드로 번쩍이는" 현상을 막는다. -->
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
 </head>
 <body>
+    <!-- topbar가 없는 화면이라, 버튼 자체를 화면 우측 상단에 고정 배치한다. -->
+    <button id="theme-toggle" type="button" class="theme-toggle theme-toggle--floating">다크 모드</button>
+
     <div class="auth-card">
         <h1>로그인</h1>
 

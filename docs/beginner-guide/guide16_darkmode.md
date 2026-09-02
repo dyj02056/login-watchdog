@@ -1,6 +1,6 @@
 # 16단계 — 다크모드 지원
 
-[◀ 15단계](guide15_design.md) · [전체 목차](beginner-guide.md)
+[◀ 15단계](guide15_design.md) · [전체 목차](beginner-guide.md) · [17단계 ▶](guide17_theme.md)
 
 ### 우리가 한 일
 1. `tokens.css`에 `@media (prefers-color-scheme: dark)` 블록을 추가해, 방문자의 OS/브라우저가 "어두운 화면" 설정이면 자동으로 어두운 배색이 적용되게 함
