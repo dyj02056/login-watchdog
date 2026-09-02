@@ -1,0 +1,557 @@
+<title>로그인 워치독 아키텍처 맵</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --bg:#f4f6f3;
+    --surface:#ffffff;
+    --surface-2:#eaefe9;
+    --ink:#12201c;
+    --ink-muted:#5a6b63;
+    --border:#d9e0da;
+    --accent:#0f6f66;
+    --accent-soft:#e2ede9;
+
+    --stage-people:#767f78;
+    --stage-server:#2f5fd6;
+    --stage-server-soft:#e7edfb;
+    --stage-data:#7a4fce;
+    --stage-data-soft:#efe8fa;
+    --stage-detect:#b56b0c;
+    --stage-detect-soft:#f7ecd9;
+    --stage-response:#bf3b2b;
+    --stage-response-soft:#f8e6e2;
+    --stage-output:#0f6f66;
+    --stage-output-soft:#e2ede9;
+    --stage-support:#5a6b63;
+    --stage-support-soft:#eaefe9;
+
+    --shadow: 0 1px 2px rgba(18,32,28,.05), 0 6px 20px rgba(18,32,28,.06);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0d1512;
+      --surface:#141e1a;
+      --surface-2:#1b2620;
+      --ink:#e7efe9;
+      --ink-muted:#93a49c;
+      --border:#28352e;
+      --accent:#4fc9b8;
+      --accent-soft:#17332d;
+
+      --stage-people:#9aa39d;
+      --stage-server:#7fa2f2;
+      --stage-server-soft:#182236;
+      --stage-data:#b49bee;
+      --stage-data-soft:#241c34;
+      --stage-detect:#e8a94c;
+      --stage-detect-soft:#31260f;
+      --stage-response:#ec7f6e;
+      --stage-response-soft:#341e19;
+      --stage-output:#4fc9b8;
+      --stage-output-soft:#122824;
+      --stage-support:#93a49c;
+      --stage-support-soft:#1b2620;
+
+      --shadow: 0 1px 2px rgba(0,0,0,.35), 0 8px 26px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d1512;
+    --surface:#141e1a;
+    --surface-2:#1b2620;
+    --ink:#e7efe9;
+    --ink-muted:#93a49c;
+    --border:#28352e;
+    --accent:#4fc9b8;
+    --accent-soft:#17332d;
+
+    --stage-people:#9aa39d;
+    --stage-server:#7fa2f2;
+    --stage-server-soft:#182236;
+    --stage-data:#b49bee;
+    --stage-data-soft:#241c34;
+    --stage-detect:#e8a94c;
+    --stage-detect-soft:#31260f;
+    --stage-response:#ec7f6e;
+    --stage-response-soft:#341e19;
+    --stage-output:#4fc9b8;
+    --stage-output-soft:#122824;
+    --stage-support:#93a49c;
+    --stage-support-soft:#1b2620;
+
+    --shadow: 0 1px 2px rgba(0,0,0,.35), 0 8px 26px rgba(0,0,0,.4);
+  }
+
+  *{ box-sizing:border-box; }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"IBM Plex Sans", "Noto Sans KR", sans-serif;
+    line-height:1.6;
+  }
+  ::selection{ background:var(--accent); color:var(--bg); }
+
+  .page{ max-width:1000px; margin:0 auto; padding:52px 24px 88px; }
+
+  h1,h2,h3{ font-family:"IBM Plex Sans", sans-serif; text-wrap:balance; letter-spacing:-0.01em; margin:0; }
+
+  .eyebrow{
+    font-family:"IBM Plex Sans Condensed", sans-serif;
+    font-size:12px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--accent);
+  }
+
+  header.head{ border-bottom:1px solid var(--border); padding-bottom:26px; margin-bottom:40px; }
+  header.head .eyebrow{ display:block; margin-bottom:12px; }
+  header.head h1{ font-size:clamp(26px,4vw,34px); font-weight:700; line-height:1.2; margin-bottom:10px; }
+  header.head .sub{ font-size:15.5px; color:var(--ink-muted); max-width:64ch; margin-bottom:18px; }
+  .meta-row{ display:flex; flex-wrap:wrap; gap:8px 20px; font-family:"IBM Plex Mono",monospace; font-size:12.5px; color:var(--ink-muted); }
+  .meta-row b{ color:var(--ink); font-weight:600; }
+
+  section{ margin:48px 0; }
+  section > .eyebrow{ display:block; margin-bottom:6px; }
+  section h2{ font-size:19px; font-weight:700; margin-bottom:6px; }
+  section .lead{ font-size:14px; color:var(--ink-muted); max-width:66ch; margin-bottom:20px; }
+
+  /* --- flow figure --- */
+  figure.flow{ margin:0; background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:22px; box-shadow:var(--shadow); }
+  figure.flow .svg-wrap{ overflow-x:auto; }
+  figure.flow svg{ display:block; width:100%; height:auto; min-width:760px; }
+  figcaption{ font-size:12.5px; color:var(--ink-muted); margin-top:14px; text-align:center; }
+
+  .node-box{ fill:var(--surface); stroke-width:1.6; }
+  .node-label{ font-family:"IBM Plex Mono",monospace; font-weight:600; fill:var(--ink); }
+  .node-role{ font-family:"IBM Plex Sans",sans-serif; font-weight:400; fill:var(--ink-muted); }
+  .edge-line{ fill:none; stroke:var(--ink-muted); stroke-width:1.6; }
+  .edge-line.dashed{ stroke-dasharray:5 4; stroke:var(--accent); }
+  .edge-label{ font-family:"IBM Plex Sans Condensed",sans-serif; font-size:11.5px; font-weight:600; fill:var(--ink-muted); }
+  .edge-label.accent{ fill:var(--accent); }
+
+  /* --- legend --- */
+  .legend{ display:flex; flex-wrap:wrap; gap:10px 16px; }
+  .legend-item{ display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink-muted); }
+  .legend-swatch{ width:12px; height:12px; border-radius:3px; flex-shrink:0; }
+
+  /* --- stage group --- */
+  .stage-group{ background:var(--surface); border:1px solid var(--border); border-left-width:4px; border-radius:12px; box-shadow:var(--shadow); overflow:hidden; }
+  .stage-group + .stage-group{ margin-top:16px; }
+  .stage-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 20px; background:var(--stage-soft); border-bottom:1px solid var(--border); }
+  .stage-head .name{ font-family:"IBM Plex Sans Condensed",sans-serif; font-weight:700; font-size:14px; letter-spacing:.02em; color:var(--stage-color); }
+  .stage-head .count{ font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--ink-muted); }
+
+  .file-row{ display:grid; grid-template-columns:230px 1fr; gap:18px; padding:16px 20px; border-bottom:1px solid var(--border); }
+  .file-row:last-child{ border-bottom:none; }
+  .file-id{ display:flex; flex-direction:column; gap:6px; }
+  .file-path{ font-family:"IBM Plex Mono",monospace; font-size:13.5px; font-weight:600; color:var(--ink); word-break:break-all; }
+  .tag-row{ display:flex; flex-wrap:wrap; gap:5px; }
+  .tag{ font-family:"IBM Plex Sans Condensed",sans-serif; font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; padding:2px 7px; border-radius:5px; border:1px solid var(--border); color:var(--ink-muted); }
+  .tag.owner{ background:var(--surface-2); }
+  .tag.status-core{ background:var(--stage-soft); color:var(--stage-color); border-color:transparent; }
+  .tag.status-optional{ background:var(--stage-detect-soft); color:var(--stage-detect); border-color:transparent; }
+
+  .file-body{ min-width:0; }
+  .file-role{ font-size:14px; margin:0 0 8px; }
+  .fn-list{ display:flex; flex-wrap:wrap; gap:6px; }
+  .fn{ font-family:"IBM Plex Mono",monospace; font-size:11.5px; background:var(--surface-2); border:1px solid var(--border); color:var(--ink-muted); padding:3px 8px; border-radius:6px; }
+
+  /* stage color assignment via data attr */
+  .stage-group[data-stage="server"]{ border-left-color:var(--stage-server); --stage-color:var(--stage-server); --stage-soft:var(--stage-server-soft); }
+  .stage-group[data-stage="data"]{ border-left-color:var(--stage-data); --stage-color:var(--stage-data); --stage-soft:var(--stage-data-soft); }
+  .stage-group[data-stage="detect"]{ border-left-color:var(--stage-detect); --stage-color:var(--stage-detect); --stage-soft:var(--stage-detect-soft); }
+  .stage-group[data-stage="response"]{ border-left-color:var(--stage-response); --stage-color:var(--stage-response); --stage-soft:var(--stage-response-soft); }
+  .stage-group[data-stage="output"]{ border-left-color:var(--stage-output); --stage-color:var(--stage-output); --stage-soft:var(--stage-output-soft); }
+  .stage-group[data-stage="support"]{ border-left-color:var(--stage-support); --stage-color:var(--stage-support); --stage-soft:var(--stage-support-soft); }
+
+  .stage-groups{ display:flex; flex-direction:column; }
+
+  footer{ margin-top:56px; padding-top:20px; border-top:1px solid var(--border); font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--ink-muted); display:flex; flex-wrap:wrap; gap:6px 18px; }
+
+  @media (max-width:640px){
+    .file-row{ grid-template-columns:1fr; }
+  }
+</style>
+
+<div class="page">
+
+  <header class="head">
+    <span class="eyebrow">Project Architecture · Login Watchdog</span>
+    <h1>폴더·파일이 파이프라인의 어느 단계를 맡는지 한눈에</h1>
+    <p class="sub">로그인 시도가 들어온 순간부터 관리자가 잠금을 해제하는 순간까지, 요청이 어떤 파일을 거쳐 가는지와 각 파일의 역할·핵심 함수를 색으로 묶어 정리했습니다.</p>
+    <div class="meta-row">
+      <span><b>근거</b> plan.md · research.md</span>
+      <span><b>스택</b> Flask · Supabase · Slack Webhook</span>
+      <span><b>파일 수</b> 25개 (핵심 16 · 선택 4 · 테스트 3 · 문서 2)</span>
+    </div>
+  </header>
+
+  <section id="flow">
+    <span class="eyebrow">01 · 요청의 이동 경로</span>
+    <h2>로그인 시도 한 건이 파일 사이를 어떻게 지나가는가</h2>
+    <p class="lead">평소엔 위쪽 한 줄(정상 경로)만 돌지만, 같은 IP가 60초 안에 5회를 넘기는 순간 아래쪽 경로(SOAR 대응)가 열립니다. 점선은 해제가 다시 로그인 라우트로 돌아오는 경로입니다.</p>
+    <figure class="flow">
+      <div class="svg-wrap">
+        <svg viewBox="0 0 1040 420" role="img" aria-label="로그인 시도가 app.py에서 db.py, detector.py를 거쳐 정상이면 dashboard.html로, 임계값 초과면 soar.py를 거쳐 alert.py와 잠금 상태로 가고, 관리자 해제 또는 5분 자동 해제가 다시 app.py로 돌아오는 흐름도">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-muted)"></path>
+            </marker>
+            <marker id="arrow-accent" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"></path>
+            </marker>
+          </defs>
+
+          <!-- return path (dashed, drawn first so it sits behind nodes) -->
+          <polyline class="edge-line dashed" marker-end="url(#arrow-accent)"
+            points="480,368 15,368 15,15 295,15 295,50" />
+          <text class="edge-label accent" x="30" y="192" transform="rotate(-90 30 192)" text-anchor="middle">해제 · 수동 또는 5분 자동</text>
+
+          <!-- main edges -->
+          <line class="edge-line" x1="180" y1="78" x2="220" y2="78" marker-end="url(#arrow)"></line>
+          <text class="edge-label" x="200" y="70" text-anchor="middle">제출</text>
+
+          <line class="edge-line" x1="370" y1="78" x2="410" y2="78" marker-end="url(#arrow)"></line>
+          <text class="edge-label" x="390" y="70" text-anchor="middle">기록</text>
+
+          <line class="edge-line" x1="560" y1="78" x2="600" y2="78" marker-end="url(#arrow)"></line>
+          <text class="edge-label" x="580" y="70" text-anchor="middle">조회 60초</text>
+
+          <line class="edge-line" x1="750" y1="78" x2="820" y2="78" marker-end="url(#arrow)"></line>
+          <text class="edge-label" x="785" y="70" text-anchor="middle">정상 · ≤5회</text>
+
+          <line class="edge-line" x1="675" y1="106" x2="675" y2="190" marker-end="url(#arrow)"></line>
+          <text class="edge-label" x="686" y="150">초과 · &gt;5회</text>
+
+          <line class="edge-line" x1="750" y1="218" x2="820" y2="218" marker-end="url(#arrow)"></line>
+          <text class="edge-label" x="785" y="210" text-anchor="middle">발송</text>
+
+          <line class="edge-line" x1="675" y1="246" x2="630" y2="340" marker-end="url(#arrow)"></line>
+          <text class="edge-label" x="670" y="285">잠금 실행</text>
+
+          <!-- nodes -->
+          <g>
+            <rect class="node-box" x="40" y="50" width="140" height="56" rx="9" style="stroke:var(--stage-people)"></rect>
+            <text class="node-label" x="110" y="83" text-anchor="middle" font-size="13">사용자·공격자</text>
+          </g>
+
+          <g>
+            <rect class="node-box" x="220" y="50" width="150" height="56" rx="9" style="stroke:var(--stage-server)"></rect>
+            <text class="node-label" x="295" y="74" text-anchor="middle" font-size="13">app.py</text>
+            <text class="node-role" x="295" y="90" text-anchor="middle" font-size="11">/login</text>
+          </g>
+
+          <g>
+            <rect class="node-box" x="410" y="50" width="150" height="56" rx="9" style="stroke:var(--stage-data)"></rect>
+            <text class="node-label" x="485" y="74" text-anchor="middle" font-size="13">db.py</text>
+            <text class="node-role" x="485" y="90" text-anchor="middle" font-size="11">기록 · 조회</text>
+          </g>
+
+          <g>
+            <rect class="node-box" x="600" y="50" width="150" height="56" rx="9" style="stroke:var(--stage-detect)"></rect>
+            <text class="node-label" x="675" y="74" text-anchor="middle" font-size="13">detector.py</text>
+            <text class="node-role" x="675" y="90" text-anchor="middle" font-size="11">판정</text>
+          </g>
+
+          <g>
+            <rect class="node-box" x="820" y="50" width="170" height="56" rx="9" style="stroke:var(--stage-output)"></rect>
+            <text class="node-label" x="905" y="74" text-anchor="middle" font-size="13">dashboard.html</text>
+            <text class="node-role" x="905" y="90" text-anchor="middle" font-size="11">/api/status 폴링</text>
+          </g>
+
+          <g>
+            <rect class="node-box" x="600" y="190" width="150" height="56" rx="9" style="stroke:var(--stage-response)"></rect>
+            <text class="node-label" x="675" y="214" text-anchor="middle" font-size="13">soar.py</text>
+            <text class="node-role" x="675" y="230" text-anchor="middle" font-size="11">잠금 실행</text>
+          </g>
+
+          <g>
+            <rect class="node-box" x="820" y="190" width="170" height="56" rx="9" style="stroke:var(--stage-output)"></rect>
+            <text class="node-label" x="905" y="214" text-anchor="middle" font-size="13">alert.py</text>
+            <text class="node-role" x="905" y="230" text-anchor="middle" font-size="11">Slack 발송</text>
+          </g>
+
+          <g>
+            <rect class="node-box" x="480" y="340" width="300" height="56" rx="9" style="stroke:var(--ink-muted);stroke-dasharray:4 3"></rect>
+            <text class="node-label" x="630" y="364" text-anchor="middle" font-size="13">관리자 해제 / 5분 자동</text>
+            <text class="node-role" x="630" y="380" text-anchor="middle" font-size="11">soar.manual_release · try_release_expired_lockouts</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>실선 = 매 요청마다 도는 판정 경로 · 점선(초록) = 해제가 app.py로 되돌아가는 경로 · dashboard.html은 이 그림의 모든 노드 상태를 2.5초마다 폴링해 함께 보여줍니다</figcaption>
+    </figure>
+  </section>
+
+  <section id="legend">
+    <span class="eyebrow">02 · 색인</span>
+    <h2>아래 파일 목록도 이 색으로 묶었습니다</h2>
+    <div class="legend">
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--stage-server)"></span>서버 · 진입점</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--stage-data)"></span>데이터 계층</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--stage-detect)"></span>이상탐지</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--stage-response)"></span>SOAR 대응</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--stage-output)"></span>출력 채널</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--stage-support)"></span>공통 · 지원</span>
+    </div>
+  </section>
+
+  <section id="files">
+    <span class="eyebrow">03 · 파일별 역할</span>
+    <h2>스테이지별로 묶은 25개 파일</h2>
+    <p class="lead">각 카드의 왼쪽은 경로·담당·상태, 오른쪽은 이 파일이 하는 일과 plan.md가 정의한 핵심 함수입니다.</p>
+
+    <div class="stage-groups">
+
+      <div class="stage-group" data-stage="server">
+        <div class="stage-head"><span class="name">서버 · 진입점</span><span class="count">2개 파일</span></div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">app.py</span>
+            <div class="tag-row"><span class="tag owner">A·B</span><span class="tag status-core">핵심</span></div>
+          </div>
+          <div class="file-body">
+            <p class="file-role">Flask 진입점. detector·soar·db·alert를 엮어 요청 하나가 전체 파이프라인을 통과하게 만드는 유일한 파일.</p>
+            <div class="fn-list">
+              <span class="fn">GET/POST /login</span><span class="fn">GET /dashboard</span><span class="fn">GET /api/status</span><span class="fn">POST /api/unlock</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">templates/login.html</span>
+            <div class="tag-row"><span class="tag owner">A·B</span><span class="tag status-core">핵심</span></div>
+          </div>
+          <div class="file-body">
+            <p class="file-role">감시 대상이 되는 가짜 로그인 폼. 서버가 내려주는 성공·실패·잠금 3종 플래시 메시지를 표시.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage-group" data-stage="data">
+        <div class="stage-head"><span class="name">데이터 계층</span><span class="count">2개 파일</span></div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">db.py</span>
+            <div class="tag-row"><span class="tag owner">A·B</span><span class="tag status-core">핵심</span></div>
+          </div>
+          <div class="file-body">
+            <p class="file-role">Supabase 연동 단일 진입점. detector·soar가 각자 쿼리를 재구현하지 않도록 모든 CRUD가 이 파일을 거쳐야 함.</p>
+            <div class="fn-list">
+              <span class="fn">get_client()</span><span class="fn">log_attempt()</span><span class="fn">count_recent_failures()</span><span class="fn">create_lockout()</span><span class="fn">get_active_lockout()</span><span class="fn">release_lockout()</span><span class="fn">list_recent_attempts()</span><span class="fn">list_active_lockouts()</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">docs/schema.sql</span>
+            <div class="tag-row"><span class="tag owner">공통</span><span class="tag status-core">핵심</span></div>
+          </div>
+          <div class="file-body">
+            <p class="file-role">login_attempts(로그) + lockouts(현재 잠금 상태) 테이블 DDL과 인덱스. Supabase SQL 편집기에 1회 실행하는 실행 파일이 아닌 마이그레이션 기록.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage-group" data-stage="detect">
+        <div class="stage-head"><span class="name">이상탐지</span><span class="count">2개 파일</span></div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">detector.py</span>
+            <div class="tag-row"><span class="tag owner">A·B</span><span class="tag status-core">핵심</span></div>
+          </div>
+          <div class="file-body">
+            <p class="file-role">판정만 전담 — 실행(soar.py)과 분리해 "판정 로직이 두 파일에 따로 구현되는" 사고를 방지.</p>
+            <div class="fn-list"><span class="fn">is_suspicious(ip)</span><span class="fn">is_locked(ip)</span></div>
+          </div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">config.py</span>
+            <div class="tag-row"><span class="tag owner">공통</span><span class="tag status-core">핵심</span></div>
+          </div>
+          <div class="file-body">
+            <p class="file-role">임계값·윈도우·잠금시간을 한 곳에서 관리 — 원 기획서엔 없던 파일로, 상수가 app/detector/soar 세 곳에 흩어지는 걸 막기 위해 추가.</p>
+            <div class="fn-list"><span class="fn">FAILURE_THRESHOLD=5</span><span class="fn">DETECTION_WINDOW_SECONDS=60</span><span class="fn">LOCKOUT_DURATION_SECONDS=300</span><span class="fn">TRUST_FORWARDED_FOR</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage-group" data-stage="response">
+        <div class="stage-head"><span class="name">SOAR 대응</span><span class="count">1개 파일</span></div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">soar.py</span>
+            <div class="tag-row"><span class="tag owner">C</span><span class="tag status-core">핵심</span></div>
+          </div>
+          <div class="file-body">
+            <p class="file-role">판정 결과를 실제 조치로 옮기는 손발 — 잠금 생성, 알림 트리거, 자동/수동 해제까지 세 가지를 모두 담당.</p>
+            <div class="fn-list"><span class="fn">enforce_lockout(ip, count)</span><span class="fn">try_release_expired_lockouts()</span><span class="fn">manual_release(ip, admin_token)</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage-group" data-stage="output">
+        <div class="stage-head"><span class="name">출력 채널</span><span class="count">4개 파일</span></div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">alert.py</span>
+            <div class="tag-row"><span class="tag owner">C</span><span class="tag status-core">핵심</span></div>
+          </div>
+          <div class="file-body">
+            <p class="file-role">Slack Incoming Webhook 발송. 원 기획서는 텔레그램 봇이었으나 팀 결정으로 대체 — 잠금이 실행되는 순간에만 호출(알림 피로 방지).</p>
+            <div class="fn-list"><span class="fn">send_lockout_alert(ip, count, locked_at)</span></div>
+          </div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">templates/dashboard.html</span>
+            <div class="tag-row"><span class="tag owner">D</span><span class="tag status-core">핵심</span></div>
+          </div>
+          <div class="file-body">
+            <p class="file-role">관리자 모니터링 화면의 정적 뼈대. 실제 데이터는 dashboard.js가 채움.</p>
+          </div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">static/css/dashboard.css</span>
+            <div class="tag-row"><span class="tag owner">D</span><span class="tag status-core">핵심</span></div>
+          </div>
+          <div class="file-body">
+            <p class="file-role">대시보드 스타일. 로그 테이블, 실패 횟수 카드, 잠금 상태 표시를 구분.</p>
+          </div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">static/js/dashboard.js</span>
+            <div class="tag-row"><span class="tag owner">D</span><span class="tag status-core">핵심</span></div>
+          </div>
+          <div class="file-body">
+            <p class="file-role">2.5초마다 /api/status를 폴링해 화면을 갱신하고, 해제 버튼 클릭을 /api/unlock으로 전달.</p>
+            <div class="fn-list"><span class="fn">fetchStatus()</span><span class="fn">renderAttemptsTable()</span><span class="fn">renderLockoutCards()</span><span class="fn">unlockIp(ip)</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage-group" data-stage="support">
+        <div class="stage-head"><span class="name">공통 · 설정</span><span class="count">4개 파일</span></div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">requirements.txt</span>
+            <div class="tag-row"><span class="tag owner">공통</span><span class="tag status-core">핵심</span></div>
+          </div>
+          <div class="file-body"><p class="file-role">flask, supabase, python-dotenv, requests, pytest(dev). 텔레그램 전용 패키지는 불필요.</p></div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">.env / .env.example</span>
+            <div class="tag-row"><span class="tag owner">공통</span><span class="tag status-core">핵심</span></div>
+          </div>
+          <div class="file-body"><p class="file-role">SUPABASE_URL, SUPABASE_KEY, SLACK_WEBHOOK_URL, ADMIN_TOKEN, TRUST_FORWARDED_FOR. .env는 .gitignore 필수, .env.example만 커밋.</p></div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">.gitignore</span>
+            <div class="tag-row"><span class="tag owner">공통</span><span class="tag status-core">핵심</span></div>
+          </div>
+          <div class="file-body"><p class="file-role">.env, __pycache__/, *.pyc, .pytest_cache/ 제외.</p></div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">README.md</span>
+            <div class="tag-row"><span class="tag owner">D</span><span class="tag status-core">핵심</span></div>
+          </div>
+          <div class="file-body"><p class="file-role">프로젝트 소개, 실행 방법, 아키텍처 다이어그램 게시 위치.</p></div>
+        </div>
+      </div>
+
+      <div class="stage-group" data-stage="support">
+        <div class="stage-head"><span class="name">테스트</span><span class="count">3개 파일</span></div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">tests/test_detector.py</span>
+            <div class="tag-row"><span class="tag owner">공통</span><span class="tag status-core">핵심</span></div>
+          </div>
+          <div class="file-body"><p class="file-role">count_recent_failures를 monkeypatch해 임계값 경계(4/5/6회)에서 is_suspicious가 올바르게 동작하는지 검증.</p></div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">tests/test_soar.py</span>
+            <div class="tag-row"><span class="tag owner">공통</span><span class="tag status-core">핵심</span></div>
+          </div>
+          <div class="file-body"><p class="file-role">enforce_lockout이 잠금→알림 순서로 호출하는지, manual_release가 잘못된 admin_token을 거부하는지 mock으로 검증.</p></div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">tests/test_config.py</span>
+            <div class="tag-row"><span class="tag owner">공통</span><span class="tag status-core">핵심</span></div>
+          </div>
+          <div class="file-body"><p class="file-role">상수 값이 기획 수치(5회·60초·300초)와 일치하는지 회귀 테스트.</p></div>
+        </div>
+      </div>
+
+      <div class="stage-group" data-stage="detect">
+        <div class="stage-head"><span class="name">스트레치 · 9~12일차 선택</span><span class="count">4개 파일</span></div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">scripts/bruteforce_sim.py</span>
+            <div class="tag-row"><span class="tag owner">A·B</span><span class="tag status-optional">선택</span></div>
+          </div>
+          <div class="file-body"><p class="file-role">무차별 대입 공격 시뮬레이션. 팀이 소유한 로컬 서버(127.0.0.1:5000)만 대상 — 6번째 시도로 잠금 여부까지 자체 검증.</p></div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">scripts/daily_report.py</span>
+            <div class="tag-row"><span class="tag owner">C</span><span class="tag status-optional">선택</span></div>
+          </div>
+          <div class="file-body"><p class="file-role">AI 기반 일일 로그 요약. LLM 연동 외 스펙 미정 — 핵심 기능 완료 후 착수 여부 재확인.</p></div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">docs/scenario.md</span>
+            <div class="tag-row"><span class="tag owner">D</span><span class="tag status-optional">선택</span></div>
+          </div>
+          <div class="file-body"><p class="file-role">시연 시나리오 3가지(정상·공격·관리자 대응)의 동작 순서 기술.</p></div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id">
+            <span class="file-path">docs/architecture.png · demo.gif · before-after.png</span>
+            <div class="tag-row"><span class="tag owner">D</span><span class="tag status-optional">선택</span></div>
+          </div>
+          <div class="file-body"><p class="file-role">발표·README 게시용 시각자료 — 다이어그램 캡처, 공격→잠금 시연 GIF, 정상/잠금 비교 이미지.</p></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <footer>
+    <span>login-watchdog</span>
+    <span>·</span>
+    <span>25 files</span>
+    <span>·</span>
+    <span>근거: plan.md § 3, research.md § 3</span>
+  </footer>
+
+</div>

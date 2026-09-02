@@ -1,0 +1,312 @@
+# 로그인 워치독 — 상세 구현 계획 (plan.md)
+
+> 작성일: 2026-09-02
+> 근거 문서: `login_watchdog_supabase.md`(기획서), `login_watchdog_briefing_supabase.html`(브리핑), `research.md`(분석)
+>
+> **주의: 이 문서는 계획입니다. 코드는 아직 한 줄도 작성하지 않습니다.**
+> `research.md`가 지적한 8개 모호점 중 구현 순서에 영향을 주는 항목들은 아래에서 **기본안(제안)**으로 확정해 두었습니다. 각 결정에는 "확정 필요" 표시를 남겼으니, 실제 코딩 착수 전 팀 합의로 뒤집을 수 있습니다.
+>
+> **변경 사항(2026-09-02)**: 원 기획서·브리핑 문서는 알림 채널로 텔레그램 봇을 명시하지만, 팀 결정에 따라 **Slack(Incoming Webhook)** 으로 대체합니다. 아래 계획은 이 변경을 반영해 갱신했습니다.
+
+---
+
+## 0. 현 목표
+
+15일 일정 중 **4~8일차 핵심 기능**(기획서 4장의 4-1·4-2·4-3, 즉 오프라인 실행 프로그램 + Slack 알림 + 웹 대시보드)을 실제로 구현 가능한 수준까지 파일 단위로 설계한다. 9~12일차 스트레치 기능(공격 시뮬레이션 자동화, AI 로그 요약, `docs/` 시각자료)은 이번 계획의 범위 밖이며 7장 "제외할 범위"에 명시한다.
+
+핵심 성공 기준(기획서 9장 체크포인트를 Slack 알림 기준으로 갱신):
+- 일부러 5번 틀리게 로그인 → 화면 잠금 표시 + Slack 알림이 동시에 확인된다.
+
+---
+
+## 1. 이번 계획에서 새로 확정하는 설계 결정 (research.md 질문 대응)
+
+`research.md` 6장의 모호점 중, 스키마·라우트 설계에 영향을 주는 항목만 먼저 결정한다. 나머지(Slack 연동 방식, 잠금 응답 형식 등)도 함께 정리한다.
+
+| # | research.md 질문 | 채택안 | 확정 필요 여부 |
+|---|---|---|---|
+| 1 | 잠금 상태 영속화 | `lockouts` 테이블 신규 추가(2-2절) | **팀 확인 필요** — 스키마 변경이므로 A·B와 사전 합의 |
+| 2 | 계정 잠금 vs IP 잠금 | **IP 잠금**으로 통일(다이어그램 "계정 자동 잠금" 표현은 발표자료 문구 문제로 간주, README에 "IP 기준"이라고 명시) | 확정 필요 — 발표 스토리라인 문구 수정 동반 |
+| 3 | 관리자 인증 수준 | 정식 로그인 대신 `.env`의 `ADMIN_TOKEN` 공유 비밀값을 해제 요청에 요구(최소 보호) | 확정 필요 — 시연 편의 vs 최소 보안 트레이드오프 |
+| 4 | 알림 채널 연동 방식(원안: 텔레그램) | **Slack Incoming Webhook**으로 대체, `requests.post(webhook_url, json=...)` 한 줄 호출(이유: 2절 기술 스택 참고) | **팀 확인 필요** — 원 기획서 대비 채널 자체가 바뀌므로 어느 Slack 워크스페이스·채널에 웹훅을 걸지 먼저 확정 |
+| 5 | 잠금 응답 형식 | `/login`은 서버 렌더 HTML(플래시 메시지 "잠긴 계정입니다" 문구 포함)로 응답 — 브라우저와 `bruteforce_sim.py`의 텍스트 매칭 둘 다 만족 | 제안 |
+| 6 | `/api/status` 스펙 | 3-4절에서 JSON 스키마 확정 | 제안, D 담당과 합의 필요 |
+| 7 | IP 판별(로컬 환경 전원 127.0.0.1) | 데모 전용 플래그(`TRUST_FORWARDED_FOR=true`)일 때만 `X-Forwarded-For` 헤더를 신뢰해 시뮬레이터가 가짜 IP를 주입하게 허용 | 확정 필요 — 프로덕션 안전 원칙과 충돌하므로 데모 전용임을 코드 주석/README에 명시 |
+| 8 | `daily_report.py` 스펙 | 이번 계획 범위에서 제외(7장) | - |
+
+---
+
+## 2. 기술 스택 선택과 이유
+
+기획서 6장에서 이미 스택이 정해져 있으므로 재검토가 아니라 **각 선택지의 채택 이유**만 정리한다.
+
+| 영역 | 채택 | 이유 |
+|---|---|---|
+| 백엔드 | Flask (Blueprint 없이 단일 `app.py`) | 팀 규모(4인, 비전공자)와 기능 수(라우트 3~4개)를 고려하면 Blueprint로 모듈을 쪼갤 필요가 없음. 파일이 커지면 그때 분리 |
+| DB | Supabase(PostgreSQL) | 기획서 확정 사항 — 팀원 4명이 로컬에서 개발해도 동일 로그를 실시간 공유해야 하므로 로컬 SQLite 대비 필수 |
+| DB 클라이언트 | `supabase-py` (동기 클라이언트) | Flask가 동기 프레임워크이므로 비동기 클라이언트 도입 시 얻는 이득이 없고 복잡도만 증가 |
+| 알림 | Slack Incoming Webhook + `requests` 직접 POST | 원 기획서는 텔레그램 봇 API를 명시했으나 팀 결정으로 Slack으로 대체. Incoming Webhook은 채널당 고정 URL 하나에 `{"text": "..."}` JSON을 POST하면 끝나는 가장 단순한 방식 — 봇 토큰 발급, polling/webhook 서버 구성 같은 별도 설정이 필요 없고, 팀이 이미 협업용 Slack 워크스페이스를 쓰고 있다면 알림을 그 안에서 바로 확인 가능. `slack_sdk` 같은 공식 SDK 도입은 이 프로젝트가 필요로 하는 "일방향 알림 발송" 범위를 넘어서므로 채택하지 않음 |
+| 프런트엔드 | Jinja2 템플릿 + 바닐라 JS(`fetch`, `setInterval`) | 기획서 확정 사항. React 등 SPA 프레임워크 도입은 팀 학습 곡선 대비 이득이 없음 |
+| 잠금 상태 저장 | 신규 테이블 `lockouts` (PostgreSQL) | `login_attempts`는 append-only 로그 테이블이라 "현재 상태"(잠김/해제, 해제 예정 시각)를 표현하기에 부적합. 상태와 로그를 분리하는 것이 표준적인 설계이며, 해제 시 단순히 이 테이블의 행을 삭제/업데이트하면 되므로 로직이 단순해짐 |
+| 상수 관리 | 신규 파일 `config.py` | research.md 5-1절이 지적한 "임계값 5, 윈도우 60초, 해제시간 300초가 3개 파일에 흩어질 위험"을 없애기 위해 단일 상수 모듈 도입 |
+| 테스트 | `pytest` | Python 표준에 가까운 선택지, 팀이 이미 Python 스택이므로 추가 학습 비용 없음 |
+
+---
+
+## 3. 변경할 파일 경로 및 파일별 수정 내용
+
+저장소가 비어 있으므로 전부 **신규 생성**이다. 생성 순서(의존성 기준)대로 나열한다.
+
+### 3-1. `config.py` (신규 — 기획서에 없던 파일, 이유는 2절 참고)
+
+**변경 이유**: 임계값(5회), 탐지 윈도우(60초), 잠금 지속시간(5분)을 한 곳에서 관리해 `detector.py`/`soar.py`/`app.py`가 서로 다른 값을 하드코딩하는 사고를 방지.
+
+**내용**:
+```python
+FAILURE_THRESHOLD = 5
+DETECTION_WINDOW_SECONDS = 60
+LOCKOUT_DURATION_SECONDS = 300  # 5분
+TRUST_FORWARDED_FOR = False  # 데모 시연 시 .env로 override
+```
+- `.env`로 override 가능하도록 `os.environ.get(...)` 패턴 사용 검토(확정 필요 없음, 구현 시 판단).
+
+### 3-2. `.env.example`, `.gitignore`
+
+**변경 이유**: 기획서 8장 규칙 그대로. Supabase 키 유출 방지가 최우선.
+
+**내용**:
+- `.env.example`: `SUPABASE_URL`, `SUPABASE_KEY`, `SLACK_WEBHOOK_URL`, `ADMIN_TOKEN`, `TRUST_FORWARDED_FOR` 키 이름만(값 없이) 기재
+- `.gitignore`: `.env`, `__pycache__/`, `*.pyc`, `.pytest_cache/`
+
+### 3-3. Supabase 스키마 (SQL, 마이그레이션 문서로 관리 — 실행 파일 아님)
+
+**변경 이유**: research.md 5-2절 "가장 심각한 위험"인 잠금 상태 미표현 문제 해결.
+
+**내용** (`docs/schema.sql` 또는 README에 SQL 블록으로 기록, 실제로는 Supabase SQL 편집기에서 1회 실행):
+```sql
+create table login_attempts (
+  id bigint generated always as identity primary key,
+  ip_address text not null,
+  username text not null,
+  success boolean not null,
+  attempted_at timestamptz not null default now()
+);
+create index idx_login_attempts_ip_time on login_attempts (ip_address, attempted_at);
+
+create table lockouts (
+  ip_address text primary key,
+  locked_at timestamptz not null default now(),
+  unlock_at timestamptz not null,
+  failure_count int not null,
+  active boolean not null default true
+);
+```
+- `login_attempts`에 인덱스 추가: research.md 5-4절이 지적한 성능 위험(인덱스 없음) 해결.
+- `lockouts.active`: 수동 해제 시 삭제 대신 `active=false`로 갱신하면 "해제 이력"도 남길 수 있음(감사 로그 목적) — 단순화가 필요하면 삭제 방식으로 바꿔도 무방(확정 필요 없음, 구현 시 팀 판단).
+
+### 3-4. `db.py`
+
+**변경 이유**: Supabase 연동을 단일 진입점으로 강제(research.md 5-1절 중복 구현 위험 대응).
+
+**필요한 함수**:
+- `get_client() -> Client`: 환경변수 검증 후 Supabase 클라이언트 반환(모듈 전역 싱글턴)
+- `log_attempt(ip: str, username: str, success: bool) -> None`: `login_attempts` insert (기획서 6장 예시 코드 그대로)
+- `count_recent_failures(ip: str, window_seconds: int = DETECTION_WINDOW_SECONDS) -> int`: 기획서 6장 예시 코드 그대로
+- `create_lockout(ip: str, failure_count: int, duration_seconds: int = LOCKOUT_DURATION_SECONDS) -> None`: `lockouts`에 upsert
+- `get_active_lockout(ip: str) -> dict | None`: `unlock_at > now()` 이고 `active=true`인 행 조회
+- `release_lockout(ip: str) -> None`: `active=false`로 갱신(수동 해제·자동 만료 공용)
+- `list_recent_attempts(limit: int = 50) -> list[dict]`: 대시보드용 최근 로그 조회
+- `list_active_lockouts() -> list[dict]`: 대시보드용 현재 잠금 목록
+
+### 3-5. `detector.py`
+
+**변경 이유**: "판정"과 "실행"을 분리해 SOAR 로직이 판정 로직을 재구현하지 않게 함.
+
+**필요한 함수**:
+- `is_suspicious(ip: str) -> tuple[bool, int]`: `db.count_recent_failures(ip)` 호출 후 `(실패횟수 > FAILURE_THRESHOLD, 실패횟수)` 반환
+- `is_locked(ip: str) -> bool`: `db.get_active_lockout(ip)`가 존재하고 아직 `unlock_at`이 지나지 않았는지 확인
+
+### 3-6. `soar.py`
+
+**변경 이유**: 판정 결과를 실제 조치(잠금 실행, 알림 발송, 해제)로 연결.
+
+**필요한 함수**:
+- `enforce_lockout(ip: str, failure_count: int) -> None`: `db.create_lockout()` 호출 → `alert.send_lockout_alert()` 호출(잠금 순간에만 알림, 기획서 4-2절 "알림 피로 방지" 원칙 반영)
+- `try_release_expired_lockouts() -> None`: 만료된(`unlock_at <= now()`) 잠금을 조회해 `db.release_lockout()` 호출 — `/login` 요청이 들어올 때마다, 혹은 대시보드 폴링 시 호출해 "5분 후 자동 해제"를 별도 스케줄러 없이 구현(APScheduler 등 백그라운드 잡 도입은 범위 밖, 7절 참고)
+- `manual_release(ip: str, admin_token: str) -> bool`: `admin_token` 검증 후 `db.release_lockout()` 호출, 성공 여부 반환
+
+### 3-7. `alert.py`
+
+**변경 이유**: Slack 알림 발송 로직을 SOAR와 분리해 재사용 가능하게 함. (원 기획서는 텔레그램 봇이었으나 1절 결정에 따라 Slack Incoming Webhook으로 대체)
+
+**필요한 함수**:
+- `send_lockout_alert(ip: str, failure_count: int, locked_at: datetime) -> None`: 기획서 4-2절 형식대로 "시각, 시도 IP, 실패 횟수, 조치 결과"를 한 문장으로 조립해 `.env`의 `SLACK_WEBHOOK_URL`에 `requests.post(url, json={"text": message})`로 전송
+- 실패(네트워크 오류, 4xx 등) 시 예외를 삼키고 로그만 남길지, 상위로 전파할지는 4-3 "에러 처리 방침"에서 결정
+- Slack Incoming Webhook은 요청 본문이 `{"text": "..."}` 하나로 끝나므로 텔레그램의 `chat_id` 같은 별도 수신자 식별값이 필요 없음 — `.env`에는 `SLACK_WEBHOOK_URL` 한 개만 추가하면 됨
+
+### 3-8. `app.py`
+
+**변경 이유**: 전체 파이프라인을 엮는 Flask 진입점.
+
+**라우트**:
+- `GET /login`: `login.html` 렌더(빈 폼)
+- `POST /login`:
+  1. `soar.try_release_expired_lockouts()` 호출(만료 잠금 정리)
+  2. IP 추출 — `TRUST_FORWARDED_FOR` 플래그에 따라 `request.headers.get("X-Forwarded-For")` 또는 `request.remote_addr`
+  3. `detector.is_locked(ip)` 참이면 → 즉시 "잠긴 계정입니다" 플래시 메시지로 `login.html` 재렌더(계정 검증 자체를 건너뜀)
+  4. 아니면 아이디/비밀번호를 하드코딩된 테스트 계정과 비교(성공/실패는 데모용이므로 실제 인증 시스템 불필요, 7절 참고) → `db.log_attempt(ip, username, success)`
+  5. 실패였다면 `detector.is_suspicious(ip)` 호출 → 초과 시 `soar.enforce_lockout(ip, count)`
+  6. 결과에 따라 성공/실패/잠금 메시지로 `login.html` 렌더
+- `GET /dashboard`: `dashboard.html` 렌더(정적 뼈대, 데이터는 JS가 `/api/status`로 채움)
+- `GET /api/status`: JSON 응답(3-4절의 스키마)
+- `POST /api/unlock`: body에서 `ip`, `admin_token` 수신 → `soar.manual_release()` 호출 → 성공/실패 JSON 응답
+
+**`/api/status` 응답 스키마 (확정안)**:
+```json
+{
+  "recent_attempts": [
+    {"ip_address": "127.0.0.1", "username": "testuser", "success": false, "attempted_at": "2026-09-02T10:00:00Z"}
+  ],
+  "active_lockouts": [
+    {"ip_address": "127.0.0.1", "locked_at": "2026-09-02T10:00:05Z", "unlock_at": "2026-09-02T10:05:05Z", "failure_count": 6}
+  ]
+}
+```
+
+### 3-9. `templates/login.html`
+
+**변경 이유**: 감시 대상이 되는 가짜 로그인 화면.
+
+**내용**: 아이디/비밀번호 폼(POST `/login`), 서버가 넘겨준 플래시 메시지(성공/실패/잠금 3종) 표시 영역.
+
+### 3-10. `templates/dashboard.html`, `static/css/dashboard.css`, `static/js/dashboard.js`
+
+**변경 이유**: 관리자 모니터링 화면.
+
+**필요한 함수(JS)**:
+- `fetchStatus()`: `/api/status` GET 후 DOM 갱신, `setInterval(fetchStatus, 2500)`로 폴링(기획서 4-3절 "2~3초 폴링" 반영)
+- `renderAttemptsTable(attempts)`, `renderLockoutCards(lockouts)`
+- `unlockIp(ip)`: 관리자가 버튼 클릭 시 `/api/unlock`에 POST(관리자 토큰 입력 필드 필요 — 3-1절 확정안 반영)
+
+### 3-11. `requirements.txt`
+
+**내용**: `flask`, `supabase`, `python-dotenv`, `requests`, `pytest`(dev). 텔레그램 전용 라이브러리(`python-telegram-bot`)는 불필요 — Slack Incoming Webhook은 `requests`만으로 충분(2절 결정).
+
+---
+
+## 4. 예상 코드 흐름
+
+### 4-1. 정상 로그인 (실패 5회 미만)
+```
+브라우저 → POST /login → app.py
+  → soar.try_release_expired_lockouts()
+  → detector.is_locked(ip) == False
+  → 계정 검증 (성공 or 실패)
+  → db.log_attempt(ip, username, success)
+  → success=True: "로그인 성공" 렌더
+  → success=False: detector.is_suspicious(ip) == (False, n<=5)
+  → "로그인 실패" 렌더
+```
+
+### 4-2. 공격 시나리오 (60초 내 6번째 실패 시점)
+```
+6번째 POST /login (실패)
+  → db.log_attempt(ip, username, False)
+  → detector.is_suspicious(ip) == (True, 6)
+  → soar.enforce_lockout(ip, 6)
+      → db.create_lockout(ip, 6, duration=300)
+      → alert.send_lockout_alert(ip, 6, now)  # Slack 웹훅 발송
+  → "잠긴 계정입니다" 렌더
+```
+
+### 4-3. 잠금 중 재시도
+```
+POST /login (잠금 상태)
+  → soar.try_release_expired_lockouts()  # 아직 미만료
+  → detector.is_locked(ip) == True
+  → db.log_attempt() 호출 여부는 확정 필요(아래 5절 고려사항 참고)
+  → "잠긴 계정입니다" 즉시 응답 (계정 검증 스킵)
+```
+
+### 4-4. 자동 해제
+```
+잠금 후 5분이 지난 뒤 들어오는 다음 요청(로그인 시도 또는 대시보드 폴링)
+  → soar.try_release_expired_lockouts()
+  → unlock_at <= now() 인 lockouts 행 발견 → db.release_lockout(ip)
+  → 이후 요청부터 detector.is_locked(ip) == False
+```
+- 별도 백그라운드 스케줄러 없이 "다음 요청 시점에 지연 정리"하는 방식 — 트래픽이 없으면 실제 해제 반영이 늦어질 수 있음(5절 고려사항).
+
+### 4-5. 수동 해제
+```
+대시보드 "즉시 해제" 버튼 클릭 → JS: POST /api/unlock {ip, admin_token}
+  → app.py: soar.manual_release(ip, admin_token)
+      → admin_token 검증
+      → db.release_lockout(ip)
+  → 200 OK → 대시보드 다음 폴링(≤2.5초 내)에 잠금 카드 사라짐
+```
+
+### 4-6. 대시보드 폴링
+```
+setInterval(2500ms) → fetch('/api/status')
+  → app.py: db.list_recent_attempts(50) + db.list_active_lockouts()
+  → JSON 응답
+  → JS: renderAttemptsTable() + renderLockoutCards()
+```
+
+---
+
+## 5. 고려 사항 (구현 시 반드시 재확인)
+
+- **잠금 중 로그인 시도도 `login_attempts`에 기록할 것인가?** 기록하면 "잠금 중에도 몇 번 더 두드렸는지" 대시보드에 보여줄 수 있지만, 매 요청마다 insert가 발생해 5-4절 쿼터 소모가 늘어남. 기본안: 기록하지 않고 즉시 거부(쿼터 절약 우선). 확정 필요.
+- **`try_release_expired_lockouts()`를 언제 호출할지**: `/login` POST와 `/api/status` GET 양쪽에서 호출하면 트래픽이 없어도 대시보드 폴링이 자동 해제를 사실상 실시간으로 처리해줌 — 이 방식을 기본안으로 채택.
+- **경쟁 조건(race condition)**: research.md 5-2절 지적대로 팀원 4명이 각자 로컬 서버를 동시에 띄우면 동일 IP에 대해 동시에 `enforce_lockout`이 호출될 수 있음. `lockouts.ip_address`를 PRIMARY KEY로 설정했으므로 두 번째 insert는 실패(또는 upsert로 덮어씀) — Supabase의 unique constraint가 최소한의 안전망 역할을 하지만, Slack 알림 중복 발송까지는 막지 못함. 완전한 해결은 범위 밖(7절), 관찰만 해두고 시연 시 팀원 1명만 공격 시뮬레이션을 실행하도록 운영으로 회피 권장.
+- **`/login` 실패 시 사용자 존재 여부 노출 금지**: 성공/실패 메시지가 "아이디가 없음"과 "비밀번호 틀림"을 구분하지 않도록 통일된 문구 사용(일반적인 보안 관례, 기획서에 명시는 없으나 반영 권장).
+- **테스트 계정 하드코딩**: 데모 목적상 `app.py`에 `TEST_USERNAME`/`TEST_PASSWORD_HASH` 상수로 계정 1개만 두는 것을 기본안으로 함(회원가입 기능은 범위 밖).
+
+---
+
+## 6. 테스트 검증 방법
+
+### 6-1. 단위 테스트 (`pytest`, 신규 `tests/` 디렉터리)
+- `test_detector.py`: `db.count_recent_failures`를 monkeypatch해 `is_suspicious()`가 임계값 경계(4/5/6회)에서 올바르게 동작하는지 검증
+- `test_soar.py`: `db.create_lockout`/`release_lockout`을 mock해 `enforce_lockout()`이 잠금+알림을 순서대로 호출하는지, `manual_release()`가 잘못된 `admin_token`을 거부하는지 검증
+- `test_config.py`: 상수 값이 기획서 수치(5회, 60초, 300초)와 일치하는지 회귀 테스트
+
+### 6-2. 통합 테스트 — 로컬 Supabase 프로젝트 대상 (실제 네트워크 호출)
+- 기획서 10장의 검증 스크립트(`scripts/bruteforce_sim.py`, 이번 계획 범위 밖이지만 검증 도구로는 재사용)를 로컬 `python app.py` 서버에 실행 → 6번째 시도에서 "잠긴 계정" 문구 확인
+- 5분 대기 후 재시도 → 자동 해제 확인(수동 시간 단축 테스트 시 `LOCKOUT_DURATION_SECONDS`를 `.env`에서 10초 등으로 임시 조정 — `config.py`가 override를 지원하는 이유)
+- 대시보드 버튼 클릭 → 즉시 해제 확인
+
+### 6-3. 체크포인트 기반 수동 시나리오 (기획서 9장 그대로 채택)
+1. 로그인 페이지 접속 가능 + Supabase 테이블에 테스트 데이터 1건 저장 확인
+2. Slack 채널에 웹훅 테스트 메시지 1건 수신 확인
+3. 일부러 5번 초과로 틀리게 로그인 → 화면 잠금 표시 + Slack 알림 동시 확인
+4. 대시보드 폴링이 2~3초 내 잠금 상태를 반영하는지 육안 확인
+5. 관리자 해제 버튼 클릭 → 대시보드와 실제 `/login` 응답이 즉시 풀리는지 확인
+
+### 6-4. 쿼터 점검 (5-4절 위험 대응)
+- 대시보드를 30분간 열어둔 상태에서 Supabase 대시보드의 API 요청량을 확인해 무료 티어(월 5만 건) 대비 실제 소모량을 1회 실측 — 예상치(문서상 600~900회/30분/인)와 실측치를 비교해 폴링 주기(2초 vs 3초) 최종 결정에 반영
+
+---
+
+## 7. 제외할 범위 (이번 plan.md 대상 아님)
+
+- `scripts/bruteforce_sim.py` 자동화 스크립트 자체의 신규 기능 확장(랜덤 딜레이, argparse화, `rich` 출력) — 기획서 9-4절 스트레치
+- `scripts/daily_report.py` (AI 기반 일일 로그 요약, LLM 연동) — research.md 질문 8 그대로 정의 부족, 핵심 기능 완료 후 재검토
+- Supabase Realtime 구독(폴링 대체) — 기획서 4-3절에 "여유가 있다면"으로 명시된 스트레치
+- IP 위치 조회(ip-api.com 연동)
+- PyInstaller `.exe` 패키징
+- GitHub Actions lint 배지, `docs/architecture.png`·`demo.gif`·`before-after.png`·`scenario.md` 등 시각자료 제작(D 담당의 별도 산출물)
+- 정식 회원가입/비밀번호 해시 저장 등 실사용자 인증 시스템 — 테스트 계정 1개로 대체(5절 고려사항)
+- 계정(사용자명) 단위 잠금 — 이번 계획은 IP 단위로 한정(1절 결정 #2)
+- 백그라운드 스케줄러(APScheduler 등)를 이용한 정시 자동 해제 — "다음 요청 시 지연 정리" 방식으로 대체(4-4절)
+- 다중 관리자 계정/역할 기반 접근 제어 — 공유 토큰 1개로 대체(1절 결정 #3)
+
+---
+
+## 8. 다음 행동
+
+1. 이 문서의 1절 "확정 필요" 항목(잠금 상태 저장, IP vs 계정, 관리자 인증 수준, IP 판별 방식)을 팀 회의에서 확정
+2. 확정되면 3-3절 SQL을 Supabase에 1회 실행(`login_attempts` + `lockouts` 테이블, 인덱스 포함)
+3. 3절 순서(`config.py` → `.env.example`/`.gitignore` → `db.py` → `detector.py`/`soar.py`/`alert.py` → `app.py` → 템플릿/정적 파일) 그대로 구현 착수
