@@ -92,19 +92,20 @@ login-watchdog/
 ├── detector.py           # 브루트포스 판정 로직
 ├── soar.py                # 판정 결과에 따른 조치(잠금/해제) 실행
 ├── alert.py                # Slack 알림 전송
-├── config.py                 # 임계값·윈도우·잠금시간 등 상수
-├── templates/                 # Jinja2 HTML 템플릿
-├── static/css, static/js      # 스타일 및 대시보드 자바스크립트
-├── tests/                       # pytest 단위 테스트
-├── docs/schema.sql               # Supabase 테이블 정의
-├── docs/beginner-guide.md         # 비전공자용 단계별 구현 해설서
-└── plan.md, research.md            # 설계 근거 문서
+├── geoip.py                  # IP 위치(국가·도시) 조회, 캐싱
+├── config.py                   # 임계값·윈도우·잠금시간 등 상수
+├── templates/                   # Jinja2 HTML 템플릿
+├── public/css, public/js         # 스타일 및 대시보드 자바스크립트
+├── tests/                          # pytest 단위 테스트
+├── docs/schema.sql                  # Supabase 테이블 정의
+├── docs/beginner-guide/               # 비전공자용 단계별 구현 해설서 (14개 파일로 분리)
+└── plan.md, research.md                # 설계 근거 문서
 ```
 
 ## 더 자세히 알고 싶다면
 
 - [plan.md](plan.md) — 각 파일을 왜 이렇게 설계했는지에 대한 상세 근거
-- [docs/beginner-guide.md](docs/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서
+- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide14_geoip.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
 
 ## 알려진 제한사항
 
@@ -113,7 +114,7 @@ login-watchdog/
 - **자동 해제는 "정시"가 아니라 "다음 요청 시"** — 백그라운드 타이머 없이, `/login` 요청이나 대시보드 폴링이 들어올 때 만료된 잠금을 정리합니다. 한동안 요청이 없으면 5분이 지나도 실제 해제가 늦어질 수 있습니다.
 - **`TRUST_FORWARDED_FOR`는 데모 전용** — 켜두면 요청 헤더의 IP를 그대로 신뢰합니다. 운영 환경에서 켜두면 공격자가 헤더 조작만으로 IP 잠금을 우회할 수 있어 위험합니다.
 - **동시 실행 시 경쟁 조건(race condition) 가능성** — 여러 사람이 동시에 같은 IP로 브루트포스를 시뮬레이션하면 Slack 알림이 중복 발송되거나 잠금 처리가 겹칠 수 있습니다. 시연 시 한 명만 시뮬레이션 실행을 권장합니다.
-- **대시보드는 실시간이 아니라 폴링 방식** — 웹소켓 기반 실시간 스트리밍이 아니라 일정 주기(기본 10초)로 새로고침합니다. 최대 그 주기만큼 화면이 실제 상태보다 늦게 보일 수 있습니다. 주기 조절 방법은 [docs/beginner-guide.md](docs/beginner-guide.md) 9단계를 참고하세요.
+- **대시보드는 실시간이 아니라 폴링 방식** — 웹소켓 기반 실시간 스트리밍이 아니라 일정 주기(기본 10초)로 새로고침합니다. 최대 그 주기만큼 화면이 실제 상태보다 늦게 보일 수 있습니다. 주기 조절 방법은 [docs/beginner-guide/guide09_quota.md](docs/beginner-guide/guide09_quota.md)를 참고하세요.
 - **개발용 서버 사용** — `app.run(debug=True)`는 Flask가 공식적으로 "운영 배포에 쓰지 말라"고 명시하는 개발용 서버입니다. 외부 공개 서비스로 배포하려면 별도의 프로덕션 WSGI 서버(gunicorn 등)로 교체해야 합니다.
 - **감시 대상 계정은 데모 수준 인증** — 이메일 인증, 비밀번호 재설정, 계정 잠금 셀프 해제 같은 기능은 제공하지 않습니다. `/login`은 실사용 서비스가 아니라 브루트포스 탐지를 시연하기 위한 화면입니다.
 - **IP 위치 조회는 참고용** — ip-api.com 무료 API는 HTTPS를 지원하지 않고(서버 간 통신이라 브라우저 보안 경고와는 무관), 도시 단위 정확도가 완벽하지 않을 수 있습니다. `127.0.0.1` 같은 사설 IP는 항상 "위치 확인 불가"로 표시됩니다.

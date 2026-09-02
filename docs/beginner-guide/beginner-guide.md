@@ -5,6 +5,25 @@
 
 ---
 
+## 목차
+
+1. [1단계 — 개발 환경 준비](guide01_setup.md)
+2. [2단계 — 데이터베이스(Supabase) 스키마 만들기](guide02_schema.md)
+3. [3단계 — `db.py` (데이터베이스와 대화하는 창구 만들기)](guide03_db.md)
+4. [4단계 — `detector.py` / `soar.py` / `alert.py` (판정 → 조치 → 알림)](guide04_response.md)
+5. [5단계 — `app.py` (모든 부품을 실제 웹사이트로 엮는 "정문")](guide05_app.md)
+6. [6단계 — 화면(템플릿/스타일/스크립트) 만들기](guide06_templates.md)
+7. [7단계 — Slack 실제 연동 (콘솔 대체를 진짜 알림으로 전환)](guide07_alert.md)
+8. [8단계 — pytest 단위 테스트 (진짜 서버 없이 코드만 자동으로 검증하기)](guide08_testing.md)
+9. [9단계 — 쿼터 점검 (Supabase 무료 사용량 한도 확인)](guide09_quota.md)
+10. [10단계 — Vercel 배포 준비 및 배포](guide10_deploy.md)
+11. [11단계 — 관리자/일반 로그인 화면을 겉보기에 하나로 통합](guide11_merge.md)
+12. [12단계 — 관리자 대시보드에 회원 관리 기능 추가](guide12_usermanagement.md)
+13. [13단계 — 회원 전용 대시보드 (`/dashboard`) 추가](guide13_member.md)
+14. [14단계 — 로그인 IP의 국가·도시 표시 (ip-api.com 연동)](guide14_geoip.md)
+
+---
+
 ## 1단계 — 개발 환경 준비
 
 ### 우리가 한 일
@@ -41,10 +60,10 @@
 `requirements.txt`는 이 프로그램을 돌리는 데 필요한 외부 도구 이름 목록입니다(예: 웹 서버를 만들어주는 `flask`, 데이터베이스와 통신하는 `supabase` 등). `pip`는 파이썬의 "라이브러리 설치 프로그램"이고, `pip install -r requirements.txt`는 "이 목록에 있는 걸 전부 설치해줘"라는 명령입니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [config.py](../config.py) (신규 작성)
-- [.env.example](../.env.example) (내용 갱신)
-- [.gitignore](../.gitignore) (`venv/` 추가)
-- [requirements.txt](../requirements.txt) (신규 작성)
+- [config.py](../../config.py) (신규 작성)
+- [.env.example](../../.env.example) (내용 갱신)
+- [.gitignore](../../.gitignore) (`venv/` 추가)
+- [requirements.txt](../../requirements.txt) (신규 작성)
 - `venv/` 폴더 (신규 생성, 깃에는 올라가지 않음)
 
 ---
@@ -52,7 +71,7 @@
 ## 2단계 — 데이터베이스(Supabase) 스키마 만들기
 
 ### 우리가 한 일
-1. [docs/schema.sql](schema.sql) 파일에 "표(테이블) 설계도" 5개를 작성
+1. [docs/schema.sql](../schema.sql) 파일에 "표(테이블) 설계도" 5개를 작성
 2. Supabase 웹사이트의 SQL Editor에서 이 설계도를 실행해 실제 표를 만듦
 3. `.env`에 `SUPABASE_URL`(주소)과 `SUPABASE_KEY`(비밀 열쇠)를 채워넣음
 4. 파이썬 코드로 실제 연결이 되는지, 5개 표가 다 잘 만들어졌는지 확인(검증)
@@ -94,7 +113,7 @@ Supabase는 열쇠를 2종류로 나눠줍니다.
 처음에 `SUPABASE_URL`에 `/rest/v1/`이라는 부분까지 같이 적혀 있어서 접속이 실패했습니다. 이 부분은 프로그램이 자동으로 덧붙이는 부분이라, `.env`에는 순수 주소(`https://xxxx.supabase.co`)만 적어야 합니다. 이걸 지우고 나니 정상 접속됐습니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [docs/schema.sql](schema.sql) (신규 작성, Supabase에 실제 실행됨)
+- [docs/schema.sql](../schema.sql) (신규 작성, Supabase에 실제 실행됨)
 - `.env` (`SUPABASE_URL`, `SUPABASE_KEY` 값 채움 — 이 파일은 깃에 없음)
 - Supabase 프로젝트 안에 실제 표 5개 생성됨(코드 파일이 아니라 외부 서비스 안의 변화)
 
@@ -103,7 +122,7 @@ Supabase는 열쇠를 2종류로 나눠줍니다.
 ## 3단계 — `db.py` (데이터베이스와 대화하는 창구 만들기)
 
 ### 우리가 한 일
-1. [db.py](../db.py) 파일에 "Supabase와 주고받는 모든 대화"를 함수 단위로 정리
+1. [db.py](../../db.py) 파일에 "Supabase와 주고받는 모든 대화"를 함수 단위로 정리
 2. 실제 데이터를 넣었다 빼면서(스모크 테스트) 함수들이 진짜로 작동하는지 확인
 3. 테스트에 쓴 가짜 데이터를 다시 삭제해서 표를 깨끗한 상태로 되돌림
 
@@ -129,7 +148,7 @@ Supabase는 열쇠를 2종류로 나눠줍니다.
 
 ### 실제 코드 함께 보기
 
-아래는 [db.py](../db.py)에 실제로 들어있는 코드입니다. 코드 안의 `#`으로 시작하는 줄은 "주석"이라고 부르는데, 프로그램이 실행할 때는 무시되고 오직 사람이 읽으라고 남겨둔 설명글입니다. 함수별로 어떤 일을 하는지 주석과 함께 보면, 앞서 말로 풀어쓴 설명이 코드의 어느 줄에 대응하는지 알 수 있습니다.
+아래는 [db.py](../../db.py)에 실제로 들어있는 코드입니다. 코드 안의 `#`으로 시작하는 줄은 "주석"이라고 부르는데, 프로그램이 실행할 때는 무시되고 오직 사람이 읽으라고 남겨둔 설명글입니다. 함수별로 어떤 일을 하는지 주석과 함께 보면, 앞서 말로 풀어쓴 설명이 코드의 어느 줄에 대응하는지 알 수 있습니다.
 
 **로그인 시도 기록 (log_attempt, count_recent_failures, list_recent_attempts)**
 ```python
@@ -259,7 +278,7 @@ def verify_user_credentials(username: str, password: str) -> bool:
 `if ... return False` 처럼 "만약 ~라면, 여기서 함수를 끝내고 False를 돌려줘라"는 문장이 코드 곳곳에 반복되는데, 이게 바로 "중복 아이디면 가입 거부", "가입 안 한 아이디면 로그인 거부" 같은 규칙이 실제 코드로 옮겨진 모습입니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [db.py](../db.py) (신규 작성 — 13개 함수)
+- [db.py](../../db.py) (신규 작성 — 13개 함수)
 - Supabase 표 데이터는 테스트 후 전부 원상 복구(0건)되어 실제로는 코드 파일만 변경됨
 
 ---
@@ -267,9 +286,9 @@ def verify_user_credentials(username: str, password: str) -> bool:
 ## 4단계 — `detector.py` / `soar.py` / `alert.py` (판정 → 조치 → 알림)
 
 ### 우리가 한 일
-1. [detector.py](../detector.py) — "지금 이 IP가 수상한가? 지금 잠겨있는가?"만 **판단**하는 파일
-2. [soar.py](../soar.py) — 판단 결과를 받아서 실제로 **잠그고, 알림을 보내고, 풀어주는 실행** 파일
-3. [alert.py](../alert.py) — Slack으로 **메시지를 실제로 전송**하는 파일
+1. [detector.py](../../detector.py) — "지금 이 IP가 수상한가? 지금 잠겨있는가?"만 **판단**하는 파일
+2. [soar.py](../../soar.py) — 판단 결과를 받아서 실제로 **잠그고, 알림을 보내고, 풀어주는 실행** 파일
+3. [alert.py](../../alert.py) — Slack으로 **메시지를 실제로 전송**하는 파일
 4. 세 파일을 실제 데이터로 이어붙여서(수상 판정 → 잠금 → 알림 → 수동 해제) 전체 흐름이 맞물려 돌아가는지 확인
 
 ### 왜 했는가 (쉬운 설명)
@@ -304,7 +323,7 @@ def verify_user_credentials(username: str, password: str) -> bool:
 
 ### 실제 코드 함께 보기
 
-**[detector.py](../detector.py) 전체 — "판사"는 코드도 짧습니다 (딱 2개 함수, 아무것도 저장하지 않음)**
+**[detector.py](../../detector.py) 전체 — "판사"는 코드도 짧습니다 (딱 2개 함수, 아무것도 저장하지 않음)**
 ```python
 import db
 from config import FAILURE_THRESHOLD
@@ -330,7 +349,7 @@ def is_locked(ip: str) -> bool:
 ```
 `failure_count > FAILURE_THRESHOLD`는 "실패 횟수가 기준치보다 크다"는 부등호 비교를 그대로 코드로 옮긴 것입니다. 이 한 줄이 "5번까지는 봐주고, 6번째부터 수상하다고 판단한다"는 규칙 전체를 담당합니다 — `config.py`에서 `FAILURE_THRESHOLD` 값만 바꾸면 이 규칙도 자동으로 같이 바뀝니다(1단계에서 설명한 "숫자를 한 곳에 모아두는" 설계가 여기서 실제로 힘을 발휘하는 지점입니다).
 
-**[soar.py](../soar.py) 전체 — 판정 결과를 실제 조치로 옮기는 3개 함수**
+**[soar.py](../../soar.py) 전체 — 판정 결과를 실제 조치로 옮기는 3개 함수**
 ```python
 from datetime import datetime, timezone
 
@@ -373,7 +392,7 @@ def manual_release(ip: str) -> bool:
 ```
 `for lockout in db.list_expired_active_lockouts():` 부분은 "만료된 잠금 목록을 하나씩 꺼내면서, 그때마다 아래 줄(`db.release_lockout(...)`)을 반복 실행해라"는 뜻의 "반복문"입니다. 목록에 3개가 들어있으면 3번, 0개면 0번(즉 아무 일도 안 함) 실행됩니다.
 
-**[alert.py](../alert.py) 전체 — Slack에 실제로 메시지를 보내는 함수 1개**
+**[alert.py](../../alert.py) 전체 — Slack에 실제로 메시지를 보내는 함수 1개**
 ```python
 def send_lockout_alert(ip: str, failure_count: int, locked_at: datetime) -> None:
     minutes = config.LOCKOUT_DURATION_SECONDS // 60
@@ -405,9 +424,9 @@ def send_lockout_alert(ip: str, failure_count: int, locked_at: datetime) -> None
 `try:` ~ `except requests.RequestException as e:` 부분이 "일단 시도해보고(try), 만약 도중에 문제(네트워크 오류 등)가 생기면(except) 프로그램이 멈추지 않고 이 블록 안의 코드로 넘어가라"는 안전장치입니다. 한국어로 풀면 "Slack에 메시지 보내기를 시도하되, 혹시 실패하면 에러로 프로그램을 죽이지 말고 그냥 콘솔에 '실패했다'고만 적고 넘어가라"는 뜻입니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [detector.py](../detector.py) (신규 작성 — 판정 함수 2개)
-- [soar.py](../soar.py) (신규 작성 — 조치 함수 3개)
-- [alert.py](../alert.py) (신규 작성 — Slack 알림 함수 1개)
+- [detector.py](../../detector.py) (신규 작성 — 판정 함수 2개)
+- [soar.py](../../soar.py) (신규 작성 — 조치 함수 3개)
+- [alert.py](../../alert.py) (신규 작성 — Slack 알림 함수 1개)
 - Supabase 표 데이터는 테스트 후 전부 원상 복구(0건)
 
 ---
@@ -415,7 +434,7 @@ def send_lockout_alert(ip: str, failure_count: int, locked_at: datetime) -> None
 ## 5단계 — `app.py` (모든 부품을 실제 웹사이트로 엮는 "정문")
 
 ### 우리가 한 일
-1. [app.py](../app.py)에 지금까지 만든 부품(db, detector, soar, alert)을 실제 화면 주소(URL)와 연결
+1. [app.py](../../app.py)에 지금까지 만든 부품(db, detector, soar, alert)을 실제 화면 주소(URL)와 연결
 2. `.env`에 남아있던 값들(`SECRET_KEY`, 관리자 아이디/비밀번호)을 채워넣음
 3. 서버를 실제로 켜서, 회원가입 → 로그인 → 브루트포스 잠금 → 관리자 대시보드 → 수동 해제 → 로그아웃까지 전체 흐름을 브라우저로 직접 눌러보며 검증
 
@@ -536,8 +555,8 @@ def login_submit():
 콘솔 알림 메시지가 로그에 바로 안 보이는 문제가 있었는데, 이는 파이썬이 화면 출력을 잠깐 모아뒀다가 한꺼번에 내보내는 "버퍼링" 때문이었습니다. `print(..., flush=True)`로 바꿔서 메시지가 지연 없이 즉시 출력되도록 고쳤습니다(4단계에서 만든 파일을 5단계 테스트 중 개선한 사례).
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [app.py](../app.py) (신규 작성 — 라우트 11개 + 문지기 함수 1개)
-- [alert.py](../alert.py) (콘솔 출력에 `flush=True` 추가)
+- [app.py](../../app.py) (신규 작성 — 라우트 11개 + 문지기 함수 1개)
+- [alert.py](../../alert.py) (콘솔 출력에 `flush=True` 추가)
 - `.env` (`SECRET_KEY`, `ADMIN_USERNAME`, `ADMIN_PASSWORD` 값 채움)
 - `.claude/launch.json` (신규 — 브라우저 미리보기로 서버를 켜기 위한 설정)
 - Supabase에 실제 관리자 계정(`soung1009`) 1명 생성됨, 테스트용 데이터는 확인 후 정리
@@ -547,9 +566,9 @@ def login_submit():
 ## 6단계 — 화면(템플릿/스타일/스크립트) 만들기
 
 ### 우리가 한 일
-1. [templates/login.html](../templates/login.html), [signup.html](../templates/signup.html), [admin_login.html](../templates/admin_login.html), [dashboard.html](../templates/dashboard.html) — 4개 화면의 HTML
-2. [static/css/auth.css](../public/css/auth.css), [static/css/dashboard.css](../public/css/dashboard.css) — 화면 스타일
-3. [static/js/dashboard.js](../public/js/dashboard.js) — 대시보드를 실시간으로 갱신시키는 자바스크립트
+1. [templates/login.html](../../templates/login.html), [signup.html](../../templates/signup.html), [admin_login.html](../../templates/admin_login.html), [dashboard.html](../../templates/dashboard.html) — 4개 화면의 HTML
+2. [static/css/auth.css](../../public/css/auth.css), [static/css/dashboard.css](../../public/css/dashboard.css) — 화면 스타일
+3. [static/js/dashboard.js](../../public/js/dashboard.js) — 대시보드를 실시간으로 갱신시키는 자바스크립트
 
 ### 왜 했는가 (쉬운 설명)
 
@@ -631,9 +650,9 @@ document.getElementById("lockout-list").addEventListener("click", (event) => {
 `app.py`의 `flash("잠긴 계정입니다...")`처럼 서버가 남겨둔 메시지를, 이 부분이 화면에 노란 박스로 꺼내 보여줍니다. 실제로 브루트포스 테스트 중 "잠긴 계정입니다" 문구가 정확히 이 코드를 통해 화면에 나타나는 것을 확인했습니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [templates/login.html](../templates/login.html), [templates/signup.html](../templates/signup.html), [templates/admin_login.html](../templates/admin_login.html), [templates/dashboard.html](../templates/dashboard.html) (신규 작성)
-- [static/css/auth.css](../public/css/auth.css), [static/css/dashboard.css](../public/css/dashboard.css) (신규 작성)
-- [static/js/dashboard.js](../public/js/dashboard.js) (신규 작성)
+- [templates/login.html](../../templates/login.html), [templates/signup.html](../../templates/signup.html), [templates/admin_login.html](../../templates/admin_login.html), [templates/dashboard.html](../../templates/dashboard.html) (신규 작성)
+- [static/css/auth.css](../../public/css/auth.css), [static/css/dashboard.css](../../public/css/dashboard.css) (신규 작성)
+- [static/js/dashboard.js](../../public/js/dashboard.js) (신규 작성)
 - 브라우저로 전체 화면 흐름(회원가입~로그아웃)을 직접 클릭하며 검증 완료
 
 ---
@@ -684,8 +703,8 @@ alert.send_lockout_alert('203.0.113.50', 6, datetime.now(timezone.utc))
 
 ### 이 단계에서 만들어지거나 바뀐 파일
 - `.env` (`SLACK_WEBHOOK_URL`에 실제 웹훅 주소 채움)
-- [app.py](../app.py) (`PORT` 환경변수를 지원하도록 서버 시작 부분 수정)
-- [.claude/launch.json](../.claude/launch.json) (`autoPort` 옵션 추가)
+- [app.py](../../app.py) (`PORT` 환경변수를 지원하도록 서버 시작 부분 수정)
+- [.claude/launch.json](../../.claude/launch.json) (`autoPort` 옵션 추가)
 - Slack 채널에 실제 알림 메시지 3건 전송 확인, 테스트 데이터는 정리
 
 ---
@@ -693,7 +712,7 @@ alert.send_lockout_alert('203.0.113.50', 6, datetime.now(timezone.utc))
 ## 8단계 — pytest 단위 테스트 (진짜 서버 없이 코드만 자동으로 검증하기)
 
 ### 우리가 한 일
-1. [tests/test_config.py](../tests/test_config.py), [tests/test_detector.py](../tests/test_detector.py), [tests/test_soar.py](../tests/test_soar.py), [tests/test_db.py](../tests/test_db.py) 4개 파일에 총 16개의 테스트 작성
+1. [tests/test_config.py](../../tests/test_config.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_soar.py](../../tests/test_soar.py), [tests/test_db.py](../../tests/test_db.py) 4개 파일에 총 16개의 테스트 작성
 2. `pytest` 명령 한 번으로 16개를 전부 자동 실행 → 전부 통과 확인
 3. 회귀 테스트가 진짜로 실수를 잡아내는지 보여주기 위해, `config.py`의 숫자를 일부러 하나 틀리게 바꿔서 테스트가 실패하는 것까지 확인한 뒤 원상 복구
 
@@ -788,8 +807,8 @@ E   assert 6 == 5
 정확히 "5여야 하는데 6이다"라고 콕 짚어 실패를 알려줬습니다. 값을 다시 5로 되돌리자 16개 테스트가 전부 통과했습니다. 이게 바로 회귀 테스트의 존재 이유입니다 — 사람이 매번 눈으로 `config.py`를 들여다보지 않아도, 실수를 즉시, 자동으로 잡아낼 수 있습니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [tests/test_config.py](../tests/test_config.py), [tests/test_detector.py](../tests/test_detector.py), [tests/test_soar.py](../tests/test_soar.py) (기존 빈 뼈대 파일에 내용 작성)
-- [tests/test_db.py](../tests/test_db.py) (신규 작성)
+- [tests/test_config.py](../../tests/test_config.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_soar.py](../../tests/test_soar.py) (기존 빈 뼈대 파일에 내용 작성)
+- [tests/test_db.py](../../tests/test_db.py) (신규 작성)
 - `pytest tests/` 실행 결과 16개 테스트 전부 통과, 실제 Supabase 데이터는 전혀 건드리지 않음
 
 ---
@@ -807,7 +826,7 @@ E   assert 6 == 5
 Supabase 같은 외부 서비스는 무료로 봐주는 사용량에 한도를 둡니다. 이 프로젝트가 쓰는 무료 요금제는 한 달에 API 요청 약 5만 건까지만 무료입니다. 이 한도를 넘기면 서비스가 막히거나 유료 결제가 필요해집니다. 마치 통신사의 "무료 데이터 5GB"와 비슷한 개념입니다 — 다 쓰면 느려지거나 추가 요금이 붙는 것처럼요.
 
 **왜 우리 프로젝트가 이 한도에 걸릴 위험이 있었나?**
-대시보드([dashboard.js](../public/js/dashboard.js))는 화면이 열려있는 동안 계속 `/api/status`를 자동으로 반복 호출합니다. 그런데 `/api/status` 한 번을 처리할 때마다 서버([app.py](../app.py))는 Supabase에 **4번** 따로 요청을 보냅니다(만료 잠금 정리 1번 + 최근 로그인 시도 조회 1번 + 현재 잠금 목록 조회 1번 + 관리자 로그인 기록 조회 1번). 대시보드를 오래 켜놓을수록 이 요청이 계속 쌓이기 때문에, "이걸 그냥 계속 켜놔도 괜찮은가?"를 실제로 재봐야 했습니다.
+대시보드([dashboard.js](../../public/js/dashboard.js))는 화면이 열려있는 동안 계속 `/api/status`를 자동으로 반복 호출합니다. 그런데 `/api/status` 한 번을 처리할 때마다 서버([app.py](../../app.py))는 Supabase에 **4번** 따로 요청을 보냅니다(만료 잠금 정리 1번 + 최근 로그인 시도 조회 1번 + 현재 잠금 목록 조회 1번 + 관리자 로그인 기록 조회 1번). 대시보드를 오래 켜놓을수록 이 요청이 계속 쌓이기 때문에, "이걸 그냥 계속 켜놔도 괜찮은가?"를 실제로 재봐야 했습니다.
 
 **측정하면서 발견한 뜻밖의 사실 — "브라우저 탭 스로틀링(throttling)"**
 2.5분 동안 실제로 재보니, 원래 2.5초 간격이면 나와야 할 약 73번보다 훨씬 적은 26번만 발생했습니다. 이건 코드 버그가 아니라, **브라우저가 화면에 보이지 않는(백그라운드) 탭의 타이머 실행 속도를 자동으로 늦추는 절전 기능** 때문이었습니다. 사람이 실수로 대시보드 탭을 다른 창 뒤에 방치해두면 오히려 요청이 줄어드는 셈입니다. 하지만 관리자가 실제로 화면을 보면서 작업 중이라면(탭이 활성 상태) 원래 설정한 간격 그대로 동작하므로, 안전하게 계산할 때는 "최선의 경우"가 아니라 "관리자가 계속 지켜보고 있는 최악의 경우"를 기준으로 삼아야 합니다.
@@ -850,7 +869,7 @@ setInterval(fetchStatus, 10000); // 10초마다
 10초는 "평소 개발/데모 중 오래 켜놔도 쿼터가 안전한" 값으로 정한 것이지, 절대 바꾸면 안 되는 고정값이 아닙니다. **실제 시연(데모) 당일처럼 "화면 반응이 빠르게 보이는 게 더 중요한 짧은 시간 동안"**은 오히려 주기를 짧게 줄이는 게 낫습니다 — 시연은 보통 몇 분 안에 끝나기 때문에, 그 짧은 시간 동안은 쿼터를 걱정할 필요가 거의 없습니다.
 
 **바꾸는 방법 (매우 간단합니다)**
-1. [static/js/dashboard.js](../public/js/dashboard.js) 파일을 엽니다.
+1. [static/js/dashboard.js](../../public/js/dashboard.js) 파일을 엽니다.
 2. 맨 아래쪽 `setInterval(fetchStatus, 10000);` 줄을 찾습니다.
 3. 괄호 안의 숫자(밀리초 단위 — 1000이 1초)만 원하는 값으로 바꿉니다. 예를 들어 시연 중 "즉각 반응하는 것처럼" 보이게 하려면:
    ```javascript
@@ -864,7 +883,7 @@ setInterval(fetchStatus, 10000); // 10초마다
 - 팀원 여러 명이 각자 다른 값으로 테스트하고 있다면, 시연 전에 "지금 몇 초로 되어 있는지" 서로 확인하고 맞추는 게 좋습니다 — 이 값은 `.env`가 아니라 코드(`dashboard.js`) 안에 직접 적혀 있어서, 깃에 커밋하면 팀원 전체에게 그대로 반영됩니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [static/js/dashboard.js](../public/js/dashboard.js) (폴링 주기 2.5초 → 10초로 변경, 이후 10단계에서 `public/js/dashboard.js`로 폴더명이 바뀜)
+- [static/js/dashboard.js](../../public/js/dashboard.js) (폴링 주기 2.5초 → 10초로 변경, 이후 10단계에서 `public/js/dashboard.js`로 폴더명이 바뀜)
 - 새 파일을 만드는 단계는 아니었지만, "실측 → 계산 → 근거 있는 설계 변경"으로 이어진 사례
 
 ---
@@ -873,7 +892,7 @@ setInterval(fetchStatus, 10000); // 10초마다
 
 ### 우리가 한 일
 1. `static/` 폴더 이름을 `public/`으로 바꿈 (Vercel이 정적 파일을 찾는 규칙에 맞춤)
-2. [app.py](../app.py)의 Flask 앱 생성 코드를 한 줄 수정해서, 템플릿 코드는 전혀 안 고치고도 로컬 개발 환경과 Vercel 배포 환경이 똑같은 주소 구조를 쓰게 만듦
+2. [app.py](../../app.py)의 Flask 앱 생성 코드를 한 줄 수정해서, 템플릿 코드는 전혀 안 고치고도 로컬 개발 환경과 Vercel 배포 환경이 똑같은 주소 구조를 쓰게 만듦
 3. 로컬 서버(자동 테스트 + 실제 브라우저)로 화면이 안 깨지는지 확인
 4. 실제 배포는 Vercel 계정 로그인이 필요해 사용자가 직접 진행 (아래 "배포 단계" 참고)
 
@@ -958,8 +977,8 @@ def index():
 `redirect(url_for("login"))`은 "화면을 직접 그리지 말고, 브라우저에게 '/login으로 다시 가봐'라고 알려줘라"는 뜻입니다. 브라우저는 이 안내를 받으면 자동으로 `/login`에 새 요청을 보내고, 사용자 눈에는 그냥 로그인 화면이 바로 뜨는 것처럼 보입니다. 코드 한 줄로 해결되는 문제였고, 실제로 재배포 후 도메인 주소만 입력해도 정상적으로 로그인 화면이 뜨는 것까지 확인했습니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- `static/` → [public/](../public/) 폴더 이름 변경 (내용은 그대로, 파일 3개)
-- [app.py](../app.py) (`Flask()` 생성 옵션에 `static_folder`/`static_url_path` 추가, `/` 라우트 1개 추가)
+- `static/` → [public/](../../public/) 폴더 이름 변경 (내용은 그대로, 파일 3개)
+- [app.py](../../app.py) (`Flask()` 생성 옵션에 `static_folder`/`static_url_path` 추가, `/` 라우트 1개 추가)
 - 템플릿 파일들은 **변경 없음** (설정만으로 해결됨)
 - Vercel에 실제 배포 완료: `https://login-watchdog.vercel.app`
 
@@ -969,7 +988,7 @@ def index():
 
 ### 우리가 한 일
 1. `/login`(일반 계정) 화면 제목에서 "(감시 대상)"이라는 문구 제거
-2. `login.html`과 `admin_login.html` 두 파일을 [templates/login_form.html](../templates/login_form.html) 하나로 합침
+2. `login.html`과 `admin_login.html` 두 파일을 [templates/login_form.html](../../templates/login_form.html) 하나로 합침
 3. 실제 인증 로직(어느 표와 비교하는지, IP 잠금이 적용되는지)은 **전혀 건드리지 않고** 그대로 유지
 
 ### 왜 이렇게 했는가 (쉬운 설명)
@@ -980,7 +999,7 @@ def index():
 그래서 "화면 생김새만 완전히 똑같게 하고, 뒤에서 처리하는 로직(어느 라우트가 받는지, 어느 표와 비교하는지)은 그대로 분리해서 유지"하는 방식으로 절충했습니다 — 방문자 입장에서는 두 로그인 화면을 구분할 수 없지만, 서버 안에서는 여전히 완전히 다른 두 갈래 길로 처리됩니다.
 
 **"화면 파일을 하나로 합친다"는 게 왜 중요한가**
-예전에는 `login.html`과 `admin_login.html`이 거의 똑같은 내용을 각자 따로 갖고 있었습니다. 이렇게 파일이 두 벌로 나뉘어 있으면, 나중에 디자인을 하나만 고치고 다른 하나를 깜빡 잊는 실수가 생기기 쉽습니다(예: 버튼 색은 바꿨는데 한쪽 파일만 놓치는 식). 그래서 아예 파일을 [login_form.html](../templates/login_form.html) 하나로 합치고, "이 폼을 어디로 제출할지"(`form_action`)만 파이썬 쪽에서 다르게 넘겨주는 방식으로 바꿨습니다. 이러면 두 화면이 "우연히 똑같다"가 아니라 "구조적으로 항상 똑같을 수밖에 없다"가 됩니다.
+예전에는 `login.html`과 `admin_login.html`이 거의 똑같은 내용을 각자 따로 갖고 있었습니다. 이렇게 파일이 두 벌로 나뉘어 있으면, 나중에 디자인을 하나만 고치고 다른 하나를 깜빡 잊는 실수가 생기기 쉽습니다(예: 버튼 색은 바꿨는데 한쪽 파일만 놓치는 식). 그래서 아예 파일을 [login_form.html](../../templates/login_form.html) 하나로 합치고, "이 폼을 어디로 제출할지"(`form_action`)만 파이썬 쪽에서 다르게 넘겨주는 방식으로 바꿨습니다. 이러면 두 화면이 "우연히 똑같다"가 아니라 "구조적으로 항상 똑같을 수밖에 없다"가 됩니다.
 
 ### 실제 코드 함께 보기
 
@@ -1017,9 +1036,9 @@ def admin_login():
 딱 이 한 줄(제출 주소)만 다르고 나머지는 100% 동일하다는 것을 확인했습니다. 브라우저로 직접 두 화면을 열어봐도 "로그인"이라는 제목과 "아이디"/"비밀번호" 문구까지 완전히 똑같이 보이는 것도 확인했습니다. `pytest tests/`도 16개 그대로 통과해서, 판정 로직(누가 잠기고 안 잠기는지)에는 전혀 손대지 않았다는 것도 재확인했습니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [templates/login_form.html](../templates/login_form.html) (신규 — `login.html` + `admin_login.html`을 대체)
+- [templates/login_form.html](../../templates/login_form.html) (신규 — `login.html` + `admin_login.html`을 대체)
 - `templates/login.html`, `templates/admin_login.html` (삭제 — `login_form.html`로 통합됨)
-- [app.py](../app.py) (`login()`, `login_submit()`, `admin_login()`, `admin_login_submit()`이 공유 템플릿을 쓰도록 수정 — 인증 로직 자체는 변경 없음)
+- [app.py](../../app.py) (`login()`, `login_submit()`, `admin_login()`, `admin_login_submit()`이 공유 템플릿을 쓰도록 수정 — 인증 로직 자체는 변경 없음)
 
 ---
 
@@ -1027,7 +1046,7 @@ def admin_login():
 
 ### 우리가 한 일
 1. Supabase에 `app_settings`라는 표를 하나 새로 추가 (딱 1행만 쓰는 "전역 설정" 표)
-2. [db.py](../db.py)에 `list_users`, `delete_user`, `get_signup_enabled`, `set_signup_enabled` 4개 함수 추가
+2. [db.py](../../db.py)에 `list_users`, `delete_user`, `get_signup_enabled`, `set_signup_enabled` 4개 함수 추가
 3. 대시보드에 "등록된 회원" 목록(삭제 버튼 포함)과 "회원가입 설정"(켜기/끄기 토글) 두 섹션 추가
 4. `/signup` 화면이 회원가입이 꺼져있을 때는 폼 대신 안내 문구만 보여주도록 수정
 5. 새 기능들을 실제로 브라우저와 자동 테스트로 검증하고, 도중에 발견한 실수 하나를 바로 고침
@@ -1102,14 +1121,14 @@ async function deleteUser(userId, username) {
 **테스트 중 발견해서 바로 고친 실수**: `signup.html`에 새로 추가한 HTML 주석 안에 `{% if %}`라는 글자를 실제 예시처럼 그대로 적어놨는데, Jinja2가 이걸 "진짜 조건문 태그"로 착각해서 화면이 아예 안 뜨는 오류가 났습니다(6단계에서 `login.html`을 만들 때 겪었던 것과 정확히 같은 종류의 실수를 이번에 또 저질렀습니다). HTML 주석 안에서는 Jinja 문법을 예시로 보여줄 때 `{{`, `{%` 같은 기호를 그대로 쓰면 안 되고, "조건문"처럼 말로 풀어 써야 안전하다는 걸 다시 한번 확인했습니다. 실제 화면(브라우저 스크린샷)으로 확인하는 절차가 없었다면 이 오류를 놓치고 지나갔을 수도 있습니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [docs/schema.sql](schema.sql) (`app_settings` 표 추가, Supabase에 실제 실행됨)
-- [db.py](../db.py) (`list_users`, `delete_user`, `get_signup_enabled`, `set_signup_enabled` 4개 함수 추가)
-- [app.py](../app.py) (`/signup` GET·POST에 On/Off 검사 추가, `/api/status`에 `users`·`signup_enabled` 포함, `/api/users/delete`·`/api/settings/signup` 라우트 신규 추가)
-- [templates/dashboard.html](../templates/dashboard.html) ("회원가입 설정", "등록된 회원" 섹션 추가)
-- [templates/signup.html](../templates/signup.html) (회원가입 꺼짐 상태일 때의 안내 문구 추가)
-- [public/js/dashboard.js](../public/js/dashboard.js) (`renderUsersTable`, `renderSignupStatus`, `deleteUser`, `toggleSignup` 추가)
-- [public/css/dashboard.css](../public/css/dashboard.css), [public/css/auth.css](../public/css/auth.css) (새 버튼/안내 문구 스타일 추가)
-- [tests/test_db.py](../tests/test_db.py) (새 함수 4개에 대한 단위 테스트 7개 추가, 총 22개 통과)
+- [docs/schema.sql](../schema.sql) (`app_settings` 표 추가, Supabase에 실제 실행됨)
+- [db.py](../../db.py) (`list_users`, `delete_user`, `get_signup_enabled`, `set_signup_enabled` 4개 함수 추가)
+- [app.py](../../app.py) (`/signup` GET·POST에 On/Off 검사 추가, `/api/status`에 `users`·`signup_enabled` 포함, `/api/users/delete`·`/api/settings/signup` 라우트 신규 추가)
+- [templates/dashboard.html](../../templates/dashboard.html) ("회원가입 설정", "등록된 회원" 섹션 추가)
+- [templates/signup.html](../../templates/signup.html) (회원가입 꺼짐 상태일 때의 안내 문구 추가)
+- [public/js/dashboard.js](../../public/js/dashboard.js) (`renderUsersTable`, `renderSignupStatus`, `deleteUser`, `toggleSignup` 추가)
+- [public/css/dashboard.css](../../public/css/dashboard.css), [public/css/auth.css](../../public/css/auth.css) (새 버튼/안내 문구 스타일 추가)
+- [tests/test_db.py](../../tests/test_db.py) (새 함수 4개에 대한 단위 테스트 7개 추가, 총 22개 통과)
 
 ---
 
@@ -1120,7 +1139,7 @@ async function deleteUser(userId, username) {
 2. `/dashboard` 주소를 **회원 전용** 화면으로 새로 만듦 — 인사말 + "최근 로그인 기록" · "프로필 보기·수정" 두 버튼
 3. `users` 표에 `name`(표시 이름) 칸을 새로 추가
 4. `/login` 로그인 성공 시 이제 실제로 "로그인 상태"가 만들어지도록 회원용 세션을 도입 (예전엔 성공해도 그냥 메시지만 보여주고 끝이었음)
-5. [db.py](../db.py)에 `get_user_by_id`, `update_user_profile`, `list_attempts_by_username` 3개 함수 추가
+5. [db.py](../../db.py)에 `get_user_by_id`, `update_user_profile`, `list_attempts_by_username` 3개 함수 추가
 
 ### 왜 했는가 (쉬운 설명)
 
@@ -1219,13 +1238,13 @@ app.jinja_env.filters["kr_time"] = format_kr_time
 7. `pytest tests/` 27개 전부 통과 확인, 테스트 데이터는 확인 후 정리
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [docs/schema.sql](schema.sql) (`users` 표에 `name` 칸 추가, Supabase에는 `alter table`로 반영)
-- [db.py](../db.py) (`get_user_by_id`, `update_user_profile`, `list_attempts_by_username` 3개 함수 추가)
-- [app.py](../app.py) (`member_login_required` 신규, `/login` 성공 시 세션 생성, `/admin/dashboard`로 관리자 대시보드 이전, `/dashboard`·`/dashboard/history`·`/dashboard/profile`·`/dashboard/logout` 회원 라우트 신규, `kr_time` Jinja 필터 추가)
-- [templates/admin_dashboard.html](../templates/admin_dashboard.html) (`dashboard.html`에서 이름 변경 + 제목을 "관리자 대시보드"로 명확화)
-- [templates/member_dashboard.html](../templates/member_dashboard.html), [templates/member_history.html](../templates/member_history.html), [templates/member_profile.html](../templates/member_profile.html) (신규)
-- [public/css/member.css](../public/css/member.css) (신규 — 회원 화면 전용 스타일)
-- [tests/test_db.py](../tests/test_db.py) (새 함수 3개에 대한 단위 테스트 5개 추가, 총 27개 통과)
+- [docs/schema.sql](../schema.sql) (`users` 표에 `name` 칸 추가, Supabase에는 `alter table`로 반영)
+- [db.py](../../db.py) (`get_user_by_id`, `update_user_profile`, `list_attempts_by_username` 3개 함수 추가)
+- [app.py](../../app.py) (`member_login_required` 신규, `/login` 성공 시 세션 생성, `/admin/dashboard`로 관리자 대시보드 이전, `/dashboard`·`/dashboard/history`·`/dashboard/profile`·`/dashboard/logout` 회원 라우트 신규, `kr_time` Jinja 필터 추가)
+- [templates/admin_dashboard.html](../../templates/admin_dashboard.html) (`dashboard.html`에서 이름 변경 + 제목을 "관리자 대시보드"로 명확화)
+- [templates/member_dashboard.html](../../templates/member_dashboard.html), [templates/member_history.html](../../templates/member_history.html), [templates/member_profile.html](../../templates/member_profile.html) (신규)
+- [public/css/member.css](../../public/css/member.css) (신규 — 회원 화면 전용 스타일)
+- [tests/test_db.py](../../tests/test_db.py) (새 함수 3개에 대한 단위 테스트 5개 추가, 총 27개 통과)
 
 ### 실사용 중 발견한 버그 2개 수정
 
@@ -1272,9 +1291,9 @@ def _logout_missing_member():
 `member_login_required`(문지기)는 "세션에 값이 들어있는지"만 확인하지, 그 값이 가리키는 회원이 **지금도 실제로 존재하는지**는 확인하지 않습니다. 그래서 문지기를 통과한 뒤에도 각 화면이 한 번 더 실제 데이터를 확인하고, 없으면 이 함수로 안전하게 빠져나가도록 만들었습니다. 이 버그는 사용자가 요청한 내용에 포함되지 않았지만, 두 가지를 검증하는 과정에서 우연히 발견해서 함께 고쳤습니다.
 
 **버그 수정으로 추가·변경된 파일**
-- [public/css/member.css](../public/css/member.css) (`body`/`main`을 flex 기반 중앙 정렬로 변경)
-- [templates/member_dashboard.html](../templates/member_dashboard.html) (`username` → `display_name`으로 변경)
-- [app.py](../app.py) (`member_dashboard()`가 표시 이름을 반영하도록 수정, `_logout_missing_member()` 신규 + `member_dashboard()`·`member_profile()`에 적용)
+- [public/css/member.css](../../public/css/member.css) (`body`/`main`을 flex 기반 중앙 정렬로 변경)
+- [templates/member_dashboard.html](../../templates/member_dashboard.html) (`username` → `display_name`으로 변경)
+- [app.py](../../app.py) (`member_dashboard()`가 표시 이름을 반영하도록 수정, `_logout_missing_member()` 신규 + `member_dashboard()`·`member_profile()`에 적용)
 
 ---
 
@@ -1282,7 +1301,7 @@ def _logout_missing_member():
 
 ### 우리가 한 일
 1. Supabase에 `ip_locations`라는 "IP 위치 조회 결과 캐시" 표를 새로 추가
-2. [geoip.py](../geoip.py)라는 새 파일을 만들어 ip-api.com(무료 IP 위치 조회 서비스)과의 통신을 전담시킴
+2. [geoip.py](../../geoip.py)라는 새 파일을 만들어 ip-api.com(무료 IP 위치 조회 서비스)과의 통신을 전담시킴
 3. 회원 본인의 로그인 기록(`/dashboard/history`), 관리자 대시보드의 "최근 로그인 시도" 표 양쪽에 **위치** 칸 추가
 
 ### 왜 했는가 (쉬운 설명)
@@ -1340,11 +1359,11 @@ def _attach_locations(attempts: list[dict]) -> list[dict]:
 4. `pytest tests/` 36개 전부 통과 확인(신규 10개: `test_db.py` 4개 + `test_geoip.py` 6개), 테스트에 쓴 캐시 데이터는 확인 후 정리
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [docs/schema.sql](schema.sql) (`ip_locations` 표 추가, Supabase에 실제 실행됨)
-- [geoip.py](../geoip.py) (신규 — ip-api.com 연동 전담 파일)
-- [db.py](../db.py) (`get_cached_ip_locations`, `save_ip_location` 2개 함수 추가)
-- [app.py](../app.py) (`_attach_locations()` 신규, `member_history()`·`api_status()`에 적용)
-- [templates/member_history.html](../templates/member_history.html), [templates/admin_dashboard.html](../templates/admin_dashboard.html) (위치 칸 추가)
-- [public/js/dashboard.js](../public/js/dashboard.js) (`renderAttemptsTable`에 위치 칸 추가)
-- [public/css/member.css](../public/css/member.css) (표가 카드보다 넓어질 경우를 위한 가로 스크롤 처리 추가)
-- [tests/test_geoip.py](../tests/test_geoip.py) (신규 — 캐시 활용 여부, 문자열 조립 검증), [tests/test_db.py](../tests/test_db.py) (캐시 조회/저장 함수 테스트 추가)
+- [docs/schema.sql](../schema.sql) (`ip_locations` 표 추가, Supabase에 실제 실행됨)
+- [geoip.py](../../geoip.py) (신규 — ip-api.com 연동 전담 파일)
+- [db.py](../../db.py) (`get_cached_ip_locations`, `save_ip_location` 2개 함수 추가)
+- [app.py](../../app.py) (`_attach_locations()` 신규, `member_history()`·`api_status()`에 적용)
+- [templates/member_history.html](../../templates/member_history.html), [templates/admin_dashboard.html](../../templates/admin_dashboard.html) (위치 칸 추가)
+- [public/js/dashboard.js](../../public/js/dashboard.js) (`renderAttemptsTable`에 위치 칸 추가)
+- [public/css/member.css](../../public/css/member.css) (표가 카드보다 넓어질 경우를 위한 가로 스크롤 처리 추가)
+- [tests/test_geoip.py](../../tests/test_geoip.py) (신규 — 캐시 활용 여부, 문자열 조립 검증), [tests/test_db.py](../../tests/test_db.py) (캐시 조회/저장 함수 테스트 추가)
