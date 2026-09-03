@@ -16,11 +16,14 @@
 
 
 import os
+import re
 from datetime import datetime
 from functools import wraps
 
 from dotenv import load_dotenv
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
+from flask_wtf import CSRFProtect
+from flask_wtf.csrf import CSRFError
 
 # .env 파일에 적어둔 값(SUPABASE_URL, SECRET_KEY 등)을 파이썬이 읽을 수 있는
 # "환경변수"로 불러온다. 반드시 db 등 다른 모듈을 불러오기 "전에" 실행해야
@@ -44,6 +47,45 @@ app = Flask(__name__, static_folder="public", static_url_path="")
 # Flask가 로그인 상태를 기억하기 위해 사용하는 "세션 쿠키"에 서명(위조 방지)할 때
 # 쓰는 비밀 값. 이 값이 없으면 세션(로그인 유지) 기능 자체가 동작하지 않는다.
 app.secret_key = os.environ["SECRET_KEY"]
+
+# 세션 쿠키 보안 옵션 — 지금까지는 Flask 기본값에만 의존하고 있었다.
+# - SESSION_COOKIE_HTTPONLY: 브라우저의 자바스크립트(document.cookie)가 세션 쿠키를
+#   읽지 못하게 막는다. Flask 기본값도 True지만, "당연히 켜져 있겠지"에 기대지 않고
+#   명시적으로 적어둔다 — 나중에 누군가 실수로 끄더라도 이 줄을 보고 바로 알아챌 수 있다.
+# - SESSION_COOKIE_SAMESITE="Lax": 다른 사이트에 있는 폼/스크립트가 이 쿠키를 실어서
+#   요청을 보내는 걸 브라우저 차원에서 1차로 막아준다. CSRFProtect(토큰 검증)가
+#   메인 방어선이고, 이건 브라우저 레벨의 보조 방어선이다.
+# - SESSION_COOKIE_SECURE: HTTPS 연결에서만 쿠키를 전송하게 강제한다. 로컬 개발
+#   서버는 보통 HTTP(암호화 없음)로 뜨므로 로컬에서까지 켜두면 쿠키가 아예 전달되지
+#   않아 로그인이 깨진다 — 그래서 FLASK_ENV=production일 때만(Vercel 배포 환경) 켠다.
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") == "production"
+
+# CSRF(Cross-Site Request Forgery) 방어 — 이 프로젝트는 세션 쿠키로 로그인 상태를
+# 유지하는데, 브라우저는 같은 사이트로 가는 요청이면 쿠키를 자동으로 실어 보낸다.
+# 그래서 관리자가 로그인된 상태로 악성 페이지를 열면, 그 페이지가 눈에 안 보이는
+# 폼이나 fetch()로 /api/users/delete 같은 주소를 몰래 호출해도 브라우저가 알아서
+# 관리자의 세션 쿠키를 함께 보내버려 "관리자 본인이 요청한 것"처럼 서버가 착각한다.
+#
+# CSRFProtect(app)를 등록해두면, 폼(POST) 제출과 fetch() 요청 모두에 대해 이 서버가
+# 직접 발급한 csrf_token이 함께 왔는지 매번 검사한다. 악성 페이지는 이 토큰 값을
+# 알아낼 방법이 없으므로(다른 사이트가 이 사이트의 토큰을 읽을 수 없다), 위조된
+# 요청은 토큰이 없거나 틀려서 자동으로 거부된다.
+csrf = CSRFProtect(app)
+
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(error):
+    """CSRF 토큰이 없거나 틀렸을 때 Flask-WTF가 던지는 예외를 붙잡아 처리한다.
+
+    기본 동작(그냥 400 에러 페이지)도 안전하긴 하지만, 이 프로젝트의 다른 화면들과
+    똑같이 flash 메시지 + 로그인 화면으로 안내하는 편이 사용자 경험상 자연스럽다.
+    (세션이 너무 오래돼 토큰이 만료된 경우가 실제 사용자에게 가장 흔한 원인이다.)
+    """
+    flash("보안 토큰이 만료되었거나 올바르지 않습니다. 다시 시도해주세요.")
+    return redirect(request.referrer or url_for("login")), 400
+
 
 # 서버가 켜질 때 딱 한 번, 관리자 계정이 하나도 없으면 .env 값으로 자동 생성한다.
 # (회원가입 화면 없이 처음부터 관리자 1명이 존재하게 만드는 장치, db.py 3단계 참고)
@@ -159,6 +201,36 @@ def index():
 
 
 # ============================================================================
+# 회원가입 입력 검증 규칙
+#
+# 이전에는 "아이디/이메일/비밀번호 칸이 비어있지 않은지"만 확인하고 그대로
+# db.create_user()에 넘겼다. 그러면 두 가지 문제가 생긴다.
+# 1) 아이디에 아무 문자나 허용되므로 `<img src=x onerror=...>` 같은 값도 그대로
+#    저장된다 — 대시보드 쪽 escapeHtml()로 화면 출력은 막아뒀지만(6단계 XSS 수정
+#    참고),애초에 이런 값이 데이터베이스에 들어가는 것 자체를 막는 편이 더 안전한
+#    "심층 방어(defense in depth)"다.
+# 2) 이메일 형식이 아닌 문자열이나 아주 짧은 비밀번호도 그대로 가입돼버린다.
+#
+# 정규식(re) 패턴으로 "허용하는 모양"을 미리 정해두고, 그 모양에 안 맞으면
+# db.create_user()를 아예 호출하지 않고 바로 안내 메시지를 보여준다.
+# ============================================================================
+
+# 아이디: 영문자/숫자/밑줄(_)만 허용, 3~20자. `<`, `"`, 공백 같은 HTML/스크립트에
+# 쓰이는 특수문자는 애초에 통과하지 못한다.
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{3,20}$")
+
+# 이메일: "글자@글자.글자" 형태의 아주 기본적인 모양만 확인한다. 완벽한 RFC 5322
+# 검증은 아니지만(그런 정규식은 매우 복잡하다), "이메일처럼 안 생긴 값"을 걸러내는
+# 데는 충분하고, 실제 도달 가능 여부는 어차피 별도의 인증 메일 없이는 확인할 수 없다.
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+# 비밀번호 최소 길이. 복잡도(대소문자/특수문자 조합 강제)까지는 요구하지 않는다 —
+# 최근 보안 가이드라인(NIST 등)은 억지로 복잡한 조합을 강제하는 것보다 "충분히
+# 긴 비밀번호"를 권장하는 추세다.
+MIN_PASSWORD_LENGTH = 8
+
+
+# ============================================================================
 # 회원가입 (신규 확장 기능) — 감시 대상 /login에 실제로 로그인할 계정을 만드는 곳
 # ============================================================================
 
@@ -195,6 +267,18 @@ def signup_submit():
 
     if not username or not email or not password:
         flash("아이디, 이메일, 비밀번호를 모두 입력해주세요.")
+        return render_template("signup.html", signup_enabled=True)
+
+    if not USERNAME_PATTERN.match(username):
+        flash("아이디는 영문자, 숫자, 밑줄(_)만 사용해 3~20자로 입력해주세요.")
+        return render_template("signup.html", signup_enabled=True)
+
+    if not EMAIL_PATTERN.match(email):
+        flash("올바른 이메일 형식이 아닙니다.")
+        return render_template("signup.html", signup_enabled=True)
+
+    if len(password) < MIN_PASSWORD_LENGTH:
+        flash(f"비밀번호는 최소 {MIN_PASSWORD_LENGTH}자 이상이어야 합니다.")
         return render_template("signup.html", signup_enabled=True)
 
     if password != password_confirm:
@@ -532,5 +616,20 @@ if __name__ == "__main__":
     # (다른 파일이 이 파일을 import만 할 때는 서버가 자동으로 켜지지 않게 하는 관례).
     # PORT 환경변수가 있으면 그 포트를, 없으면 기본값 5000을 쓴다
     # (다른 프로그램이 이미 5000번을 쓰고 있을 때 충돌 없이 다른 포트로 띄우기 위함).
+    #
+    # debug=True를 항상 켜두면 위험하다: Flask 공식 문서가 명시하듯, 디버그 모드의
+    # 대화형 디버거는 브라우저에서 임의의 파이썬 코드를 실행할 수 있는 콘솔을
+    # 열어준다 — 개발 중에는 편리하지만, 이 상태로 운영 서버를 인터넷에 노출하면
+    # 방문자 누구나 서버에서 코드를 실행할 수 있는 심각한 취약점이 된다. 그래서
+    # FLASK_DEBUG 환경변수를 명시적으로 "true"로 켜둔 로컬 개발 환경에서만 켜지고,
+    # 기본값은 항상 꺼진(False) 상태로 시작한다.
+    #
+    # 또한 "python app.py"로 직접 띄우는 이 개발 서버는 로컬 실습/디버깅용이지
+    # 운영 배포용이 아니다(Flask 공식 문서가 프로덕션 사용을 금지함). 이 프로젝트가
+    # 실제로 배포되는 Vercel(10단계 참고)은 이 if 블록을 아예 거치지 않고 `app`
+    # 객체를 직접 서버리스 런타임으로 실행하므로 영향이 없지만, Vercel이 아닌
+    # 곳(자체 서버 등)에 운영 배포한다면 이 개발 서버 대신 gunicorn 같은 프로덕션
+    # WSGI 서버로 띄워야 한다 — 예: `gunicorn app:app --bind 0.0.0.0:5000`.
+    debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
     port = int(os.environ.get("PORT", 5000))
-    app.run(debug=True, port=port)
+    app.run(debug=debug, port=port)

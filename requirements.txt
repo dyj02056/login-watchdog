@@ -1,5 +1,7 @@
 flask
+flask-wtf
 supabase
 python-dotenv
 requests
 pytest
+gunicorn

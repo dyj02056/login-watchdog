@@ -1,0 +1,40 @@
+# ============================================================================
+# tests.yml — GitHub Actions로 pytest를 자동 실행하는 CI(지속적 통합) 워크플로우
+#
+# 지금까지는 "테스트를 통과했는지"를 개발자가 로컬에서 pytest를 직접 돌려봐야만
+# 알 수 있었다 — 누군가 깜빡하고 실행을 안 해본 채로 커밋/PR을 올리면, 망가진
+# 코드가 그대로 main 브랜치에 들어갈 수 있었다. 이 워크플로우를 추가하면 push나
+# PR이 생길 때마다 GitHub이 자동으로(사람 손을 거치지 않고) 깨끗한 가상 환경에서
+# pytest를 실행하고, 그 결과(성공/실패)를 PR 화면에 체크마크로 보여준다.
+#
+# 진짜 Supabase 자격 증명은 여기 전혀 필요 없다 — tests/conftest.py의 flask_app
+# fixture가 가짜 환경변수(SECRET_KEY 등)를 스스로 채워넣고 db.ensure_bootstrap_admin()도
+# 무력화해두었으므로(진짜 네트워크 접속 시도 자체가 없음), 이 워크플로우는 그냥
+# "pip install → pytest 실행"만 하면 된다.
+# ============================================================================
+
+name: pytest
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 저장소 코드 가져오기
+        uses: actions/checkout@v4
+
+      - name: 파이썬 설치
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: pytest 실행
+        run: pytest tests/ -v

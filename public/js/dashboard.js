@@ -18,6 +18,36 @@
 // 이 변수를 최신 값으로 갱신해둔다.
 let currentSignupEnabled = true;
 
+// admin_dashboard.html의 <meta name="csrf-token"> 태그에서 서버가 발급한 CSRF
+// 토큰 값을 읽어온다. 아래 unlockIp/deleteUser/toggleSignup이 fetch()로 서버
+// 상태를 바꾸는 POST 요청을 보낼 때마다 이 값을 X-CSRFToken 헤더에 실어 보내야,
+// 서버의 CSRFProtect가 "이 요청이 정말 이 화면에서 나왔다"고 확인해줄 수 있다
+// (CSRF 방어, app.py의 CSRFProtect 설명 참고).
+const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
+// escapeHtml(): 사용자가 입력한 값(아이디, 이메일 등)을 innerHTML로 화면에 꽂아넣기
+// 전에 반드시 거쳐야 하는 관문이다.
+//
+// 왜 필요한가: 회원가입 화면의 아이디/이메일 입력창에는 원래 글자 제한이 없었다.
+// 그래서 누군가 아이디를 `<img src=x onerror="fetch('/api/users/delete',...)">`
+// 같은 문자열로 등록하면, 그 값이 대시보드 표에 그대로 삽입되는 순간 브라우저가
+// 그걸 "진짜 HTML 태그"로 해석해서 실행해버린다 — 이게 바로 "Stored XSS"다.
+// 관리자가 대시보드를 열람하는 순간 관리자의 로그인 세션으로 임의의 API가
+// 호출될 수 있어서(IP 잠금 해제, 회원 삭제 등) 위험하다.
+//
+// 해결 방법: <, >, &, ", ' 같이 HTML에서 특별한 의미를 갖는 글자를 각각의
+// "문자 이름"(HTML 엔티티)으로 바꿔치기한다. 그러면 브라우저는 이 값을 더 이상
+// 태그로 해석하지 않고, 그냥 눈에 보이는 글자 그대로("<img..." 라는 텍스트)
+// 표시한다. 표 안에 넣을 값은 예외 없이 전부 이 함수를 거치도록 한다.
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+}
+
 /**
  * 서버에게 "지금 최신 상태가 어때?"라고 물어보고, 그 답으로 화면을 새로 그린다.
  *
@@ -60,10 +90,10 @@ function renderLockoutCards(lockouts) {
         .map(
             (lockout) => `
                 <div class="lockout-card">
-                    <div class="ip">${lockout.ip_address}</div>
+                    <div class="ip">${escapeHtml(lockout.ip_address)}</div>
                     <div>실패 ${lockout.failure_count}회</div>
                     <div>해제 예정: ${formatTime(lockout.unlock_at)}</div>
-                    <button data-ip="${lockout.ip_address}" class="unlock-btn">즉시 해제</button>
+                    <button data-ip="${escapeHtml(lockout.ip_address)}" class="unlock-btn">즉시 해제</button>
                 </div>
             `
         )
@@ -85,9 +115,9 @@ function renderAttemptsTable(attempts) {
             return `
                 <tr>
                     <td class="mono">${formatTime(attempt.attempted_at)}</td>
-                    <td class="mono">${attempt.ip_address}</td>
-                    <td>${attempt.location}</td>
-                    <td>${attempt.username}</td>
+                    <td class="mono">${escapeHtml(attempt.ip_address)}</td>
+                    <td>${escapeHtml(attempt.location)}</td>
+                    <td>${escapeHtml(attempt.username)}</td>
                     <td class="${resultClass}">${resultText}</td>
                 </tr>
             `;
@@ -108,8 +138,8 @@ function renderAdminLoginLog(log) {
             return `
                 <tr>
                     <td class="mono">${formatTime(entry.attempted_at)}</td>
-                    <td>${entry.username}</td>
-                    <td class="mono">${entry.ip_address}</td>
+                    <td>${escapeHtml(entry.username)}</td>
+                    <td class="mono">${escapeHtml(entry.ip_address)}</td>
                     <td class="${resultClass}">${resultText}</td>
                 </tr>
             `;
@@ -136,10 +166,10 @@ function renderUsersTable(users) {
             (user) => `
                 <tr>
                     <td class="mono">${formatTime(user.created_at)}</td>
-                    <td>${user.username}</td>
-                    <td>${user.email}</td>
+                    <td>${escapeHtml(user.username)}</td>
+                    <td>${escapeHtml(user.email)}</td>
                     <td>
-                        <button data-user-id="${user.id}" data-username="${user.username}" class="delete-user-btn">삭제</button>
+                        <button data-user-id="${user.id}" data-username="${escapeHtml(user.username)}" class="delete-user-btn">삭제</button>
                     </td>
                 </tr>
             `
@@ -167,10 +197,12 @@ function renderSignupStatus(enabled) {
 async function unlockIp(ip) {
     await fetch("/api/unlock", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
         // 브라우저는 같은 사이트로 요청을 보낼 때 로그인 세션 쿠키를 자동으로 함께
         // 보내주므로, 여기서 관리자 토큰 같은 걸 따로 넣지 않아도 서버가 "로그인된
         // 관리자의 요청"임을 알 수 있다(app.py의 login_required가 세션 쿠키로 확인).
+        // 다만 세션 쿠키만으로는 "이 요청이 진짜 이 화면에서 왔는지"까지는 보장하지
+        // 못하므로(CSRF), X-CSRFToken 헤더로 이 화면이 서버에게 받은 토큰을 함께 보낸다.
         body: JSON.stringify({ ip: ip }),
     });
     // 해제 요청이 끝나면 화면을 바로 한 번 더 갱신해서, 다음 폴링 주기를
@@ -195,7 +227,7 @@ async function deleteUser(userId, username) {
 
     await fetch("/api/users/delete", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
         body: JSON.stringify({ user_id: Number(userId) }),
     });
     fetchStatus();
@@ -207,7 +239,7 @@ async function deleteUser(userId, username) {
 async function toggleSignup() {
     await fetch("/api/settings/signup", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
         body: JSON.stringify({ enabled: !currentSignupEnabled }),
     });
     fetchStatus();

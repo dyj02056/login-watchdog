@@ -44,6 +44,10 @@ class _FakeQuery:
         self.calls.append(("neq", args, kwargs))
         return self
 
+    def gte(self, *args, **kwargs):
+        self.calls.append(("gte", args, kwargs))
+        return self
+
     def limit(self, *args, **kwargs):
         return self
 
@@ -215,6 +219,28 @@ def test_list_attempts_by_username_filters_by_username(monkeypatch):
 
     assert result == rows
     assert ("eq", ("username", "hyun"), {}) in fake_client.calls
+
+
+def test_list_attempts_since_filters_by_time_window(monkeypatch):
+    rows = [{"ip_address": "1.2.3.4", "username": "hyun", "success": False}]
+    fake_client = _FakeQuery(rows=rows)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.list_attempts_since(24)
+
+    assert result == rows
+    assert ("table", ("login_attempts",), {}) in fake_client.calls
+
+
+def test_list_lockouts_since_filters_by_time_window(monkeypatch):
+    rows = [{"ip_address": "9.9.9.9", "failure_count": 6}]
+    fake_client = _FakeQuery(rows=rows)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.list_lockouts_since(24)
+
+    assert result == rows
+    assert ("table", ("lockouts",), {}) in fake_client.calls
 
 
 def test_get_cached_ip_locations_returns_empty_dict_for_empty_input(monkeypatch):

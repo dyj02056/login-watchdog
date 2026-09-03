@@ -95,6 +95,42 @@ def list_recent_attempts(limit: int = 50) -> list[dict]:
     return res.data
 
 
+def list_attempts_since(hours: int = 24) -> list[dict]:
+    """지난 `hours`시간(기본 24시간) 동안의 로그인 시도 전체를 가져온다.
+
+    count_recent_failures()와 비슷한 "기준 시각 이후만" 패턴을 쓰지만, 특정
+    IP나 성공/실패로 좁히지 않고 전체를 가져온다는 점이 다르다 — scripts/
+    daily_report.py가 "오늘 하루 전체 통계"를 계산할 때 쓴다.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    res = (
+        get_client()
+        .table("login_attempts")
+        .select("*")
+        .gte("attempted_at", cutoff)
+        .execute()
+    )
+    return res.data
+
+
+def list_lockouts_since(hours: int = 24) -> list[dict]:
+    """지난 `hours`시간 동안 새로 걸린 잠금 전체를 가져온다 (현재 풀렸는지와 무관하게).
+
+    list_active_lockouts()는 "지금 이 순간 잠긴 것만" 보여주지만, 일일 리포트는
+    "오늘 하루 동안 몇 번이나 잠금이 발생했는지"가 궁금한 것이므로 active 여부로
+    거르지 않고 locked_at 기준으로만 걸러온다.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    res = (
+        get_client()
+        .table("lockouts")
+        .select("*")
+        .gte("locked_at", cutoff)
+        .execute()
+    )
+    return res.data
+
+
 def list_attempts_by_username(username: str, limit: int = 20) -> list[dict]:
     """특정 아이디의 로그인 시도 기록만 최신순으로 가져온다.
 
