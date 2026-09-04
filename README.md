@@ -80,6 +80,53 @@ python app.py
 | `/board/new` | 새 게시글 작성 (회원 로그인 필요) |
 | `/board/<id>` | 게시글 상세 · 댓글 (회원 로그인 필요) |
 
+## 화면 미리보기
+
+### 인증
+
+<table>
+<tr>
+<td align="center"><b>로그인</b><br>(관리자 로그인 <code>/admin/login</code>도 동일 화면 공유)</td>
+<td align="center"><b>회원가입</b></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/login.png" width="380"></td>
+<td><img src="docs/screenshots/signup.png" width="380"></td>
+</tr>
+</table>
+
+### 회원 대시보드
+
+<table>
+<tr>
+<td align="center"><b>대시보드</b></td>
+<td align="center"><b>로그인 기록</b></td>
+<td align="center"><b>프로필</b></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/member_dashboard.png" width="270"></td>
+<td><img src="docs/screenshots/member_history.png" width="270"></td>
+<td><img src="docs/screenshots/member_profile.png" width="270"></td>
+</tr>
+</table>
+
+### 게시판
+
+<table>
+<tr>
+<td align="center"><b>목록</b></td>
+<td align="center"><b>글쓰기</b></td>
+<td align="center"><b>상세 · 댓글</b></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/board_list.png" width="270"></td>
+<td><img src="docs/screenshots/board_new.png" width="270"></td>
+<td><img src="docs/screenshots/board_detail.png" width="270"></td>
+</tr>
+</table>
+
+> 관리자 대시보드(`/admin/dashboard`) 스크린샷은 실제 접속 로그(IP·위치 등 민감 정보)가 노출되어 이 문서에는 포함하지 않았습니다.
+
 ## 테스트 실행
 
 ```bash
