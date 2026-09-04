@@ -12,6 +12,7 @@
 - **회원 대시보드** (`/dashboard`) — 로그인한 회원 본인의 인사말 화면. 최근 로그인 기록(접속 국가/도시 포함) 조회, 표시 이름·이메일 프로필 수정 가능
 - **관리자 대시보드** (`/admin/dashboard`) — 세션 로그인으로 보호되는 별도 화면에서 최근 로그인 시도(접속 위치 포함), 현재 잠긴 IP, 등록된 회원 목록(삭제 가능), 회원가입 On/Off, 관리자 로그인 기록을 실시간(폴링) 확인 + "즉시 해제" 버튼으로 수동 잠금 해제
 - **IP 위치 조회** — [ip-api.com](https://ip-api.com)으로 접속 IP의 국가·도시를 조회해 회원/관리자 대시보드에 표시. 조회 결과는 Supabase(`ip_locations`)에 캐시되어 같은 IP를 반복 조회하지 않음(무료 API의 분당 45건 한도 대응)
+- **게시판·댓글** (`/board`) — 로그인한 회원 전용 게시판. 글 작성/수정/삭제(본인 글만), 댓글 작성/삭제(본인 댓글만), 페이지 번호 방식 목록, 새 댓글이 달리면 알림 배너 표시. 관리자 대시보드에서는 별도로 전체 게시글·댓글을 조회·삭제 가능. 자세한 설계 배경은 [docs/board-comment/](docs/board-comment) 참고
 
 ## 기술 스택
 
@@ -41,7 +42,7 @@ pip install -r requirements.txt
 
 ### 3. Supabase 프로젝트 준비
 1. [supabase.com](https://supabase.com)에서 프로젝트 생성
-2. **SQL Editor**에서 [docs/schema.sql](docs/schema.sql) 내용 전체 실행 (`users`, `login_attempts`, `lockouts`, `admin_users`, `admin_login_log` 5개 테이블 생성)
+2. **SQL Editor**에서 [docs/schema.sql](docs/schema.sql) 내용 전체 실행 (`users`, `login_attempts`, `lockouts`, `admin_users`, `admin_login_log`, `app_settings`, `ip_locations`, `signup_attempts`, `posts`, `comments`, `post_attempts`, `comment_attempts` 12개 테이블 생성)
 3. **Project Settings → API**에서 `Project URL`과 `service_role` key 확인
 
 ### 4. 환경변수 설정
@@ -74,7 +75,57 @@ python app.py
 | `/login` | 감시 대상 로그인 — 이 화면에서의 실패 시도가 탐지 대상. 로그인 성공 시 `/dashboard`로 이동 |
 | `/dashboard` | 회원 대시보드 — 인사말, 로그인 기록·프로필 조회/수정 (회원 로그인 필요) |
 | `/admin/login` | 관리자 로그인 |
-| `/admin/dashboard` | 관리자 대시보드 — 잠긴 IP·회원 관리·회원가입 On/Off (관리자 로그인 필요) |
+| `/admin/dashboard` | 관리자 대시보드 — 잠긴 IP·회원 관리·회원가입 On/Off·게시판 관리 (관리자 로그인 필요) |
+| `/board` | 게시판 목록 (회원 로그인 필요) |
+| `/board/new` | 새 게시글 작성 (회원 로그인 필요) |
+| `/board/<id>` | 게시글 상세 · 댓글 (회원 로그인 필요) |
+
+## 화면 미리보기
+
+### 인증
+
+<table>
+<tr>
+<td align="center"><b>로그인</b><br>(관리자 로그인 <code>/admin/login</code>도 동일 화면 공유)</td>
+<td align="center"><b>회원가입</b></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/login.png" width="380"></td>
+<td><img src="docs/screenshots/signup.png" width="380"></td>
+</tr>
+</table>
+
+### 회원 대시보드
+
+<table>
+<tr>
+<td align="center"><b>대시보드</b></td>
+<td align="center"><b>로그인 기록</b></td>
+<td align="center"><b>프로필</b></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/member_dashboard.png" width="270"></td>
+<td><img src="docs/screenshots/member_history.png" width="270"></td>
+<td><img src="docs/screenshots/member_profile.png" width="270"></td>
+</tr>
+</table>
+
+### 게시판
+
+<table>
+<tr>
+<td align="center"><b>목록</b></td>
+<td align="center"><b>글쓰기</b></td>
+<td align="center"><b>상세 · 댓글</b></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/board_list.png" width="270"></td>
+<td><img src="docs/screenshots/board_new.png" width="270"></td>
+<td><img src="docs/screenshots/board_detail.png" width="270"></td>
+</tr>
+</table>
+
+> 관리자 대시보드(`/admin/dashboard`) 스크린샷은 실제 접속 로그(IP·위치 등 민감 정보)가 노출되어 이 문서에는 포함하지 않았습니다.
 
 ## 테스트 실행
 
@@ -98,14 +149,16 @@ login-watchdog/
 ├── public/css, public/js         # 스타일 및 대시보드 자바스크립트
 ├── tests/                          # pytest 단위 테스트
 ├── docs/schema.sql                  # Supabase 테이블 정의
-├── docs/beginner-guide/               # 비전공자용 단계별 구현 해설서 (14개 파일로 분리)
+├── docs/beginner-guide/               # 비전공자용 단계별 구현 해설서 (20개 파일로 분리)
+├── docs/board-comment/                  # 게시판·댓글 기능 설계 문서(분석 → 결정 → 계획 → 결과)
 └── plan.md, research.md                # 설계 근거 문서
 ```
 
 ## 더 자세히 알고 싶다면
 
 - [plan.md](plan.md) — 각 파일을 왜 이렇게 설계했는지에 대한 상세 근거
-- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide14_geoip.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
+- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide20_board.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
+- [docs/board-comment/](docs/board-comment) — 게시판·댓글 기능을 왜 이렇게 설계했는지(구현 전 분석 → 모호한 질문 11개 결정 → 구현 계획 → 결과 보고) 순서대로 기록한 문서 4종
 
 ## 알려진 제한사항
 
@@ -118,3 +171,4 @@ login-watchdog/
 - **개발용 서버 사용** — `app.run(debug=True)`는 Flask가 공식적으로 "운영 배포에 쓰지 말라"고 명시하는 개발용 서버입니다. 외부 공개 서비스로 배포하려면 별도의 프로덕션 WSGI 서버(gunicorn 등)로 교체해야 합니다.
 - **감시 대상 계정은 데모 수준 인증** — 이메일 인증, 비밀번호 재설정, 계정 잠금 셀프 해제 같은 기능은 제공하지 않습니다. `/login`은 실사용 서비스가 아니라 브루트포스 탐지를 시연하기 위한 화면입니다.
 - **IP 위치 조회는 참고용** — ip-api.com 무료 API는 HTTPS를 지원하지 않고(서버 간 통신이라 브라우저 보안 경고와는 무관), 도시 단위 정확도가 완벽하지 않을 수 있습니다. `127.0.0.1` 같은 사설 IP는 항상 "위치 확인 불가"로 표시됩니다.
+- **게시판은 회원 전용, 대댓글·첨부파일 미지원** — 비로그인 사용자는 글 목록조차 볼 수 없고, 댓글은 단일 depth(답글 불가)이며 이미지/파일 첨부도 지원하지 않습니다. 회원이 탈퇴해도 작성한 글·댓글은 삭제되지 않고 흔적만 남습니다(감사 로그와 동일한 정책). 새 댓글 알림은 웹소켓이 아니라 폴링(기본 5초, `BOARD_COMMENT_POLL_MS`) 방식입니다. 설계 배경은 [docs/board-comment/02-design-decisions.md](docs/board-comment/02-design-decisions.md) 참고.

@@ -1,6 +1,6 @@
 # 17단계 — 제목 가운데 정렬, 입력창 테두리 강화, 수동 라이트/다크 전환 버튼
 
-[◀ 16단계](guide16_darkmode.md) · [전체 목차](beginner-guide.md)
+[◀ 16단계](guide16_darkmode.md) · [전체 목차](beginner-guide.md) · [18단계 ▶](guide18_security_review.md)
 
 ### 우리가 한 일
 1. 카드 안의 큰 제목(`.auth-card h1`, `.member-card h2`)을 가운데 정렬

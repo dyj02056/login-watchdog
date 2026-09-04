@@ -44,6 +44,7 @@
              불러온 라우트(app.py의 login() 또는 admin_login())가 결정해서 넘겨준다.
              즉 화면 모양은 하나지만, 실제로 어떤 서버 로직이 처리할지는 그대로 나뉜다. -->
         <form method="post" action="{{ form_action }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <label for="username">아이디</label>
             <input type="text" id="username" name="username" required>
 

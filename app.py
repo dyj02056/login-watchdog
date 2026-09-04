@@ -10,16 +10,21 @@
 # 도와주는 도구(프레임워크)다. "이 주소로 누가 들어오면 이 함수를 실행해라"
 # 는 규칙을 하나씩 등록해두면, 사용자가 그 주소로 접속했을 때 자동으로
 
+
 # 해당 함수가 실행되어 화면을 만들어 보여준다.
 # ============================================================================
 
 
+import math
 import os
+import re
 from datetime import datetime
 from functools import wraps
 
 from dotenv import load_dotenv
 from flask import Flask, flash, jsonify, redirect, render_template, request, session, url_for
+from flask_wtf import CSRFProtect
+from flask_wtf.csrf import CSRFError
 
 # .env 파일에 적어둔 값(SUPABASE_URL, SECRET_KEY 등)을 파이썬이 읽을 수 있는
 # "환경변수"로 불러온다. 반드시 db 등 다른 모듈을 불러오기 "전에" 실행해야
@@ -43,6 +48,45 @@ app = Flask(__name__, static_folder="public", static_url_path="")
 # Flask가 로그인 상태를 기억하기 위해 사용하는 "세션 쿠키"에 서명(위조 방지)할 때
 # 쓰는 비밀 값. 이 값이 없으면 세션(로그인 유지) 기능 자체가 동작하지 않는다.
 app.secret_key = os.environ["SECRET_KEY"]
+
+# 세션 쿠키 보안 옵션 — 지금까지는 Flask 기본값에만 의존하고 있었다.
+# - SESSION_COOKIE_HTTPONLY: 브라우저의 자바스크립트(document.cookie)가 세션 쿠키를
+#   읽지 못하게 막는다. Flask 기본값도 True지만, "당연히 켜져 있겠지"에 기대지 않고
+#   명시적으로 적어둔다 — 나중에 누군가 실수로 끄더라도 이 줄을 보고 바로 알아챌 수 있다.
+# - SESSION_COOKIE_SAMESITE="Lax": 다른 사이트에 있는 폼/스크립트가 이 쿠키를 실어서
+#   요청을 보내는 걸 브라우저 차원에서 1차로 막아준다. CSRFProtect(토큰 검증)가
+#   메인 방어선이고, 이건 브라우저 레벨의 보조 방어선이다.
+# - SESSION_COOKIE_SECURE: HTTPS 연결에서만 쿠키를 전송하게 강제한다. 로컬 개발
+#   서버는 보통 HTTP(암호화 없음)로 뜨므로 로컬에서까지 켜두면 쿠키가 아예 전달되지
+#   않아 로그인이 깨진다 — 그래서 FLASK_ENV=production일 때만(Vercel 배포 환경) 켠다.
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") == "production"
+
+# CSRF(Cross-Site Request Forgery) 방어 — 이 프로젝트는 세션 쿠키로 로그인 상태를
+# 유지하는데, 브라우저는 같은 사이트로 가는 요청이면 쿠키를 자동으로 실어 보낸다.
+# 그래서 관리자가 로그인된 상태로 악성 페이지를 열면, 그 페이지가 눈에 안 보이는
+# 폼이나 fetch()로 /api/users/delete 같은 주소를 몰래 호출해도 브라우저가 알아서
+# 관리자의 세션 쿠키를 함께 보내버려 "관리자 본인이 요청한 것"처럼 서버가 착각한다.
+#
+# CSRFProtect(app)를 등록해두면, 폼(POST) 제출과 fetch() 요청 모두에 대해 이 서버가
+# 직접 발급한 csrf_token이 함께 왔는지 매번 검사한다. 악성 페이지는 이 토큰 값을
+# 알아낼 방법이 없으므로(다른 사이트가 이 사이트의 토큰을 읽을 수 없다), 위조된
+# 요청은 토큰이 없거나 틀려서 자동으로 거부된다.
+csrf = CSRFProtect(app)
+
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(error):
+    """CSRF 토큰이 없거나 틀렸을 때 Flask-WTF가 던지는 예외를 붙잡아 처리한다.
+
+    기본 동작(그냥 400 에러 페이지)도 안전하긴 하지만, 이 프로젝트의 다른 화면들과
+    똑같이 flash 메시지 + 로그인 화면으로 안내하는 편이 사용자 경험상 자연스럽다.
+    (세션이 너무 오래돼 토큰이 만료된 경우가 실제 사용자에게 가장 흔한 원인이다.)
+    """
+    flash("보안 토큰이 만료되었거나 올바르지 않습니다. 다시 시도해주세요.")
+    return redirect(request.referrer or url_for("login")), 400
+
 
 # 서버가 켜질 때 딱 한 번, 관리자 계정이 하나도 없으면 .env 값으로 자동 생성한다.
 # (회원가입 화면 없이 처음부터 관리자 1명이 존재하게 만드는 장치, db.py 3단계 참고)
@@ -158,6 +202,44 @@ def index():
 
 
 # ============================================================================
+# 회원가입 입력 검증 규칙
+#
+# 이전에는 "아이디/이메일/비밀번호 칸이 비어있지 않은지"만 확인하고 그대로
+# db.create_user()에 넘겼다. 그러면 두 가지 문제가 생긴다.
+# 1) 아이디에 아무 문자나 허용되므로 `<img src=x onerror=...>` 같은 값도 그대로
+#    저장된다 — 대시보드 쪽 escapeHtml()로 화면 출력은 막아뒀지만(6단계 XSS 수정
+#    참고),애초에 이런 값이 데이터베이스에 들어가는 것 자체를 막는 편이 더 안전한
+#    "심층 방어(defense in depth)"다.
+# 2) 이메일 형식이 아닌 문자열이나 아주 짧은 비밀번호도 그대로 가입돼버린다.
+#
+# 정규식(re) 패턴으로 "허용하는 모양"을 미리 정해두고, 그 모양에 안 맞으면
+# db.create_user()를 아예 호출하지 않고 바로 안내 메시지를 보여준다.
+# ============================================================================
+
+# 아이디: 영문자/숫자/밑줄(_)만 허용, 3~20자. `<`, `"`, 공백 같은 HTML/스크립트에
+# 쓰이는 특수문자는 애초에 통과하지 못한다.
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{3,20}$")
+
+# 이메일: "글자@글자.글자" 형태의 아주 기본적인 모양만 확인한다. 완벽한 RFC 5322
+# 검증은 아니지만(그런 정규식은 매우 복잡하다), "이메일처럼 안 생긴 값"을 걸러내는
+# 데는 충분하고, 실제 도달 가능 여부는 어차피 별도의 인증 메일 없이는 확인할 수 없다.
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+# 비밀번호 최소 길이. 복잡도(대소문자/특수문자 조합 강제)까지는 요구하지 않는다 —
+# 최근 보안 가이드라인(NIST 등)은 억지로 복잡한 조합을 강제하는 것보다 "충분히
+# 긴 비밀번호"를 권장하는 추세다.
+MIN_PASSWORD_LENGTH = 8
+
+# 게시판 입력 길이 제한 (docs/board-comment/plan_board.md 참고). 아이디/이메일과
+# 달리 제목·본문은 임의의 문자를 허용해야 하므로(한글, 문장부호 등) 정규식
+# 화이트리스트 대신 "길이만" 제한한다 — 내용 자체의 안전성은 Jinja2 auto-escape가
+# 출력 시점에 보장한다(결정 #5).
+POST_TITLE_MAX_LENGTH = 100
+POST_BODY_MAX_LENGTH = 5000
+COMMENT_BODY_MAX_LENGTH = 1000
+
+
+# ============================================================================
 # 회원가입 (신규 확장 기능) — 감시 대상 /login에 실제로 로그인할 계정을 만드는 곳
 # ============================================================================
 
@@ -187,6 +269,16 @@ def signup_submit():
         flash("현재 회원가입이 잠시 중단되어 있습니다.")
         return render_template("signup.html", signup_enabled=False)
 
+    # 같은 IP가 짧은 시간에 너무 많이 가입을 시도하면 거부한다 — 이전에는 이 주소에
+    # 요청 빈도 제한이 전혀 없어서, 스크립트로 계정을 무제한 찍어낼 수 있었다
+    # (18단계 보안 점검에서 발견 및 보완). 성공/실패와 무관하게 시도 자체를 세므로,
+    # 검증에서 계속 걸러지는 값을 반복 제출하는 남용도 함께 막는다.
+    ip = get_request_ip()
+    if detector.is_signup_rate_limited(ip):
+        flash("너무 많은 가입 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.")
+        return render_template("signup.html", signup_enabled=True)
+    db.log_signup_attempt(ip)
+
     username = request.form.get("username", "").strip()
     email = request.form.get("email", "").strip()
     password = request.form.get("password", "")
@@ -194,6 +286,18 @@ def signup_submit():
 
     if not username or not email or not password:
         flash("아이디, 이메일, 비밀번호를 모두 입력해주세요.")
+        return render_template("signup.html", signup_enabled=True)
+
+    if not USERNAME_PATTERN.match(username):
+        flash("아이디는 영문자, 숫자, 밑줄(_)만 사용해 3~20자로 입력해주세요.")
+        return render_template("signup.html", signup_enabled=True)
+
+    if not EMAIL_PATTERN.match(email):
+        flash("올바른 이메일 형식이 아닙니다.")
+        return render_template("signup.html", signup_enabled=True)
+
+    if len(password) < MIN_PASSWORD_LENGTH:
+        flash(f"비밀번호는 최소 {MIN_PASSWORD_LENGTH}자 이상이어야 합니다.")
         return render_template("signup.html", signup_enabled=True)
 
     if password != password_confirm:
@@ -300,10 +404,25 @@ def admin_login():
 
 @app.route("/admin/login", methods=["POST"])
 def admin_login_submit():
-    """관리자 로그인 폼 제출을 처리한다."""
+    """관리자 로그인 폼 제출을 처리한다.
+
+    /login(감시 대상 로그인)과 마찬가지로 IP 잠금을 적용한다 — 이전에는 이 라우트가
+    시도 기록만 남길 뿐 잠금 판정을 전혀 하지 않아서, 관리자 계정만 브루트포스에
+    무방비로 노출돼 있었다(18단계 보안 점검에서 발견 및 보완). 관리자 계정이 뚫리면
+    회원 삭제·잠금 해제·회원가입 On/Off까지 전부 장악되므로 우선순위가 가장 높았다.
+    """
+    # 1) 시간이 지나 자동으로 풀려야 할 잠금들을 정리 (login_submit()과 동일)
+    soar.try_release_expired_lockouts()
+
+    ip = get_request_ip()
+
+    # 2) 이미 잠긴 IP라면 자격 증명 확인 자체를 건너뛰고 즉시 거부
+    if detector.is_locked(ip):
+        flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
+        return render_template("login_form.html", form_action=url_for("admin_login_submit"))
+
     username = request.form.get("username", "")
     password = request.form.get("password", "")
-    ip = get_request_ip()
 
     success = db.verify_admin_credentials(username, password)
     # 성공/실패와 무관하게 "누가 언제 관리자 로그인을 시도했는지"는 항상 기록해서
@@ -317,7 +436,15 @@ def admin_login_submit():
         session["admin_username"] = username
         return redirect(url_for("admin_dashboard"))
 
-    flash("아이디 또는 비밀번호가 올바르지 않습니다.")
+    # 3) 이 실패로 인해 방금 임계값을 넘었는지 확인하고, 넘었다면 잠근다
+    #    (login_submit()과 동일한 detector/soar 조합 — 잠금 상태 자체는 lockouts
+    #    표를 공유하므로, 이 IP는 /login 쪽에서도 함께 잠긴다).
+    suspicious, failure_count = detector.is_admin_suspicious(ip)
+    if suspicious:
+        soar.enforce_lockout(ip, failure_count)
+        flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
+    else:
+        flash("아이디 또는 비밀번호가 올바르지 않습니다.")
     return render_template("login_form.html", form_action=url_for("admin_login_submit"))
 
 
@@ -341,8 +468,13 @@ def admin_logout():
 @login_required
 def admin_dashboard():
     """관리자 대시보드 화면의 뼈대(HTML)만 보여준다. 실제 데이터는 화면의
-    자바스크립트가 아래 /api/status를 주기적으로 호출해서 채워넣는다(6단계에서 구현)."""
-    return render_template("admin_dashboard.html")
+    자바스크립트가 아래 /api/status를 주기적으로 호출해서 채워넣는다(6단계에서 구현).
+
+    poll_interval_ms : dashboard.js가 몇 밀리초마다 /api/status를 다시 부를지.
+    숫자를 JS 파일에 직접 박아두지 않고 config.py 한 곳에서 관리한다(다른
+    상수들과 동일한 원칙 — 값을 바꾸려고 여러 파일을 찾아다닐 필요가 없게 함).
+    """
+    return render_template("admin_dashboard.html", poll_interval_ms=config.ADMIN_DASHBOARD_POLL_MS)
 
 
 @app.route("/api/status", methods=["GET"])
@@ -362,6 +494,10 @@ def api_status():
             "admin_login_log": db.list_admin_login_log(20),
             "users": db.list_users(100),
             "signup_enabled": db.get_signup_enabled(),
+            # 게시판 관리 섹션(관리자 대시보드)용 — recent_attempts 등과 같은 폴링
+            # 주기(dashboard.js, 10초)로 함께 갱신된다.
+            "recent_posts": db.list_recent_posts(20),
+            "recent_comments": db.list_recent_comments(20),
         }
     )
 
@@ -418,6 +554,253 @@ def api_settings_signup():
 
     db.set_signup_enabled(enabled)
     return jsonify({"success": True, "signup_enabled": enabled})
+
+
+@app.route("/api/board/posts/delete", methods=["POST"])
+@login_required
+def api_board_posts_delete():
+    """관리자 대시보드의 "게시글 관리" 섹션에서 임의 게시글을 삭제할 때 호출되는 API.
+
+    /api/users/delete와 동일한 패턴 — login_required가 이미 "로그인된 관리자의
+    요청"임을 보장해주므로, 회원 본인 글인지 여부와 무관하게 바로 삭제한다
+    (docs/board-comment/02-design-decisions.md 결정 #2 — 삭제 권한: 본인 + 관리자).
+    """
+    data = request.get_json(silent=True) or {}
+    post_id = data.get("post_id")
+    if not post_id:
+        return jsonify({"success": False, "error": "post_id 값이 필요합니다."}), 400
+
+    deleted = db.delete_post(post_id)
+    return jsonify({"success": deleted})
+
+
+@app.route("/api/board/comments/delete", methods=["POST"])
+@login_required
+def api_board_comments_delete():
+    """관리자 대시보드에서 임의 댓글을 삭제할 때 호출되는 API. 위 함수와 동일한 패턴."""
+    data = request.get_json(silent=True) or {}
+    comment_id = data.get("comment_id")
+    if not comment_id:
+        return jsonify({"success": False, "error": "comment_id 값이 필요합니다."}), 400
+
+    deleted = db.delete_comment(comment_id)
+    return jsonify({"success": deleted})
+
+
+# ============================================================================
+# 게시판 (/board) — 전부 member_login_required로 보호됨 (회원 전용, 결정 #1)
+#
+# login_required/member_login_required는 "로그인 여부"만 확인하고 "이 글/댓글이
+# 내 것인지"는 확인하지 않으므로, 수정/삭제 라우트마다 _is_post_owner() 등으로
+# 직접 소유권을 검사한다 — 관리자는 위 /api/board/*/delete를 통해 별도로 전체
+# 글/댓글을 삭제할 수 있다(docs/board-comment/plan_board.md 5-3절 참고).
+# ============================================================================
+
+def _is_post_owner(post: dict) -> bool:
+    """지금 로그인한 회원이 이 글의 작성자인지 확인한다."""
+    return post["author_username"] == session.get("username")
+
+
+@app.route("/board", methods=["GET"])
+@member_login_required
+def board_list():
+    """게시글 목록. 페이지 번호는 쿼리 파라미터 ?page=로 받는다 (결정 #9 — 페이지 번호 방식).
+
+    page의 type=int 변환이 실패하면(예: ?page=abc) Flask가 자동으로 기본값 1을
+    쓰므로, 잘못된 값이 와도 에러 없이 1페이지를 보여준다.
+    """
+    page = request.args.get("page", 1, type=int)
+    if page < 1:
+        page = 1
+    posts = db.list_posts(page, config.BOARD_PAGE_SIZE)
+    total_pages = max(1, math.ceil(db.count_posts() / config.BOARD_PAGE_SIZE))
+    return render_template("board_list.html", posts=posts, page=page, total_pages=total_pages)
+
+
+@app.route("/board/new", methods=["GET"])
+@member_login_required
+def board_new():
+    """글쓰기 폼 화면. board_form.html은 board_edit()과 화면을 공유한다
+    (login_form.html이 /login과 /admin/login을 공유하는 것과 동일한 패턴) —
+    post=None이면 "새 글쓰기", post가 있으면 "수정"으로 폼이 스스로 판단한다.
+    """
+    return render_template("board_form.html", form_action=url_for("board_new_submit"), post=None)
+
+
+@app.route("/board/new", methods=["POST"])
+@member_login_required
+def board_new_submit():
+    """글쓰기 폼 제출을 처리한다."""
+    ip = get_request_ip()
+
+    # 같은 IP가 짧은 시간에 너무 많이 글을 올리면 거부한다 (signup_submit()과 동일한
+    # "먼저 판정 → 성공/실패 무관하게 시도 자체를 기록" 순서, 결정 #7).
+    if detector.is_post_rate_limited(ip):
+        flash("너무 많은 게시글 작성 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.")
+        return render_template("board_form.html", form_action=url_for("board_new_submit"), post=None)
+    db.log_post_attempt(ip)
+
+    title = request.form.get("title", "").strip()
+    body = request.form.get("body", "").strip()
+
+    if not title or not body:
+        flash("제목과 내용을 모두 입력해주세요.")
+        return render_template("board_form.html", form_action=url_for("board_new_submit"), post=None)
+
+    if len(title) > POST_TITLE_MAX_LENGTH or len(body) > POST_BODY_MAX_LENGTH:
+        flash(
+            f"제목은 최대 {POST_TITLE_MAX_LENGTH}자, 내용은 최대 {POST_BODY_MAX_LENGTH}자까지 "
+            "입력할 수 있습니다."
+        )
+        return render_template("board_form.html", form_action=url_for("board_new_submit"), post=None)
+
+    post = db.create_post(session["username"], title, body)
+    flash("게시글이 등록되었습니다.")
+    return redirect(url_for("board_detail", post_id=post["id"]))
+
+
+@app.route("/board/<int:post_id>", methods=["GET"])
+@member_login_required
+def board_detail(post_id):
+    """게시글 상세 + 댓글 목록 + 댓글 작성 폼 + "새 댓글" 알림 배너 자리."""
+    post = db.get_post(post_id)
+    if post is None:
+        flash("존재하지 않는 게시글입니다.")
+        return redirect(url_for("board_list"))
+
+    comments = db.list_comments_by_post(post_id)
+    return render_template(
+        "board_detail.html",
+        post=post,
+        comments=comments,
+        is_owner=_is_post_owner(post),
+        # board.js가 "새 댓글" 배너를 몇 밀리초마다 확인할지. admin_dashboard()와
+        # 동일한 이유로 config.py에서 값을 받아 템플릿에 내려준다.
+        poll_interval_ms=config.BOARD_COMMENT_POLL_MS,
+    )
+
+
+@app.route("/board/<int:post_id>/edit", methods=["GET"])
+@member_login_required
+def board_edit(post_id):
+    """게시글 수정 폼. 본인 글이 아니면 폼을 아예 보여주지 않고 상세 화면으로 돌려보낸다."""
+    post = db.get_post(post_id)
+    if post is None:
+        flash("존재하지 않는 게시글입니다.")
+        return redirect(url_for("board_list"))
+    if not _is_post_owner(post):
+        flash("본인이 작성한 글만 수정할 수 있습니다.")
+        return redirect(url_for("board_detail", post_id=post_id))
+
+    return render_template(
+        "board_form.html", form_action=url_for("board_edit_submit", post_id=post_id), post=post
+    )
+
+
+@app.route("/board/<int:post_id>/edit", methods=["POST"])
+@member_login_required
+def board_edit_submit(post_id):
+    """게시글 수정 폼 제출을 처리한다.
+
+    화면에서 수정 버튼을 감췄더라도, 여기서도 다시 한번 소유권을 확인한다
+    (signup_submit()의 이중 검증 원칙과 동일 — 개발자 도구로 우회한 요청까지 방어).
+    """
+    post = db.get_post(post_id)
+    if post is None:
+        flash("존재하지 않는 게시글입니다.")
+        return redirect(url_for("board_list"))
+    if not _is_post_owner(post):
+        flash("본인이 작성한 글만 수정할 수 있습니다.")
+        return redirect(url_for("board_detail", post_id=post_id))
+
+    title = request.form.get("title", "").strip()
+    body = request.form.get("body", "").strip()
+    form_action = url_for("board_edit_submit", post_id=post_id)
+
+    if not title or not body:
+        flash("제목과 내용을 모두 입력해주세요.")
+        return render_template("board_form.html", form_action=form_action, post=post)
+
+    if len(title) > POST_TITLE_MAX_LENGTH or len(body) > POST_BODY_MAX_LENGTH:
+        flash(
+            f"제목은 최대 {POST_TITLE_MAX_LENGTH}자, 내용은 최대 {POST_BODY_MAX_LENGTH}자까지 "
+            "입력할 수 있습니다."
+        )
+        return render_template("board_form.html", form_action=form_action, post=post)
+
+    db.update_post(post_id, title, body)
+    flash("게시글이 수정되었습니다.")
+    return redirect(url_for("board_detail", post_id=post_id))
+
+
+@app.route("/board/<int:post_id>/delete", methods=["POST"])
+@member_login_required
+def board_delete(post_id):
+    """본인 글 삭제 (결정 #2 — 삭제 권한: 본인 + 관리자. 관리자는 /api/board/posts/delete 사용)."""
+    post = db.get_post(post_id)
+    if post is None:
+        flash("존재하지 않는 게시글입니다.")
+        return redirect(url_for("board_list"))
+    if not _is_post_owner(post):
+        flash("본인이 작성한 글만 삭제할 수 있습니다.")
+        return redirect(url_for("board_detail", post_id=post_id))
+
+    db.delete_post(post_id)
+    flash("게시글이 삭제되었습니다.")
+    return redirect(url_for("board_list"))
+
+
+@app.route("/board/<int:post_id>/comments", methods=["POST"])
+@member_login_required
+def board_comment_submit(post_id):
+    """댓글 작성. Post-Redirect-Get 패턴으로 처리 후 항상 상세 화면으로 돌아간다."""
+    post = db.get_post(post_id)
+    if post is None:
+        flash("존재하지 않는 게시글입니다.")
+        return redirect(url_for("board_list"))
+
+    ip = get_request_ip()
+    if detector.is_comment_rate_limited(ip):
+        flash("너무 많은 댓글 작성 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.")
+        return redirect(url_for("board_detail", post_id=post_id))
+    db.log_comment_attempt(ip)
+
+    body = request.form.get("body", "").strip()
+    if not body:
+        flash("댓글 내용을 입력해주세요.")
+        return redirect(url_for("board_detail", post_id=post_id))
+    if len(body) > COMMENT_BODY_MAX_LENGTH:
+        flash(f"댓글은 최대 {COMMENT_BODY_MAX_LENGTH}자까지 입력할 수 있습니다.")
+        return redirect(url_for("board_detail", post_id=post_id))
+
+    db.create_comment(post_id, session["username"], body)
+    return redirect(url_for("board_detail", post_id=post_id))
+
+
+@app.route("/board/<int:post_id>/comments/<int:comment_id>/delete", methods=["POST"])
+@member_login_required
+def board_comment_delete(post_id, comment_id):
+    """본인 댓글 삭제."""
+    comment = db.get_comment(comment_id)
+    if comment is None:
+        flash("존재하지 않는 댓글입니다.")
+        return redirect(url_for("board_detail", post_id=post_id))
+    if comment["author_username"] != session.get("username"):
+        flash("본인이 작성한 댓글만 삭제할 수 있습니다.")
+        return redirect(url_for("board_detail", post_id=post_id))
+
+    db.delete_comment(comment_id)
+    return redirect(url_for("board_detail", post_id=post_id))
+
+
+@app.route("/api/board/<int:post_id>/comments/latest", methods=["GET"])
+@member_login_required
+def api_board_comments_latest(post_id):
+    """board.js가 짧은 주기(15초)로 폴링하는 API. 댓글 개수/최신 시각만 가볍게
+    돌려준다 — 표 전체를 다시 그리는 관리자 대시보드(/api/status)와 달리,
+    "값이 바뀌었으니 배너를 띄워라"는 신호로만 쓰인다(결정 #6).
+    """
+    return jsonify(db.get_latest_comment_info(post_id))
 
 
 # ============================================================================
@@ -531,5 +914,20 @@ if __name__ == "__main__":
     # (다른 파일이 이 파일을 import만 할 때는 서버가 자동으로 켜지지 않게 하는 관례).
     # PORT 환경변수가 있으면 그 포트를, 없으면 기본값 5000을 쓴다
     # (다른 프로그램이 이미 5000번을 쓰고 있을 때 충돌 없이 다른 포트로 띄우기 위함).
+    #
+    # debug=True를 항상 켜두면 위험하다: Flask 공식 문서가 명시하듯, 디버그 모드의
+    # 대화형 디버거는 브라우저에서 임의의 파이썬 코드를 실행할 수 있는 콘솔을
+    # 열어준다 — 개발 중에는 편리하지만, 이 상태로 운영 서버를 인터넷에 노출하면
+    # 방문자 누구나 서버에서 코드를 실행할 수 있는 심각한 취약점이 된다. 그래서
+    # FLASK_DEBUG 환경변수를 명시적으로 "true"로 켜둔 로컬 개발 환경에서만 켜지고,
+    # 기본값은 항상 꺼진(False) 상태로 시작한다.
+    #
+    # 또한 "python app.py"로 직접 띄우는 이 개발 서버는 로컬 실습/디버깅용이지
+    # 운영 배포용이 아니다(Flask 공식 문서가 프로덕션 사용을 금지함). 이 프로젝트가
+    # 실제로 배포되는 Vercel(10단계 참고)은 이 if 블록을 아예 거치지 않고 `app`
+    # 객체를 직접 서버리스 런타임으로 실행하므로 영향이 없지만, Vercel이 아닌
+    # 곳(자체 서버 등)에 운영 배포한다면 이 개발 서버 대신 gunicorn 같은 프로덕션
+    # WSGI 서버로 띄워야 한다 — 예: `gunicorn app:app --bind 0.0.0.0:5000`.
+    debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
     port = int(os.environ.get("PORT", 5000))
-    app.run(debug=True, port=port)
+    app.run(debug=debug, port=port)

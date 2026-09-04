@@ -1,0 +1,113 @@
+<!--
+  board_detail.html — 게시글 상세 + 댓글 목록 + 댓글 작성 폼 (주소: /board/<id>)
+
+  data-post-id / data-comment-count / data-latest-at 세 속성은 board.js가
+  읽어서 "페이지가 처음 그려졌을 때의 댓글 상태"를 기억하는 데 쓴다 — 이후
+  15초마다 폴링한 값과 비교해서 달라지면 "새로운 댓글이 추가되었습니다"
+  배너를 띄운다(결정 #6, plan_board.md 5-5절 참고).
+-->
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <title>로그인 워치독 — {{ post.title }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/member.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/board.css') }}">
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+</head>
+<body>
+    <header class="topbar">
+        <h1>로그인 워치독</h1>
+        <div class="topbar-actions">
+            <button id="theme-toggle" type="button" class="theme-toggle">다크 모드</button>
+            <form method="post" action="{{ url_for('member_logout') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="logout-btn">로그아웃</button>
+            </form>
+        </div>
+    </header>
+
+    <main>
+        <div class="member-card board-card"
+             id="board-detail"
+             data-post-id="{{ post.id }}"
+             data-comment-count="{{ comments|length }}"
+             data-latest-at="{{ comments[-1].created_at if comments else '' }}"
+             data-poll-interval-ms="{{ poll_interval_ms }}">
+
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    <ul class="flash-list">
+                        {% for message in messages %}
+                            <li>{{ message }}</li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+            {% endwith %}
+
+            <!-- 기본은 숨김(hidden) 상태. board.js가 폴링 결과 값이 바뀐 걸 확인하면
+                 hidden 속성을 지워서 보여준다. -->
+            <div id="new-comment-banner" class="new-comment-banner" hidden>
+                새로운 댓글이 추가되었습니다.
+                <button type="button" id="new-comment-refresh">새로고침</button>
+            </div>
+
+            <h2>{{ post.title }}</h2>
+            <div class="board-post-meta">
+                <span>{{ post.author_username }}</span>
+                <span class="mono">{{ post.created_at | kr_time }}</span>
+            </div>
+            <!-- board-post-body : board.css에서 white-space: pre-wrap으로 줄바꿈만
+                 보존한다. |safe 필터나 nl2br을 쓰지 않아 Jinja2 auto-escape가 그대로
+                 적용되므로, 본문에 어떤 문자가 들어와도 HTML로 해석되지 않는다(결정 #5). -->
+            <p class="board-post-body">{{ post.body }}</p>
+
+            {% if is_owner %}
+                <div class="board-post-actions">
+                    <a href="{{ url_for('board_edit', post_id=post.id) }}">수정</a>
+                    <form method="post" action="{{ url_for('board_delete', post_id=post.id) }}"
+                          onsubmit="return confirm('이 게시글을 정말 삭제할까요?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit">삭제</button>
+                    </form>
+                </div>
+            {% endif %}
+
+            <h3>댓글 {{ comments|length }}개</h3>
+            <ul class="board-comment-list">
+                {% for comment in comments %}
+                    <li class="board-comment-item">
+                        <div class="board-comment-meta">
+                            <span>{{ comment.author_username }}</span>
+                            <span class="mono">{{ comment.created_at | kr_time }}</span>
+                        </div>
+                        <p class="board-comment-body">{{ comment.body }}</p>
+                        {% if comment.author_username == session.username %}
+                            <form method="post"
+                                  action="{{ url_for('board_comment_delete', post_id=post.id, comment_id=comment.id) }}"
+                                  onsubmit="return confirm('이 댓글을 정말 삭제할까요?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="board-comment-delete-btn">삭제</button>
+                            </form>
+                        {% endif %}
+                    </li>
+                {% else %}
+                    <li class="empty-state">아직 댓글이 없습니다.</li>
+                {% endfor %}
+            </ul>
+
+            <form method="post" action="{{ url_for('board_comment_submit', post_id=post.id) }}" class="board-comment-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <label for="body">댓글 작성</label>
+                <textarea id="body" name="body" rows="3" maxlength="1000" required></textarea>
+                <button type="submit">댓글 등록</button>
+            </form>
+
+            <a class="back-link" href="{{ url_for('board_list') }}">← 게시판으로 돌아가기</a>
+        </div>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/board.js') }}"></script>
+</body>
+</html>

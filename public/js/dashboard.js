@@ -2,7 +2,8 @@
 // dashboard.js — 대시보드 화면을 살아있게 만드는 자바스크립트
 //
 // 이 파일이 하는 일은 크게 3가지다.
-// 1) 주기적으로(10초마다) 서버의 /api/status에 "지금 상태 알려줘"라고 물어본다.
+// 1) 주기적으로(config.py의 ADMIN_DASHBOARD_POLL_MS, 기본 10초마다) 서버의
+//    /api/status에 "지금 상태 알려줘"라고 물어본다.
 //    (원래는 2.5초였으나, Supabase 무료 쿼터 점검 결과 대시보드를 오래 켜두면
 //    한 달 쿼터를 금방 소진할 수 있다는 걸 확인하고 10초로 늘렸다 — 8단계 이후
 //    "쿼터 점검" 단계 참고)
@@ -17,6 +18,41 @@
 // "지금 상태가 뭔지"를 어딘가 기억해둬야 한다. renderSignupStatus()가 매번
 // 이 변수를 최신 값으로 갱신해둔다.
 let currentSignupEnabled = true;
+
+// admin_dashboard.html의 <meta name="csrf-token"> 태그에서 서버가 발급한 CSRF
+// 토큰 값을 읽어온다. 아래 unlockIp/deleteUser/toggleSignup이 fetch()로 서버
+// 상태를 바꾸는 POST 요청을 보낼 때마다 이 값을 X-CSRFToken 헤더에 실어 보내야,
+// 서버의 CSRFProtect가 "이 요청이 정말 이 화면에서 나왔다"고 확인해줄 수 있다
+// (CSRF 방어, app.py의 CSRFProtect 설명 참고).
+const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
+// 폴링 주기(밀리초)도 CSRF 토큰과 같은 방식으로, config.py(ADMIN_DASHBOARD_POLL_MS)
+// 값을 admin_dashboard.html의 meta 태그에서 읽어온다 — 이 파일에 숫자를 직접
+// 적어두지 않는다.
+const pollIntervalMs = Number(document.querySelector('meta[name="poll-interval-ms"]').content);
+
+// escapeHtml(): 사용자가 입력한 값(아이디, 이메일 등)을 innerHTML로 화면에 꽂아넣기
+// 전에 반드시 거쳐야 하는 관문이다.
+//
+// 왜 필요한가: 회원가입 화면의 아이디/이메일 입력창에는 원래 글자 제한이 없었다.
+// 그래서 누군가 아이디를 `<img src=x onerror="fetch('/api/users/delete',...)">`
+// 같은 문자열로 등록하면, 그 값이 대시보드 표에 그대로 삽입되는 순간 브라우저가
+// 그걸 "진짜 HTML 태그"로 해석해서 실행해버린다 — 이게 바로 "Stored XSS"다.
+// 관리자가 대시보드를 열람하는 순간 관리자의 로그인 세션으로 임의의 API가
+// 호출될 수 있어서(IP 잠금 해제, 회원 삭제 등) 위험하다.
+//
+// 해결 방법: <, >, &, ", ' 같이 HTML에서 특별한 의미를 갖는 글자를 각각의
+// "문자 이름"(HTML 엔티티)으로 바꿔치기한다. 그러면 브라우저는 이 값을 더 이상
+// 태그로 해석하지 않고, 그냥 눈에 보이는 글자 그대로("<img..." 라는 텍스트)
+// 표시한다. 표 안에 넣을 값은 예외 없이 전부 이 함수를 거치도록 한다.
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+}
 
 /**
  * 서버에게 "지금 최신 상태가 어때?"라고 물어보고, 그 답으로 화면을 새로 그린다.
@@ -40,6 +76,8 @@ async function fetchStatus() {
     renderAdminLoginLog(data.admin_login_log);
     renderUsersTable(data.users);
     renderSignupStatus(data.signup_enabled);
+    renderPostsTable(data.recent_posts);
+    renderCommentsTable(data.recent_comments);
 }
 
 /**
@@ -60,10 +98,10 @@ function renderLockoutCards(lockouts) {
         .map(
             (lockout) => `
                 <div class="lockout-card">
-                    <div class="ip">${lockout.ip_address}</div>
+                    <div class="ip">${escapeHtml(lockout.ip_address)}</div>
                     <div>실패 ${lockout.failure_count}회</div>
                     <div>해제 예정: ${formatTime(lockout.unlock_at)}</div>
-                    <button data-ip="${lockout.ip_address}" class="unlock-btn">즉시 해제</button>
+                    <button data-ip="${escapeHtml(lockout.ip_address)}" class="unlock-btn">즉시 해제</button>
                 </div>
             `
         )
@@ -85,9 +123,9 @@ function renderAttemptsTable(attempts) {
             return `
                 <tr>
                     <td class="mono">${formatTime(attempt.attempted_at)}</td>
-                    <td class="mono">${attempt.ip_address}</td>
-                    <td>${attempt.location}</td>
-                    <td>${attempt.username}</td>
+                    <td class="mono">${escapeHtml(attempt.ip_address)}</td>
+                    <td>${escapeHtml(attempt.location)}</td>
+                    <td>${escapeHtml(attempt.username)}</td>
                     <td class="${resultClass}">${resultText}</td>
                 </tr>
             `;
@@ -108,8 +146,8 @@ function renderAdminLoginLog(log) {
             return `
                 <tr>
                     <td class="mono">${formatTime(entry.attempted_at)}</td>
-                    <td>${entry.username}</td>
-                    <td class="mono">${entry.ip_address}</td>
+                    <td>${escapeHtml(entry.username)}</td>
+                    <td class="mono">${escapeHtml(entry.ip_address)}</td>
                     <td class="${resultClass}">${resultText}</td>
                 </tr>
             `;
@@ -136,15 +174,107 @@ function renderUsersTable(users) {
             (user) => `
                 <tr>
                     <td class="mono">${formatTime(user.created_at)}</td>
-                    <td>${user.username}</td>
-                    <td>${user.email}</td>
+                    <td>${escapeHtml(user.username)}</td>
+                    <td>${escapeHtml(user.email)}</td>
                     <td>
-                        <button data-user-id="${user.id}" data-username="${user.username}" class="delete-user-btn">삭제</button>
+                        <button data-user-id="${user.id}" data-username="${escapeHtml(user.username)}" class="delete-user-btn">삭제</button>
                     </td>
                 </tr>
             `
         )
         .join("");
+}
+
+/**
+ * 게시판 관리 — 최근 게시글 표를 채운다. 각 줄에 "삭제" 버튼이 붙는다.
+ * @param {Array} posts - [{id, title, author_username, created_at}, ...]
+ */
+function renderPostsTable(posts) {
+    const tbody = document.getElementById("posts-table-body");
+
+    if (posts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty-state">등록된 게시글이 없습니다.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = posts
+        .map(
+            (post) => `
+                <tr>
+                    <td class="mono">${formatTime(post.created_at)}</td>
+                    <td>${escapeHtml(post.title)}</td>
+                    <td>${escapeHtml(post.author_username)}</td>
+                    <td>
+                        <button data-post-id="${post.id}" class="delete-post-btn">삭제</button>
+                    </td>
+                </tr>
+            `
+        )
+        .join("");
+}
+
+/**
+ * 게시판 관리 — 최근 댓글 표를 채운다. 각 줄에 "삭제" 버튼이 붙는다.
+ * @param {Array} comments - [{id, body, author_username, created_at}, ...]
+ */
+function renderCommentsTable(comments) {
+    const tbody = document.getElementById("comments-table-body");
+
+    if (comments.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty-state">등록된 댓글이 없습니다.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = comments
+        .map(
+            (comment) => `
+                <tr>
+                    <td class="mono">${formatTime(comment.created_at)}</td>
+                    <td>${escapeHtml(comment.body)}</td>
+                    <td>${escapeHtml(comment.author_username)}</td>
+                    <td>
+                        <button data-comment-id="${comment.id}" class="delete-comment-btn">삭제</button>
+                    </td>
+                </tr>
+            `
+        )
+        .join("");
+}
+
+/**
+ * 관리자가 게시판 관리 표의 "삭제" 버튼을 눌렀을 때, 확인 후 글을 삭제 요청한다.
+ * @param {string} postId
+ */
+async function deletePost(postId) {
+    const confirmed = confirm("이 게시글을 정말 삭제할까요? 댓글도 함께 삭제됩니다.");
+    if (!confirmed) {
+        return;
+    }
+
+    await fetch("/api/board/posts/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ post_id: Number(postId) }),
+    });
+    fetchStatus();
+}
+
+/**
+ * 관리자가 게시판 관리 표의 "삭제" 버튼을 눌렀을 때, 확인 후 댓글을 삭제 요청한다.
+ * @param {string} commentId
+ */
+async function deleteComment(commentId) {
+    const confirmed = confirm("이 댓글을 정말 삭제할까요?");
+    if (!confirmed) {
+        return;
+    }
+
+    await fetch("/api/board/comments/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ comment_id: Number(commentId) }),
+    });
+    fetchStatus();
 }
 
 /**
@@ -167,10 +297,12 @@ function renderSignupStatus(enabled) {
 async function unlockIp(ip) {
     await fetch("/api/unlock", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
         // 브라우저는 같은 사이트로 요청을 보낼 때 로그인 세션 쿠키를 자동으로 함께
         // 보내주므로, 여기서 관리자 토큰 같은 걸 따로 넣지 않아도 서버가 "로그인된
         // 관리자의 요청"임을 알 수 있다(app.py의 login_required가 세션 쿠키로 확인).
+        // 다만 세션 쿠키만으로는 "이 요청이 진짜 이 화면에서 왔는지"까지는 보장하지
+        // 못하므로(CSRF), X-CSRFToken 헤더로 이 화면이 서버에게 받은 토큰을 함께 보낸다.
         body: JSON.stringify({ ip: ip }),
     });
     // 해제 요청이 끝나면 화면을 바로 한 번 더 갱신해서, 다음 폴링 주기를
@@ -195,7 +327,7 @@ async function deleteUser(userId, username) {
 
     await fetch("/api/users/delete", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
         body: JSON.stringify({ user_id: Number(userId) }),
     });
     fetchStatus();
@@ -207,7 +339,7 @@ async function deleteUser(userId, username) {
 async function toggleSignup() {
     await fetch("/api/settings/signup", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
         body: JSON.stringify({ enabled: !currentSignupEnabled }),
     });
     fetchStatus();
@@ -244,5 +376,20 @@ document.getElementById("users-table-body").addEventListener("click", (event) =>
 // 회원가입 토글 버튼은 화면에 딱 하나뿐이라 이벤트 위임 없이 바로 걸어도 된다.
 document.getElementById("signup-toggle-btn").addEventListener("click", toggleSignup);
 
+// 게시판 관리 표의 "삭제" 버튼도 회원 목록과 동일한 이벤트 위임 방식을 쓴다.
+document.getElementById("posts-table-body").addEventListener("click", (event) => {
+    if (event.target.classList.contains("delete-post-btn")) {
+        const postId = event.target.getAttribute("data-post-id");
+        deletePost(postId);
+    }
+});
+
+document.getElementById("comments-table-body").addEventListener("click", (event) => {
+    if (event.target.classList.contains("delete-comment-btn")) {
+        const commentId = event.target.getAttribute("data-comment-id");
+        deleteComment(commentId);
+    }
+});
+
 fetchStatus(); // 화면이 열리자마자 한 번 즉시 데이터를 가져온다.
-setInterval(fetchStatus, 10000); // 이후로는 10초마다 계속 반복해서 최신 상태로 갱신한다.
+setInterval(fetchStatus, pollIntervalMs); // 이후로는 pollIntervalMs마다 계속 반복해서 최신 상태로 갱신한다.

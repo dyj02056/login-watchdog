@@ -71,3 +71,59 @@ create table ip_locations (
   lookup_failed boolean not null default false,
   looked_up_at timestamptz not null default now()
 );
+
+-- 회원가입(/signup) 요청 빈도 제한용 로그 (append-only). login_attempts와 별도 표로 둔
+-- 이유: 회원가입은 아이디/성공 여부와 무관하게 "이 IP가 얼마나 자주 두드렸는가"만
+-- 세면 되므로 더 가벼운 구조로 분리했다 (18단계 보안 점검 보완).
+create table signup_attempts (
+  id bigint generated always as identity primary key,
+  ip_address text not null,
+  attempted_at timestamptz not null default now()
+);
+create index idx_signup_attempts_ip_time on signup_attempts (ip_address, attempted_at);
+
+-- ============================================================================
+-- 게시판/댓글 기능 (docs/board-comment/plan_board.md 참고)
+-- ============================================================================
+
+-- 게시판 글. login_attempts와 동일한 관례로 users와 FK를 걸지 않고 작성자를
+-- 텍스트로만 저장한다 — 회원이 탈퇴해도 글은 흔적만 남기고 유지된다
+-- (docs/board-comment/02-design-decisions.md 결정 #4).
+create table posts (
+  id bigint generated always as identity primary key,
+  author_username text not null,
+  title text not null,
+  body text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index idx_posts_created_at on posts (created_at desc);
+
+-- 댓글. 단일 depth(대댓글 없음, 결정 #3)라 자기참조 FK는 두지 않는다.
+-- post_id는 posts를 FK로 참조하며 on delete cascade — "글이 지워지면 그 글의
+-- 댓글도 함께 지워진다"는 자연스러운 종속 관계이지, 회원 탈퇴 cascade(하지
+-- 않기로 함, 결정 #4)와는 별개의 문제다.
+create table comments (
+  id bigint generated always as identity primary key,
+  post_id bigint not null references posts(id) on delete cascade,
+  author_username text not null,
+  body text not null,
+  created_at timestamptz not null default now()
+);
+create index idx_comments_post_id_created_at on comments (post_id, created_at);
+
+-- 게시글 작성 요청 빈도 제한 (signup_attempts와 완전히 동일한 구조, 결정 #7)
+create table post_attempts (
+  id bigint generated always as identity primary key,
+  ip_address text not null,
+  attempted_at timestamptz not null default now()
+);
+create index idx_post_attempts_ip_time on post_attempts (ip_address, attempted_at);
+
+-- 댓글 작성 요청 빈도 제한
+create table comment_attempts (
+  id bigint generated always as identity primary key,
+  ip_address text not null,
+  attempted_at timestamptz not null default now()
+);
+create index idx_comment_attempts_ip_time on comment_attempts (ip_address, attempted_at);

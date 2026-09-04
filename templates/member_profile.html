@@ -16,6 +16,7 @@
         <div class="topbar-actions">
             <button id="theme-toggle" type="button" class="theme-toggle">다크 모드</button>
             <form method="post" action="{{ url_for('member_logout') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="logout-btn">로그아웃</button>
             </form>
         </div>
@@ -40,6 +41,7 @@
                  표시만 한다(app.py의 update_user_profile()도 username은 아예
                  안 받는다 — 화면과 서버 양쪽에서 같은 규칙을 지킨다). -->
             <form method="post" action="{{ url_for('member_profile_submit') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <label for="username">아이디</label>
                 <input type="text" id="username" value="{{ user.username }}" readonly>
 

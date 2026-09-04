@@ -1,0 +1,83 @@
+<!--
+  board_list.html — 게시글 목록 (주소: /board)
+
+  member_dashboard.html 등과 같은 topbar/tokens.css/member.css 구조를 그대로
+  따르고, board.css로 게시판 전용 스타일(글 목록 줄, 페이지네이션)만 얹는다.
+  회원 전용 화면이라 member_login_required로 보호된다(결정 #1).
+-->
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <title>로그인 워치독 — 게시판</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/member.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/board.css') }}">
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+</head>
+<body>
+    <header class="topbar">
+        <h1>로그인 워치독</h1>
+        <div class="topbar-actions">
+            <button id="theme-toggle" type="button" class="theme-toggle">다크 모드</button>
+            <form method="post" action="{{ url_for('member_logout') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="logout-btn">로그아웃</button>
+            </form>
+        </div>
+    </header>
+
+    <main>
+        <div class="member-card board-card">
+            <div class="board-list-header">
+                <h2>게시판</h2>
+                <a class="board-write-btn" href="{{ url_for('board_new') }}">글쓰기</a>
+            </div>
+
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    <ul class="flash-list">
+                        {% for message in messages %}
+                            <li>{{ message }}</li>
+                        {% endfor %}
+                    </ul>
+                {% endif %}
+            {% endwith %}
+
+            {% if posts %}
+                <!-- posts : app.py의 board_list()가 db.list_posts(page, config.BOARD_PAGE_SIZE)로
+                     한 페이지 분량만 미리 잘라서 넘겨준다(결정 #9 — 페이지 번호 방식). -->
+                <ul class="board-post-list">
+                    {% for post in posts %}
+                        <li class="board-post-item">
+                            <a href="{{ url_for('board_detail', post_id=post.id) }}">{{ post.title }}</a>
+                            <div class="board-post-meta">
+                                <span>{{ post.author_username }}</span>
+                                <span class="mono">{{ post.created_at | kr_time }}</span>
+                            </div>
+                        </li>
+                    {% endfor %}
+                </ul>
+
+                <nav class="board-pagination">
+                    {% if page > 1 %}
+                        <a href="{{ url_for('board_list', page=page - 1) }}">← 이전</a>
+                    {% else %}
+                        <span class="board-pagination-disabled">← 이전</span>
+                    {% endif %}
+                    <span class="board-pagination-current">{{ page }} / {{ total_pages }}</span>
+                    {% if page < total_pages %}
+                        <a href="{{ url_for('board_list', page=page + 1) }}">다음 →</a>
+                    {% else %}
+                        <span class="board-pagination-disabled">다음 →</span>
+                    {% endif %}
+                </nav>
+            {% else %}
+                <p class="empty-state">아직 등록된 게시글이 없습니다.</p>
+            {% endif %}
+
+            <a class="back-link" href="{{ url_for('member_dashboard') }}">← 대시보드로 돌아가기</a>
+        </div>
+    </main>
+</body>
+</html>

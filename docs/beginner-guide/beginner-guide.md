@@ -24,6 +24,9 @@
 15. [15단계 — 화면 리디자인 (색상 토큰 + 자연스러운 페이지 전환)](guide15_design.md)
 16. [16단계 — 다크모드 지원](guide16_darkmode.md)
 17. [17단계 — 제목 가운데 정렬, 입력창 테두리 강화, 수동 라이트/다크 전환 버튼](guide17_theme.md)
+18. [18단계 — 오류 발견 및 해결 (보안 점검 8건 수정)](guide18_security_review.md)
+19. [19단계 — 추가 보안 점검 (관리자 로그인 방어 · 버전 고정 · 가입 빈도 제한)](guide19_security_hardening.md)
+20. [20단계 — 게시판·댓글 기능 추가](guide20_board.md)
 
 ---
 
@@ -1540,3 +1543,843 @@ document.addEventListener("DOMContentLoaded", function () {
 - [public/js/theme.js](../../public/js/theme.js) (신규 — 전환 버튼 동작)
 - [templates/login_form.html](../../templates/login_form.html), [templates/signup.html](../../templates/signup.html) (`theme.js` 링크, 우측 상단 고정 버튼 추가)
 - [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [templates/member_dashboard.html](../../templates/member_dashboard.html), [templates/member_history.html](../../templates/member_history.html), [templates/member_profile.html](../../templates/member_profile.html) (`theme.js` 링크, topbar 안에 전환 버튼 추가)
+
+---
+
+## 18단계 — 오류 발견 및 해결 (보안 점검 8건 수정)
+
+
+> 지금까지의 단계는 전부 "새 기능을 만든다"는 방향이었습니다. 이 단계는 처음으로 방향이 다릅니다 — **이미 만들어둔 코드를 되짚어보며 "어디가 잘못됐는가"를 찾고 고치는 단계**입니다. 보안 관점에서 프로젝트 전체를 점검(리뷰)해서 문제 8건을 찾아냈고, 심각한 것부터 순서대로 전부 수정했습니다.
+>
+> 이 중 3건(2, 3, 8번)은 지금까지 어떤 단계에서도 다룬 적 없는 **완전히 새로운 주제**입니다 — 그래서 이 단계 안에서 별도 절로 나눠 자세히 설명합니다. 나머지 5건은 이전 단계에서 이미 만든 코드를 보완하는 성격이라, 해당 단계와 연결해서 설명합니다.
+
+#### 우리가 한 일 (발견 → 수정 순서)
+
+| # | 문제 | 심각도 | 성격 |
+|---|---|---|---|
+| 1 | 관리자 대시보드 Stored XSS | 🔴 긴급 | 6단계·12단계 보완 |
+| 2 | CSRF 방어 전무 | 🔴 긴급 | **신규 주제** |
+| 3 | 검증 스크립트(`bruteforce_sim.py`, `daily_report.py`) 미구현 | 🟠 중요 | **신규 주제** |
+| 4 | `app.py` 통합 테스트 부재 | 🟠 중요 | 8단계 보완 |
+| 5 | 회원가입 입력 검증 부족 | 🟡 보통 | 3단계·5단계 보완 |
+| 6 | 세션 쿠키 보안 옵션 미설정 | 🟡 보통 | 5단계 보완 |
+| 7 | 개발용 서버로 운영 배포 위험 | 🟡 보통 | 5단계·10단계 보완 |
+| 8 | CI(자동 테스트) 파이프라인 없음 | 🟡 보통 | **신규 주제** |
+
+아래에서 각 항목을 "무엇이 문제였는가 → 왜 위험한가 → 어떻게 고쳤는가 → 실제로 확인한 것" 순서로 설명합니다.
+
+---
+
+### 1. Stored XSS — 관리자 대시보드에서 스크립트가 실행되는 문제
+
+#### 무엇이 문제였는가
+[public/js/dashboard.js](../../public/js/dashboard.js)의 `renderAttemptsTable`, `renderUsersTable` 같은 함수들이 서버에서 받아온 값(로그인 시도의 `username`, 회원 목록의 `username`/`email`)을 아무 가공 없이 `innerHTML`에 문자열 그대로 끼워넣고 있었습니다.
+
+```js
+// 수정 전
+tbody.innerHTML = attempts.map((attempt) => `
+    <tr>
+        <td>${attempt.username}</td>
+        ...
+```
+
+#### 왜 위험한가
+`innerHTML`은 넘겨준 문자열을 "글자"가 아니라 "HTML 태그"로 해석합니다. 만약 `username` 값이 `<img src=x onerror="...">` 같은 문자열이라면, 브라우저는 이걸 진짜 `<img>` 태그로 만들고 `onerror` 안의 자바스크립트를 실제로 실행해버립니다. 그런데 이 `username`은 원래 회원가입 폼이나 `/login` 로그인 시도에 누구나 자유롭게 입력할 수 있는 값입니다 — 즉 **로그인조차 성공할 필요 없이**, 로그인 실패 시도의 아이디 칸에 이런 문자열만 넣어도 `login_attempts` 표에 그대로 저장되고, 관리자가 대시보드를 열람하는 순간 **관리자의 로그인 세션으로 스크립트가 실행**됩니다. 그 스크립트는 관리자가 볼 수 있는 모든 API(`/api/unlock`, `/api/users/delete`, `/api/settings/signup`)를 관리자 대신 호출할 수 있습니다 — 공격자가 회원 전체를 삭제하거나, 자기 IP의 잠금을 몰래 풀거나, 회원가입을 꺼버리는 것도 가능해집니다.
+
+#### 어떻게 고쳤는가
+"악성 문자열이 애초에 저장되지 않게 막는다"보다 근본적인 방어는 **"화면에 그릴 때 절대 태그로 해석되지 않게 만든다"**입니다(입력을 아무리 열심히 막아도 놓치는 경로가 항상 있을 수 있으므로, 출력 시점의 방어가 최종 안전망입니다). `<`, `>`, `&`, `"`, `'`처럼 HTML에서 특별한 의미를 갖는 글자를 각각의 "문자 이름"(HTML 엔티티)으로 바꿔주는 `escapeHtml()` 함수를 만들어, 표에 꽂아넣는 모든 사용자 데이터(아이디, 이메일, IP, 위치 문자열)를 이 함수에 반드시 통과시켰습니다.
+
+```js
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+}
+```
+```js
+// 수정 후
+<td>${escapeHtml(attempt.username)}</td>
+```
+`&lt;`는 브라우저에게 "이건 태그를 여는 `<`가 아니라, 그냥 화면에 `<`라는 글자를 보여달라는 뜻이다"라고 알려주는 표기법입니다. 그래서 `<img src=x onerror=...>`라는 값이 오더라도 브라우저는 이걸 진짜 이미지 태그로 만들지 않고, 사용자 눈에 "`<img src=x onerror=...>`"라는 글자 그대로 보여줍니다 — 여전히 표에는 보이지만, 더 이상 "실행되는 코드"가 아니라 "읽기만 하는 텍스트"가 됩니다.
+
+#### 실제로 확인한 것
+1. 로컬 서버를 띄우고 `/login`에 아이디를 `<img src=x onerror=alert(String.fromCharCode(88,83,83))>`로, 비밀번호는 아무거나 넣어 로그인을 실패시켰습니다(회원가입을 거칠 필요조차 없었습니다 — 5번 항목의 입력 검증은 회원가입에만 적용되고, `/login` 시도 기록에는 원래부터 제한이 없었기 때문에, 이 경로가 오히려 XSS를 확인하기에 더 정확한 재현 방법이었습니다).
+2. 관리자로 로그인해서 대시보드를 열어보니, "최근 로그인 시도" 표에 그 문자열이 **글자 그대로** 나타났습니다. 브라우저 개발자 도구로 `document.querySelectorAll('#attempts-table-body img').length`를 확인해보니 `0`— 실제 `<img>` 태그는 단 하나도 만들어지지 않았고, 얼럿(alert) 창도 뜨지 않았습니다.
+
+#### 이 단계에서 만들어지거나 바뀐 파일
+- [public/js/dashboard.js](../../public/js/dashboard.js) (`escapeHtml()` 신규 추가, 4개 렌더 함수의 모든 사용자 데이터 삽입 지점에 적용)
+
+---
+
+### 2. CSRF 방어 전무 (신규 주제)
+
+#### CSRF가 뭔가요?
+CSRF(Cross-Site Request Forgery, "사이트 간 요청 위조")는 "로그인된 사람이 자기도 모르게 원치 않는 요청을 보내게 만드는" 공격입니다. 브라우저는 어떤 사이트로 요청을 보내든, 그 사이트의 쿠키(로그인 세션 정보)를 **자동으로 함께** 실어 보냅니다 — 이게 "로그인 유지"가 되는 원리이기도 하지만, 동시에 악용될 여지이기도 합니다.
+
+비유하자면 이렇습니다. 회사 정문에 "직원증(세션 쿠키)을 소지한 사람만 통과"라는 규칙만 있다고 상상해보세요. 누군가 여러분의 직원증을 몰래 복사한 게 아니라, **여러분이 직접 그 직원증을 목에 걸고** 다른 건물(악성 웹사이트)에 잠깐 들어갔는데, 그 건물 안의 누군가가 여러분 몰래 여러분의 손을 잡아 우리 회사 정문 버튼을 눌러버린 것과 같습니다 — 문지기(로그인 여부 확인)는 직원증을 보고 "본인이 맞다"고 통과시켜주지만, 실제로 그 행동을 하려고 "의도"한 건 여러분이 아니었습니다.
+
+#### 무엇이 문제였는가
+[templates/](../../templates)의 모든 POST 폼(로그아웃, 로그인, 회원가입, 프로필 수정)과 대시보드가 자바스크립트로 호출하는 JSON API(`/api/unlock`, `/api/users/delete`, `/api/settings/signup`) 어디에도 "이 요청이 정말 우리 화면에서 나온 게 맞는지" 확인하는 장치가 전혀 없었습니다. `requirements.txt`에도 CSRF를 막아주는 라이브러리(Flask-WTF 등)가 아예 없었습니다.
+
+#### 왜 위험한가
+관리자가 대시보드에 로그인된 상태로(로그아웃하지 않은 채) 다른 탭에서 악성 페이지를 열었다고 가정해봅시다. 그 페이지 안에 눈에 안 보이는 폼이나 스크립트가 `fetch("https://우리사이트/api/users/delete", {method: "POST", body: JSON.stringify({user_id: 3})})`처럼 우리 사이트를 향해 요청을 보내도록 숨겨져 있다면, 브라우저는 "이 요청이 우리사이트로 가는구나"라고만 판단하고 관리자의 세션 쿠키를 자동으로 함께 실어 보냅니다. 서버 입장에서는 "로그인된 관리자의 요청"과 구분이 안 되므로 그대로 실행해버립니다 — 관리자가 그 페이지를 열어봤다는 사실 자체 말고는 아무것도 하지 않았는데도 회원이 삭제될 수 있습니다.
+
+#### 어떻게 고쳤는가
+`Flask-WTF`라는 라이브러리의 `CSRFProtect`를 도입했습니다. 동작 원리는 이렇습니다.
+
+1. 서버가 화면(HTML)을 그려줄 때마다, 그 방문자의 세션에 묶인 무작위 토큰(`csrf_token`)을 하나 발급해서 화면 안에 몰래 심어둡니다.
+2. 그 화면에서 나가는 모든 POST 요청은 이 토큰 값을 함께 제출해야 합니다.
+3. 서버는 요청이 들어올 때마다 "이 토큰이, 이 세션에게 내가 방금 발급해준 진짜 토큰이 맞는지" 확인합니다.
+
+악성 페이지는 애초에 우리 서버가 그 방문자에게 무슨 토큰을 발급했는지 알아낼 방법이 없습니다(다른 사이트가 우리 사이트의 페이지 내용을 읽어올 수 없도록 브라우저가 원천적으로 막아두기 때문입니다). 그래서 위조된 요청은 토큰이 아예 없거나 틀린 값이 되어 자동으로 거부됩니다.
+
+```python
+# app.py
+from flask_wtf import CSRFProtect
+
+csrf = CSRFProtect(app)
+```
+
+**일반 폼(HTML `<form>`)**에는 눈에 안 보이는 숨김 입력창 하나만 추가하면 됩니다 — 브라우저가 폼을 제출할 때 다른 입력 칸들과 함께 자동으로 이 값도 실어 보내줍니다.
+```html
+<form method="post" action="{{ url_for('member_logout') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit">로그아웃</button>
+</form>
+```
+
+**자바스크립트 `fetch()` API 호출**은 폼이 아니라서 숨김 입력창을 쓸 수 없습니다. 대신 화면 어딘가에 토큰 값을 심어두고(`<meta>` 태그), 자바스크립트가 그 값을 읽어서 요청의 헤더(`X-CSRFToken`)에 실어 보내도록 했습니다.
+```html
+<!-- admin_dashboard.html의 <head> -->
+<meta name="csrf-token" content="{{ csrf_token() }}">
+```
+```js
+// dashboard.js
+const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
+await fetch("/api/unlock", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+    body: JSON.stringify({ ip: ip }),
+});
+```
+
+토큰이 없거나 틀렸을 때 사용자에게 그냥 딱딱한 오류 화면(기본값)을 보여주는 대신, 이 프로젝트의 다른 화면들과 통일된 방식(flash 메시지 + 이전 화면으로 안내)으로 처리하도록 오류 처리기도 추가했습니다.
+```python
+@app.errorhandler(CSRFError)
+def handle_csrf_error(error):
+    flash("보안 토큰이 만료되었거나 올바르지 않습니다. 다시 시도해주세요.")
+    return redirect(request.referrer or url_for("login")), 400
+```
+
+#### 실제로 확인한 것
+1. 토큰 없이 `curl`로 `/login`에 직접 POST를 보내봤더니 `400 Bad Request`로 즉시 거부되는 것을 확인했습니다 — 위조된 요청이 로그인 로직에 도달하지도 못한다는 뜻입니다.
+2. 화면을 먼저 정상적으로 GET으로 받아와 그 안의 진짜 토큰을 꺼내 함께 보내면, 이전과 동일하게 정상 동작하는 것도 확인했습니다.
+3. **이 수정 때문에 실제로 다른 스크립트 하나가 고장 나는 걸 발견하고 같이 고쳤습니다** — 아래 3번 항목의 `bruteforce_sim.py`가 CSRF 토큰 없이 `/login`에 직접 POST를 보내고 있어서, 이 수정 이후로는 전부 400으로 막혀 시뮬레이션 자체가 실패했습니다. 이건 "새 보안 장치가 실제로 작동하고 있다"는 방증이기도 했지만, 동시에 그 스크립트도 브라우저처럼 먼저 화면을 열어 토큰을 받아오도록 고쳐야 했습니다 (3번 항목 참고).
+
+#### 이 단계에서 만들어지거나 바뀐 파일
+- [requirements.txt](../../requirements.txt) (`flask-wtf` 추가)
+- [app.py](../../app.py) (`CSRFProtect` 등록, `CSRFError` 처리기 추가)
+- [templates/login_form.html](../../templates/login_form.html), [templates/signup.html](../../templates/signup.html), [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [templates/member_dashboard.html](../../templates/member_dashboard.html), [templates/member_history.html](../../templates/member_history.html), [templates/member_profile.html](../../templates/member_profile.html) (폼 7개에 `csrf_token` 숨김 필드 추가, 대시보드에는 `<meta>` 태그 추가)
+- [public/js/dashboard.js](../../public/js/dashboard.js) (`fetch()` 3곳에 `X-CSRFToken` 헤더 추가)
+
+---
+
+### 3. 검증 스크립트 미구현 (신규 주제)
+
+#### 무엇이 문제였는가
+`plan.md`는 "`bruteforce_sim.py`로 6번째 시도에서 계정이 잠기는지 검증한다"는 절차를 명시하고 있었지만, [scripts/bruteforce_sim.py](../../scripts/bruteforce_sim.py)와 [scripts/daily_report.py](../../scripts/daily_report.py) 둘 다 실제로는 **0바이트(빈 파일)**였습니다. 즉 문서에는 "이렇게 검증한다"고 적혀있는데 실제로 그 검증을 자동으로 돌려볼 방법이 없었고, 데모 시나리오를 재현하려면 매번 사람이 로그인 폼에 직접 6번 틀린 비밀번호를 입력해야 했습니다.
+
+#### 왜 필요한가
+사람이 직접 6번 클릭해서 확인하는 건 매번 번거롭고, 무엇보다 "정말 6번째에 잠기는지" 같은 **경계값**은 사람이 셀 때 실수하기 쉽습니다. 자동화된 스크립트가 있으면 코드를 수정할 때마다(예: `FAILURE_THRESHOLD` 값을 바꾸거나, `login_submit()` 로직을 리팩터링할 때) 매번 똑같은 조건으로 빠르게 재검증할 수 있습니다.
+
+#### 어떻게 고쳤는가
+
+**`bruteforce_sim.py`** — `research.md`에 이미 적혀있던 스펙(`/login`에 5회 순차 실패 요청 후, 6번째 응답에 "잠긴 계정" 문구가 포함되는지 확인)대로 만들었습니다. `requests` 라이브러리로 `/login`에 틀린 비밀번호를 반복 제출하고, 응답 본문에 잠금 문구가 있는지 확인합니다.
+
+```python
+def run(base_url: str, username: str, attempts: int) -> bool:
+    session = requests.Session()
+    csrf_token = fetch_csrf_token(session, base_url)  # 2번 항목의 CSRF 토큰을 먼저 받아옴
+
+    response = None
+    for i in range(1, attempts + 1):
+        response = attempt_login(session, base_url, username, "wrong-password-on-purpose", csrf_token)
+        ...
+
+    if response is not None and LOCKED_MESSAGE in response.text:
+        print(f"[OK] {attempts}번째 시도에서 '{LOCKED_MESSAGE}' 문구를 확인했습니다.")
+        return True
+    ...
+```
+
+`research.md`에 명시된 안전 원칙("팀이 소유한 로컬 서버만 대상으로 하며, 실제 서비스에는 절대 사용 금지")도 코드로 강제했습니다 — `--host`로 `localhost`/`127.0.0.1`이 아닌 주소를 지정하면, `--i-know-what-im-doing`이라는 명시적인 플래그 없이는 아예 실행을 거부합니다.
+```python
+if not is_local_host(args.host) and not args.i_know_what_im_doing:
+    print("[FAIL] 이 스크립트는 팀이 소유한 로컬 서버만 대상으로 실행하도록 만들어졌습니다. ...", file=sys.stderr)
+    sys.exit(2)
+```
+
+**`daily_report.py`** — 원래 기획(`research.md` 질문 8)은 "LLM(AI)이 로그를 읽고 자연어로 요약해주는" 기능이었지만, `plan.md`에 "프롬프트 설계 등 세부 사양이 정해지지 않아 이번 계획 범위에서 제외"라고 **의도적으로 미뤄둔 결정**이 이미 있었습니다. 그 결정 자체를 뒤집을 근거는 없었으므로, AI 연동까지 구현하지는 않았습니다. 다만 파일이 0바이트로 방치된 것과 "AI 요약이 아직 없다"는 것은 별개의 문제라고 판단해, **AI 없이도 바로 쓸 수 있는 숫자 집계 기반 요약**을 우선 채워넣었습니다(전체 시도 수, 성공/실패 수, 가장 실패가 많았던 IP 상위 5개, 이 기간에 잠긴 IP 목록). 이 집계 로직은 나중에 LLM 연동을 붙일 때도 "요약할 원본 데이터를 모으는 부분"으로 그대로 재사용할 수 있습니다.
+
+이 스크립트가 필요로 하는 조회 함수 2개(`list_attempts_since`, `list_lockouts_since`)는 db.py의 원칙("데이터베이스 접근은 반드시 db.py를 거친다", 3단계 참고)을 지켜서 `db.py`에 추가했습니다.
+
+```python
+# db.py
+def list_attempts_since(hours: int = 24) -> list[dict]:
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    res = get_client().table("login_attempts").select("*").gte("attempted_at", cutoff).execute()
+    return res.data
+```
+
+#### 실제로 확인한 것
+1. `bruteforce_sim.py`를 처음 실행했을 때 **모든 시도가 400으로 실패**하는 걸 발견했습니다 — 원인은 방금 만든 2번 항목의 CSRF 방어였습니다. 스크립트가 브라우저처럼 먼저 화면을 GET으로 열어 토큰을 받아오도록 고친 뒤 재실행하니, 6번째 시도에서 정확히 "잠긴 계정입니다" 문구가 확인되고 종료 코드도 `0`(성공)으로 나왔습니다.
+2. Windows 콘솔(cp949 코드페이지)에서 실행하면 `—`(줄표)나 `✔`/`✘` 같은 특수 유니코드 기호가 `UnicodeEncodeError`로 스크립트 자체를 죽여버리는 것도 발견했습니다 — 이 프로젝트가 Windows 환경에서 개발되고 있으므로 실제 사용 환경에서 바로 재현되는 문제였습니다. 모든 출력 문구를 일반 ASCII 문자(`-`, `[OK]`, `[FAIL]`)로 바꿔서 해결했습니다.
+3. `daily_report.py`를 처음 실행했을 때 `ModuleNotFoundError: No module named 'db'`가 발생하는 것도 발견했습니다 — `scripts/` 폴더 안에서 실행하면 파이썬이 프로젝트 루트에 있는 `db.py`를 못 찾기 때문이었습니다. 스크립트 맨 위에서 프로젝트 루트를 `sys.path`에 직접 추가하도록 고쳐서 해결했고, 이후 재실행하니 실제 Supabase 데이터를 정상적으로 집계해서 리포트를 출력하는 것을 확인했습니다.
+
+#### 이 단계에서 만들어지거나 바뀐 파일
+- [scripts/bruteforce_sim.py](../../scripts/bruteforce_sim.py) (신규 구현)
+- [scripts/daily_report.py](../../scripts/daily_report.py) (신규 구현 — 숫자 집계 버전)
+- [db.py](../../db.py) (`list_attempts_since`, `list_lockouts_since` 추가)
+- [tests/test_db.py](../../tests/test_db.py) (위 두 함수에 대한 단위 테스트 추가)
+
+---
+
+### 4. `app.py` 통합 테스트 부재
+
+#### 무엇이 문제였는가
+8단계에서 만든 테스트는 `detector`/`db`/`soar`/`geoip`/`config` 각각의 함수 하나하나를 따로 검증하는 **단위 테스트**뿐이었습니다(그 단계에서 "진짜 서버 없이 코드만 자동으로 검증"으로 범위를 의도적으로 그렇게 한정했습니다). 하지만 부품 하나하나가 멀쩡해도 "조립"이 잘못되면(예: 라우트에 `@login_required`를 빼먹거나, 세션 키 이름을 잘못 씀) 단위 테스트는 여전히 전부 통과합니다 — 실제로 오늘 고친 XSS·CSRF 같은 문제도 "조립된 상태"에서만 드러나는 종류였습니다.
+
+#### 어떻게 고쳤는가
+Flask가 제공하는 `test_client()`를 이용해, 진짜 서버를 띄우지 않고도 실제 라우트에 요청을 보내볼 수 있는 통합 테스트를 [tests/test_app.py](../../tests/test_app.py)에 추가했습니다. `app.py`는 모듈을 불러오는(import하는) 순간 `os.environ["SECRET_KEY"]`를 곧바로 읽고 `db.ensure_bootstrap_admin()`으로 실제 Supabase 접속까지 시도하기 때문에, [tests/conftest.py](../../tests/conftest.py)에 가짜 환경변수를 채우고 그 함수를 무력화하는 `flask_app` fixture를 만들어 이 문제를 먼저 해결했습니다.
+
+```python
+# tests/conftest.py
+@pytest.fixture
+def flask_app(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "test-only-secret-key")
+    ...
+    import db
+    monkeypatch.setattr(db, "ensure_bootstrap_admin", lambda: None)
+    sys.modules.pop("app", None)
+    import app as app_module
+    app_module.app.config.update(TESTING=True)
+    yield app_module.app
+```
+
+추가한 테스트는 login_required 문지기가 실제로 막아주는지, 로그인 성공/실패/잠금 흐름이 세션과 잠금 함수를 정확히 호출하는지, 회원가입 검증(5번 항목)이 실제로 악성 아이디를 걸러내는지, CSRF 토큰이 없으면 정말 400으로 막히는지까지 12개 테스트로 확인합니다.
+
+#### 실제로 확인한 것
+`pytest tests/ -v`로 전체 51개(기존 39개 + 신규 12개)를 실행해 전부 통과하는 것을 확인했습니다.
+
+#### 이 단계에서 만들어지거나 바뀐 파일
+- [tests/conftest.py](../../tests/conftest.py) (신규 — `flask_app`/`client` fixture)
+- [tests/test_app.py](../../tests/test_app.py) (신규 — 통합 테스트 12개)
+
+---
+
+### 5. 회원가입 입력 검증 부족
+
+#### 무엇이 문제였는가
+[app.py](../../app.py)의 `signup_submit()`은 "칸이 비어있지 않은지"와 "비밀번호 확인이 일치하는지"만 확인했습니다. 이메일이 진짜 이메일 형식인지, 비밀번호가 너무 짧지 않은지, 아이디에 이상한 문자가 들어있지 않은지는 전혀 확인하지 않았습니다 — 1번 항목(XSS)의 근본 원인 중 하나이기도 했습니다.
+
+#### 어떻게 고쳤는가
+정규식(regex) 패턴 3개를 만들어 `signup_submit()`에서 순서대로 검사하도록 했습니다.
+```python
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{3,20}$")  # 영문/숫자/밑줄만, 3~20자
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")  # "글자@글자.글자" 최소 형식
+MIN_PASSWORD_LENGTH = 8
+```
+아이디에 영문자·숫자·밑줄만 허용함으로써, `<`나 `"` 같은 HTML 특수문자가 애초에 회원 계정에 저장될 수 없게 됩니다 — 1번 항목(출력 시점 이스케이프)과 이번 항목(입력 시점 검증)을 함께 적용하는 것을 "심층 방어(defense in depth)"라고 부릅니다. 다만 이 검증은 회원가입 폼에만 적용되고 `/login` 시도 기록에는 적용되지 않으므로(로그인 시도는 실패해도 기록은 남아야 하기 때문에 형식 제한을 걸 수 없습니다), 1번 항목의 출력 시점 이스케이프가 여전히 최종 방어선입니다.
+
+#### 실제로 확인한 것
+통합 테스트(4번 항목)로 `<img src=x onerror=...>` 형태의 아이디, 8자 미만 비밀번호가 각각 정확한 안내 메시지와 함께 거부되고 `db.create_user()`가 아예 호출되지 않는 것을 확인했습니다. 정상적인 입력은 그대로 통과해서 계정이 생성되는 것도 함께 확인했습니다.
+
+#### 이 단계에서 만들어지거나 바뀐 파일
+- [app.py](../../app.py) (`USERNAME_PATTERN`/`EMAIL_PATTERN`/`MIN_PASSWORD_LENGTH` 및 `signup_submit()` 검증 로직 추가)
+
+---
+
+### 6. 세션 쿠키 보안 옵션 미설정
+
+#### 무엇이 문제였는가
+`app.py`는 `SECRET_KEY`만 설정하고, 세션 쿠키의 세부 보안 옵션(`SESSION_COOKIE_SECURE`, `SESSION_COOKIE_SAMESITE` 등)은 전혀 손대지 않아 Flask 기본값에만 의존하고 있었습니다.
+
+#### 어떻게 고쳤는가
+```python
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") == "production"
+```
+- `HTTPONLY`: 자바스크립트(`document.cookie`)가 세션 쿠키를 읽지 못하게 막습니다(Flask 기본값도 True지만, "당연히 켜져 있겠지"에 기대지 않고 명시적으로 적어뒀습니다).
+- `SAMESITE="Lax"`: 다른 사이트에서 시작된 요청에는 쿠키를 잘 안 실어 보내게 만들어, 2번 항목(CSRF)의 보조 방어선 역할을 합니다.
+- `SECURE`: HTTPS 연결에서만 쿠키를 전송하도록 강제합니다. 로컬 개발 서버는 보통 HTTP(암호화 없음)로 뜨기 때문에, 로컬에서까지 이 값을 켜두면 쿠키가 아예 전달되지 않아 로그인 자체가 깨집니다 — 그래서 `FLASK_ENV=production`일 때(Vercel 배포 환경)만 켜지도록 조건을 걸었습니다.
+
+#### 이 단계에서 만들어지거나 바뀐 파일
+- [app.py](../../app.py) (세션 쿠키 설정 3줄 추가)
+
+---
+
+### 7. 개발용 서버로 운영 배포 위험
+
+#### 무엇이 문제였는가
+`app.py` 맨 아래 `app.run(debug=True, port=port)`가 무조건 `debug=True`로 켜져 있었습니다. Flask 공식 문서는 디버그 모드의 대화형 디버거가 "브라우저에서 임의의 파이썬 코드를 실행할 수 있는 콘솔"을 열어준다고 명시하며, 운영 환경에서 절대 켜두면 안 된다고 경고합니다.
+
+#### 어떻게 고쳤는가
+```python
+debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
+port = int(os.environ.get("PORT", 5000))
+app.run(debug=debug, port=port)
+```
+기본값을 항상 꺼진(`False`) 상태로 바꾸고, 로컬에서 디버그 모드가 필요할 때만 `FLASK_DEBUG=true`를 명시적으로 켜도록 했습니다.
+
+**참고로 이 프로젝트가 실제로 배포되는 Vercel(10단계)은 이 `if __name__ == "__main__":` 블록을 아예 거치지 않습니다** — Vercel은 `app` 객체를 서버리스 함수로 직접 실행하기 때문에, 원래도 이 debug 설정과는 무관했습니다. 다만 Vercel이 아닌 곳(자체 서버 등)에 배포할 가능성을 대비해, `requirements.txt`에 프로덕션 WSGI 서버인 `gunicorn`도 추가하고 그 사용법(`gunicorn app:app --bind 0.0.0.0:5000`)을 코드 주석으로 남겨뒀습니다.
+
+#### 이 단계에서 만들어지거나 바뀐 파일
+- [app.py](../../app.py) (`FLASK_DEBUG` 환경변수로 기본값 `False` 전환)
+- [requirements.txt](../../requirements.txt) (`gunicorn` 추가)
+
+---
+
+### 8. CI 파이프라인 없음 (신규 주제)
+
+#### CI가 뭔가요?
+CI(Continuous Integration, "지속적 통합")는 "코드가 바뀔 때마다 자동으로 검증을 돌려주는 로봇 조수"라고 생각하면 됩니다. 지금까지는 `pytest tests/`를 개발자가 직접 로컬에서 실행해봐야만 "테스트를 통과하는지" 알 수 있었습니다 — 누군가 깜빡하고 실행을 안 해본 채로 GitHub에 커밋을 올리면, 망가진 코드가 그대로 들어갈 수 있었습니다.
+
+#### 무엇이 문제였는가
+저장소에 `.github/workflows` 폴더 자체가 없어서, PR이나 커밋마다 자동으로 `pytest`가 돌아가고 그 결과를 확인할 방법이 전혀 없었습니다.
+
+#### 어떻게 고쳤는가
+GitHub Actions 워크플로우 파일 [.github/workflows/tests.yml](../../.github/workflows/tests.yml)을 추가했습니다. `main` 브랜치로 push되거나 PR이 열릴 때마다, GitHub이 자동으로 깨끗한 가상 환경을 하나 만들어서 `pip install -r requirements.txt` → `pytest tests/ -v`를 실행하고, 그 결과(성공/실패)를 PR 화면에 초록/빨강 체크마크로 보여줍니다.
+
+```yaml
+name: pytest
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - run: pip install -r requirements.txt
+      - run: pytest tests/ -v
+```
+
+**진짜 Supabase 자격 증명은 여기 전혀 필요 없습니다.** 4번 항목에서 만든 `tests/conftest.py`의 `flask_app` fixture가 가짜 환경변수를 스스로 채워넣고 `db.ensure_bootstrap_admin()`도 무력화해두었기 때문에, 테스트는 진짜 네트워크 접속을 한 번도 시도하지 않습니다. 이게 바로 4번 항목의 테스트를 "CI에서도 그대로 돌아갈 수 있게" 처음부터 설계해둔 이유입니다 — CI를 나중에 붙이려고 보니 테스트를 다시 고쳐야 하는 상황을 피할 수 있었습니다.
+
+#### 이 단계에서 만들어지거나 바뀐 파일
+- [.github/workflows/tests.yml](../../.github/workflows/tests.yml) (신규)
+
+---
+
+### 이번 단계에서 얻은 교훈
+
+이번 점검에서 특히 인상 깊었던 건, **수정 하나가 다른 곳의 숨은 문제를 스스로 드러내 준 경우**가 여러 번 있었다는 점입니다.
+- 2번(CSRF)을 고치자마자 3번(`bruteforce_sim.py`)이 전부 400으로 실패하면서 고장 났습니다 — 새 보안 장치가 실제로 작동한다는 증거였지만, 동시에 그 장치에 맞춰 다른 스크립트도 같이 고쳐야 한다는 걸 알려줬습니다.
+- 3번을 구현하는 과정에서 Windows 콘솔 인코딩 문제와 `sys.path` 문제라는, 애초의 보안 점검 목록에는 없던 실제 버그 2개를 추가로 발견해서 함께 고쳤습니다.
+
+이런 연쇄는 "고쳤다고 끝이 아니라, 고친 뒤 실제로 다시 돌려봐야 한다"는 걸 잘 보여줍니다. 이번 단계의 모든 수정은 전부 로컬 서버를 실제로 띄우고, 브라우저로 관리자 대시보드를 열어보고, `pytest`와 각 스크립트를 직접 실행해서 확인을 마쳤습니다.
+
+#### 이 단계 전체에서 바뀐 파일 모음
+- [app.py](../../app.py), [db.py](../../db.py), [public/js/dashboard.js](../../public/js/dashboard.js)
+- [templates/login_form.html](../../templates/login_form.html), [templates/signup.html](../../templates/signup.html), [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [templates/member_dashboard.html](../../templates/member_dashboard.html), [templates/member_history.html](../../templates/member_history.html), [templates/member_profile.html](../../templates/member_profile.html)
+- [scripts/bruteforce_sim.py](../../scripts/bruteforce_sim.py), [scripts/daily_report.py](../../scripts/daily_report.py)
+- [tests/conftest.py](../../tests/conftest.py), [tests/test_app.py](../../tests/test_app.py), [tests/test_db.py](../../tests/test_db.py)
+- [.github/workflows/tests.yml](../../.github/workflows/tests.yml)
+- [requirements.txt](../../requirements.txt)
+
+---
+
+## 19단계 — 추가 보안 점검 (관리자 로그인 방어 · 버전 고정 · 가입 빈도 제한)
+
+> 18단계에서 보안 점검 8건을 고친 뒤, 프로젝트 전체를 다시 한번 훑어보며 그때 놓쳤던 부분이 없는지 재점검했습니다. 이번엔 3건을 찾아 전부 고쳤습니다. 특히 1번은 **18단계에서 "로그인 브루트포스 방어"를 그렇게 열심히 만들어놓고도, 정작 관리자 로그인 화면 자체에는 그 방어를 붙이는 걸 깜빡했던** 큰 구멍이었습니다.
+
+#### 우리가 한 일 (발견 → 수정 순서)
+
+| # | 문제 | 심각도 | 성격 |
+|---|---|---|---|
+| 1 | 관리자 로그인(`/admin/login`)에 브루트포스 방어 전무 | 🔴 긴급 | 4단계·5단계 보완 |
+| 2 | `requirements.txt` 버전 미고정 | 🟡 보통 | 1단계 보완 |
+| 3 | `/signup`에 요청 빈도 제한 없음 | 🟡 보통 | 5단계 보완 |
+
+---
+
+### 1. 관리자 로그인은 무제한으로 비밀번호를 시도할 수 있었다
+
+#### 무엇이 문제였는가
+[app.py](../../app.py)의 `admin_login_submit()`은 로그인 시도를 `admin_login_log` 표에 기록만 할 뿐, `detector.is_suspicious()`나 `soar.enforce_lockout()`을 전혀 호출하지 않았습니다. 감시 대상인 `/login`은 같은 IP가 60초 안에 5회 초과 실패하면 5분간 잠기는데, 정작 더 중요한 관리자 로그인 화면(`/admin/login`)에는 이 방어가 하나도 붙어있지 않았습니다.
+
+5단계에서 "관리자 로그인과 감시 대상 로그인을 완전히 다른 코드 경로로 분리했다"고 설명했었는데, 그때는 "관리자가 잠기면 안 되니까 일부러 분리했다"는 의도였습니다. 그런데 이게 지나쳐서, **잠금 자체가 필요 없다는 뜻이 아니라 관리자 로그인용 잠금 판정을 아예 안 만들었다**는 게 이번에 드러난 진짜 문제였습니다.
+
+#### 왜 위험한가
+이 프로젝트에서 관리자 계정 하나가 뚫리면 벌어질 수 있는 일은 이렇습니다.
+- `/api/users/delete`로 회원 전체 삭제
+- `/api/unlock`으로 잠긴 공격자 IP를 스스로 풀어주기
+- `/api/settings/signup`으로 회원가입을 꺼서 서비스 자체를 막기
+
+정문(회원 로그인)은 5번 틀리면 막아두면서, 이 모든 걸 할 수 있는 금고실 문(관리자 로그인)은 하루 종일 몇만 번을 두드려도 아무도 막지 않는 것과 같은 상태였습니다. 짧은 비밀번호나 흔한 비밀번호를 썼다면 자동화된 사전 대입 공격(dictionary attack)만으로도 뚫릴 수 있는 구조였습니다.
+
+#### 어떻게 고쳤는가
+`/login`(`login_submit()`)과 완전히 같은 3단계 흐름을 `/admin/login`(`admin_login_submit()`)에도 그대로 적용했습니다.
+
+```python
+# app.py
+@app.route("/admin/login", methods=["POST"])
+def admin_login_submit():
+    soar.try_release_expired_lockouts()
+    ip = get_request_ip()
+
+    if detector.is_locked(ip):
+        flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
+        return render_template("login_form.html", form_action=url_for("admin_login_submit"))
+
+    username = request.form.get("username", "")
+    password = request.form.get("password", "")
+    success = db.verify_admin_credentials(username, password)
+    db.log_admin_attempt(username, success, ip)
+
+    if success:
+        session["admin_username"] = username
+        return redirect(url_for("admin_dashboard"))
+
+    suspicious, failure_count = detector.is_admin_suspicious(ip)
+    if suspicious:
+        soar.enforce_lockout(ip, failure_count)
+        flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
+    else:
+        flash("아이디 또는 비밀번호가 올바르지 않습니다.")
+    return render_template("login_form.html", form_action=url_for("admin_login_submit"))
+```
+
+여기서 한 가지 막힌 부분이 있었습니다 — 기존 `detector.is_suspicious(ip)`를 그대로 재사용하면 안 됐습니다. 왜냐하면 그 함수는 `login_attempts`(감시 대상 로그인 기록) 표만 세는데, 관리자 로그인 실패는 `admin_login_log`라는 **다른** 표에 쌓이기 때문입니다. 그래서 관리자 전용 판정 함수를 하나 더 만들었습니다.
+
+```python
+# db.py — admin_login_log 표를 세는 전용 함수
+def count_recent_admin_failures(ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS) -> int:
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+    res = (
+        get_client()
+        .table("admin_login_log")
+        .select("id", count="exact")
+        .eq("ip_address", ip)
+        .eq("success", False)
+        .gte("attempted_at", cutoff)
+        .execute()
+    )
+    return res.count or 0
+```
+```python
+# detector.py — is_suspicious()와 판단 기준(초과 여부)은 동일, 보는 표만 다름
+def is_admin_suspicious(ip: str) -> tuple[bool, int]:
+    failure_count = db.count_recent_admin_failures(ip)
+    return failure_count > FAILURE_THRESHOLD, failure_count
+```
+
+한편 **"지금 잠긴 상태인가"**(`detector.is_locked`)는 감시 대상 로그인과 똑같은 `lockouts` 표를 그대로 씁니다 — IP 단위 잠금이라는 이 프로젝트의 기존 설계(알려진 제한사항, README 참고) 그대로, 관리자 로그인으로 잠긴 IP는 회원 로그인에서도 함께 막히고 그 반대도 마찬가지입니다. "누구를 어떻게 잠글지 판단하는 재료(실패 횟수)"는 경로마다 따로 세지만, "잠겼다는 사실 자체"는 하나의 상태판을 공유하는 셈입니다.
+
+#### 실제로 확인한 것
+`pytest tests/test_app.py`에 관리자 로그인 전용 테스트 3개를 추가해 확인했습니다.
+1. IP가 이미 잠긴 상태라면 `verify_admin_credentials`가 아예 호출되지 않고 곧바로 "잠긴 계정입니다"가 뜨는지
+2. 실패 횟수가 임계값을 넘기면 `soar.enforce_lockout`이 정확히 1번 호출되는지
+3. 방어 로직을 추가하고도 정상적인 관리자 로그인(올바른 비밀번호)은 여전히 세션이 만들어지고 대시보드로 이동하는지
+
+`pytest tests/ -v` 전체(59개)를 돌려 전부 통과하는 것도 확인했습니다.
+
+#### 이 단계에서 만들어지거나 바뀐 파일
+- [db.py](../../db.py) (`count_recent_admin_failures` 신규 추가)
+- [detector.py](../../detector.py) (`is_admin_suspicious` 신규 추가)
+- [app.py](../../app.py) (`admin_login_submit()`에 잠금 판정·실행 로직 추가)
+- [tests/test_app.py](../../tests/test_app.py), [tests/test_detector.py](../../tests/test_detector.py) (관련 테스트 추가)
+
+---
+
+### 2. `requirements.txt`에 라이브러리 버전이 고정돼 있지 않았다
+
+#### 무엇이 문제였는가
+[requirements.txt](../../requirements.txt)에는 `flask`, `flask-wtf`, `supabase`처럼 이름만 적혀 있고, 정확히 몇 번 버전을 쓸지는 지정돼 있지 않았습니다.
+
+#### 왜 필요한가
+`pip install -r requirements.txt`를 실행하는 시점마다 "그 순간 가장 최신인 버전"이 설치됩니다. 오늘 내 컴퓨터에 설치한 버전과, 몇 달 뒤 다른 팀원이 새로 설치한 버전이 서로 다를 수 있다는 뜻입니다. 라이브러리 쪽에서 동작 방식이 조금이라도 바뀌면(흔히 있는 일입니다), "내 컴퓨터에서는 되는데 다른 사람 컴퓨터에서는 안 되는" 원인을 찾기 어려운 문제가 생길 수 있습니다. 8단계에서 만든 CI([.github/workflows/tests.yml](../../.github/workflows/tests.yml))도 매번 새로 설치하는 방식이라 이 위험에서 자유롭지 않았습니다.
+
+#### 어떻게 고쳤는가
+로컬에서 실제로 설치해서 `pytest tests/` 51개가 전부 통과하는 걸 확인한 버전 그대로, `==`로 정확히 못박았습니다.
+
+```
+# 수정 전
+flask
+flask-wtf
+supabase
+...
+```
+```
+# 수정 후
+flask==3.1.3
+flask-wtf==1.3.0
+supabase==2.31.0
+python-dotenv==1.2.3
+requests==2.34.2
+pytest==9.1.1
+gunicorn==26.2.0
+```
+
+이렇게 해두면 언제, 어느 컴퓨터에서 설치하든 항상 똑같은 버전 조합이 깔리므로 "버전 차이 때문에 생긴 문제인지 아닌지"를 원천적으로 고민할 필요가 없어집니다.
+
+#### 실제로 확인한 것
+버전을 고정한 뒤 `pytest tests/ -v`를 다시 실행해 59개(1번 항목에서 추가된 8개 포함) 전부 통과하는 것을 확인했습니다.
+
+#### 이 단계에서 만들어지거나 바뀐 파일
+- [requirements.txt](../../requirements.txt) (전체 7개 패키지 버전 고정)
+
+---
+
+### 3. 회원가입(`/signup`)에는 요청 빈도 제한이 전혀 없었다
+
+#### 무엇이 문제였는가
+[app.py](../../app.py)의 `signup_submit()`은 아이디 형식, 이메일 형식, 비밀번호 길이(18단계 5번 항목)까지는 검증하지만, "**같은 사람이 짧은 시간에 몇 번이나 가입을 시도했는지**"는 전혀 세지 않았습니다.
+
+#### 왜 필요한가
+검증 규칙이 아무리 꼼꼼해도, 그 검증을 통과하는 값을 자동으로 계속 만들어내는 스크립트를 막을 방법이 없다는 뜻입니다. 예를 들어 `user0001`, `user0002`, `user0003`... 처럼 규칙에 맞는 아이디를 자동 생성해서 1초에 수십 번씩 `/signup`에 쏘면, `users` 표가 가짜 계정으로 순식간에 가득 찰 수 있습니다. `/login`은 5회 초과 실패에 잠긴다는 방어가 있는데, 계정을 만드는 문 자체는 무제한으로 열려있던 셈입니다.
+
+#### 어떻게 고쳤는가
+로그인 브루트포스 탐지(`login_attempts` + `count_recent_failures`)와 똑같은 구조를, 회원가입 전용으로 하나 더 만들었습니다. 다만 대상이 다릅니다 — 로그인은 "실패만" 세지만, 가입 시도는 성공/실패 여부와 무관하게 "시도 자체"를 셉니다(가입 검증에 계속 걸리는 값을 반복 제출하는 것도 남용이기 때문입니다).
+
+```sql
+-- docs/schema.sql에 추가
+create table signup_attempts (
+  id bigint generated always as identity primary key,
+  ip_address text not null,
+  attempted_at timestamptz not null default now()
+);
+create index idx_signup_attempts_ip_time on signup_attempts (ip_address, attempted_at);
+```
+```python
+# config.py
+SIGNUP_RATE_LIMIT = int(os.environ.get("SIGNUP_RATE_LIMIT", 5))
+```
+```python
+# db.py
+def log_signup_attempt(ip: str) -> None:
+    get_client().table("signup_attempts").insert({"ip_address": ip}).execute()
+
+def count_recent_signup_attempts(ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS) -> int:
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+    res = (
+        get_client()
+        .table("signup_attempts")
+        .select("id", count="exact")
+        .eq("ip_address", ip)
+        .gte("attempted_at", cutoff)
+        .execute()
+    )
+    return res.count or 0
+```
+```python
+# detector.py
+def is_signup_rate_limited(ip: str) -> bool:
+    return db.count_recent_signup_attempts(ip) >= SIGNUP_RATE_LIMIT
+```
+
+로그인 판정(`is_suspicious`)은 "초과(>)"부터 수상하다고 봐줬지만(정상 사용자도 비밀번호를 몇 번은 틀릴 수 있으므로), 가입 시도 판정(`is_signup_rate_limited`)은 "이상(>=)"이면 바로 막습니다 — 정상적인 사용자가 짧은 시간에 가입 화면을 5번 넘게 제출할 이유는 거의 없기 때문에, 더 엄격한 기준을 적용했습니다.
+
+```python
+# app.py — signup_submit()
+if not db.get_signup_enabled():
+    flash("현재 회원가입이 잠시 중단되어 있습니다.")
+    return render_template("signup.html", signup_enabled=False)
+
+ip = get_request_ip()
+if detector.is_signup_rate_limited(ip):
+    flash("너무 많은 가입 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.")
+    return render_template("signup.html", signup_enabled=True)
+db.log_signup_attempt(ip)
+
+username = request.form.get("username", "").strip()
+# ... (이후 검증 로직은 그대로)
+```
+
+#### 실제로 확인한 것
+`tests/test_detector.py`에 경계값 테스트(4번은 통과, 5번째부터 차단)를 추가하고, `tests/test_app.py`에는 "빈도 제한에 걸리면 `log_signup_attempt`조차 호출되지 않고 즉시 안내 메시지가 뜨는지" 확인하는 통합 테스트를 추가했습니다. 기존에 있던 `/signup` 검증 테스트 3개도 새로 추가된 `is_signup_rate_limited`/`log_signup_attempt` 호출을 가짜로 채워넣도록 손봐야 했는데(그렇게 안 하면 진짜 Supabase로 요청이 나가려고 시도해 테스트가 실패합니다), 이것도 4단계에서 배운 것과 같은 패턴(monkeypatch로 "이 테스트가 실제로 거치는 것만" 최소한으로 막기)을 그대로 적용했습니다.
+
+**Supabase 반영 — 코드만으로는 끝나지 않는 마지막 단계**: `signup_attempts` 표는 [docs/schema.sql](../schema.sql)에 SQL로 적어두는 것과, 실제로 운영 중인 Supabase 프로젝트 안에 그 표가 존재하는 것이 서로 다른 일입니다(2단계에서 설명한 것과 같은 이유 — 코드 배포가 데이터베이스 표까지 자동으로 만들어주지는 않습니다). 그래서 Supabase 대시보드에 직접 들어가서 아래 순서로 반영했습니다.
+1. **SQL Editor** → **New query**에 `docs/schema.sql`의 `signup_attempts` 부분(표 생성 + 인덱스 생성 SQL 2줄)만 붙여넣고 실행(Run)
+2. **Table Editor**에서 `signup_attempts`가 표 목록에 새로 나타난 것을 확인
+3. 이미 만들어져 있던 다른 7개 표는 건드리지 않았습니다 — `docs/schema.sql` 전체를 다시 실행하면 "표가 이미 존재한다"는 오류가 나므로, 이번에 새로 추가된 부분만 골라서 실행해야 합니다.
+
+이 단계까지 마치고 나서야 실제 배포된 사이트에서도 `/signup` 요청 빈도 제한이 완전히 동작합니다 — 코드(`app.py`/`db.py`/`detector.py`)는 이미 완성돼 있었지만, 그 코드가 의존하는 표가 실제 데이터베이스에 없으면 `/signup` 요청 자체가 "그런 표가 없다"는 오류로 실패했을 것입니다.
+
+#### 이 단계에서 만들어지거나 바뀐 파일
+- [docs/schema.sql](../schema.sql) (`signup_attempts` 표 추가, Supabase 프로젝트에도 SQL Editor로 직접 반영 완료)
+- [config.py](../../config.py) (`SIGNUP_RATE_LIMIT` 추가)
+- [db.py](../../db.py) (`log_signup_attempt`, `count_recent_signup_attempts` 추가)
+- [detector.py](../../detector.py) (`is_signup_rate_limited` 추가)
+- [app.py](../../app.py) (`signup_submit()`에 빈도 제한 체크 추가)
+- [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py) (관련 테스트 추가)
+
+---
+
+### 이번 단계에서 얻은 교훈
+
+18단계에서 "로그인 브루트포스 방어"를 주제로 프로젝트를 점검했으면서도, 정작 관리자 로그인이라는 **같은 주제의 사각지대**를 놓쳤다는 게 이번 점검의 가장 큰 배움이었습니다. 보안 점검은 "이 기능이 있는가"만 볼 게 아니라 "이 기능이 있어야 할 자리에 전부 다 있는가"까지 확인해야 한다는 걸 보여주는 사례였습니다. `/login`과 `/admin/login`처럼 겉모습은 같은데 속 코드가 분리된 화면일수록, 한쪽만 고치고 다른 쪽은 빠뜨리기 쉽습니다.
+
+또한 3번 항목에서는 "코드를 고쳤다고 끝이 아니라, 그 코드가 의존하는 데이터베이스 표까지 실제 운영 환경에 반영해야 완성"이라는 2단계의 교훈을 다시 한번 확인했습니다.
+
+#### 이 단계 전체에서 바뀐 파일 모음
+- [app.py](../../app.py), [config.py](../../config.py), [db.py](../../db.py), [detector.py](../../detector.py)
+- [docs/schema.sql](../schema.sql)
+- [requirements.txt](../../requirements.txt)
+- [tests/test_app.py](../../tests/test_app.py), [tests/test_detector.py](../../tests/test_detector.py)
+- [README.md](../../README.md) (schema.sql 테이블 개수 안내를 실제 개수에 맞게 수정)
+
+---
+
+## 20단계 — 게시판·댓글 기능 추가
+
+> 회원 전용 영역에 게시판·댓글 기능을 새로 추가했습니다. 이번엔 코드를 바로 짜지 않고, 먼저 "지금 코드가 어떻게 생겼는지"를 분석하고, 모호한 부분 11가지를 질문으로 정리해서 하나씩 답을 정한 뒤, 그 결정을 바탕으로 계획서를 쓰고 나서야 실제 코드를 만들었습니다. 이 순서를 기록해둔 문서가 [docs/board-comment/](../board-comment)에 그대로 남아있습니다 — 이번 단계는 그 문서들의 내용을 이 해설서 스타일로 풀어 쓴 것입니다.
+
+#### 우리가 한 일
+1. [docs/board-comment/research_board.md](../board-comment/research_board.md) — 기존 코드의 구조·관례·위험요소를 먼저 분석
+2. [docs/board-comment/02-design-decisions.md](../board-comment/02-design-decisions.md) — 접근 범위, 삭제 권한, 대댓글 여부 등 모호한 질문 11개에 대한 답을 확정
+3. [docs/board-comment/plan_board.md](../board-comment/plan_board.md) — 스키마·라우트·함수 설계를 담은 구현 계획 수립
+4. [docs/schema.sql](../schema.sql)에 `posts`, `comments`, `post_attempts`, `comment_attempts` 표 4개 추가
+5. [db.py](../../db.py)에 게시글/댓글 CRUD + 빈도 제한 함수 17개, [detector.py](../../detector.py)에 판정 함수 2개, [app.py](../../app.py)에 라우트 12개 추가
+6. 게시글 목록(`board_list.html`), 상세(`board_detail.html`), 작성/수정 폼(`board_form.html`) 화면과 전용 스타일(`board.css`) 신규 제작
+7. 관리자 대시보드에 "게시판 관리" 섹션(임의 게시글·댓글 삭제) 추가
+8. `pytest` 94개 + 실제 브라우저 검증까지 마친 뒤, 검증 중 발견한 버그 2건 수정
+9. 사용자 피드백을 받아 새 댓글 알림 주기를 5초로 조정하고, 이 값을 `config.py`로 이관
+
+---
+
+### 왜 이렇게 설계했는가 (쉬운 설명)
+
+**왜 "판정→조치" 구조(`detector.py`/`soar.py`)를 게시판에는 안 썼는가**
+4단계에서 만든 `detector.py`(판사)와 `soar.py`(집행관)는 "임계값을 넘으면 자동으로 잠근다"는 브루트포스 탐지 전용 개념입니다. 게시글을 쓰고 지우는 데는 이런 "자동 판정 후 조치" 흐름이 없습니다. 그래서 게시판은 `member_profile_submit()`처럼 `db.py` 함수를 `app.py`에서 바로 부르는 더 단순한 패턴을 따랐습니다. 판사·집행관 비유를 억지로 가져다 쓰면 "판사가 게시글 검열도 한다"는 이상한 개념이 생기기 때문입니다.
+
+**작성자를 `users` 표와 연결(FK)하지 않고 문자열로만 저장한 이유**
+3단계에서 만든 `login_attempts`(로그인 기록)는 `username`을 문자열로만 저장하고 `users` 표와 연결하지 않습니다 — "회원이 탈퇴해도 로그인 기록은 감사 로그로 남아야 한다"는 이유였습니다. `posts`/`comments`의 `author_username`도 똑같은 이유로 FK를 걸지 않았습니다. 만약 FK를 걸고 회원 삭제 시 `on delete cascade`로 묶었다면, 관리자가 회원 하나를 지울 때 그 사람이 쓴 글·댓글이 전부 같이 사라지는데, 이건 게시판 성격상 다른 사람들이 보던 글이 갑자기 없어지는 부작용이 있어 "흔적은 남기고 유지"하는 쪽을 선택했습니다.
+
+**댓글에 대댓글(답글)을 안 만든 이유**
+대댓글을 넣으려면 `comments` 표에 `parent_comment_id`라는 "자기 자신을 가리키는" 칸을 추가하고, 화면에서도 들여쓰기·펼치기 같은 로직이 필요해집니다. 이번 요구사항에는 그 정도 복잡도가 필요 없다고 판단해 단순한 1단(depth) 구조로 정했습니다.
+
+**본문에 `<script>` 같은 태그를 입력해도 안전한 이유 — `|safe` 없이 줄바꿈만 살리기**
+회원가입의 아이디처럼 "영문자/숫자만 허용"하는 화이트리스트 정규식은 게시글 본문에는 쓸 수 없습니다(한글, 문장부호를 다 막아버리게 됩니다). 그렇다고 본문에 실제 HTML 서식을 허용하면 XSS(Stored XSS, 6단계에서 실제로 한 번 겪은 문제 유형) 위험이 생깁니다. 그래서 **입력은 그대로 저장**하고, **출력할 때 이스케이프를 절대 끄지 않는** 방법을 택했습니다. Jinja2는 기본적으로 `{{ post.body }}`처럼 값을 출력할 때 `<`, `>` 같은 문자를 자동으로 안전한 문자(HTML 엔티티)로 바꿔줍니다. 문제는 이 상태로는 사용자가 입력한 줄바꿈(Enter)도 그냥 사라져 보인다는 것인데, 이걸 살리려고 보통 쓰는 `nl2br` 필터나 `|safe`는 "이 문자열은 진짜 HTML이니 이스케이프하지 마"라는 뜻이라 다시 위험이 열립니다. 대신 CSS `white-space: pre-wrap;` 속성 하나로 "글자는 그대로 안전하게 이스케이프하되, 줄바꿈만 화면에 그대로 보여달라"고 브라우저에게 지시했습니다 — 코드(이스케이프 로직)는 하나도 안 건드리고 스타일만으로 문제를 풀었습니다.
+
+**"새 댓글 알림"을 웹소켓이 아니라 폴링으로 만든 이유**
+관리자 대시보드(`dashboard.js`)가 이미 "몇 초마다 서버에 다시 물어본다"는 폴링 방식을 검증된 패턴으로 쓰고 있습니다. 게시글 상세 화면도 실시간성이 꼭 필요하진 않아서(댓글이 몇 초 늦게 반영돼도 괜찮음), 같은 패턴을 재사용했습니다. 다만 관리자 대시보드처럼 표 전체를 다시 그리지는 않고, "최신 댓글 개수/시각"만 가볍게 물어봐서 값이 바뀌었을 때만 "새로운 댓글이 추가되었습니다"라는 배너를 띄우는 더 단순한 방식을 썼습니다. 배너를 누르면 그냥 페이지를 새로고침합니다 — 댓글 하나만 화면에 끼워넣는 정교한 로직 없이 가장 단순하게 만들었습니다.
+
+**관리자 삭제를 회원 삭제 API와 별도로 만든 이유**
+`/api/board/posts/delete`, `/api/board/comments/delete`는 `/api/users/delete`와 똑같은 패턴입니다 — `login_required`(관리자 문지기)를 이미 통과했으므로, "이 사람이 관리자인가"는 다시 확인하지 않고 삭제 실행에만 집중합니다. 반면 회원이 자기 글을 지우는 `/board/<id>/delete`는 `member_login_required`(로그인 여부만 확인)를 통과한 뒤에도, 라우트 함수 안에서 **"이 글의 작성자가 정말 나인가"**를 한 번 더 직접 검사합니다. 문지기가 확인하는 것과 코드가 추가로 확인해야 하는 것이 서로 다르다는 걸 보여주는 부분입니다.
+
+---
+
+### 실제 코드 함께 보기
+
+**`docs/schema.sql` — 작성자는 FK 없이 텍스트로, 댓글은 글이 지워지면 함께 지워지게**
+```sql
+create table posts (
+  id bigint generated always as identity primary key,
+  author_username text not null,
+  title text not null,
+  body text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table comments (
+  id bigint generated always as identity primary key,
+  post_id bigint not null references posts(id) on delete cascade,
+  author_username text not null,
+  body text not null,
+  created_at timestamptz not null default now()
+);
+```
+`comments.post_id`는 `posts(id)`를 참조하며 `on delete cascade`가 붙어 있습니다 — "글이 지워지면 그 글의 댓글도 자동으로 같이 지워진다"는 뜻으로, 회원 탈퇴 때와는 다른 이유의 cascade입니다(글 하나가 사라지면 그 밑의 댓글은 당연히 의미가 없어지므로).
+
+**`db.py` — 페이지네이션은 `.range()` 한 줄로**
+```python
+def list_posts(page: int, page_size: int) -> list[dict]:
+    start = (page - 1) * page_size
+    end = start + page_size - 1
+    res = (
+        get_client()
+        .table("posts")
+        .select("*")
+        .order("created_at", desc=True)
+        .range(start, end)
+        .execute()
+    )
+    return res.data
+```
+`.range(start, end)`는 Supabase가 기본으로 제공하는 "몇 번째 행부터 몇 번째 행까지만 줘"라는 기능입니다. 2페이지, 페이지당 10개면 `range(10, 19)`가 되어 11~20번째 글만 가져옵니다 — 별도 페이지네이션 라이브러리 없이 이 한 줄로 "페이지 번호 방식"을 구현했습니다.
+
+**`app.py` — 회원은 본인 글만, 관리자는 전부 지울 수 있게**
+```python
+def _is_post_owner(post: dict) -> bool:
+    return post["author_username"] == session.get("username")
+
+
+@app.route("/board/<int:post_id>/delete", methods=["POST"])
+@member_login_required
+def board_delete(post_id):
+    post = db.get_post(post_id)
+    if post is None:
+        flash("존재하지 않는 게시글입니다.")
+        return redirect(url_for("board_list"))
+    if not _is_post_owner(post):
+        flash("본인이 작성한 글만 삭제할 수 있습니다.")
+        return redirect(url_for("board_detail", post_id=post_id))
+    db.delete_post(post_id)
+    flash("게시글이 삭제되었습니다.")
+    return redirect(url_for("board_list"))
+
+
+@app.route("/api/board/posts/delete", methods=["POST"])
+@login_required
+def api_board_posts_delete():
+    data = request.get_json(silent=True) or {}
+    post_id = data.get("post_id")
+    deleted = db.delete_post(post_id)
+    return jsonify({"success": deleted})
+```
+회원용 라우트(`board_delete`)는 소유권을 직접 검사하지만, 관리자용 API(`api_board_posts_delete`)는 이미 `login_required`가 "로그인된 관리자"임을 보장해줬기 때문에 별도 검사 없이 바로 삭제를 실행합니다.
+
+**`public/js/board.js` — 새 댓글을 가볍게 확인하는 폴링**
+```javascript
+async function checkForNewComments() {
+    const response = await fetch(`/api/board/${boardPostId}/comments/latest`);
+    if (!response.ok) return;
+    const data = await response.json();
+    const latestAt = data.latest_at || "";
+
+    if (data.count !== knownCommentCount || latestAt !== knownLatestAt) {
+        document.getElementById("new-comment-banner").hidden = false;
+    }
+}
+
+setInterval(checkForNewComments, boardPollIntervalMs);
+```
+`data.latest_at || ""` 부분이 왜 필요한지는 아래 "검증 중 발견한 버그" 절에서 설명합니다. `boardPollIntervalMs`는 숫자가 이 파일에 직접 적혀있지 않고, 화면의 `data-poll-interval-ms` 속성에서 읽어옵니다 — 이 부분도 아래에서 따로 설명합니다.
+
+---
+
+### 실제로 확인한 것
+
+1. `pytest tests/` — 게시판 관련 단위/통합 테스트를 추가해 **94개 전부 통과** (회원 전용 접근 제어, 본인 글/댓글 소유권 검사, 빈도 제한 시 요청 단락 처리, 관리자 API의 인증/CSRF 검증 포함)
+2. 실제 로컬 서버 + 실 Supabase에 연결해 브라우저로 직접 확인
+   - 회원가입 → 로그인 → 회원 대시보드의 "게시판 바로가기" → 글쓰기 → 목록/상세 반영
+   - 본문에 `<script>alert(1)</script>`를 입력해도 화면에는 `&lt;script&gt;`라는 글자 그대로만 보이고, 개발자 도구로 확인해도 진짜 `<script>` 태그가 만들어지지 않는 것을 직접 확인
+   - 줄바꿈이 있는 본문을 저장해도 그대로 줄바꿈이 유지되는 것 확인
+   - 댓글 작성 → 새로고침 없이 "새로운 댓글이 추가되었습니다" 배너 노출 확인
+   - 글 수정, 댓글 삭제(본인), 글 삭제(본인 — 딸린 댓글도 함께 삭제됨) 확인
+   - 관리자 대시보드 "게시판 관리" 섹션에서 임의 글/댓글 삭제 확인
+3. 검증에 사용한 테스트 계정·게시글은 확인 후 정리
+
+**Supabase 반영 — 이번에도 코드만으로는 끝나지 않았습니다**: 2단계, 19단계에서 이미 겪었던 것과 똑같은 이유로, `docs/schema.sql`에 SQL을 적어두는 것과 실제 운영 중인 Supabase 프로젝트 안에 그 표가 존재하는 것은 별개의 일입니다. 사용자가 직접 Supabase SQL Editor에서 새 테이블 4개(`posts`, `comments`, `post_attempts`, `comment_attempts`) 생성 SQL을 실행한 뒤에야 `/board`가 정상 동작했습니다 — 반영 전에는 `"Could not find the table 'public.posts' in the schema cache"`라는 오류로 500 에러가 났고, 이 오류 메시지를 실제로 보고 나서 무엇을 해야 하는지 안내했습니다.
+
+#### 이 단계에서 만들어지거나 바뀐 파일
+- [docs/schema.sql](../schema.sql) (`posts`, `comments`, `post_attempts`, `comment_attempts` 4개 표 추가, Supabase에도 SQL Editor로 직접 반영 완료)
+- [config.py](../../config.py) (`BOARD_PAGE_SIZE`, `POST_RATE_LIMIT`, `COMMENT_RATE_LIMIT` 추가)
+- [db.py](../../db.py) (게시글/댓글/빈도제한 함수 17개 추가)
+- [detector.py](../../detector.py) (`is_post_rate_limited`, `is_comment_rate_limited` 추가)
+- [app.py](../../app.py) (게시판 라우트 10개 + 관리자용 게시글/댓글 관리 API 2개 추가, `api_status()` 확장)
+- [templates/board_list.html](../../templates/board_list.html), [templates/board_detail.html](../../templates/board_detail.html), [templates/board_form.html](../../templates/board_form.html) (신규)
+- [templates/admin_dashboard.html](../../templates/admin_dashboard.html) ("게시판 관리" 섹션 추가), [templates/member_dashboard.html](../../templates/member_dashboard.html) ("게시판 바로가기" 링크 추가)
+- [public/css/board.css](../../public/css/board.css) (신규), [public/js/board.js](../../public/js/board.js) (신규)
+- [public/js/dashboard.js](../../public/js/dashboard.js) (게시글/댓글 관리용 렌더링·삭제 함수 추가)
+- [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py) (게시판 관련 테스트 추가, 총 94개 통과)
+- [docs/board-comment/](../board-comment) (구현 전 분석 → 설계 결정 → 구현 계획 → 결과 정리, 문서 4종 신규)
+
+---
+
+### 검증 중 발견한 버그 2개 수정
+
+바로 위 내용을 실제 브라우저로 검증하다가 두 가지 문제를 발견해서 그 자리에서 바로 고쳤습니다.
+
+#### 문제 1 — 댓글이 하나도 없는데도 "새 댓글" 배너가 뜸
+
+서버가 돌려주는 API 응답을 보면, 댓글이 0개인 글은 `latest_at`이 파이썬의 `None`(자바스크립트에서는 `null`)으로 내려옵니다. 그런데 페이지가 처음 그려질 때 화면에 심어두는 기준값은 빈 문자열(`""`)이었습니다. 자바스크립트에서 `null !== ""`은 참(true)입니다 — 즉 "값이 바뀌었다"고 항상 착각하게 되어, 댓글이 하나도 안 달렸는데도 배너가 잘못 떴습니다.
+
+**고친 방법**: API에서 받은 값을 비교하기 직전에 `data.latest_at || ""`로 한 번 정리해서, `null`이든 실제 문자열이든 항상 문자열끼리만 비교하게 만들었습니다.
+```javascript
+const latestAt = data.latest_at || "";
+if (data.count !== knownCommentCount || latestAt !== knownLatestAt) { ... }
+```
+
+#### 문제 2 — "수정" 링크와 "삭제" 버튼의 생김새가 서로 다름
+
+사용자가 실제 화면 스크린샷을 보내주면서 발견됐습니다. `board.css`에 `.board-post-actions button`이라는 규칙을 만들어뒀는데도, `member.css`에 이미 있던 `.member-card button[type="submit"]`이라는 더 강한 규칙에 밀려서 `<button>`(삭제)에는 원치 않는 스타일(전체 폭 + accent 배경)이 적용되고, `<a>` 태그인 "수정"에는 이 규칙이 아예 적용되지 않아 서로 다른 모양이 됐습니다.
+
+CSS는 여러 규칙이 같은 요소를 동시에 겨냥할 때, "더 구체적으로 지정한 규칙"이 이깁니다(이를 **상세도, specificity**라고 부릅니다). `.member-card button[type="submit"]`은 클래스 하나 + 태그 + 속성 조건까지 걸려있어서, 클래스 두 개만 쓴 제 규칙보다 더 "구체적"이라고 브라우저가 판단한 것입니다.
+
+**고친 방법**: 제 규칙도 똑같은 수준으로 구체적이게(`.board-card .board-post-actions button`) 다시 적었습니다. 상세도가 같아지면 "나중에 불러온 CSS 파일이 이긴다"는 규칙이 적용되는데, `board.css`가 `member.css`보다 항상 나중에 `<link>`로 걸려있으므로 `!important` 없이도 제 규칙이 최종 적용되게 만들 수 있었습니다.
+
+---
+
+### 사용자 피드백으로 추가한 개선
+
+기능이 완성된 뒤 실제로 써보면서 세 가지를 더 조정했습니다.
+
+**① 새 댓글 배너 주기를 15초 → 5초로**: 관리자 대시보드(10초)는 한 번에 쿼리 7개가 나가는 무거운 폴링이지만, 게시글 상세의 배너는 쿼리 1개짜리 가벼운 확인이고 사용자가 그 글을 보고 있는 동안에만 도는 것이라 여유가 있다고 판단해 5초로 줄였습니다. 서버 로그에 실제로 5초 간격(`12:04:46 → 51 → 56`)으로 요청이 찍히는 것까지 확인했습니다.
+
+**② 폴링 주기 값을 `config.py`로 이관**: `board.js`(5000)와 `dashboard.js`(10000)에 숫자로 직접 적혀있던 값을 각 파일에서 빼내어 `config.py`에 상수로 모았습니다(1단계에서 "숫자를 한 곳에 모아두면 나중에 하나만 고치면 된다"고 설명했던 것과 같은 원리). 값을 화면까지 전달하는 방식은 화면마다 이미 있던 관례를 그대로 따랐습니다 — `board_detail.html`은 `data-poll-interval-ms` 속성으로, `admin_dashboard.html`은 CSRF 토큰과 똑같이 `<meta name="poll-interval-ms">` 태그로 값을 심어두고 각 JS 파일이 읽어갑니다.
+
+```python
+# config.py
+BOARD_COMMENT_POLL_MS = int(os.environ.get("BOARD_COMMENT_POLL_MS", 5000))
+ADMIN_DASHBOARD_POLL_MS = int(os.environ.get("ADMIN_DASHBOARD_POLL_MS", 10000))
+```
+
+이 값을 서버 밖(브라우저)으로 내보내도 안전한지도 짚고 넘어갔습니다. 폴링 주기는 "내 브라우저가 몇 초마다 다시 확인할지"를 정하는 UX용 숫자일 뿐, 서버가 이 숫자를 믿고 뭔가를 허용해주는 게 아닙니다. 게다가 `public/js/*.js`는 애초에 로그인 없이도 누구나 열람 가능한 정적 파일이라, 지금까지도 이 숫자는 이미 완전히 공개돼 있었습니다 — `config.py`로 옮겨도 노출 범위가 늘어나지 않습니다. 진짜 남용 방지는 이 값과 무관하게 서버 쪽의 `POST_RATE_LIMIT`/`COMMENT_RATE_LIMIT`, 그리고 `login_required`/`member_login_required` 문지기가 계속 담당합니다.
+
+**③ 관리자 대시보드 삭제 버튼 스타일 통일**: 게시글/댓글 삭제 버튼(`delete-post-btn`/`delete-comment-btn`)에 클래스는 붙여뒀지만, 정작 `dashboard.css`에는 이 클래스를 위한 스타일 규칙 자체가 없었습니다 — 회원 목록의 삭제 버튼(`delete-user-btn`)만 스타일이 있고, 게시판 관리 섹션을 추가할 때 새 버튼들을 그 규칙에 합치는 걸 빠뜨린 것입니다. 그래서 회원 목록 삭제 버튼이 위험한 조치(빨간 배경)임을 알려주는 것과 달리, 게시글/댓글 삭제 버튼은 브라우저 기본 모양 그대로 밋밋하게 보였습니다.
+
+```css
+/* dashboard.css */
+.delete-user-btn,
+.delete-post-btn,
+.delete-comment-btn {
+    background: var(--danger);
+    color: white;
+    border: none;
+    border-radius: var(--radius-s);
+    padding: 5px 10px;
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-size: 12px;
+}
+```
+CSS 선택자를 콤마로 나열하면 "이 중 아무 클래스나 가진 요소에는 전부 같은 스타일을 적용해라"는 뜻이 됩니다 — 세 버튼이 항상 같은 모양을 유지하도록, 규칙 자체를 하나로 묶었습니다. 실제 글/댓글을 만들어보고 관리자 대시보드에서 세 버튼의 배경색·글자색·패딩·폰트 크기가 완전히 똑같은지(`getComputedStyle`로) 확인했습니다.
+
+#### 이 개선으로 추가·변경된 파일
+- [config.py](../../config.py) (`BOARD_COMMENT_POLL_MS`, `ADMIN_DASHBOARD_POLL_MS` 추가)
+- [app.py](../../app.py) (`board_detail()`, `admin_dashboard()`가 폴링 주기 값을 템플릿에 전달)
+- [templates/board_detail.html](../../templates/board_detail.html) (`data-poll-interval-ms` 속성 추가)
+- [templates/admin_dashboard.html](../../templates/admin_dashboard.html) (`poll-interval-ms` meta 태그 추가)
+- [public/js/board.js](../../public/js/board.js), [public/js/dashboard.js](../../public/js/dashboard.js) (하드코딩된 숫자 제거, 화면에서 값을 읽어오도록 변경)
+- [public/css/dashboard.css](../../public/css/dashboard.css) (`.delete-user-btn` 규칙에 `.delete-post-btn`/`.delete-comment-btn` 통합)
+
+---
+
+### 이번 단계에서 얻은 교훈
+
+이번엔 코드를 먼저 짜지 않고 "분석 → 질문 확정 → 계획 → 구현"이라는 순서를 지킨 게 가장 큰 차이였습니다. 특히 "회원 탈퇴 시 게시글은 어떻게 되는가", "비로그인 사용자도 볼 수 있는가" 같은 질문은 코드를 짜기 시작한 뒤에 알게 됐다면 이미 만든 스키마나 라우트를 다시 뜯어고쳐야 했을 결정들이었습니다. 미리 답을 정해두니 구현 자체는 오히려 단순하게 끝났습니다.
+
+또한 실사용 검증(브라우저로 직접 눌러보기)이 자동화 테스트만으로는 못 잡는 문제를 잡아낸다는 걸 다시 확인했습니다 — `null`과 `""`을 다르게 취급하는 버그도, CSS 상세도 충돌 버그도 `pytest`로는 절대 걸리지 않는 종류의 문제였습니다(전자는 브라우저의 JS 실행이, 후자는 실제 렌더링된 화면을 봐야만 드러납니다). 13단계에서도 똑같은 패턴(실사용 중 버그 2개 발견)이 있었는데, 이번에도 같은 교훈이 반복됐습니다.
+
+#### 이 단계 전체에서 바뀐 파일 모음
+- [app.py](../../app.py), [config.py](../../config.py), [db.py](../../db.py), [detector.py](../../detector.py)
+- [docs/schema.sql](../schema.sql)
+- [templates/board_list.html](../../templates/board_list.html), [templates/board_detail.html](../../templates/board_detail.html), [templates/board_form.html](../../templates/board_form.html), [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [templates/member_dashboard.html](../../templates/member_dashboard.html)
+- [public/css/board.css](../../public/css/board.css), [public/css/dashboard.css](../../public/css/dashboard.css), [public/js/board.js](../../public/js/board.js), [public/js/dashboard.js](../../public/js/dashboard.js)
+- [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py)
+- [docs/board-comment/](../board-comment) (문서 4종)

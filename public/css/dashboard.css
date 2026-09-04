@@ -112,8 +112,13 @@ section h2 {
     font-size: 13px;
 }
 
-/* 회원 목록의 "삭제" 버튼 — 되돌릴 수 없는 조치이므로 위험을 알리는 색을 씀 */
-.delete-user-btn {
+/* 회원 목록·게시판 관리(게시글/댓글)의 "삭제" 버튼 — 전부 되돌릴 수 없는
+   조치이므로 동일하게 위험을 알리는 색을 쓰고, 하나의 규칙으로 묶어 스타일이
+   어긋나지 않게 한다(dashboard.js의 delete-user-btn/delete-post-btn/
+   delete-comment-btn 클래스가 전부 이 규칙을 공유). */
+.delete-user-btn,
+.delete-post-btn,
+.delete-comment-btn {
     background: var(--danger);
     color: white;
     border: none;
