@@ -260,6 +260,16 @@ def signup_submit():
         flash("현재 회원가입이 잠시 중단되어 있습니다.")
         return render_template("signup.html", signup_enabled=False)
 
+    # 같은 IP가 짧은 시간에 너무 많이 가입을 시도하면 거부한다 — 이전에는 이 주소에
+    # 요청 빈도 제한이 전혀 없어서, 스크립트로 계정을 무제한 찍어낼 수 있었다
+    # (18단계 보안 점검에서 발견 및 보완). 성공/실패와 무관하게 시도 자체를 세므로,
+    # 검증에서 계속 걸러지는 값을 반복 제출하는 남용도 함께 막는다.
+    ip = get_request_ip()
+    if detector.is_signup_rate_limited(ip):
+        flash("너무 많은 가입 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.")
+        return render_template("signup.html", signup_enabled=True)
+    db.log_signup_attempt(ip)
+
     username = request.form.get("username", "").strip()
     email = request.form.get("email", "").strip()
     password = request.form.get("password", "")
@@ -385,10 +395,25 @@ def admin_login():
 
 @app.route("/admin/login", methods=["POST"])
 def admin_login_submit():
-    """관리자 로그인 폼 제출을 처리한다."""
+    """관리자 로그인 폼 제출을 처리한다.
+
+    /login(감시 대상 로그인)과 마찬가지로 IP 잠금을 적용한다 — 이전에는 이 라우트가
+    시도 기록만 남길 뿐 잠금 판정을 전혀 하지 않아서, 관리자 계정만 브루트포스에
+    무방비로 노출돼 있었다(18단계 보안 점검에서 발견 및 보완). 관리자 계정이 뚫리면
+    회원 삭제·잠금 해제·회원가입 On/Off까지 전부 장악되므로 우선순위가 가장 높았다.
+    """
+    # 1) 시간이 지나 자동으로 풀려야 할 잠금들을 정리 (login_submit()과 동일)
+    soar.try_release_expired_lockouts()
+
+    ip = get_request_ip()
+
+    # 2) 이미 잠긴 IP라면 자격 증명 확인 자체를 건너뛰고 즉시 거부
+    if detector.is_locked(ip):
+        flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
+        return render_template("login_form.html", form_action=url_for("admin_login_submit"))
+
     username = request.form.get("username", "")
     password = request.form.get("password", "")
-    ip = get_request_ip()
 
     success = db.verify_admin_credentials(username, password)
     # 성공/실패와 무관하게 "누가 언제 관리자 로그인을 시도했는지"는 항상 기록해서
@@ -402,7 +427,15 @@ def admin_login_submit():
         session["admin_username"] = username
         return redirect(url_for("admin_dashboard"))
 
-    flash("아이디 또는 비밀번호가 올바르지 않습니다.")
+    # 3) 이 실패로 인해 방금 임계값을 넘었는지 확인하고, 넘었다면 잠근다
+    #    (login_submit()과 동일한 detector/soar 조합 — 잠금 상태 자체는 lockouts
+    #    표를 공유하므로, 이 IP는 /login 쪽에서도 함께 잠긴다).
+    suspicious, failure_count = detector.is_admin_suspicious(ip)
+    if suspicious:
+        soar.enforce_lockout(ip, failure_count)
+        flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
+    else:
+        flash("아이디 또는 비밀번호가 올바르지 않습니다.")
     return render_template("login_form.html", form_action=url_for("admin_login_submit"))
 
 

@@ -292,6 +292,27 @@ def verify_admin_credentials(username: str, password: str) -> bool:
     return check_password_hash(res.data[0]["password_hash"], password)
 
 
+def count_recent_admin_failures(ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS) -> int:
+    """이 IP가 최근 몇 초(기본 60초) 안에 관리자 로그인을 몇 번이나 실패했는지 센다.
+
+    count_recent_failures()와 완전히 같은 패턴이지만, login_attempts가 아니라
+    admin_login_log 표를 본다 — 감시 대상 로그인(/login)과 관리자 로그인
+    (/admin/login)은 서로 다른 표에 기록되므로, 관리자 로그인 브루트포스를
+    탐지하려면 이 표를 따로 세어야 한다(18단계 보안 점검에서 발견된 공백).
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+    res = (
+        get_client()
+        .table("admin_login_log")
+        .select("id", count="exact")
+        .eq("ip_address", ip)
+        .eq("success", False)
+        .gte("attempted_at", cutoff)
+        .execute()
+    )
+    return res.count or 0
+
+
 def log_admin_attempt(username: str, success: bool, ip: str) -> None:
     """관리자 로그인 시도(성공이든 실패든) 한 건을 admin_login_log 표에 기록한다.
 
@@ -465,6 +486,31 @@ def get_signup_enabled() -> bool:
 def set_signup_enabled(enabled: bool) -> None:
     """회원가입 허용 여부를 켜거나 끈다 (관리자가 대시보드에서 호출)."""
     get_client().table("app_settings").update({"signup_enabled": enabled}).eq("id", 1).execute()
+
+
+# ============================================================================
+# signup_attempts 표 관련 함수 — 회원가입 요청 빈도 제한 (18단계 보안 점검 보완)
+# — login_attempts와 별도 표를 쓰는 이유: 회원가입은 성공/아이디 값과 무관하게
+#   "이 IP가 얼마나 자주 두드렸는가"만 세면 되므로, 더 가벼운 구조로 분리했다.
+# ============================================================================
+
+def log_signup_attempt(ip: str) -> None:
+    """회원가입 POST 요청 한 건을 signup_attempts 표에 기록한다 (성공/실패 무관)."""
+    get_client().table("signup_attempts").insert({"ip_address": ip}).execute()
+
+
+def count_recent_signup_attempts(ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS) -> int:
+    """이 IP가 최근 몇 초(기본 60초) 안에 회원가입을 몇 번이나 시도했는지 센다."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+    res = (
+        get_client()
+        .table("signup_attempts")
+        .select("id", count="exact")
+        .eq("ip_address", ip)
+        .gte("attempted_at", cutoff)
+        .execute()
+    )
+    return res.count or 0
 
 
 # ============================================================================

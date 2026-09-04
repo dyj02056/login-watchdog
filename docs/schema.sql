@@ -71,3 +71,13 @@ create table ip_locations (
   lookup_failed boolean not null default false,
   looked_up_at timestamptz not null default now()
 );
+
+-- 회원가입(/signup) 요청 빈도 제한용 로그 (append-only). login_attempts와 별도 표로 둔
+-- 이유: 회원가입은 아이디/성공 여부와 무관하게 "이 IP가 얼마나 자주 두드렸는가"만
+-- 세면 되므로 더 가벼운 구조로 분리했다 (18단계 보안 점검 보완).
+create table signup_attempts (
+  id bigint generated always as identity primary key,
+  ip_address text not null,
+  attempted_at timestamptz not null default now()
+);
+create index idx_signup_attempts_ip_time on signup_attempts (ip_address, attempted_at);

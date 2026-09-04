@@ -10,7 +10,7 @@
 # ============================================================================
 
 import db
-from config import FAILURE_THRESHOLD
+from config import FAILURE_THRESHOLD, SIGNUP_RATE_LIMIT
 
 
 def is_suspicious(ip: str) -> tuple[bool, int]:
@@ -25,6 +25,30 @@ def is_suspicious(ip: str) -> tuple[bool, int]:
     """
     failure_count = db.count_recent_failures(ip)
     return failure_count > FAILURE_THRESHOLD, failure_count
+
+
+def is_admin_suspicious(ip: str) -> tuple[bool, int]:
+    """이 IP가 "관리자 로그인에 대해 수상한 상태"인지 판단한다.
+
+    is_suspicious()와 판단 기준(초과 여부)은 동일하지만, 세는 대상이
+    login_attempts가 아니라 admin_login_log다 — 관리자 로그인(/admin/login)은
+    감시 대상 로그인(/login)과 완전히 별도 경로이므로, 그동안 이 판정이
+    빠져있어 관리자 계정은 무제한으로 비밀번호를 시도할 수 있었다
+    (18단계 보안 점검에서 발견 및 보완).
+    """
+    failure_count = db.count_recent_admin_failures(ip)
+    return failure_count > FAILURE_THRESHOLD, failure_count
+
+
+def is_signup_rate_limited(ip: str) -> bool:
+    """이 IP가 최근 회원가입을 너무 자주 시도해서 더 막아야 하는 상태인지 판단한다.
+
+    is_suspicious()와 달리 "초과"가 아니라 "이상"을 기준으로 삼는다 — 로그인
+    실패는 정상 사용자도 몇 번은 겪을 수 있는 일이라 여유(초과)를 주지만,
+    회원가입 요청 자체는 정상 사용자가 짧은 시간에 여러 번 반복할 이유가
+    거의 없으므로 더 엄격하게(기준치에 도달하면 즉시) 차단한다.
+    """
+    return db.count_recent_signup_attempts(ip) >= SIGNUP_RATE_LIMIT
 
 
 def is_locked(ip: str) -> bool:

@@ -44,6 +44,40 @@ def test_is_suspicious_true_when_failures_exceed_threshold(monkeypatch):
     assert count == 6
 
 
+def test_is_admin_suspicious_false_at_exact_threshold(monkeypatch):
+    # count_recent_failures와 마찬가지로 count_recent_admin_failures를 흉내낸다 —
+    # 관리자 로그인 실패는 admin_login_log에서 세므로 별도 함수를 바꿔치기한다.
+    monkeypatch.setattr(db, "count_recent_admin_failures", lambda ip: 5)
+
+    suspicious, count = detector.is_admin_suspicious("1.2.3.4")
+
+    assert suspicious is False
+    assert count == 5
+
+
+def test_is_admin_suspicious_true_when_failures_exceed_threshold(monkeypatch):
+    monkeypatch.setattr(db, "count_recent_admin_failures", lambda ip: 6)
+
+    suspicious, count = detector.is_admin_suspicious("1.2.3.4")
+
+    assert suspicious is True
+    assert count == 6
+
+
+def test_is_signup_rate_limited_false_below_limit(monkeypatch):
+    # SIGNUP_RATE_LIMIT 기본값은 5 — 4번까지는 아직 제한하지 않는다.
+    monkeypatch.setattr(db, "count_recent_signup_attempts", lambda ip: 4)
+
+    assert detector.is_signup_rate_limited("1.2.3.4") is False
+
+
+def test_is_signup_rate_limited_true_at_limit(monkeypatch):
+    # 로그인 실패(초과부터 잠금)와 달리, 가입 시도는 "기준치 이상"이면 바로 막는다.
+    monkeypatch.setattr(db, "count_recent_signup_attempts", lambda ip: 5)
+
+    assert detector.is_signup_rate_limited("1.2.3.4") is True
+
+
 def test_is_locked_true_when_lockout_exists(monkeypatch):
     # get_active_lockout이 "잠금 정보가 있다"는 뜻으로 딕셔너리를 돌려주는 상황을 흉내낸다.
     monkeypatch.setattr(db, "get_active_lockout", lambda ip: {"ip_address": ip, "active": True})

@@ -128,11 +128,77 @@ def test_login_post_without_csrf_token_is_rejected(client, monkeypatch):
 
 
 # ============================================================================
+# /admin/login — 관리자 로그인 브루트포스 방어 (18단계 보안 점검 보완)
+# — /login과 똑같은 구조의 테스트를 관리자 경로에도 그대로 재현해서, 두 경로가
+#   실제로 같은 수준의 방어를 받는지 확인한다.
+# ============================================================================
+
+def test_admin_login_locked_ip_short_circuits_before_checking_credentials(client, monkeypatch):
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("잠긴 IP인데 verify_admin_credentials가 호출되었다")
+
+    monkeypatch.setattr(soar, "try_release_expired_lockouts", lambda: None)
+    monkeypatch.setattr(detector, "is_locked", lambda ip: True)
+    monkeypatch.setattr(db, "verify_admin_credentials", _fail_if_called)
+
+    token = get_csrf_token(client, "/admin/login")
+    response = client.post(
+        "/admin/login",
+        data={"username": "test-admin", "password": "whatever", "csrf_token": token},
+    )
+
+    assert "잠긴 계정입니다" in response.get_data(as_text=True)
+
+
+def test_admin_login_failure_over_threshold_triggers_lockout(client, monkeypatch):
+    enforce_lockout_calls = []
+
+    monkeypatch.setattr(soar, "try_release_expired_lockouts", lambda: None)
+    monkeypatch.setattr(detector, "is_locked", lambda ip: False)
+    monkeypatch.setattr(db, "verify_admin_credentials", lambda username, password: False)
+    monkeypatch.setattr(db, "log_admin_attempt", lambda username, success, ip: None)
+    monkeypatch.setattr(detector, "is_admin_suspicious", lambda ip: (True, 6))
+    monkeypatch.setattr(
+        soar, "enforce_lockout", lambda ip, failure_count: enforce_lockout_calls.append((ip, failure_count))
+    )
+
+    token = get_csrf_token(client, "/admin/login")
+    response = client.post(
+        "/admin/login",
+        data={"username": "test-admin", "password": "wrong", "csrf_token": token},
+    )
+
+    assert len(enforce_lockout_calls) == 1
+    assert "잠긴 계정입니다" in response.get_data(as_text=True)
+
+
+def test_admin_login_success_still_creates_session_when_not_suspicious(client, monkeypatch):
+    # 방어 로직을 추가하면서 정상 로그인 흐름을 망가뜨리지 않았는지 확인한다.
+    monkeypatch.setattr(soar, "try_release_expired_lockouts", lambda: None)
+    monkeypatch.setattr(detector, "is_locked", lambda ip: False)
+    monkeypatch.setattr(db, "verify_admin_credentials", lambda username, password: True)
+    monkeypatch.setattr(db, "log_admin_attempt", lambda username, success, ip: None)
+
+    token = get_csrf_token(client, "/admin/login")
+    response = client.post(
+        "/admin/login",
+        data={"username": "test-admin", "password": "correct", "csrf_token": token},
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/admin/dashboard"
+    with client.session_transaction() as sess:
+        assert sess["admin_username"] == "test-admin"
+
+
+# ============================================================================
 # /signup — 회원가입 입력 검증
 # ============================================================================
 
 def test_signup_rejects_username_with_html_special_characters(client, monkeypatch):
     monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
+    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: False)
+    monkeypatch.setattr(db, "log_signup_attempt", lambda ip: None)
 
     def _fail_if_called(*args, **kwargs):
         raise AssertionError("검증에 실패한 아이디인데 create_user가 호출되었다")
@@ -156,6 +222,8 @@ def test_signup_rejects_username_with_html_special_characters(client, monkeypatc
 
 def test_signup_rejects_short_password(client, monkeypatch):
     monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
+    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: False)
+    monkeypatch.setattr(db, "log_signup_attempt", lambda ip: None)
 
     token = get_csrf_token(client, "/signup")
     response = client.post(
@@ -175,6 +243,8 @@ def test_signup_rejects_short_password(client, monkeypatch):
 def test_signup_accepts_valid_input(client, monkeypatch):
     created_with = []
     monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
+    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: False)
+    monkeypatch.setattr(db, "log_signup_attempt", lambda ip: None)
     monkeypatch.setattr(
         db,
         "create_user",
@@ -195,6 +265,30 @@ def test_signup_accepts_valid_input(client, monkeypatch):
 
     assert response.status_code == 302
     assert created_with == [("hyun_2", "hyun2@example.com", "password123")]
+
+
+def test_signup_rejects_when_rate_limited(client, monkeypatch):
+    monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
+    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: True)
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("빈도 제한에 걸렸는데 log_signup_attempt가 호출되었다")
+
+    monkeypatch.setattr(db, "log_signup_attempt", _fail_if_called)
+
+    token = get_csrf_token(client, "/signup")
+    response = client.post(
+        "/signup",
+        data={
+            "username": "hyun_3",
+            "email": "hyun3@example.com",
+            "password": "password123",
+            "password_confirm": "password123",
+            "csrf_token": token,
+        },
+    )
+
+    assert "너무 많은 가입 시도" in response.get_data(as_text=True)
 
 
 # ============================================================================
