@@ -1,0 +1,242 @@
+/* ============================================================================
+   board.css — 게시판 화면(board_list.html, board_detail.html, board_form.html)
+   전용 스타일. member.css가 정의한 .member-card/.data-table/.flash-list 등을
+   그대로 물려받고, 여기서는 게시판에서만 쓰이는 클래스만 추가한다. 색상·글꼴
+   값은 전부 tokens.css의 var(--이름)에서 가져온다 — 새 팔레트를 만들지 않는다.
+   ============================================================================ */
+
+/* member-card(최대 480px)는 프로필 폼처럼 좁은 화면에 맞춰져 있어서, 글 목록·
+   본문처럼 읽을거리가 많은 화면은 조금 더 넓게 쓴다. */
+.board-card {
+    max-width: 640px;
+}
+
+.board-list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.board-list-header h2 {
+    margin: 0;
+}
+
+.board-write-btn {
+    background: var(--accent);
+    color: white;
+    text-decoration: none;
+    padding: 8px 14px;
+    border-radius: var(--radius-s);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.board-write-btn:hover {
+    background: var(--accent-strong);
+}
+
+.empty-state {
+    color: var(--ink-faint);
+    font-size: 13px;
+    text-align: center;
+    padding: 24px 0;
+}
+
+/* -------------------------------- 글 목록 -------------------------------- */
+
+.board-post-list {
+    list-style: none;
+    margin: 16px 0;
+    padding: 0;
+}
+
+.board-post-item {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.board-post-item:last-child {
+    border-bottom: none;
+}
+
+.board-post-item a {
+    color: var(--ink);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.board-post-item a:hover {
+    color: var(--accent-ink);
+}
+
+.board-post-meta {
+    display: flex;
+    gap: 10px;
+    color: var(--ink-faint);
+    font-size: 12px;
+    margin-top: 4px;
+}
+
+.board-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 16px;
+    font-size: 13px;
+}
+
+.board-pagination a {
+    color: var(--accent-ink);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.board-pagination-disabled {
+    color: var(--ink-faint);
+}
+
+.board-pagination-current {
+    color: var(--ink-soft);
+}
+
+/* -------------------------------- 글 상세 -------------------------------- */
+
+/* white-space: pre-wrap — 사용자가 입력한 줄바꿈을 그대로 화면에 살리되,
+   |safe 필터나 nl2br 없이 순수 텍스트로만 다룬다. Jinja2의 기본 auto-escape가
+   그대로 적용되므로, 본문에 <, > 같은 문자가 들어와도 태그로 해석되지 않고
+   눈에 보이는 글자 그대로 표시된다(XSS 방어 유지, 결정 #5). */
+.board-post-body {
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.6;
+    color: var(--ink);
+    margin: 16px 0;
+}
+
+.board-post-actions {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+/* member.css의 .member-card button[type="submit"] 규칙(전체 폭 + accent 배경)이
+   상세 상세도(0,2,1)가 더 높아 .board-post-actions button을 덮어써버린다 —
+   그래서 <a>(수정)와 <button>(삭제)이 서로 다른 모양으로 보였다. .board-card를
+   앞에 붙여 동일한 상세도로 맞추고, board.css가 member.css보다 뒤에 로드되므로
+   이 규칙이 최종 적용된다(캐스케이드 순서로 해결 — !important 불필요). */
+.board-post-actions a,
+.board-card .board-post-actions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: auto;
+    margin-top: 0;
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    background: var(--accent);
+    color: white;
+    padding: 6px 14px;
+    border-radius: var(--radius-s);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.board-post-actions a:hover,
+.board-card .board-post-actions button:hover {
+    background: var(--accent-strong);
+}
+
+.new-comment-banner {
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    padding: 10px 12px;
+    border-radius: var(--radius-s);
+    font-size: 13px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.new-comment-banner button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: var(--radius-s);
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+/* -------------------------------- 댓글 -------------------------------- */
+
+.board-comment-list {
+    list-style: none;
+    padding: 0;
+    margin: 12px 0 20px 0;
+}
+
+.board-comment-item {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+}
+
+.board-comment-item:last-child {
+    border-bottom: none;
+}
+
+.board-comment-meta {
+    display: flex;
+    gap: 10px;
+    color: var(--ink-faint);
+    font-size: 12px;
+}
+
+.board-comment-body {
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--ink);
+    margin: 4px 0;
+    font-size: 13px;
+}
+
+.board-comment-delete-btn {
+    background: none;
+    border: none;
+    color: var(--danger);
+    font-size: 12px;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.board-comment-form textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-s);
+    font-family: var(--font-body);
+    color: var(--ink);
+    background: var(--surface);
+    resize: vertical;
+}
+
+/* member.css가 .member-card textarea에는 스타일을 정의해두지 않아서, 글쓰기
+   폼(board_form.html)의 본문 textarea에도 같은 규칙을 적용해둔다. */
+.member-card textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-s);
+    font-family: var(--font-body);
+    color: var(--ink);
+    background: var(--surface);
+    resize: vertical;
+}

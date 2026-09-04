@@ -19,6 +19,11 @@
          달리 fetch() 요청에는 hidden input을 넣을 수 없으므로, 이렇게 화면 어딘가에
          값을 심어두고 자바스크립트가 꺼내 쓰는 방식을 쓴다(CSRF 방어, 2번째 보안 수정). -->
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <!-- dashboard.js가 몇 밀리초마다 /api/status를 다시 부를지. config.py의
+         ADMIN_DASHBOARD_POLL_MS 값을 app.py가 그대로 내려준다(board_detail.html의
+         data-poll-interval-ms와 같은 목적, 화면마다 관례가 다른 이유는
+         csrf-token처럼 이미 meta 태그로 값을 내려주는 화면이라 그 패턴을 따름). -->
+    <meta name="poll-interval-ms" content="{{ poll_interval_ms }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
     <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
@@ -83,6 +88,39 @@
                     </tr>
                 </thead>
                 <tbody id="users-table-body"></tbody>
+            </table>
+        </section>
+
+        <section>
+            <!-- 회원용 게시판(/board)과는 별개로, 관리자는 여기서 전체 글/댓글을
+                 조회하고 삭제할 수 있다(docs/board-comment/02-design-decisions.md
+                 결정 #1·#2). 데이터는 /api/status 폴링에 함께 실려온다. -->
+            <h2>게시판 관리 — 최근 게시글</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>작성일</th>
+                        <th>제목</th>
+                        <th>작성자</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="posts-table-body"></tbody>
+            </table>
+        </section>
+
+        <section>
+            <h2>게시판 관리 — 최근 댓글</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>작성일</th>
+                        <th>내용</th>
+                        <th>작성자</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="comments-table-body"></tbody>
             </table>
         </section>
 

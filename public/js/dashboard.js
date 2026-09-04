@@ -2,7 +2,8 @@
 // dashboard.js — 대시보드 화면을 살아있게 만드는 자바스크립트
 //
 // 이 파일이 하는 일은 크게 3가지다.
-// 1) 주기적으로(10초마다) 서버의 /api/status에 "지금 상태 알려줘"라고 물어본다.
+// 1) 주기적으로(config.py의 ADMIN_DASHBOARD_POLL_MS, 기본 10초마다) 서버의
+//    /api/status에 "지금 상태 알려줘"라고 물어본다.
 //    (원래는 2.5초였으나, Supabase 무료 쿼터 점검 결과 대시보드를 오래 켜두면
 //    한 달 쿼터를 금방 소진할 수 있다는 걸 확인하고 10초로 늘렸다 — 8단계 이후
 //    "쿼터 점검" 단계 참고)
@@ -24,6 +25,11 @@ let currentSignupEnabled = true;
 // 서버의 CSRFProtect가 "이 요청이 정말 이 화면에서 나왔다"고 확인해줄 수 있다
 // (CSRF 방어, app.py의 CSRFProtect 설명 참고).
 const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
+// 폴링 주기(밀리초)도 CSRF 토큰과 같은 방식으로, config.py(ADMIN_DASHBOARD_POLL_MS)
+// 값을 admin_dashboard.html의 meta 태그에서 읽어온다 — 이 파일에 숫자를 직접
+// 적어두지 않는다.
+const pollIntervalMs = Number(document.querySelector('meta[name="poll-interval-ms"]').content);
 
 // escapeHtml(): 사용자가 입력한 값(아이디, 이메일 등)을 innerHTML로 화면에 꽂아넣기
 // 전에 반드시 거쳐야 하는 관문이다.
@@ -70,6 +76,8 @@ async function fetchStatus() {
     renderAdminLoginLog(data.admin_login_log);
     renderUsersTable(data.users);
     renderSignupStatus(data.signup_enabled);
+    renderPostsTable(data.recent_posts);
+    renderCommentsTable(data.recent_comments);
 }
 
 /**
@@ -178,6 +186,98 @@ function renderUsersTable(users) {
 }
 
 /**
+ * 게시판 관리 — 최근 게시글 표를 채운다. 각 줄에 "삭제" 버튼이 붙는다.
+ * @param {Array} posts - [{id, title, author_username, created_at}, ...]
+ */
+function renderPostsTable(posts) {
+    const tbody = document.getElementById("posts-table-body");
+
+    if (posts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty-state">등록된 게시글이 없습니다.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = posts
+        .map(
+            (post) => `
+                <tr>
+                    <td class="mono">${formatTime(post.created_at)}</td>
+                    <td>${escapeHtml(post.title)}</td>
+                    <td>${escapeHtml(post.author_username)}</td>
+                    <td>
+                        <button data-post-id="${post.id}" class="delete-post-btn">삭제</button>
+                    </td>
+                </tr>
+            `
+        )
+        .join("");
+}
+
+/**
+ * 게시판 관리 — 최근 댓글 표를 채운다. 각 줄에 "삭제" 버튼이 붙는다.
+ * @param {Array} comments - [{id, body, author_username, created_at}, ...]
+ */
+function renderCommentsTable(comments) {
+    const tbody = document.getElementById("comments-table-body");
+
+    if (comments.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty-state">등록된 댓글이 없습니다.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = comments
+        .map(
+            (comment) => `
+                <tr>
+                    <td class="mono">${formatTime(comment.created_at)}</td>
+                    <td>${escapeHtml(comment.body)}</td>
+                    <td>${escapeHtml(comment.author_username)}</td>
+                    <td>
+                        <button data-comment-id="${comment.id}" class="delete-comment-btn">삭제</button>
+                    </td>
+                </tr>
+            `
+        )
+        .join("");
+}
+
+/**
+ * 관리자가 게시판 관리 표의 "삭제" 버튼을 눌렀을 때, 확인 후 글을 삭제 요청한다.
+ * @param {string} postId
+ */
+async function deletePost(postId) {
+    const confirmed = confirm("이 게시글을 정말 삭제할까요? 댓글도 함께 삭제됩니다.");
+    if (!confirmed) {
+        return;
+    }
+
+    await fetch("/api/board/posts/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ post_id: Number(postId) }),
+    });
+    fetchStatus();
+}
+
+/**
+ * 관리자가 게시판 관리 표의 "삭제" 버튼을 눌렀을 때, 확인 후 댓글을 삭제 요청한다.
+ * @param {string} commentId
+ */
+async function deleteComment(commentId) {
+    const confirmed = confirm("이 댓글을 정말 삭제할까요?");
+    if (!confirmed) {
+        return;
+    }
+
+    await fetch("/api/board/comments/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ comment_id: Number(commentId) }),
+    });
+    fetchStatus();
+}
+
+/**
  * 회원가입 On/Off 현재 상태를 문구와 버튼에 반영한다.
  * @param {boolean} enabled
  */
@@ -276,5 +376,20 @@ document.getElementById("users-table-body").addEventListener("click", (event) =>
 // 회원가입 토글 버튼은 화면에 딱 하나뿐이라 이벤트 위임 없이 바로 걸어도 된다.
 document.getElementById("signup-toggle-btn").addEventListener("click", toggleSignup);
 
+// 게시판 관리 표의 "삭제" 버튼도 회원 목록과 동일한 이벤트 위임 방식을 쓴다.
+document.getElementById("posts-table-body").addEventListener("click", (event) => {
+    if (event.target.classList.contains("delete-post-btn")) {
+        const postId = event.target.getAttribute("data-post-id");
+        deletePost(postId);
+    }
+});
+
+document.getElementById("comments-table-body").addEventListener("click", (event) => {
+    if (event.target.classList.contains("delete-comment-btn")) {
+        const commentId = event.target.getAttribute("data-comment-id");
+        deleteComment(commentId);
+    }
+});
+
 fetchStatus(); // 화면이 열리자마자 한 번 즉시 데이터를 가져온다.
-setInterval(fetchStatus, 10000); // 이후로는 10초마다 계속 반복해서 최신 상태로 갱신한다.
+setInterval(fetchStatus, pollIntervalMs); // 이후로는 pollIntervalMs마다 계속 반복해서 최신 상태로 갱신한다.

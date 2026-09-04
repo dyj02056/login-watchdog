@@ -22,11 +22,15 @@ class _FakeQuery:
 
     calls 리스트에 어떤 메서드가 어떤 값으로 호출됐는지 순서대로 기록해둔다 —
     "delete_user가 정말 delete()를 불렀는지" 같은 걸 확인하고 싶을 때 쓴다.
+
+    count : select(..., count="exact") 뒤에 res.count로 읽히는 값을 흉내낼 때만
+    넘겨준다(기본 None → res.count or 0 패턴에서 0으로 처리됨).
     """
 
-    def __init__(self, rows, calls=None):
+    def __init__(self, rows, calls=None, count=None):
         self._rows = rows
         self.calls = calls if calls is not None else []
+        self._count = count
 
     def table(self, *args, **kwargs):
         self.calls.append(("table", args, kwargs))
@@ -70,13 +74,22 @@ class _FakeQuery:
         self.calls.append(("in_", args, kwargs))
         return self
 
+    def range(self, *args, **kwargs):
+        self.calls.append(("range", args, kwargs))
+        return self
+
+    def insert(self, *args, **kwargs):
+        self.calls.append(("insert", args, kwargs))
+        return self
+
     def execute(self):
-        return _FakeResult(self._rows)
+        return _FakeResult(self._rows, self._count)
 
 
 class _FakeResult:
-    def __init__(self, data):
+    def __init__(self, data, count=None):
         self.data = data
+        self.count = count
 
 
 def test_verify_admin_credentials_true_for_correct_password(monkeypatch):
@@ -283,3 +296,133 @@ def test_save_ip_location_upserts_row(monkeypatch):
         "lookup_failed": False,
     }
     assert ("upsert", (expected,), {}) in fake_client.calls
+
+
+# ============================================================================
+# 게시판/댓글 함수 테스트 (docs/board-comment/plan_board.md 참고)
+# ============================================================================
+
+def test_create_post_returns_inserted_row(monkeypatch):
+    inserted_row = {"id": 1, "author_username": "hyun", "title": "제목", "body": "내용"}
+    fake_client = _FakeQuery(rows=[inserted_row])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.create_post("hyun", "제목", "내용")
+
+    assert result == inserted_row
+    assert (
+        "insert",
+        ({"author_username": "hyun", "title": "제목", "body": "내용"},),
+        {},
+    ) in fake_client.calls
+
+
+def test_get_post_none_when_not_found(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.get_post(999) is None
+
+
+def test_list_posts_uses_range_for_pagination(monkeypatch):
+    rows = [{"id": 1, "title": "글1"}]
+    fake_client = _FakeQuery(rows=rows)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.list_posts(page=2, page_size=10)
+
+    assert result == rows
+    # 2페이지, 페이지당 10개 → 11~20번째(0-index 10~19) 행을 요청해야 한다.
+    assert ("range", (10, 19), {}) in fake_client.calls
+
+
+def test_count_posts_returns_zero_when_count_missing(monkeypatch):
+    fake_client = _FakeQuery(rows=[], count=None)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.count_posts() == 0
+
+
+def test_count_posts_returns_client_count(monkeypatch):
+    fake_client = _FakeQuery(rows=[], count=42)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.count_posts() == 42
+
+
+def test_delete_post_true_when_row_was_deleted(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 3}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.delete_post(3) is True
+
+
+def test_delete_post_false_when_id_not_found(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.delete_post(999) is False
+
+
+def test_get_comment_none_when_not_found(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.get_comment(999) is None
+
+
+def test_create_comment_inserts_expected_row(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.create_comment(1, "hyun", "댓글 내용")
+
+    assert (
+        "insert",
+        ({"post_id": 1, "author_username": "hyun", "body": "댓글 내용"},),
+        {},
+    ) in fake_client.calls
+
+
+def test_list_comments_by_post_filters_by_post_id(monkeypatch):
+    rows = [{"id": 1, "post_id": 5, "body": "댓글"}]
+    fake_client = _FakeQuery(rows=rows)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.list_comments_by_post(5)
+
+    assert result == rows
+    assert ("eq", ("post_id", 5), {}) in fake_client.calls
+
+
+def test_delete_comment_true_when_row_was_deleted(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 7}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.delete_comment(7) is True
+
+
+def test_delete_comment_false_when_id_not_found(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.delete_comment(999) is False
+
+
+def test_get_latest_comment_info_with_comments(monkeypatch):
+    rows = [{"id": 9, "created_at": "2026-09-04T12:00:00+00:00"}]
+    fake_client = _FakeQuery(rows=rows, count=3)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.get_latest_comment_info(1)
+
+    assert result == {"count": 3, "latest_at": "2026-09-04T12:00:00+00:00"}
+
+
+def test_get_latest_comment_info_with_no_comments(monkeypatch):
+    fake_client = _FakeQuery(rows=[], count=0)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.get_latest_comment_info(1)
+
+    assert result == {"count": 0, "latest_at": None}

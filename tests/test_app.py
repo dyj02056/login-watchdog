@@ -347,3 +347,321 @@ def test_api_unlock_without_csrf_header_is_rejected(client, monkeypatch):
     response = client.post("/api/unlock", json={"ip": "1.2.3.4"})
 
     assert response.status_code == 400
+
+
+# ============================================================================
+# /board — 게시판 (docs/board-comment/plan_board.md 참고)
+# — 전부 member_login_required로 보호되므로(회원 전용, 결정 #1), 대부분의
+#   테스트는 먼저 세션에 username/user_id를 심어 "로그인한 회원"을 흉내낸다.
+# ============================================================================
+
+def _login_as_member(client, username="hyun", user_id=1):
+    with client.session_transaction() as sess:
+        sess["username"] = username
+        sess["user_id"] = user_id
+
+
+def test_board_list_redirects_to_login_when_not_authenticated(client):
+    response = client.get("/board")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/login"
+
+
+def test_board_new_redirects_to_login_when_not_authenticated(client):
+    response = client.get("/board/new")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/login"
+
+
+def test_board_new_submit_creates_post_and_redirects(client, monkeypatch):
+    _login_as_member(client)
+    monkeypatch.setattr(detector, "is_post_rate_limited", lambda ip: False)
+    monkeypatch.setattr(db, "log_post_attempt", lambda ip: None)
+    monkeypatch.setattr(
+        db, "create_post", lambda author, title, body: {"id": 42, "author_username": author}
+    )
+
+    token = get_csrf_token(client, "/board/new")
+    response = client.post(
+        "/board/new",
+        data={"title": "제목", "body": "내용", "csrf_token": token},
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/board/42"
+
+
+def test_board_new_submit_rejects_when_rate_limited(client, monkeypatch):
+    _login_as_member(client)
+    monkeypatch.setattr(detector, "is_post_rate_limited", lambda ip: True)
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("빈도 제한에 걸렸는데 create_post가 호출되었다")
+
+    monkeypatch.setattr(db, "create_post", _fail_if_called)
+
+    token = get_csrf_token(client, "/board/new")
+    response = client.post(
+        "/board/new",
+        data={"title": "제목", "body": "내용", "csrf_token": token},
+    )
+
+    assert "너무 많은 게시글 작성 시도" in response.get_data(as_text=True)
+
+
+def test_board_new_submit_without_csrf_token_is_rejected(client, monkeypatch):
+    _login_as_member(client)
+    monkeypatch.setattr(detector, "is_post_rate_limited", lambda ip: False)
+
+    response = client.post("/board/new", data={"title": "제목", "body": "내용"})
+
+    assert response.status_code == 400
+
+
+def test_board_new_submit_rejects_empty_title(client, monkeypatch):
+    _login_as_member(client)
+    monkeypatch.setattr(detector, "is_post_rate_limited", lambda ip: False)
+    monkeypatch.setattr(db, "log_post_attempt", lambda ip: None)
+
+    token = get_csrf_token(client, "/board/new")
+    response = client.post(
+        "/board/new",
+        data={"title": "", "body": "내용", "csrf_token": token},
+    )
+
+    assert "제목과 내용을 모두 입력해주세요" in response.get_data(as_text=True)
+
+
+def test_board_detail_shows_post_and_comments(client, monkeypatch):
+    _login_as_member(client)
+    monkeypatch.setattr(
+        db,
+        "get_post",
+        lambda post_id: {
+            "id": post_id,
+            "author_username": "hyun",
+            "title": "제목입니다",
+            "body": "내용입니다",
+            "created_at": "2026-09-04T12:00:00+00:00",
+        },
+    )
+    monkeypatch.setattr(db, "list_comments_by_post", lambda post_id: [])
+
+    response = client.get("/board/1")
+
+    assert response.status_code == 200
+    assert "제목입니다" in response.get_data(as_text=True)
+
+
+def test_board_detail_redirects_when_post_not_found(client, monkeypatch):
+    _login_as_member(client)
+    monkeypatch.setattr(db, "get_post", lambda post_id: None)
+
+    response = client.get("/board/999")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/board"
+
+
+def test_board_delete_rejected_when_not_owner(client, monkeypatch):
+    _login_as_member(client, username="hyun")
+    monkeypatch.setattr(
+        db,
+        "get_post",
+        lambda post_id: {
+            "id": post_id,
+            "author_username": "other_user",
+            "title": "제목",
+            "body": "내용",
+            "created_at": "2026-09-04T12:00:00+00:00",
+        },
+    )
+    monkeypatch.setattr(db, "list_comments_by_post", lambda post_id: [])
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("본인 글이 아닌데 delete_post가 호출되었다")
+
+    monkeypatch.setattr(db, "delete_post", _fail_if_called)
+
+    token = get_csrf_token(client, "/board/1")
+    # flash 메시지는 redirect 대상 화면이 렌더링될 때 비로소 보이므로,
+    # follow_redirects=True로 최종 화면까지 따라가서 확인한다.
+    response = client.post("/board/1/delete", data={"csrf_token": token}, follow_redirects=True)
+
+    assert "본인이 작성한 글만 삭제할 수 있습니다" in response.get_data(as_text=True)
+
+
+def test_board_delete_allowed_when_owner(client, monkeypatch):
+    _login_as_member(client, username="hyun")
+    monkeypatch.setattr(
+        db,
+        "get_post",
+        lambda post_id: {
+            "id": post_id,
+            "author_username": "hyun",
+            "title": "제목",
+            "body": "내용",
+            "created_at": "2026-09-04T12:00:00+00:00",
+        },
+    )
+    monkeypatch.setattr(db, "list_comments_by_post", lambda post_id: [])
+    deleted_ids = []
+    monkeypatch.setattr(db, "delete_post", lambda post_id: deleted_ids.append(post_id) or True)
+
+    token = get_csrf_token(client, "/board/1")
+    response = client.post("/board/1/delete", data={"csrf_token": token})
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/board"
+    assert deleted_ids == [1]
+
+
+def test_board_comment_submit_creates_comment(client, monkeypatch):
+    _login_as_member(client, username="hyun")
+    monkeypatch.setattr(
+        db,
+        "get_post",
+        lambda post_id: {
+            "id": post_id,
+            "author_username": "hyun",
+            "title": "제목",
+            "body": "내용",
+            "created_at": "2026-09-04T12:00:00+00:00",
+        },
+    )
+    monkeypatch.setattr(db, "list_comments_by_post", lambda post_id: [])
+    monkeypatch.setattr(detector, "is_comment_rate_limited", lambda ip: False)
+    monkeypatch.setattr(db, "log_comment_attempt", lambda ip: None)
+    created = []
+    monkeypatch.setattr(
+        db,
+        "create_comment",
+        lambda post_id, author, body: created.append((post_id, author, body)),
+    )
+
+    token = get_csrf_token(client, "/board/1")
+    response = client.post(
+        "/board/1/comments", data={"body": "댓글 내용", "csrf_token": token}
+    )
+
+    assert response.status_code == 302
+    assert created == [(1, "hyun", "댓글 내용")]
+
+
+def test_board_comment_submit_rejects_when_rate_limited(client, monkeypatch):
+    _login_as_member(client, username="hyun")
+    monkeypatch.setattr(
+        db,
+        "get_post",
+        lambda post_id: {
+            "id": post_id,
+            "author_username": "hyun",
+            "title": "제목",
+            "body": "내용",
+            "created_at": "2026-09-04T12:00:00+00:00",
+        },
+    )
+    monkeypatch.setattr(db, "list_comments_by_post", lambda post_id: [])
+    monkeypatch.setattr(detector, "is_comment_rate_limited", lambda ip: True)
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("빈도 제한에 걸렸는데 create_comment가 호출되었다")
+
+    monkeypatch.setattr(db, "create_comment", _fail_if_called)
+
+    token = get_csrf_token(client, "/board/1")
+    response = client.post(
+        "/board/1/comments", data={"body": "댓글 내용", "csrf_token": token}
+    )
+
+    assert response.status_code == 302
+
+
+def test_board_comment_delete_rejected_when_not_owner(client, monkeypatch):
+    _login_as_member(client, username="hyun")
+    monkeypatch.setattr(
+        db,
+        "get_post",
+        lambda post_id: {
+            "id": post_id,
+            "author_username": "hyun",
+            "title": "제목",
+            "body": "내용",
+            "created_at": "2026-09-04T12:00:00+00:00",
+        },
+    )
+    monkeypatch.setattr(db, "list_comments_by_post", lambda post_id: [])
+    monkeypatch.setattr(
+        db,
+        "get_comment",
+        lambda comment_id: {"id": comment_id, "author_username": "other_user"},
+    )
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("본인 댓글이 아닌데 delete_comment가 호출되었다")
+
+    monkeypatch.setattr(db, "delete_comment", _fail_if_called)
+
+    token = get_csrf_token(client, "/board/1")
+    response = client.post(
+        "/board/1/comments/5/delete", data={"csrf_token": token}, follow_redirects=True
+    )
+
+    assert "본인이 작성한 댓글만 삭제할 수 있습니다" in response.get_data(as_text=True)
+
+
+def test_api_board_comments_latest_requires_login(client):
+    # 이 API는 member_login_required로 보호된다 — login_required(관리자용)와
+    # 달리 "/api/" 경로 특례가 없어, 미인증 시에도 401 JSON이 아니라 로그인
+    # 화면으로 리다이렉트된다(app.py의 member_login_required 정의 참고).
+    response = client.get("/api/board/1/comments/latest")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/login"
+
+
+def test_api_board_comments_latest_returns_latest_info(client, monkeypatch):
+    _login_as_member(client)
+    monkeypatch.setattr(
+        db,
+        "get_latest_comment_info",
+        lambda post_id: {"count": 3, "latest_at": "2026-09-04T12:00:00+00:00"},
+    )
+
+    response = client.get("/api/board/1/comments/latest")
+
+    assert response.status_code == 200
+    assert response.get_json() == {"count": 3, "latest_at": "2026-09-04T12:00:00+00:00"}
+
+
+def test_api_board_posts_delete_requires_admin(client):
+    # CSRF 토큰이 없으면 CSRFProtect가 login_required보다 먼저 400으로 막아버려서
+    # "인증 부족"을 제대로 검증할 수 없다 — 그래서 유효한 토큰은 실어 보내되
+    # (로그인 없이도 발급 가능한 /login 화면에서 얻는다), 관리자 세션만 없는
+    # 상태로 요청해 login_required 자체가 막는지 확인한다.
+    token = get_csrf_token(client, "/login")
+    response = client.post(
+        "/api/board/posts/delete",
+        json={"post_id": 1},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 401
+
+
+def test_api_board_posts_delete_succeeds_for_admin(client, monkeypatch):
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "test-admin"
+    monkeypatch.setattr(db, "delete_post", lambda post_id: post_id == 1)
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/board/posts/delete",
+        json={"post_id": 1},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"success": True}
