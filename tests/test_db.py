@@ -122,6 +122,83 @@ def test_verify_admin_credentials_false_when_username_not_found(monkeypatch):
     assert result is False
 
 
+def test_count_recent_distinct_usernames_dedupes_rows(monkeypatch):
+    # 같은 아이디("hyun")로 두 번, 다른 아이디("guest")로 한 번 실패한 상황을 흉내낸다.
+    # 행은 3개지만 서로 다른 아이디는 2개여야 한다 — Brute Force(1개)와
+    # Password Spraying(2개 이상)을 구분하려면 이 dedup이 정확해야 한다.
+    rows = [{"username": "hyun"}, {"username": "hyun"}, {"username": "guest"}]
+    fake_client = _FakeQuery(rows=rows)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.count_recent_distinct_usernames("1.2.3.4")
+
+    assert result == 2
+
+
+def test_count_recent_distinct_admin_usernames_dedupes_rows(monkeypatch):
+    rows = [{"username": "admin1"}, {"username": "admin2"}]
+    fake_client = _FakeQuery(rows=rows)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.count_recent_distinct_admin_usernames("1.2.3.4")
+
+    assert result == 2
+
+
+def test_log_not_found_attempt_inserts_ip_and_path(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 1}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.log_not_found_attempt("1.2.3.4", "/wp-admin")
+
+    assert ("insert", ({"ip_address": "1.2.3.4", "path": "/wp-admin"},), {}) in fake_client.calls
+
+
+def test_count_recent_not_found_attempts_returns_count(monkeypatch):
+    fake_client = _FakeQuery(rows=[], count=11)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.count_recent_not_found_attempts("1.2.3.4")
+
+    assert result == 11
+
+
+def test_log_unauthorized_attempt_inserts_ip_and_path(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 1}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.log_unauthorized_attempt("1.2.3.4", "/api/status")
+
+    assert ("insert", ({"ip_address": "1.2.3.4", "path": "/api/status"},), {}) in fake_client.calls
+
+
+def test_count_recent_unauthorized_attempts_returns_count(monkeypatch):
+    fake_client = _FakeQuery(rows=[], count=11)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.count_recent_unauthorized_attempts("1.2.3.4")
+
+    assert result == 11
+
+
+def test_log_page_access_attempt_inserts_ip_and_path(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 1}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.log_page_access_attempt("1.2.3.4", "/board")
+
+    assert ("insert", ({"ip_address": "1.2.3.4", "path": "/board"},), {}) in fake_client.calls
+
+
+def test_count_recent_page_access_attempts_returns_count(monkeypatch):
+    fake_client = _FakeQuery(rows=[], count=21)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.count_recent_page_access_attempts("1.2.3.4", "/board")
+
+    assert result == 21
+
+
 def test_list_users_returns_rows_from_client(monkeypatch):
     rows = [
         {"id": 2, "username": "bbb", "email": "bbb@example.com", "created_at": "2026-09-02T00:00:00Z"},

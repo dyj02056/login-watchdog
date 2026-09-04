@@ -147,6 +147,66 @@ def get_request_ip() -> str:
     return request.remote_addr
 
 
+@app.errorhandler(404)
+def handle_not_found(error):
+    """존재하지 않는 경로 요청(404)을 기록하고, 반복되면 Web Scanning 의심 알림을 보낸다.
+
+    화면에 보여주는 내용은 Flask/Werkzeug 기본 404 응답 그대로 둔다(error.get_response())
+    — 이 라우트의 목적은 사용자 경험을 바꾸는 게 아니라, 그동안 아무 기록도 남기지
+    않던 404 요청을 관찰 가능하게 만드는 것뿐이다 (21단계, attack_response_state.md
+    구현 대상 #1).
+
+    알림은 "임계값을 막 넘긴 바로 그 요청"에서 딱 한 번만 보낸다(count가 정확히
+    threshold+1일 때). enforce_lockout처럼 "잠긴 상태"라는 별도 표시가 없는 대신,
+    이 방식으로 매 요청마다 알림이 반복되는 걸(알림 피로) 막는다.
+    """
+    ip = get_request_ip()
+    db.log_not_found_attempt(ip, request.path)
+
+    suspicious, count = detector.is_web_scanning(ip)
+    if suspicious and count == config.WEB_SCANNING_ALERT_THRESHOLD + 1:
+        soar.notify_web_scanning(ip, count, request.path)
+
+    return error.get_response()
+
+
+# board.js/dashboard.js가 스스로 만들어내는 자동 폴링 API. 브라우저 탭 하나만
+# 열려 있어도 정상적으로 초당 여러 번씩 호출되므로, track_page_access()가 이걸
+# "반복 접근 의심"으로 잘못 판단하지 않도록 관찰 대상에서 제외한다
+# ("static"은 Flask가 public/의 CSS·JS·이미지를 서빙할 때 쓰는 내장 엔드포인트).
+_PAGE_ACCESS_EXCLUDED_ENDPOINTS = {"static", "api_status", "api_board_comments_latest"}
+
+
+@app.before_request
+def track_page_access():
+    """같은 IP가 같은 GET 페이지를 반복 요청하는지 관찰하고, 반복되면 알린다.
+
+    이 함수는 handle_not_found()와 달리 특정 경로가 아니라 "매 요청"마다 실행된다
+    (Flask가 라우팅을 마친 뒤, 실제 뷰 함수를 부르기 직전에 호출해준다). 그래서
+    대상을 신중하게 좁혀야 한다:
+    - request.url_rule이 None이면 애초에 존재하지 않는 경로(404)라는 뜻이므로
+      제외한다 — 그 경우는 not_found_attempts가 이미 별도로 기록한다.
+    - GET이 아닌 요청(폼 제출 등)은 "페이지 접근"이 아니므로 제외한다.
+    - _PAGE_ACCESS_EXCLUDED_ENDPOINTS에 있는 엔드포인트(정적 파일, 자동 폴링 API)도
+      제외한다 — 이것들을 빼두지 않으면 정상 사용자가 항상 "수상함"으로
+      잘못 판정된다.
+
+    알림은 handle_not_found()와 동일하게 "임계값을 막 넘긴 바로 그 요청"에서
+    딱 한 번만 보낸다 (attack_response_state.md 구현 대상 #4).
+    """
+    if request.method != "GET" or request.url_rule is None:
+        return
+    if request.endpoint in _PAGE_ACCESS_EXCLUDED_ENDPOINTS:
+        return
+
+    ip = get_request_ip()
+    db.log_page_access_attempt(ip, request.path)
+
+    suspicious, count = detector.is_page_access_suspicious(ip, request.path)
+    if suspicious and count == config.PAGE_ACCESS_ALERT_THRESHOLD + 1:
+        soar.notify_page_access(ip, count, request.path)
+
+
 def login_required(view):
     """"관리자 로그인이 되어 있어야만 들어올 수 있는 방"을 만들어주는 장치(데코레이터).
 
@@ -157,6 +217,8 @@ def login_required(view):
 
     - 없으면(로그인 안 된 상태):
         - 주소가 /api/로 시작하는 경우(JS가 fetch로 부르는 API) → 401(인증 필요) JSON 응답
+          (이때 unauthorized_attempts에 기록하고, 반복되면 Unauthorized Access 의심
+          알림을 보낸다 — 21단계, attack_response_state.md 구현 대상 #2)
         - 그 외(사람이 브라우저로 직접 들어온 화면) → 관리자 로그인 페이지로 강제 이동
     - 있으면(로그인 된 상태): 원래 요청했던 라우트 함수를 그대로 실행
     """
@@ -164,6 +226,11 @@ def login_required(view):
     def wrapped_view(*args, **kwargs):
         if "admin_username" not in session:
             if request.path.startswith("/api/"):
+                ip = get_request_ip()
+                db.log_unauthorized_attempt(ip, request.path)
+                suspicious, count = detector.is_unauthorized_access_suspicious(ip)
+                if suspicious and count == config.UNAUTHORIZED_ACCESS_ALERT_THRESHOLD + 1:
+                    soar.notify_unauthorized_access(ip, count, request.path)
                 return jsonify({"error": "로그인이 필요합니다."}), 401
             return redirect(url_for("admin_login"))
         return view(*args, **kwargs)
@@ -373,7 +440,11 @@ def login_submit():
     # 실패했다면, 이 실패로 인해 방금 임계값을 넘었는지 확인한다.
     suspicious, failure_count = detector.is_suspicious(ip)
     if suspicious:
-        soar.enforce_lockout(ip, failure_count)
+        # 최근 실패에 쓰인 아이디가 몇 개였는지도 함께 세서, Slack 알림이 Brute
+        # Force(계정 1개 집중)와 Password Spraying(계정 여러 개 순회)을 구분해
+        # 표시할 수 있게 한다 (attack_response_state.md 구현 대상 #5).
+        distinct_usernames = detector.count_distinct_usernames(ip)
+        soar.enforce_lockout(ip, failure_count, distinct_usernames)
         flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
     else:
         # 사용자 존재 여부(아이디가 없는지, 비밀번호만 틀렸는지)를 구분해서 알려주면
@@ -441,7 +512,8 @@ def admin_login_submit():
     #    표를 공유하므로, 이 IP는 /login 쪽에서도 함께 잠긴다).
     suspicious, failure_count = detector.is_admin_suspicious(ip)
     if suspicious:
-        soar.enforce_lockout(ip, failure_count)
+        distinct_usernames = detector.count_distinct_admin_usernames(ip)
+        soar.enforce_lockout(ip, failure_count, distinct_usernames)
         flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
     else:
         flash("아이디 또는 비밀번호가 올바르지 않습니다.")
@@ -713,9 +785,19 @@ def board_edit_submit(post_id):
         flash("본인이 작성한 글만 수정할 수 있습니다.")
         return redirect(url_for("board_detail", post_id=post_id))
 
+    form_action = url_for("board_edit_submit", post_id=post_id)
+
+    # board_new_submit()과 동일한 빈도 제한 — 글 수정도 도배 대상이 될 수 있으므로
+    # 새 글 작성과 같은 post_attempts 카운트를 공유한다 (원래 이 검사가 빠져있던
+    # 공백을 보완, attack_response_state.md 구현 대상 #3).
+    ip = get_request_ip()
+    if detector.is_post_rate_limited(ip):
+        flash("너무 많은 게시글 작성 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.")
+        return render_template("board_form.html", form_action=form_action, post=post)
+    db.log_post_attempt(ip)
+
     title = request.form.get("title", "").strip()
     body = request.form.get("body", "").strip()
-    form_action = url_for("board_edit_submit", post_id=post_id)
 
     if not title or not body:
         flash("제목과 내용을 모두 입력해주세요.")

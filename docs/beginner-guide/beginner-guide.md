@@ -27,6 +27,7 @@
 18. [18단계 — 오류 발견 및 해결 (보안 점검 8건 수정)](guide18_security_review.md)
 19. [19단계 — 추가 보안 점검 (관리자 로그인 방어 · 버전 고정 · 가입 빈도 제한)](guide19_security_hardening.md)
 20. [20단계 — 게시판·댓글 기능 추가](guide20_board.md)
+21. [21단계 — 이상행위 탐지 보완 (캡스톤 검토 문서 후속 조치)](guide21_anomaly_detection.md)
 
 ---
 
@@ -2383,3 +2384,140 @@ CSS 선택자를 콤마로 나열하면 "이 중 아무 클래스나 가진 요�
 - [public/css/board.css](../../public/css/board.css), [public/css/dashboard.css](../../public/css/dashboard.css), [public/js/board.js](../../public/js/board.js), [public/js/dashboard.js](../../public/js/dashboard.js)
 - [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py)
 - [docs/board-comment/](../board-comment) (문서 4종)
+
+---
+
+## 21단계 — 이상행위 탐지 보완 (캡스톤 검토 문서 후속 조치)
+
+> 캡스톤 프로젝트 검토 문서(`attack_response_state.md`)에서 "구현 가능성 있는 항목"으로 정리했던 6가지를, 리스크가 낮은 것부터(기존 결함 보완 → 기존 패턴 재사용 → 새 설계가 필요한 것 순으로) 하나씩 구현합니다. 항목이 늘어날 때마다 이 절에 내용이 추가됩니다. 전체 내용은 [guide21_anomaly_detection.md](guide21_anomaly_detection.md)에 별도로도 정리되어 있습니다.
+
+#### 우리가 한 일 (진행 순서)
+
+| # | 문제 | 난이도 | 성격 |
+|---|---|---|---|
+| 1 | 게시글 수정(`board_edit_submit`)에 빈도 제한이 빠져있음 | 매우 낮음 | 20단계(게시판) 보완 |
+| 2 | Brute Force와 Password Spraying이 Slack 알림에서 구분되지 않음 | 낮음 | 4단계(soar/alert) 보완 |
+| 3 | 존재하지 않는 경로(404) 반복 요청(Web Scanning)을 전혀 기록/탐지하지 않음 | 낮음 | 신규 탐지 |
+| 4 | 관리자 API에 세션 없이 반복 접근(401)해도 기록/알림이 없음 | 낮음~중간 | 신규 탐지 |
+| 5 | 같은 페이지를 반복 요청하는 패턴을 전혀 관찰하지 않음 | 중간 | 신규 탐지 |
+
+### 1. 게시글 수정(`board_edit_submit`)에는 빈도 제한이 빠져 있었다
+
+**무엇이 문제였는가**: 20단계에서 새 글 작성(`board_new_submit()`)에는 `detector.is_post_rate_limited()`로 도배 방지를 걸어뒀지만, 같은 화면을 재사용하는 글 수정(`board_edit_submit()`)에는 이 검사가 빠져 있었습니다. 소유권 확인만 있고 "얼마나 자주 수정을 시도했는가"는 세지 않았습니다.
+
+**왜 위험한가**: 새 글 작성은 막혀 있어도, 이미 있는 자기 글 하나를 짧은 시간에 수백 번 수정 요청으로 두드리는 건 그대로 가능했습니다. `attack_response_state.md`에 "Spam 완전 구현"이라고 적어뒀던 것과 실제 코드 사이에 괴리가 있었던 셈입니다.
+
+**어떻게 고쳤는가**: 새 표를 만들지 않고, `board_new_submit()`과 동일한 판정 순서(먼저 판정 → 통과하면 시도 기록 → 실제 처리)를 그대로 적용해 기존 `post_attempts`/`POST_RATE_LIMIT`을 공유하게 했습니다.
+
+```python
+# app.py — board_edit_submit()
+ip = get_request_ip()
+if detector.is_post_rate_limited(ip):
+    flash("너무 많은 게시글 작성 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.")
+    return render_template("board_form.html", form_action=form_action, post=post)
+db.log_post_attempt(ip)
+```
+
+**실제로 확인한 것**: `tests/test_app.py`에 빈도 제한 시 거부되는지, 정상 요청은 통과하는지 확인하는 테스트 2개를 추가하고, `pytest tests/ -v` 전체(96개) 통과를 확인했습니다.
+
+**이 단계에서 만들어지거나 바뀐 파일**: [app.py](../../app.py), [tests/test_app.py](../../tests/test_app.py)
+
+### 2. Brute Force와 Password Spraying이 Slack 알림에서 구분되지 않았다
+
+**무엇이 문제였는가**: `count_recent_failures(ip)`는 아이디와 무관하게 총 실패 횟수만 셌습니다. 계정 하나를 집중 공격하든, 여러 계정을 돌아가며 시도(Password Spraying)하든 Slack에는 "실패 횟수: 6회"로 똑같이 나갔습니다.
+
+**왜 필요한가**: 계정 하나 집중 공격은 "그 계정 비밀번호가 약한가"를, 여러 계정 순회는 "계정 목록 자체가 유출/추측되고 있는가"를 의심해야 하는 서로 다른 대응이 필요한 상황인데, 알림만으로는 구분할 수 없었습니다.
+
+**어떻게 고쳤는가**: `login_attempts`/`admin_login_log`의 기존 `username` 칸으로 "최근 실패에 쓰인 서로 다른 아이디 개수"를 세는 함수를 db.py/detector.py에 대칭 추가하고, `soar.enforce_lockout(ip, failure_count, distinct_usernames)`를 거쳐 `alert.py`가 이 값으로 메시지 유형을 나눠 표시하게 했습니다.
+
+```python
+# alert.py
+if distinct_usernames > 1:
+    pattern_line = f"공격 유형: Password Spraying 의심 (서로 다른 아이디 {distinct_usernames}개 시도)"
+else:
+    pattern_line = "공격 유형: Brute Force (단일 계정 집중 시도)"
+```
+
+**실제로 확인한 것**: dedup 로직(db), 단순 전달(detector), 매개변수가 끝까지 전달되는지(soar/app) 각각 테스트를 추가하고 기존 잠금 테스트 4개도 새 매개변수에 맞게 수정, `pytest tests/ -v` 전체(100개) 통과 확인.
+
+**이 단계에서 만들어지거나 바뀐 파일**: [db.py](../../db.py), [detector.py](../../detector.py), [soar.py](../../soar.py), [alert.py](../../alert.py), [app.py](../../app.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_soar.py](../../tests/test_soar.py), [tests/test_app.py](../../tests/test_app.py)
+
+### 3. 존재하지 않는 경로(404) 반복 요청을 전혀 기록/탐지하지 않았다
+
+**무엇이 문제였는가**: Flask 기본 404 처리에만 의존해서, 누가 얼마나 자주 어떤 경로를 두드렸는지 전혀 기록하지 않았습니다. `/wp-login.php`, `/.env`처럼 흔한 관리 경로를 자동으로 훑는 Web Scanning은 실제 침투의 첫 단계로 흔한데, 이런 행위를 알 방법이 없었습니다.
+
+**어떻게 고쳤는가**: 로그인 브루트포스와 같은 "카운트 → 임계값 초과 시에만 대응" 구조를 재사용하되, 404는 잠글 대상이 없으므로 잠금 없이 Slack 알림만 보냅니다. 알림은 카운트가 정확히 `임계값+1`이 되는 요청에서만 보내서 알림 피로를 막습니다.
+
+```python
+# app.py
+@app.errorhandler(404)
+def handle_not_found(error):
+    ip = get_request_ip()
+    db.log_not_found_attempt(ip, request.path)
+    suspicious, count = detector.is_web_scanning(ip)
+    if suspicious and count == config.WEB_SCANNING_ALERT_THRESHOLD + 1:
+        soar.notify_web_scanning(ip, count, request.path)
+    return error.get_response()
+```
+
+**실제로 확인한 것**: 기록·카운트(db), 경계값(detector), 404가 여전히 404로 응답하는지·임계값을 막 넘긴 순간에만 정확히 1번 알리는지·이후 요청에서는 다시 알리지 않는지·임계값 미만에서는 알리지 않는지(app) 총 4가지 시나리오를 테스트로 확인. `pytest tests/ -v` 전체(108개) 통과.
+
+**Supabase 반영 필요**: 19·20단계와 같은 이유로, 실제 배포 환경에서 동작하려면 Supabase SQL Editor에서 `docs/schema.sql`에 새로 추가된 `not_found_attempts` 표 생성 SQL을 직접 실행해야 합니다.
+
+**이 단계에서 만들어지거나 바뀐 파일**: [docs/schema.sql](../schema.sql), [config.py](../../config.py), [db.py](../../db.py), [detector.py](../../detector.py), [alert.py](../../alert.py), [soar.py](../../soar.py), [app.py](../../app.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py)
+
+### 4. 관리자 API에 세션 없이 반복 접근(401)해도 기록/알림이 없었다
+
+**무엇이 문제였는가**: `login_required()`의 `/api/*` 분기는 401은 돌려주지만 "누가 얼마나 자주 401을 유발했는지"는 기록하지 않았습니다. 3번(Web Scanning)과 달리, 여기서 두드리는 대상은 실제로 존재하는 민감한 관리자 API라 더 눈여겨봐야 할 신호입니다.
+
+**어떻게 고쳤는가**: 3번과 같은 구조(새 표 `unauthorized_attempts` + "카운트→임계값 초과 시 알림")를 재사용하되, "잠금 여부"는 직접 판단해 **잠그지 않기로 결정**했습니다. 관리자 대시보드가 10초마다 자동 폴링(`ADMIN_DASHBOARD_POLL_MS`)으로 `/api/*`를 호출하는데, 세션 만료 후에도 탭을 열어두면 이 폴링 자체가 401을 반복시켜, 잠금을 걸면 관리자 본인이 재로그인조차 못 하게 되는 자충수가 될 수 있기 때문입니다.
+
+```python
+# app.py — login_required()의 401 분기
+if request.path.startswith("/api/"):
+    ip = get_request_ip()
+    db.log_unauthorized_attempt(ip, request.path)
+    suspicious, count = detector.is_unauthorized_access_suspicious(ip)
+    if suspicious and count == config.UNAUTHORIZED_ACCESS_ALERT_THRESHOLD + 1:
+        soar.notify_unauthorized_access(ip, count, request.path)
+    return jsonify({"error": "로그인이 필요합니다."}), 401
+```
+
+`member_login_required()`(회원용)는 `/api/` 특례가 없어 이번 대상에서 제외했습니다.
+
+**실제로 확인한 것**: db/detector 단위 테스트 + app.py에 3번과 동일한 4가지 시나리오 테스트 추가, 기존 미인증 API 테스트 2개도 새 db 호출을 가짜로 채워넣도록 수정. `pytest tests/ -v` 전체(116개) 통과.
+
+**Supabase 반영 필요**: `docs/schema.sql`에 새로 추가된 `unauthorized_attempts` 표 생성 SQL을 Supabase SQL Editor에서 직접 실행해야 합니다.
+
+**이 단계에서 만들어지거나 바뀐 파일**: [docs/schema.sql](../schema.sql), [config.py](../../config.py), [db.py](../../db.py), [detector.py](../../detector.py), [alert.py](../../alert.py), [soar.py](../../soar.py), [app.py](../../app.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py)
+
+### 5. 같은 페이지를 반복 요청하는 패턴을 전혀 관찰하지 않았다
+
+**무엇이 문제였는가**: 3·4번은 "존재하지 않는 경로"와 "세션 없는 401"이라는 좁은 신호만 봤습니다. "정상적으로 존재하고 로그인도 필요 없는 페이지 하나를 스크립트가 반복 요청"하는 패턴(예: 게시글 상세를 자동으로 계속 새로고침)은 관찰할 방법이 없었습니다.
+
+**어떻게 고쳤는가**: 특정 라우트 하나가 아니라 "거의 모든 GET 페이지"가 감시 대상이므로, `@app.before_request` 훅 하나로 처리했습니다. 문제는 이 훅이 정말로 모든 요청에서 실행된다는 것 — 이 프로젝트가 스스로 만든 자동 폴링(`dashboard.js`의 `/api/status` 10초 주기, `board.js`의 댓글 폴링 5초 주기)을 빼놓지 않으면, 탭 하나만 열어놔도 정상 사용자가 항상 "수상함"으로 잘못 판정됩니다. 그래서 이 두 엔드포인트와 `static`(정적 파일), 존재하지 않는 경로(404, 3번이 이미 기록)를 제외 목록에 넣었습니다.
+
+```python
+# app.py
+_PAGE_ACCESS_EXCLUDED_ENDPOINTS = {"static", "api_status", "api_board_comments_latest"}
+
+@app.before_request
+def track_page_access():
+    if request.method != "GET" or request.url_rule is None:
+        return
+    if request.endpoint in _PAGE_ACCESS_EXCLUDED_ENDPOINTS:
+        return
+    ip = get_request_ip()
+    db.log_page_access_attempt(ip, request.path)
+    suspicious, count = detector.is_page_access_suspicious(ip, request.path)
+    if suspicious and count == config.PAGE_ACCESS_ALERT_THRESHOLD + 1:
+        soar.notify_page_access(ip, count, request.path)
+```
+
+또 하나의 결정: "이 IP의 전체 요청 수"가 아니라 "이 IP가 이 경로를 요청한 횟수"를 세기로 했습니다 — 여러 페이지를 정상적으로 둘러보는 사람과, 같은 페이지 하나를 반복 요청하는 사람을 구분하기 위해서입니다.
+
+**실제로 확인한 것**: 이 훅은 GET으로 페이지를 여는 기존 테스트 거의 전부에 영향을 줘서(막아두지 않으면 30개 실패), `tests/conftest.py`의 공용 fixture에 기본값(수상하지 않음)을 미리 넣어뒀습니다. 이 항목 자체를 검증하는 새 테스트 7개(기록, 임계값 초과 순간 알림, 반복 알림 방지, 임계값 미만 무알림, 정적 파일/폴링 API/존재하지 않는 경로 제외)를 추가. `pytest tests/ -v` 전체(127개) 통과.
+
+**Supabase 반영 필요**: `docs/schema.sql`에 새로 추가된 `page_access_attempts` 표 생성 SQL을 Supabase SQL Editor에서 직접 실행해야 합니다.
+
+**이 단계에서 만들어지거나 바뀐 파일**: [docs/schema.sql](../schema.sql), [config.py](../../config.py), [db.py](../../db.py), [detector.py](../../detector.py), [alert.py](../../alert.py), [soar.py](../../soar.py), [app.py](../../app.py), [tests/conftest.py](../../tests/conftest.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py)

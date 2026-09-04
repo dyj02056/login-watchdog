@@ -26,3 +26,24 @@ COMMENT_RATE_LIMIT = int(os.environ.get("COMMENT_RATE_LIMIT", 10))
 # 한 곳에 모았다.
 BOARD_COMMENT_POLL_MS = int(os.environ.get("BOARD_COMMENT_POLL_MS", 5000))
 ADMIN_DASHBOARD_POLL_MS = int(os.environ.get("ADMIN_DASHBOARD_POLL_MS", 10000))
+
+# Web Scanning(존재하지 않는 경로 반복 요청) 탐지 임계값 — 같은 IP가
+# DETECTION_WINDOW_SECONDS(기본 60초) 안에 이 횟수를 "초과"해서 404를 유발하면
+# 관리자에게 Slack 알림을 보낸다. is_suspicious()와 같은 "초과" 기준을 쓰는 이유는
+# 정상 방문자도 깨진 링크 몇 개는 우연히 밟을 수 있어서, 로그인 실패 판정과
+# 마찬가지로 약간의 여유를 준다 (attack_response_state.md 구현 대상 #1).
+WEB_SCANNING_ALERT_THRESHOLD = int(os.environ.get("WEB_SCANNING_ALERT_THRESHOLD", 10))
+
+# Unauthorized Access(로그인 세션 없이 관리자 API를 반복 호출) 탐지 임계값 —
+# WEB_SCANNING_ALERT_THRESHOLD와 같은 이유(정상 사용자도 세션 만료 직후 대시보드가
+# 자동으로 몇 번 더 요청을 보낼 수 있음)로 "초과"부터 의심한다
+# (attack_response_state.md 구현 대상 #2).
+UNAUTHORIZED_ACCESS_ALERT_THRESHOLD = int(os.environ.get("UNAUTHORIZED_ACCESS_ALERT_THRESHOLD", 10))
+
+# 반복 페이지 접근(같은 IP가 같은 GET 경로를 짧은 시간에 반복 요청) 탐지 임계값.
+# board.js/dashboard.js처럼 이 프로젝트 자체가 만든 자동 폴링 API는 애초에
+# 카운트 대상에서 제외하므로(app.py의 _PAGE_ACCESS_EXCLUDED_ENDPOINTS 참고),
+# 이 값은 "사람이 직접, 혹은 스크립트가 같은 페이지를 반복 새로고침하는" 상황만
+# 대상으로 한다 — 정상적인 수동 새로고침보다는 넉넉하게 잡는다
+# (attack_response_state.md 구현 대상 #4).
+PAGE_ACCESS_ALERT_THRESHOLD = int(os.environ.get("PAGE_ACCESS_ALERT_THRESHOLD", 20))

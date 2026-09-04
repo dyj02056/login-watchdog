@@ -64,6 +64,19 @@ def test_is_admin_suspicious_true_when_failures_exceed_threshold(monkeypatch):
     assert count == 6
 
 
+def test_count_distinct_usernames_passes_through_db_value(monkeypatch):
+    # count_distinct_usernames는 판정을 하지 않고 db.py가 센 값을 그대로 전달만 한다.
+    monkeypatch.setattr(db, "count_recent_distinct_usernames", lambda ip: 3)
+
+    assert detector.count_distinct_usernames("1.2.3.4") == 3
+
+
+def test_count_distinct_admin_usernames_passes_through_db_value(monkeypatch):
+    monkeypatch.setattr(db, "count_recent_distinct_admin_usernames", lambda ip: 2)
+
+    assert detector.count_distinct_admin_usernames("1.2.3.4") == 2
+
+
 def test_is_signup_rate_limited_false_below_limit(monkeypatch):
     # SIGNUP_RATE_LIMIT 기본값은 5 — 4번까지는 아직 제한하지 않는다.
     monkeypatch.setattr(db, "count_recent_signup_attempts", lambda ip: 4)
@@ -103,6 +116,64 @@ def test_is_comment_rate_limited_true_at_limit(monkeypatch):
     monkeypatch.setattr(db, "count_recent_comment_attempts", lambda ip: 10)
 
     assert detector.is_comment_rate_limited("1.2.3.4") is True
+
+
+def test_is_web_scanning_false_at_exact_threshold(monkeypatch):
+    # WEB_SCANNING_ALERT_THRESHOLD 기본값은 10 — 정확히 10회는 아직 수상하지 않다
+    # (is_suspicious와 동일하게 "초과"부터 수상함).
+    monkeypatch.setattr(db, "count_recent_not_found_attempts", lambda ip: 10)
+
+    suspicious, count = detector.is_web_scanning("1.2.3.4")
+
+    assert suspicious is False
+    assert count == 10
+
+
+def test_is_web_scanning_true_when_exceeds_threshold(monkeypatch):
+    monkeypatch.setattr(db, "count_recent_not_found_attempts", lambda ip: 11)
+
+    suspicious, count = detector.is_web_scanning("1.2.3.4")
+
+    assert suspicious is True
+    assert count == 11
+
+
+def test_is_unauthorized_access_suspicious_false_at_exact_threshold(monkeypatch):
+    # UNAUTHORIZED_ACCESS_ALERT_THRESHOLD 기본값은 10 — 정확히 10회는 아직 아니다.
+    monkeypatch.setattr(db, "count_recent_unauthorized_attempts", lambda ip: 10)
+
+    suspicious, count = detector.is_unauthorized_access_suspicious("1.2.3.4")
+
+    assert suspicious is False
+    assert count == 10
+
+
+def test_is_unauthorized_access_suspicious_true_when_exceeds_threshold(monkeypatch):
+    monkeypatch.setattr(db, "count_recent_unauthorized_attempts", lambda ip: 11)
+
+    suspicious, count = detector.is_unauthorized_access_suspicious("1.2.3.4")
+
+    assert suspicious is True
+    assert count == 11
+
+
+def test_is_page_access_suspicious_false_at_exact_threshold(monkeypatch):
+    # PAGE_ACCESS_ALERT_THRESHOLD 기본값은 20 — 정확히 20회는 아직 아니다.
+    monkeypatch.setattr(db, "count_recent_page_access_attempts", lambda ip, path: 20)
+
+    suspicious, count = detector.is_page_access_suspicious("1.2.3.4", "/board")
+
+    assert suspicious is False
+    assert count == 20
+
+
+def test_is_page_access_suspicious_true_when_exceeds_threshold(monkeypatch):
+    monkeypatch.setattr(db, "count_recent_page_access_attempts", lambda ip, path: 21)
+
+    suspicious, count = detector.is_page_access_suspicious("1.2.3.4", "/board")
+
+    assert suspicious is True
+    assert count == 21
 
 
 def test_is_locked_true_when_lockout_exists(monkeypatch):

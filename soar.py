@@ -16,7 +16,7 @@ import alert
 import db
 
 
-def enforce_lockout(ip: str, failure_count: int) -> None:
+def enforce_lockout(ip: str, failure_count: int, distinct_usernames: int) -> None:
     """이 IP에 실제로 잠금을 걸고, 그 사실을 Slack으로 알린다.
 
     두 단계로 이루어진다:
@@ -26,9 +26,50 @@ def enforce_lockout(ip: str, failure_count: int) -> None:
     알림을 "잠그는 순간에 딱 한 번만" 보내는 이유: 만약 잠긴 상태에서도 계속
     로그인을 시도할 때마다 매번 알림을 보내면, 관리자가 알림 폭탄을 맞아 정작
     중요한 알림을 놓치게 된다(이른바 "알림 피로"). 그래서 "새로 잠기는 순간"에만 알린다.
+
+    distinct_usernames는 detector.count_distinct_usernames()(또는 관리자용)가 센
+    "이 IP가 최근에 시도한 서로 다른 아이디 개수"다 — 1개면 계정 하나에 집중된
+    Brute Force, 2개 이상이면 여러 계정을 돌아가며 두드리는 Password Spraying으로
+    의심할 수 있으므로, alert.py가 Slack 메시지에 이 값으로 패턴을 구분해 보여준다.
     """
     db.create_lockout(ip, failure_count)
-    alert.send_lockout_alert(ip, failure_count, datetime.now(timezone.utc))
+    alert.send_lockout_alert(ip, failure_count, datetime.now(timezone.utc), distinct_usernames)
+
+
+def notify_web_scanning(ip: str, count: int, path: str) -> None:
+    """Web Scanning 의심 알림을 Slack으로 보낸다.
+
+    enforce_lockout()과 달리 db.create_lockout()을 호출하지 않는다 — 404를
+    유발한 요청은 애초에 존재하지 않는 경로를 두드린 것이라 "잠글" 대상이
+    없고, 이 IP를 실제로 잠그면 정상적인 다른 페이지 이용까지 막아버려 오히려
+    과한 조치가 된다. 그래서 여기서는 관찰(알림)만 한다.
+    """
+    alert.send_web_scanning_alert(ip, count, path)
+
+
+def notify_unauthorized_access(ip: str, count: int, path: str) -> None:
+    """Unauthorized Access 의심 알림을 Slack으로 보낸다.
+
+    notify_web_scanning()과 마찬가지로 db.create_lockout()을 호출하지 않는다.
+    이번엔 이유가 조금 다르다 — 대상 경로 자체가 없는 404와 달리 여기 대상은
+    "존재하는 관리자 API"이므로 원칙적으로는 잠글 수도 있지만, 그렇게 하면
+    관리자 대시보드가 세션 만료 직후 자동 폴링으로 이 상태에 걸렸을 때 관리자
+    본인의 IP까지 잠가버려 재로그인조차 막아버리는 자충수가 될 수 있다.
+    그래서 이 항목도 관찰(알림)까지만 자동화하고, 잠글지 여부는 알림을 받은
+    관리자가 직접 판단하게 남겨둔다.
+    """
+    alert.send_unauthorized_access_alert(ip, count, path)
+
+
+def notify_page_access(ip: str, count: int, path: str) -> None:
+    """반복 페이지 접근 의심 알림을 Slack으로 보낸다.
+
+    notify_web_scanning()/notify_unauthorized_access()와 마찬가지로 db.create_lockout()을
+    호출하지 않는다 — 같은 페이지를 자주 보는 것만으로 IP를 잠그면, 단순히 그 페이지를
+    새로고침하며 기다리던 정상 사용자까지 막아버릴 위험이 있다. 그래서 관찰(알림)까지만
+    자동화하고, 잠글지 여부는 알림을 받은 관리자가 직접 판단하게 남겨둔다.
+    """
+    alert.send_page_access_alert(ip, count, path)
 
 
 def try_release_expired_lockouts() -> None:

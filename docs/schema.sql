@@ -127,3 +127,43 @@ create table comment_attempts (
   attempted_at timestamptz not null default now()
 );
 create index idx_comment_attempts_ip_time on comment_attempts (ip_address, attempted_at);
+
+-- ============================================================================
+-- 이상행위 탐지 보완 (21단계, attack_response_state.md 구현 대상 #1)
+-- ============================================================================
+
+-- 존재하지 않는 경로(404) 요청 기록 (append-only). signup_attempts와 동일한
+-- 목적("이 IP가 얼마나 자주 두드렸는가")이지만, 어떤 경로를 두드렸는지도
+-- 함께 남겨야 관리자가 나중에 "무엇을 스캔했는지" 확인할 수 있어 path를 추가로 저장한다.
+create table not_found_attempts (
+  id bigint generated always as identity primary key,
+  ip_address text not null,
+  path text not null,
+  attempted_at timestamptz not null default now()
+);
+create index idx_not_found_attempts_ip_time on not_found_attempts (ip_address, attempted_at);
+
+-- 관리자 전용 API(/api/*)에 로그인 세션 없이 접근을 시도한 기록 (append-only).
+-- not_found_attempts와 동일한 목적("이 IP가 얼마나 자주 두드렸는가" + 어떤
+-- 경로였는지)이지만, "존재하지 않는 경로"가 아니라 "존재는 하는데 권한이
+-- 없는 경로"를 두드린 것이라는 점이 다르다 (attack_response_state.md 구현 대상 #2).
+create table unauthorized_attempts (
+  id bigint generated always as identity primary key,
+  ip_address text not null,
+  path text not null,
+  attempted_at timestamptz not null default now()
+);
+create index idx_unauthorized_attempts_ip_time on unauthorized_attempts (ip_address, attempted_at);
+
+-- 반복 페이지 접근(같은 IP가 같은 GET 경로를 반복 요청) 탐지용 로그.
+-- not_found_attempts/unauthorized_attempts와 구조는 같지만, 카운트할 때
+-- ip_address뿐 아니라 path까지 함께 걸러야 하므로(이 IP의 "전체" 요청이
+-- 아니라 "이 경로" 요청 횟수를 센다) 인덱스에 path도 포함한다
+-- (attack_response_state.md 구현 대상 #4).
+create table page_access_attempts (
+  id bigint generated always as identity primary key,
+  ip_address text not null,
+  path text not null,
+  attempted_at timestamptz not null default now()
+);
+create index idx_page_access_attempts_ip_path_time on page_access_attempts (ip_address, path, attempted_at);

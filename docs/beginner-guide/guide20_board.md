@@ -1,6 +1,6 @@
 # 20단계 — 게시판·댓글 기능 추가
 
-[◀ 19단계](guide19_security_hardening.md) · [전체 목차](beginner-guide.md)
+[◀ 19단계](guide19_security_hardening.md) · [전체 목차](beginner-guide.md) · [21단계 ▶](guide21_anomaly_detection.md)
 
 > 회원 전용 영역에 게시판·댓글 기능을 새로 추가했습니다. 이번엔 코드를 바로 짜지 않고, 먼저 "지금 코드가 어떻게 생겼는지"를 분석하고, 모호한 부분 11가지를 질문으로 정리해서 하나씩 답을 정한 뒤, 그 결정을 바탕으로 계획서를 쓰고 나서야 실제 코드를 만들었습니다. 이 순서를 기록해둔 문서가 [docs/board-comment/](../board-comment)에 그대로 남아있습니다 — 이번 단계는 그 문서들의 내용을 이 해설서 스타일로 풀어 쓴 것입니다.
 

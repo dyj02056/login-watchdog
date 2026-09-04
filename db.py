@@ -79,6 +79,29 @@ def count_recent_failures(ip: str, window_seconds: int = config.DETECTION_WINDOW
     return res.count or 0  # 만약 count가 없으면(None) 0으로 처리
 
 
+def count_recent_distinct_usernames(ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS) -> int:
+    """이 IP가 최근 몇 초(기본 60초) 안에 몇 개의 서로 다른 아이디로 로그인
+    실패를 시도했는지 센다.
+
+    count_recent_failures()는 "몇 번" 두드렸는지만 알려주지만, 이 값은 "몇 개의
+    서로 다른 문(아이디)"을 두드렸는지를 알려준다 — 1개면 계정 하나를 노린
+    전형적인 Brute Force, 2개 이상이면 여러 계정을 돌아가며 시도하는 Password
+    Spraying으로 의심할 수 있다 (soar.enforce_lockout이 Slack 알림에 이 값을
+    함께 표시해서 두 패턴을 구분해준다).
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+    res = (
+        get_client()
+        .table("login_attempts")
+        .select("username")
+        .eq("ip_address", ip)
+        .eq("success", False)
+        .gte("attempted_at", cutoff)
+        .execute()
+    )
+    return len({row["username"] for row in res.data})
+
+
 def list_recent_attempts(limit: int = 50) -> list[dict]:
     """가장 최근 로그인 시도 기록을 최신순으로 최대 `limit`개 가져온다.
 
@@ -311,6 +334,26 @@ def count_recent_admin_failures(ip: str, window_seconds: int = config.DETECTION_
         .execute()
     )
     return res.count or 0
+
+
+def count_recent_distinct_admin_usernames(
+    ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS
+) -> int:
+    """count_recent_distinct_usernames()와 완전히 같은 목적이지만, admin_login_log
+    표를 본다 — 관리자 로그인과 감시 대상 로그인은 서로 다른 표에 기록되므로
+    (count_recent_admin_failures와 마찬가지 이유), 여기서도 전용 함수가 필요하다.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+    res = (
+        get_client()
+        .table("admin_login_log")
+        .select("username")
+        .eq("ip_address", ip)
+        .eq("success", False)
+        .gte("attempted_at", cutoff)
+        .execute()
+    )
+    return len({row["username"] for row in res.data})
 
 
 def log_admin_attempt(username: str, success: bool, ip: str) -> None:
@@ -753,6 +796,90 @@ def count_recent_comment_attempts(ip: str, window_seconds: int = config.DETECTIO
         .table("comment_attempts")
         .select("id", count="exact")
         .eq("ip_address", ip)
+        .gte("attempted_at", cutoff)
+        .execute()
+    )
+    return res.count or 0
+
+
+# ============================================================================
+# not_found_attempts 표 관련 함수 — Web Scanning(존재하지 않는 경로 반복 요청)
+# 탐지용 로그. signup_attempts/post_attempts와 같은 구조이지만, 어떤 경로를
+# 요청했는지(path)도 함께 남긴다 (21단계, attack_response_state.md 구현 대상 #1).
+# ============================================================================
+
+def log_not_found_attempt(ip: str, path: str) -> None:
+    """404가 발생한 요청 한 건을 not_found_attempts 표에 기록한다."""
+    get_client().table("not_found_attempts").insert({"ip_address": ip, "path": path}).execute()
+
+
+def count_recent_not_found_attempts(
+    ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS
+) -> int:
+    """이 IP가 최근 몇 초(기본 60초) 안에 몇 번이나 404를 유발했는지 센다."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+    res = (
+        get_client()
+        .table("not_found_attempts")
+        .select("id", count="exact")
+        .eq("ip_address", ip)
+        .gte("attempted_at", cutoff)
+        .execute()
+    )
+    return res.count or 0
+
+
+# ============================================================================
+# unauthorized_attempts 표 관련 함수 — 관리자 API(/api/*)에 로그인 세션 없이
+# 접근을 시도한 반복 요청 탐지용 로그. not_found_attempts와 완전히 동일한
+# 구조다 (attack_response_state.md 구현 대상 #2).
+# ============================================================================
+
+def log_unauthorized_attempt(ip: str, path: str) -> None:
+    """세션 없이 관리자 API에 접근한 요청 한 건을 unauthorized_attempts 표에 기록한다."""
+    get_client().table("unauthorized_attempts").insert({"ip_address": ip, "path": path}).execute()
+
+
+def count_recent_unauthorized_attempts(
+    ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS
+) -> int:
+    """이 IP가 최근 몇 초(기본 60초) 안에 몇 번이나 세션 없이 관리자 API를 두드렸는지 센다."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+    res = (
+        get_client()
+        .table("unauthorized_attempts")
+        .select("id", count="exact")
+        .eq("ip_address", ip)
+        .gte("attempted_at", cutoff)
+        .execute()
+    )
+    return res.count or 0
+
+
+# ============================================================================
+# page_access_attempts 표 관련 함수 — 반복 페이지 접근(같은 IP가 같은 GET
+# 경로를 반복 요청) 탐지용 로그. not_found_attempts/unauthorized_attempts와
+# 구조는 같지만, "이 IP의 전체 요청"이 아니라 "이 IP가 이 경로를 요청한
+# 횟수"를 세야 하므로 카운트할 때 path도 함께 필터링한다
+# (attack_response_state.md 구현 대상 #4).
+# ============================================================================
+
+def log_page_access_attempt(ip: str, path: str) -> None:
+    """GET 페이지 요청 한 건을 page_access_attempts 표에 기록한다."""
+    get_client().table("page_access_attempts").insert({"ip_address": ip, "path": path}).execute()
+
+
+def count_recent_page_access_attempts(
+    ip: str, path: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS
+) -> int:
+    """이 IP가 최근 몇 초(기본 60초) 안에 이 경로를 몇 번이나 요청했는지 센다."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+    res = (
+        get_client()
+        .table("page_access_attempts")
+        .select("id", count="exact")
+        .eq("ip_address", ip)
+        .eq("path", path)
         .gte("attempted_at", cutoff)
         .execute()
     )
