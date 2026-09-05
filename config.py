@@ -13,6 +13,13 @@ SIGNUP_RATE_LIMIT = int(os.environ.get("SIGNUP_RATE_LIMIT", 5))
 # 게시판(/board) 한 페이지에 보여줄 글 개수 (docs/board-comment/plan_board.md 결정 #9).
 BOARD_PAGE_SIZE = int(os.environ.get("BOARD_PAGE_SIZE", 10))
 
+# 관리자 대시보드(/admin/dashboard)의 회원/게시글/댓글 관리 표 한 페이지에 보여줄
+# 행 개수. 예전에는 "최근 N개만" 방식(list_users(limit=100) 등)으로 고정해뒀는데,
+# 그 이상 쌓이면 오래된 항목이 화면에서 아예 사라져버리는 문제가 있었다.
+# BOARD_PAGE_SIZE와 별도 값으로 둔 이유: 회원용 게시판(카드형 목록)과 관리자용
+# 표(data-table)는 한 화면에 자연스럽게 들어가는 줄 수가 달라서다.
+ADMIN_PAGE_SIZE = int(os.environ.get("ADMIN_PAGE_SIZE", 10))
+
 # 게시글/댓글 작성 빈도 제한 — SIGNUP_RATE_LIMIT과 동일한 개념(성공/실패 무관,
 # DETECTION_WINDOW_SECONDS 안에 이 횟수 이상이면 거부). 댓글은 글보다 자주
 # 작성되는 게 자연스러워 기본값을 더 넉넉하게 잡았다 (결정 #7).

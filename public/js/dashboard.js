@@ -19,6 +19,13 @@
 // 이 변수를 최신 값으로 갱신해둔다.
 let currentSignupEnabled = true;
 
+// 회원/게시글/댓글 관리 표가 지금 몇 페이지를 보고 있는지 기억해둔다. board_list.html의
+// URL 쿼리 파라미터(?page=)와 같은 역할이지만, 이 화면은 서버 렌더링이 아니라 매번
+// fetch()로 다시 그리는 방식이라 URL 대신 자바스크립트 변수로 상태를 들고 있는다.
+let usersPage = 1;
+let postsPage = 1;
+let commentsPage = 1;
+
 // admin_dashboard.html의 <meta name="csrf-token"> 태그에서 서버가 발급한 CSRF
 // 토큰 값을 읽어온다. 아래 unlockIp/deleteUser/toggleSignup이 fetch()로 서버
 // 상태를 바꾸는 POST 요청을 보낼 때마다 이 값을 X-CSRFToken 헤더에 실어 보내야,
@@ -61,7 +68,14 @@ function escapeHtml(value) {
  * 응답이 올 때까지 여기서 잠깐 기다렸다가, 응답이 오면 다음 줄로 넘어가라"는 뜻이다.
  */
 async function fetchStatus() {
-    const response = await fetch("/api/status");
+    // 회원/게시글/댓글 표는 각자 다른 페이지를 보고 있을 수 있으므로, 지금 기억해둔
+    // 페이지 번호를 매번 쿼리 파라미터로 함께 보낸다(app.py의 _page_param() 참고).
+    const params = new URLSearchParams({
+        users_page: usersPage,
+        posts_page: postsPage,
+        comments_page: commentsPage,
+    });
+    const response = await fetch(`/api/status?${params}`);
 
     if (response.status === 401) {
         // 401 = "로그인이 안 되어 있다"는 뜻. 예를 들어 관리자가 다른 탭에서
@@ -71,13 +85,53 @@ async function fetchStatus() {
     }
 
     const data = await response.json(); // 서버가 보내준 JSON 응답을 자바스크립트 객체로 변환
+
+    // 삭제로 인해 항목이 줄어들어 지금 보던 페이지가 더 이상 존재하지 않게 된
+    // 경우(예: 마지막 페이지의 마지막 한 줄을 지웠을 때), 전체 페이지 수 안으로
+    // 페이지 번호를 되돌리고 즉시 다시 요청한다 — 그대로 두면 "3 / 2"처럼 있을 수
+    // 없는 페이지 번호가 보이거나 표가 텅 빈 채로 남는다.
+    let needsRefetch = false;
+    if (usersPage > data.users_total_pages) { usersPage = data.users_total_pages; needsRefetch = true; }
+    if (postsPage > data.posts_total_pages) { postsPage = data.posts_total_pages; needsRefetch = true; }
+    if (commentsPage > data.comments_total_pages) { commentsPage = data.comments_total_pages; needsRefetch = true; }
+    if (needsRefetch) {
+        fetchStatus();
+        return;
+    }
+
     renderLockoutCards(data.active_lockouts);
     renderAttemptsTable(data.recent_attempts);
     renderAdminLoginLog(data.admin_login_log);
     renderUsersTable(data.users);
+    renderPagination("users-pagination", usersPage, data.users_total_pages);
     renderSignupStatus(data.signup_enabled);
     renderPostsTable(data.recent_posts);
+    renderPagination("posts-pagination", postsPage, data.posts_total_pages);
     renderCommentsTable(data.recent_comments);
+    renderPagination("comments-pagination", commentsPage, data.comments_total_pages);
+}
+
+/**
+ * board_list.html의 "← 이전 | N / 총페이지 | 다음 →" 페이지 이동 줄을 그대로
+ * 흉내내서 표 하나의 페이지네이션 영역(containerId)을 채운다.
+ * @param {string} containerId - "users-pagination" 같은 <nav id> 값
+ * @param {number} page - 지금 보고 있는 페이지 번호
+ * @param {number} totalPages - 전체 페이지 수
+ */
+function renderPagination(containerId, page, totalPages) {
+    const container = document.getElementById(containerId);
+    if (totalPages <= 1) {
+        // 페이지가 1개뿐이면 이동할 곳이 없으므로 버튼 자체를 안 보여준다.
+        container.innerHTML = "";
+        return;
+    }
+    const prev = page > 1
+        ? `<button type="button" class="admin-pagination-btn" data-direction="prev">← 이전</button>`
+        : `<span class="admin-pagination-disabled">← 이전</span>`;
+    const next = page < totalPages
+        ? `<button type="button" class="admin-pagination-btn" data-direction="next">다음 →</button>`
+        : `<span class="admin-pagination-disabled">다음 →</span>`;
+    container.innerHTML = `${prev}<span class="admin-pagination-current">${page} / ${totalPages}</span>${next}`;
 }
 
 /**
@@ -390,6 +444,25 @@ document.getElementById("comments-table-body").addEventListener("click", (event)
         deleteComment(commentId);
     }
 });
+
+// 회원/게시글/댓글 페이지네이션 버튼도 renderLockoutCards()의 unlock-btn과 같은
+// 이벤트 위임 방식을 쓴다 — renderPagination()이 매번 버튼을 새로 만들어내기 때문이다.
+function bindPagination(containerId, getPage, setPage) {
+    document.getElementById(containerId).addEventListener("click", (event) => {
+        const direction = event.target.getAttribute("data-direction");
+        if (direction === "prev") {
+            setPage(getPage() - 1);
+            fetchStatus();
+        } else if (direction === "next") {
+            setPage(getPage() + 1);
+            fetchStatus();
+        }
+    });
+}
+
+bindPagination("users-pagination", () => usersPage, (page) => { usersPage = page; });
+bindPagination("posts-pagination", () => postsPage, (page) => { postsPage = page; });
+bindPagination("comments-pagination", () => commentsPage, (page) => { commentsPage = page; });
 
 fetchStatus(); // 화면이 열리자마자 한 번 즉시 데이터를 가져온다.
 setInterval(fetchStatus, pollIntervalMs); // 이후로는 pollIntervalMs마다 계속 반복해서 최신 상태로 갱신한다.
