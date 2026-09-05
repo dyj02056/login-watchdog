@@ -102,20 +102,30 @@ def count_recent_distinct_usernames(ip: str, window_seconds: int = config.DETECT
     return len({row["username"] for row in res.data})
 
 
-def list_recent_attempts(limit: int = 50) -> list[dict]:
-    """가장 최근 로그인 시도 기록을 최신순으로 최대 `limit`개 가져온다.
+def list_recent_attempts(page: int = 1, page_size: int = 50) -> list[dict]:
+    """로그인 시도 기록을 최신순으로 `page`번째 페이지만 가져온다 (1부터 시작).
 
-    관리자 대시보드 화면에 "최근 로그인 기록" 목록을 보여줄 때 쓰인다.
+    관리자 대시보드 화면의 "최근 로그인 시도" 표에 쓰인다. list_users()와 동일하게
+    limit() 대신 range()를 써서, 시도 기록이 아무리 쌓여도 표는 항상 한 페이지
+    분량만 보여주고 이전 기록도 페이지를 넘겨 찾아볼 수 있게 한다.
     """
+    start = (page - 1) * page_size
+    end = start + page_size - 1
     res = (
         get_client()
         .table("login_attempts")
         .select("*")                      # 이 줄의 모든 칸(id, ip, username 등) 전부 요청
         .order("attempted_at", desc=True) # 시각 기준으로 내림차순(최신이 맨 위) 정렬
-        .limit(limit)
+        .range(start, end)
         .execute()
     )
     return res.data
+
+
+def count_login_attempts() -> int:
+    """전체 로그인 시도 건수를 센다. "최근 로그인 시도" 표의 전체 페이지 수 계산용."""
+    res = get_client().table("login_attempts").select("id", count="exact").execute()
+    return res.count or 0
 
 
 def list_attempts_since(hours: int = 24) -> list[dict]:
@@ -367,17 +377,28 @@ def log_admin_attempt(username: str, success: bool, ip: str) -> None:
     ).execute()
 
 
-def list_admin_login_log(limit: int = 20) -> list[dict]:
-    """관리자 로그인 시도 기록을 최신순으로 최대 `limit`개 가져온다 (대시보드 표시용)."""
+def list_admin_login_log(page: int = 1, page_size: int = 20) -> list[dict]:
+    """관리자 로그인 시도 기록을 최신순으로 `page`번째 페이지만 가져온다 (대시보드 표시용).
+
+    list_recent_attempts()와 동일한 이유로 limit() 대신 range()를 쓴다.
+    """
+    start = (page - 1) * page_size
+    end = start + page_size - 1
     res = (
         get_client()
         .table("admin_login_log")
         .select("*")
         .order("attempted_at", desc=True)
-        .limit(limit)
+        .range(start, end)
         .execute()
     )
     return res.data
+
+
+def count_admin_login_log() -> int:
+    """전체 관리자 로그인 시도 건수를 센다. "관리자 로그인 기록" 표의 전체 페이지 수 계산용."""
+    res = get_client().table("admin_login_log").select("id", count="exact").execute()
+    return res.count or 0
 
 
 # ============================================================================

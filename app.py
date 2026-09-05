@@ -567,23 +567,31 @@ def api_status():
     데이터를 주고받을 때 가장 널리 쓰이는 표준 형식이다. jsonify()는 파이썬
     딕셔너리를 이 JSON 형식으로 자동 변환해서 브라우저에 보내주는 Flask 도구다.
 
-    회원/게시글/댓글 관리 표는 ?users_page=, ?posts_page=, ?comments_page=로
-    현재 보고 있는 페이지 번호를 받는다 — dashboard.js가 board_list()와 동일한
-    페이지 번호 방식으로 표를 그릴 수 있도록, 각 표의 이번 페이지 데이터와
-    전체 페이지 수(*_total_pages)를 함께 내려준다 (예전에는 최근 N개만 고정으로
-    가져와서, 그 이상 쌓이면 오래된 항목이 화면에서 아예 사라졌었다).
+    관리자 대시보드의 표 5개(최근 로그인 시도/회원/게시글/댓글/관리자 로그인 기록)는
+    각자 ?attempts_page=, ?users_page=, ?posts_page=, ?comments_page=,
+    ?admin_log_page=로 현재 보고 있는 페이지 번호를 받는다 — dashboard.js가
+    board_list()와 동일한 페이지 번호 방식으로 표를 그릴 수 있도록, 각 표의
+    이번 페이지 데이터와 전체 페이지 수(*_total_pages)를 함께 내려준다 (예전에는
+    최근 N개만 고정으로 가져와서, 그 이상 쌓이면 오래된 항목이 화면에서 아예
+    사라졌었다).
     """
     soar.try_release_expired_lockouts()
 
+    attempts_page = _page_param("attempts_page")
     users_page = _page_param("users_page")
     posts_page = _page_param("posts_page")
     comments_page = _page_param("comments_page")
+    admin_log_page = _page_param("admin_log_page")
 
     return jsonify(
         {
-            "recent_attempts": _attach_locations(db.list_recent_attempts(50)),
+            "recent_attempts": _attach_locations(
+                db.list_recent_attempts(attempts_page, config.ADMIN_PAGE_SIZE)
+            ),
+            "attempts_total_pages": max(1, math.ceil(db.count_login_attempts() / config.ADMIN_PAGE_SIZE)),
             "active_lockouts": db.list_active_lockouts(),
-            "admin_login_log": db.list_admin_login_log(20),
+            "admin_login_log": db.list_admin_login_log(admin_log_page, config.ADMIN_PAGE_SIZE),
+            "admin_log_total_pages": max(1, math.ceil(db.count_admin_login_log() / config.ADMIN_PAGE_SIZE)),
             "users": db.list_users(users_page, config.ADMIN_PAGE_SIZE),
             "users_total_pages": max(1, math.ceil(db.count_users() / config.ADMIN_PAGE_SIZE)),
             "signup_enabled": db.get_signup_enabled(),
