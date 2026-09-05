@@ -140,9 +140,14 @@ pytest tests/
 
 | 스크립트 | 역할 |
 |---|---|
-| `scripts/bruteforce_sim.py` | `/login`에 일부러 틀린 비밀번호를 반복 제출해, 설정된 횟수(기본 5회 초과)에서 실제로 IP가 잠기는지 검증하는 시뮬레이터. 팀이 소유한 로컬 서버만 대상으로 하며, 그 외 주소는 `--i-know-what-im-doing` 없이는 거부됨 |
+| `scripts/bruteforce_sim.py` | `/login`에 일부러 틀린 비밀번호를 반복 제출해, 설정된 횟수(기본 5회 초과)에서 실제로 IP가 잠기는지 검증하는 시뮬레이터. 팀이 소유한 로컬 서버만 대상으로 하며, 그 외 주소는 `--i-know-what-im-doing` 없이는 거부됨. `--ip`로 가짜 공격자 IP를 지정할 수도 있음(아래 참고) |
 | `scripts/daily_report.py` | 최근 N시간(기본 24시간)의 로그인 시도/잠금 현황을 콘솔에 텍스트로 요약 |
 | `scripts/unlock_ip.py` | 지금 잠겨있는 IP를 조회하거나 즉시 해제. `/admin/login`도 `/login`과 같은 IP 기준 잠금을 공유하므로, 브루트포스 시뮬레이션 도중 관리자 계정 IP까지 함께 잠기면 대시보드의 "즉시 해제" 버튼조차 쓸 수 없는 상황이 생기는데(로그인 자체가 막혀서), 이때 서버·로그인 없이 터미널에서 바로 풀 때 사용 |
+
+`bruteforce_sim.py`의 `--ip` 옵션: 로컬 환경에서는 팀원 전원이 다 같은 `127.0.0.1`로 접속하게 되어 "서로 다른 공격자 IP에서 왔다"는 상황을 재현할 수 없다. `--ip 1.2.3.4`를 주면 그 값을 `X-Forwarded-For` 헤더에 실어 보내는데, 이 헤더는 대상 서버의 `.env`에서 `TRUST_FORWARDED_FOR=true`로 켜뒀을 때만 실제 접속 IP처럼 반영된다(운영 환경 기본값인 `false`에서는 서버가 헤더를 무시하고 진짜 접속 IP를 그대로 씀 — 배포 사이트에서 이 옵션이 안전하게 아무 효과가 없는 이유).
+```bash
+python scripts/bruteforce_sim.py --host http://127.0.0.1:5000 --username test1 --ip 1.2.3.4
+```
 
 `unlock_ip.py` 사용 예:
 ```bash

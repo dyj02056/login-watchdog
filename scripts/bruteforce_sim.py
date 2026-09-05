@@ -12,6 +12,14 @@
 # http://127.0.0.1:5000)만 대상으로 한다. 실제 서비스나 타인의 서버에 이
 # 스크립트를 실행하는 것은 절대 금지된다 — 그래서 --host로 localhost/127.0.0.1이
 # 아닌 주소를 지정하면 --i-know-what-im-doing 플래그 없이는 실행을 거부한다.
+#
+# --ip 옵션(선택): 로컬 환경에서는 팀원 전원이 똑같이 127.0.0.1로 접속하게
+# 되어 "서로 다른 공격자 IP에서 왔다"는 상황을 재현할 수 없다. app.py의
+# get_request_ip()는 config.TRUST_FORWARDED_FOR가 true일 때만(데모 전용 설정)
+# X-Forwarded-For 헤더 값을 진짜 접속 IP처럼 믿어주므로, 이 옵션을 쓰면 그
+# 헤더에 원하는 IP를 실어 보내 "가짜 공격자 IP"를 흉내낼 수 있다. 단, 대상
+# 서버의 TRUST_FORWARDED_FOR가 false(운영 환경의 기본값이자 권장값)라면 서버가
+# 이 헤더를 무시하고 진짜 접속 IP를 그대로 쓰므로 이 옵션은 아무 효과가 없다.
 # ============================================================================
 
 import argparse
@@ -70,9 +78,16 @@ def attempt_login(
     )
 
 
-def run(base_url: str, username: str, attempts: int) -> bool:
+def run(base_url: str, username: str, attempts: int, ip: str | None = None) -> bool:
     """실패 요청을 `attempts`번 순차로 보낸 뒤, 마지막(6번째) 요청의 응답에
     잠금 문구가 포함돼 있는지 확인한다.
+
+    ip가 주어지면, 이후 이 세션이 보내는 모든 요청(CSRF 토큰을 받아오는
+    GET 포함)에 X-Forwarded-For 헤더로 그 값을 실어 보낸다. session.headers에
+    한 번만 넣어두면 requests.Session이 그 뒤 모든 요청에 자동으로 붙여준다.
+    다만 이 헤더는 대상 서버의 config.TRUST_FORWARDED_FOR가 true일 때만
+    실제로 반영된다 — false(운영 환경 기본값)라면 서버가 이 헤더를 무시하고
+    진짜 접속 IP를 그대로 쓰므로, 그 경우엔 이 옵션이 아무 효과가 없다.
 
     반환값: 검증 통과 여부(True/False). main()에서 이 값을 프로세스 종료
     코드로 변환해서, CI 등 다른 도구가 성공/실패를 스크립트 실행만으로
@@ -81,6 +96,10 @@ def run(base_url: str, username: str, attempts: int) -> bool:
     print(f"[*] {base_url}/login 에 틀린 비밀번호로 {attempts}회 연속 로그인 시도")
 
     session = requests.Session()
+    if ip:
+        session.headers["X-Forwarded-For"] = ip
+        print(f"[*] X-Forwarded-For: {ip} 헤더를 함께 보냅니다 "
+              f"(대상 서버의 TRUST_FORWARDED_FOR=true일 때만 실제로 반영됨)")
     csrf_token = fetch_csrf_token(session, base_url)
 
     response = None
@@ -118,6 +137,12 @@ def main() -> None:
         "--i-know-what-im-doing", action="store_true",
         help="localhost가 아닌 --host를 대상으로 실행하려면 반드시 이 플래그를 함께 줘야 한다.",
     )
+    parser.add_argument(
+        "--ip",
+        help="X-Forwarded-For 헤더로 실어 보낼 가짜 공격자 IP (예: --ip 1.2.3.4). "
+             "대상 서버의 .env에서 TRUST_FORWARDED_FOR=true로 켜뒀을 때만 효과가 있는 "
+             "로컬 데모 전용 옵션이며, 생략하면 평소처럼 실제 접속 IP가 그대로 쓰인다.",
+    )
     args = parser.parse_args()
 
     if not is_local_host(args.host) and not args.i_know_what_im_doing:
@@ -130,7 +155,7 @@ def main() -> None:
         )
         sys.exit(2)
 
-    success = run(args.host, args.username, args.attempts)
+    success = run(args.host, args.username, args.attempts, args.ip)
     sys.exit(0 if success else 1)
 
 
