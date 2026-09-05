@@ -60,6 +60,7 @@ cp .env.example .env
 | `SECRET_KEY` | Flask 세션 쿠키 서명용 임의 문자열 (예: `python -c "import secrets; print(secrets.token_hex(32))"`) |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 서버 최초 기동 시 자동 생성될 관리자 계정 (이미 계정이 있으면 무시됨) |
 | `TRUST_FORWARDED_FOR` | `X-Forwarded-For` 헤더 신뢰 여부. **데모/시연 전용, 운영에서는 반드시 `false`** |
+| `VERCEL_AUTOMATION_BYPASS_SECRET` | Vercel Authentication(프리뷰 배포 보호)을 우회하는 Protection Bypass Secret. `scripts/bruteforce_sim.py`로 Vercel 프리뷰 배포를 대상으로 테스트할 때만 필요, 로컬 서버·운영 배포에는 불필요 |
 
 ### 5. 서버 실행
 ```bash
@@ -140,13 +141,18 @@ pytest tests/
 
 | 스크립트 | 역할 |
 |---|---|
-| `scripts/bruteforce_sim.py` | `/login`에 일부러 틀린 비밀번호를 반복 제출해, 설정된 횟수(기본 5회 초과)에서 실제로 IP가 잠기는지 검증하는 시뮬레이터. 팀이 소유한 로컬 서버만 대상으로 하며, 그 외 주소는 `--i-know-what-im-doing` 없이는 거부됨. `--ip`로 가짜 공격자 IP를 지정할 수도 있음(아래 참고) |
+| `scripts/bruteforce_sim.py` | `/login`에 일부러 틀린 비밀번호를 반복 제출해, 설정된 횟수(기본 5회 초과)에서 실제로 IP가 잠기는지 검증하는 시뮬레이터. 팀이 소유한 로컬 서버만 대상으로 하며, 그 외 주소는 `--i-know-what-im-doing` 없이는 거부됨. `--ip`로 가짜 공격자 IP를 지정하거나, Vercel 프리뷰 배포처럼 Vercel Authentication이 걸린 주소를 대상으로 할 때는 `--bypass-secret`으로 우회할 수도 있음(아래 참고) |
 | `scripts/daily_report.py` | 최근 N시간(기본 24시간)의 로그인 시도/잠금 현황을 콘솔에 텍스트로 요약 |
 | `scripts/unlock_ip.py` | 지금 잠겨있는 IP를 조회하거나 즉시 해제. `/admin/login`도 `/login`과 같은 IP 기준 잠금을 공유하므로, 브루트포스 시뮬레이션 도중 관리자 계정 IP까지 함께 잠기면 대시보드의 "즉시 해제" 버튼조차 쓸 수 없는 상황이 생기는데(로그인 자체가 막혀서), 이때 서버·로그인 없이 터미널에서 바로 풀 때 사용 |
 
 `bruteforce_sim.py`의 `--ip` 옵션: 로컬 환경에서는 팀원 전원이 다 같은 `127.0.0.1`로 접속하게 되어 "서로 다른 공격자 IP에서 왔다"는 상황을 재현할 수 없다. `--ip 1.2.3.4`를 주면 그 값을 `X-Forwarded-For` 헤더에 실어 보내는데, 이 헤더는 대상 서버의 `.env`에서 `TRUST_FORWARDED_FOR=true`로 켜뒀을 때만 실제 접속 IP처럼 반영된다(운영 환경 기본값인 `false`에서는 서버가 헤더를 무시하고 진짜 접속 IP를 그대로 씀 — 배포 사이트에서 이 옵션이 안전하게 아무 효과가 없는 이유).
 ```bash
 python scripts/bruteforce_sim.py --host http://127.0.0.1:5000 --username test1 --ip 1.2.3.4
+```
+
+`bruteforce_sim.py`의 `--bypass-secret` 옵션: Vercel 프리뷰 배포(`*.vercel.app`)는 기본적으로 Vercel Authentication으로 보호되어 있어, 팀원이 아니면 `/login` 화면 자체에 접근하지 못한다. `--bypass-secret`에 Vercel의 Protection Bypass Secret 값을 넘기면 `x-vercel-protection-bypass` 헤더로 실어 보내 이 보호를 우회한다. 생략하면 `.env`의 `VERCEL_AUTOMATION_BYPASS_SECRET` 값을 자동으로 사용하며, 로컬 서버를 대상으로 할 때는 지정해도 아무 효과가 없다.
+```bash
+python scripts/bruteforce_sim.py --host https://<브랜치>-git-<프리뷰경로>.vercel.app --username test1 --i-know-what-im-doing
 ```
 
 `unlock_ip.py` 사용 예:
