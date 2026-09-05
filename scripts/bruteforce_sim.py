@@ -23,10 +23,14 @@
 # ============================================================================
 
 import argparse
+import os
 import sys
 from urllib.parse import urlparse
 
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 LOCKED_MESSAGE = "잠긴 계정입니다"
 
@@ -78,7 +82,10 @@ def attempt_login(
     )
 
 
-def run(base_url: str, username: str, attempts: int, ip: str | None = None) -> bool:
+def run(
+    base_url: str, username: str, attempts: int, ip: str | None = None,
+    bypass_secret: str | None = None,
+) -> bool:
     """실패 요청을 `attempts`번 순차로 보낸 뒤, 마지막(6번째) 요청의 응답에
     잠금 문구가 포함돼 있는지 확인한다.
 
@@ -88,6 +95,11 @@ def run(base_url: str, username: str, attempts: int, ip: str | None = None) -> b
     다만 이 헤더는 대상 서버의 config.TRUST_FORWARDED_FOR가 true일 때만
     실제로 반영된다 — false(운영 환경 기본값)라면 서버가 이 헤더를 무시하고
     진짜 접속 IP를 그대로 쓰므로, 그 경우엔 이 옵션이 아무 효과가 없다.
+
+    bypass_secret이 주어지면, Vercel Authentication(프리뷰 배포 잠금)을
+    우회하는 x-vercel-protection-bypass 헤더를 같은 방식으로 세션에 실어
+    보낸다. --host가 Vercel 프리뷰 주소일 때만 의미가 있고, 로컬 서버
+    대상으로는 아무 효과가 없다.
 
     반환값: 검증 통과 여부(True/False). main()에서 이 값을 프로세스 종료
     코드로 변환해서, CI 등 다른 도구가 성공/실패를 스크립트 실행만으로
@@ -100,6 +112,11 @@ def run(base_url: str, username: str, attempts: int, ip: str | None = None) -> b
         session.headers["X-Forwarded-For"] = ip
         print(f"[*] X-Forwarded-For: {ip} 헤더를 함께 보냅니다 "
               f"(대상 서버의 TRUST_FORWARDED_FOR=true일 때만 실제로 반영됨)")
+    if bypass_secret:
+        session.headers["x-vercel-protection-bypass"] = bypass_secret
+        session.headers["x-vercel-set-bypass-cookie"] = "true"
+        print("[*] x-vercel-protection-bypass 헤더를 함께 보냅니다 "
+              "(Vercel Authentication이 걸린 프리뷰 주소일 때만 의미가 있음)")
     csrf_token = fetch_csrf_token(session, base_url)
 
     response = None
@@ -143,6 +160,14 @@ def main() -> None:
              "대상 서버의 .env에서 TRUST_FORWARDED_FOR=true로 켜뒀을 때만 효과가 있는 "
              "로컬 데모 전용 옵션이며, 생략하면 평소처럼 실제 접속 IP가 그대로 쓰인다.",
     )
+    parser.add_argument(
+        "--bypass-secret",
+        default=os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET"),
+        help="Vercel Authentication이 걸린 프리뷰 배포(--host가 *.vercel.app)를 대상으로 "
+             "실행할 때 필요한 Protection Bypass Secret. 생략하면 .env의 "
+             "VERCEL_AUTOMATION_BYPASS_SECRET 값을 대신 사용한다. 로컬 서버 대상일 때는 "
+             "필요 없다.",
+    )
     args = parser.parse_args()
 
     if not is_local_host(args.host) and not args.i_know_what_im_doing:
@@ -155,7 +180,7 @@ def main() -> None:
         )
         sys.exit(2)
 
-    success = run(args.host, args.username, args.attempts, args.ip)
+    success = run(args.host, args.username, args.attempts, args.ip, args.bypass_secret)
     sys.exit(0 if success else 1)
 
 
