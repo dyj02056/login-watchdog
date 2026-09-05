@@ -199,19 +199,20 @@ def test_count_recent_page_access_attempts_returns_count(monkeypatch):
     assert result == 21
 
 
-def test_list_users_returns_rows_from_client(monkeypatch):
+def test_list_users_returns_rows_and_count_from_client(monkeypatch):
     rows = [
         {"id": 2, "username": "bbb", "email": "bbb@example.com", "created_at": "2026-09-02T00:00:00Z"},
         {"id": 1, "username": "aaa", "email": "aaa@example.com", "created_at": "2026-09-01T00:00:00Z"},
     ]
-    fake_client = _FakeQuery(rows=rows)
+    fake_client = _FakeQuery(rows=rows, count=17)
     monkeypatch.setattr(db, "get_client", lambda: fake_client)
 
-    result = db.list_users()
+    result, total = db.list_users()
 
     # list_users는 정렬 자체를 하지 않는다(Supabase 쪽에 정렬을 맡긴다) — 그래서
     # 여기서는 "가짜 클라이언트가 준 데이터를 그대로 전달하는지"만 확인한다.
     assert result == rows
+    assert total == 17
 
 
 def test_delete_user_true_when_row_was_deleted(monkeypatch):
@@ -403,28 +404,24 @@ def test_get_post_none_when_not_found(monkeypatch):
 
 def test_list_posts_uses_range_for_pagination(monkeypatch):
     rows = [{"id": 1, "title": "글1"}]
-    fake_client = _FakeQuery(rows=rows)
+    fake_client = _FakeQuery(rows=rows, count=42)
     monkeypatch.setattr(db, "get_client", lambda: fake_client)
 
-    result = db.list_posts(page=2, page_size=10)
+    result, total = db.list_posts(page=2, page_size=10)
 
     assert result == rows
+    assert total == 42
     # 2페이지, 페이지당 10개 → 11~20번째(0-index 10~19) 행을 요청해야 한다.
     assert ("range", (10, 19), {}) in fake_client.calls
 
 
-def test_count_posts_returns_zero_when_count_missing(monkeypatch):
+def test_list_posts_total_is_zero_when_count_missing(monkeypatch):
     fake_client = _FakeQuery(rows=[], count=None)
     monkeypatch.setattr(db, "get_client", lambda: fake_client)
 
-    assert db.count_posts() == 0
+    _, total = db.list_posts(page=1, page_size=10)
 
-
-def test_count_posts_returns_client_count(monkeypatch):
-    fake_client = _FakeQuery(rows=[], count=42)
-    monkeypatch.setattr(db, "get_client", lambda: fake_client)
-
-    assert db.count_posts() == 42
+    assert total == 0
 
 
 def test_delete_post_true_when_row_was_deleted(monkeypatch):

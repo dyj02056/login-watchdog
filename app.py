@@ -574,6 +574,11 @@ def api_status():
     이번 페이지 데이터와 전체 페이지 수(*_total_pages)를 함께 내려준다 (예전에는
     최근 N개만 고정으로 가져와서, 그 이상 쌓이면 오래된 항목이 화면에서 아예
     사라졌었다).
+
+    db.list_*() 함수들은 (이번 페이지 데이터, 전체 개수) 튜플을 돌려준다 — 목록
+    조회와 개수 조회를 별도 쿼리 두 번으로 나누지 않고 한 번의 왕복으로 끝내기
+    위해서다(db.list_recent_attempts() 설명 참고). 표가 5개로 늘면서 이 둘을
+    따로 뒀을 때 요청 한 번에 왕복이 10번까지 늘어나 응답이 눈에 띄게 느려졌었다.
     """
     soar.try_release_expired_lockouts()
 
@@ -583,24 +588,28 @@ def api_status():
     comments_page = _page_param("comments_page")
     admin_log_page = _page_param("admin_log_page")
 
+    attempts, attempts_count = db.list_recent_attempts(attempts_page, config.ADMIN_PAGE_SIZE)
+    admin_log, admin_log_count = db.list_admin_login_log(admin_log_page, config.ADMIN_PAGE_SIZE)
+    users, users_count = db.list_users(users_page, config.ADMIN_PAGE_SIZE)
+    posts, posts_count = db.list_posts(posts_page, config.ADMIN_PAGE_SIZE)
+    comments, comments_count = db.list_comments_admin(comments_page, config.ADMIN_PAGE_SIZE)
+
     return jsonify(
         {
-            "recent_attempts": _attach_locations(
-                db.list_recent_attempts(attempts_page, config.ADMIN_PAGE_SIZE)
-            ),
-            "attempts_total_pages": max(1, math.ceil(db.count_login_attempts() / config.ADMIN_PAGE_SIZE)),
+            "recent_attempts": _attach_locations(attempts),
+            "attempts_total_pages": max(1, math.ceil(attempts_count / config.ADMIN_PAGE_SIZE)),
             "active_lockouts": db.list_active_lockouts(),
-            "admin_login_log": db.list_admin_login_log(admin_log_page, config.ADMIN_PAGE_SIZE),
-            "admin_log_total_pages": max(1, math.ceil(db.count_admin_login_log() / config.ADMIN_PAGE_SIZE)),
-            "users": db.list_users(users_page, config.ADMIN_PAGE_SIZE),
-            "users_total_pages": max(1, math.ceil(db.count_users() / config.ADMIN_PAGE_SIZE)),
+            "admin_login_log": admin_log,
+            "admin_log_total_pages": max(1, math.ceil(admin_log_count / config.ADMIN_PAGE_SIZE)),
+            "users": users,
+            "users_total_pages": max(1, math.ceil(users_count / config.ADMIN_PAGE_SIZE)),
             "signup_enabled": db.get_signup_enabled(),
             # 게시판 관리 섹션(관리자 대시보드)용 — recent_attempts 등과 같은 폴링
             # 주기(dashboard.js, 10초)로 함께 갱신된다.
-            "recent_posts": db.list_posts(posts_page, config.ADMIN_PAGE_SIZE),
-            "posts_total_pages": max(1, math.ceil(db.count_posts() / config.ADMIN_PAGE_SIZE)),
-            "recent_comments": db.list_comments_admin(comments_page, config.ADMIN_PAGE_SIZE),
-            "comments_total_pages": max(1, math.ceil(db.count_comments() / config.ADMIN_PAGE_SIZE)),
+            "recent_posts": posts,
+            "posts_total_pages": max(1, math.ceil(posts_count / config.ADMIN_PAGE_SIZE)),
+            "recent_comments": comments,
+            "comments_total_pages": max(1, math.ceil(comments_count / config.ADMIN_PAGE_SIZE)),
         }
     )
 
@@ -715,8 +724,8 @@ def board_list():
     page = request.args.get("page", 1, type=int)
     if page < 1:
         page = 1
-    posts = db.list_posts(page, config.BOARD_PAGE_SIZE)
-    total_pages = max(1, math.ceil(db.count_posts() / config.BOARD_PAGE_SIZE))
+    posts, total_count = db.list_posts(page, config.BOARD_PAGE_SIZE)
+    total_pages = max(1, math.ceil(total_count / config.BOARD_PAGE_SIZE))
     return render_template("board_list.html", posts=posts, page=page, total_pages=total_pages)
 
 
