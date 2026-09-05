@@ -102,30 +102,27 @@ def count_recent_distinct_usernames(ip: str, window_seconds: int = config.DETECT
     return len({row["username"] for row in res.data})
 
 
-def list_recent_attempts(page: int = 1, page_size: int = 50) -> list[dict]:
-    """로그인 시도 기록을 최신순으로 `page`번째 페이지만 가져온다 (1부터 시작).
+def list_recent_attempts(page: int = 1, page_size: int = 50) -> tuple[list[dict], int]:
+    """로그인 시도 기록을 최신순으로 `page`번째 페이지만 가져오고, 전체 건수도 함께 돌려준다.
 
-    관리자 대시보드 화면의 "최근 로그인 시도" 표에 쓰인다. list_users()와 동일하게
-    limit() 대신 range()를 써서, 시도 기록이 아무리 쌓여도 표는 항상 한 페이지
-    분량만 보여주고 이전 기록도 페이지를 넘겨 찾아볼 수 있게 한다.
+    관리자 대시보드 화면의 "최근 로그인 시도" 표에 쓰인다. select(..., count="exact")에
+    range()를 함께 쓰면 PostgREST가 "이번 페이지 데이터"와 "range와 무관한 전체 개수"를
+    한 번의 요청으로 같이 돌려준다 — 예전에는 목록 조회와 개수 조회를 별도 쿼리 두 번으로
+    나눠서 했는데, 페이지네이션을 표 5개에 다 붙이고 나니 /api/status 한 번에 왕복이
+    10번(표마다 목록+개수)까지 늘어나 관리자 대시보드 응답이 눈에 띄게 느려졌다. 이렇게
+    합치면 표 하나당 왕복이 1번으로 줄어든다.
     """
     start = (page - 1) * page_size
     end = start + page_size - 1
     res = (
         get_client()
         .table("login_attempts")
-        .select("*")                      # 이 줄의 모든 칸(id, ip, username 등) 전부 요청
+        .select("*", count="exact")       # 이 줄의 모든 칸(id, ip, username 등) 전부 요청
         .order("attempted_at", desc=True) # 시각 기준으로 내림차순(최신이 맨 위) 정렬
         .range(start, end)
         .execute()
     )
-    return res.data
-
-
-def count_login_attempts() -> int:
-    """전체 로그인 시도 건수를 센다. "최근 로그인 시도" 표의 전체 페이지 수 계산용."""
-    res = get_client().table("login_attempts").select("id", count="exact").execute()
-    return res.count or 0
+    return res.data, res.count or 0
 
 
 def list_attempts_since(hours: int = 24) -> list[dict]:
@@ -377,28 +374,22 @@ def log_admin_attempt(username: str, success: bool, ip: str) -> None:
     ).execute()
 
 
-def list_admin_login_log(page: int = 1, page_size: int = 20) -> list[dict]:
-    """관리자 로그인 시도 기록을 최신순으로 `page`번째 페이지만 가져온다 (대시보드 표시용).
-
-    list_recent_attempts()와 동일한 이유로 limit() 대신 range()를 쓴다.
+def list_admin_login_log(page: int = 1, page_size: int = 20) -> tuple[list[dict], int]:
+    """관리자 로그인 시도 기록을 최신순으로 `page`번째 페이지만 가져오고, 전체 건수도
+    함께 돌려준다 (대시보드 표시용). list_recent_attempts()와 동일한 이유로
+    select(..., count="exact") + range()를 한 번에 쓴다.
     """
     start = (page - 1) * page_size
     end = start + page_size - 1
     res = (
         get_client()
         .table("admin_login_log")
-        .select("*")
+        .select("*", count="exact")
         .order("attempted_at", desc=True)
         .range(start, end)
         .execute()
     )
-    return res.data
-
-
-def count_admin_login_log() -> int:
-    """전체 관리자 로그인 시도 건수를 센다. "관리자 로그인 기록" 표의 전체 페이지 수 계산용."""
-    res = get_client().table("admin_login_log").select("id", count="exact").execute()
-    return res.count or 0
+    return res.data, res.count or 0
 
 
 # ============================================================================
@@ -496,11 +487,11 @@ def update_user_profile(user_id: int, name: str, email: str) -> bool:
     return True
 
 
-def list_users(page: int = 1, page_size: int = 100) -> list[dict]:
-    """가입된 회원 목록을 최신 가입순으로 `page`번째 페이지만 가져온다 (1부터 시작).
-
-    관리자 대시보드가 회원 수만큼 끝없이 늘어나는 표 대신, list_posts()와 동일한
-    range() 기반 페이지네이션으로 한 페이지씩만 보여줄 수 있도록 한다.
+def list_users(page: int = 1, page_size: int = 100) -> tuple[list[dict], int]:
+    """가입된 회원 목록을 최신 가입순으로 `page`번째 페이지만 가져오고, 전체 회원 수도
+    함께 돌려준다 (1부터 시작). select(..., count="exact") + range()를 한 번에 써서
+    목록 조회와 전체 개수 조회를 별도 쿼리 두 번이 아니라 한 번의 왕복으로 끝낸다
+    (list_recent_attempts() 참고 — 관리자 대시보드 응답 속도 개선).
 
     password_hash 칸은 일부러 요청하지 않는다 — 암호화된 값이라 그 자체로는
     안전하지만, 화면에 굳이 내보낼 이유가 없는 값은 애초에 조회 단계에서부터
@@ -511,18 +502,12 @@ def list_users(page: int = 1, page_size: int = 100) -> list[dict]:
     res = (
         get_client()
         .table("users")
-        .select("id, username, email, created_at")
+        .select("id, username, email, created_at", count="exact")
         .order("created_at", desc=True)
         .range(start, end)
         .execute()
     )
-    return res.data
-
-
-def count_users() -> int:
-    """전체 회원 수를 센다. 관리자 대시보드에서 "전체 페이지 수"를 계산할 때 쓴다."""
-    res = get_client().table("users").select("id", count="exact").execute()
-    return res.count or 0
+    return res.data, res.count or 0
 
 
 def delete_user(user_id: int) -> bool:
@@ -658,30 +643,27 @@ def get_post(post_id: int) -> dict | None:
     return res.data[0] if res.data else None
 
 
-def list_posts(page: int, page_size: int) -> list[dict]:
-    """게시글 목록을 최신순으로 `page`번째 페이지만 가져온다 (1부터 시작).
+def list_posts(page: int, page_size: int) -> tuple[list[dict], int]:
+    """게시글 목록을 최신순으로 `page`번째 페이지만 가져오고, 전체 게시글 개수도
+    함께 돌려준다 (1부터 시작).
 
     supabase-py의 .range(start, end)는 PostgREST의 offset 기반 페이지네이션을
     그대로 감싼 것이라, 별도 페이지네이션 라이브러리 없이 이 한 줄로 구현된다
-    (docs/board-comment/plan_board.md 7절 "기술 스택 선택과 이유" 참고).
+    (docs/board-comment/plan_board.md 7절 "기술 스택 선택과 이유" 참고). select()에
+    count="exact"를 함께 주면 range()와 무관하게 전체 개수도 같은 응답에 실려 오므로,
+    목록 조회와 개수 조회를 쿼리 두 번으로 나눌 필요가 없다.
     """
     start = (page - 1) * page_size
     end = start + page_size - 1
     res = (
         get_client()
         .table("posts")
-        .select("*")
+        .select("*", count="exact")
         .order("created_at", desc=True)
         .range(start, end)
         .execute()
     )
-    return res.data
-
-
-def count_posts() -> int:
-    """전체 게시글 개수를 센다. 목록 화면에서 "전체 페이지 수"를 계산할 때 쓴다."""
-    res = get_client().table("posts").select("id", count="exact").execute()
-    return res.count or 0
+    return res.data, res.count or 0
 
 
 def update_post(post_id: int, title: str, body: str) -> None:
@@ -764,28 +746,23 @@ def get_latest_comment_info(post_id: int) -> dict:
     return {"count": res.count or 0, "latest_at": latest_at}
 
 
-def list_comments_admin(page: int, page_size: int) -> list[dict]:
+def list_comments_admin(page: int, page_size: int) -> tuple[list[dict], int]:
     """관리자 대시보드 "게시글 관리" 표시용 — 게시글 구분 없이 전체 댓글을 최신순으로
-    `page`번째 페이지만 가져온다. list_comments_by_post()는 특정 글 하나에 달린
-    댓글만 보므로(회원용 게시글 상세 화면), 관리자용은 별도 함수로 분리했다.
+    `page`번째 페이지만 가져오고, 전체 댓글 수도 함께 돌려준다. list_comments_by_post()는
+    특정 글 하나에 달린 댓글만 보므로(회원용 게시글 상세 화면), 관리자용은 별도 함수로
+    분리했다. select(..., count="exact") + range()로 목록/개수를 한 번에 가져온다.
     """
     start = (page - 1) * page_size
     end = start + page_size - 1
     res = (
         get_client()
         .table("comments")
-        .select("*")
+        .select("*", count="exact")
         .order("created_at", desc=True)
         .range(start, end)
         .execute()
     )
-    return res.data
-
-
-def count_comments() -> int:
-    """전체 댓글 수를 센다. 관리자 대시보드에서 "전체 페이지 수"를 계산할 때 쓴다."""
-    res = get_client().table("comments").select("id", count="exact").execute()
-    return res.count or 0
+    return res.data, res.count or 0
 
 
 # ============================================================================
