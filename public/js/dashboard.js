@@ -19,12 +19,15 @@
 // 이 변수를 최신 값으로 갱신해둔다.
 let currentSignupEnabled = true;
 
-// 회원/게시글/댓글 관리 표가 지금 몇 페이지를 보고 있는지 기억해둔다. board_list.html의
-// URL 쿼리 파라미터(?page=)와 같은 역할이지만, 이 화면은 서버 렌더링이 아니라 매번
-// fetch()로 다시 그리는 방식이라 URL 대신 자바스크립트 변수로 상태를 들고 있는다.
+// 표 5개(최근 로그인 시도/회원/게시글/댓글/관리자 로그인 기록)가 지금 몇 페이지를
+// 보고 있는지 기억해둔다. board_list.html의 URL 쿼리 파라미터(?page=)와 같은
+// 역할이지만, 이 화면은 서버 렌더링이 아니라 매번 fetch()로 다시 그리는 방식이라
+// URL 대신 자바스크립트 변수로 상태를 들고 있는다.
+let attemptsPage = 1;
 let usersPage = 1;
 let postsPage = 1;
 let commentsPage = 1;
+let adminLogPage = 1;
 
 // admin_dashboard.html의 <meta name="csrf-token"> 태그에서 서버가 발급한 CSRF
 // 토큰 값을 읽어온다. 아래 unlockIp/deleteUser/toggleSignup이 fetch()로 서버
@@ -68,12 +71,14 @@ function escapeHtml(value) {
  * 응답이 올 때까지 여기서 잠깐 기다렸다가, 응답이 오면 다음 줄로 넘어가라"는 뜻이다.
  */
 async function fetchStatus() {
-    // 회원/게시글/댓글 표는 각자 다른 페이지를 보고 있을 수 있으므로, 지금 기억해둔
-    // 페이지 번호를 매번 쿼리 파라미터로 함께 보낸다(app.py의 _page_param() 참고).
+    // 표마다 각자 다른 페이지를 보고 있을 수 있으므로, 지금 기억해둔 페이지 번호를
+    // 매번 쿼리 파라미터로 함께 보낸다(app.py의 _page_param() 참고).
     const params = new URLSearchParams({
+        attempts_page: attemptsPage,
         users_page: usersPage,
         posts_page: postsPage,
         comments_page: commentsPage,
+        admin_log_page: adminLogPage,
     });
     const response = await fetch(`/api/status?${params}`);
 
@@ -91,9 +96,11 @@ async function fetchStatus() {
     // 페이지 번호를 되돌리고 즉시 다시 요청한다 — 그대로 두면 "3 / 2"처럼 있을 수
     // 없는 페이지 번호가 보이거나 표가 텅 빈 채로 남는다.
     let needsRefetch = false;
+    if (attemptsPage > data.attempts_total_pages) { attemptsPage = data.attempts_total_pages; needsRefetch = true; }
     if (usersPage > data.users_total_pages) { usersPage = data.users_total_pages; needsRefetch = true; }
     if (postsPage > data.posts_total_pages) { postsPage = data.posts_total_pages; needsRefetch = true; }
     if (commentsPage > data.comments_total_pages) { commentsPage = data.comments_total_pages; needsRefetch = true; }
+    if (adminLogPage > data.admin_log_total_pages) { adminLogPage = data.admin_log_total_pages; needsRefetch = true; }
     if (needsRefetch) {
         fetchStatus();
         return;
@@ -101,7 +108,9 @@ async function fetchStatus() {
 
     renderLockoutCards(data.active_lockouts);
     renderAttemptsTable(data.recent_attempts);
+    renderPagination("attempts-pagination", attemptsPage, data.attempts_total_pages);
     renderAdminLoginLog(data.admin_login_log);
+    renderPagination("admin-log-pagination", adminLogPage, data.admin_log_total_pages);
     renderUsersTable(data.users);
     renderPagination("users-pagination", usersPage, data.users_total_pages);
     renderSignupStatus(data.signup_enabled);
@@ -460,9 +469,11 @@ function bindPagination(containerId, getPage, setPage) {
     });
 }
 
+bindPagination("attempts-pagination", () => attemptsPage, (page) => { attemptsPage = page; });
 bindPagination("users-pagination", () => usersPage, (page) => { usersPage = page; });
 bindPagination("posts-pagination", () => postsPage, (page) => { postsPage = page; });
 bindPagination("comments-pagination", () => commentsPage, (page) => { commentsPage = page; });
+bindPagination("admin-log-pagination", () => adminLogPage, (page) => { adminLogPage = page; });
 
 fetchStatus(); // 화면이 열리자마자 한 번 즉시 데이터를 가져온다.
 setInterval(fetchStatus, pollIntervalMs); // 이후로는 pollIntervalMs마다 계속 반복해서 최신 상태로 갱신한다.
