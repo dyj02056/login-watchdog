@@ -475,22 +475,33 @@ def update_user_profile(user_id: int, name: str, email: str) -> bool:
     return True
 
 
-def list_users(limit: int = 100) -> list[dict]:
-    """가입된 회원 목록을 최신 가입순으로 가져온다 (관리자 대시보드 표시용).
+def list_users(page: int = 1, page_size: int = 100) -> list[dict]:
+    """가입된 회원 목록을 최신 가입순으로 `page`번째 페이지만 가져온다 (1부터 시작).
+
+    관리자 대시보드가 회원 수만큼 끝없이 늘어나는 표 대신, list_posts()와 동일한
+    range() 기반 페이지네이션으로 한 페이지씩만 보여줄 수 있도록 한다.
 
     password_hash 칸은 일부러 요청하지 않는다 — 암호화된 값이라 그 자체로는
     안전하지만, 화면에 굳이 내보낼 이유가 없는 값은 애초에 조회 단계에서부터
     빼두는 게 "혹시 모를 실수로 노출되는 사고"를 막는 가장 확실한 방법이다.
     """
+    start = (page - 1) * page_size
+    end = start + page_size - 1
     res = (
         get_client()
         .table("users")
         .select("id, username, email, created_at")
         .order("created_at", desc=True)
-        .limit(limit)
+        .range(start, end)
         .execute()
     )
     return res.data
+
+
+def count_users() -> int:
+    """전체 회원 수를 센다. 관리자 대시보드에서 "전체 페이지 수"를 계산할 때 쓴다."""
+    res = get_client().table("users").select("id", count="exact").execute()
+    return res.count or 0
 
 
 def delete_user(user_id: int) -> bool:
@@ -669,19 +680,6 @@ def delete_post(post_id: int) -> bool:
     return len(res.data) > 0
 
 
-def list_recent_posts(limit: int = 20) -> list[dict]:
-    """가장 최근 게시글을 최신순으로 가져온다 (관리자 대시보드 "게시글 관리" 표시용)."""
-    res = (
-        get_client()
-        .table("posts")
-        .select("*")
-        .order("created_at", desc=True)
-        .limit(limit)
-        .execute()
-    )
-    return res.data
-
-
 # ============================================================================
 # comments 표 관련 함수 — 게시글에 달리는 댓글 (단일 depth, 대댓글 없음)
 # ============================================================================
@@ -745,17 +743,28 @@ def get_latest_comment_info(post_id: int) -> dict:
     return {"count": res.count or 0, "latest_at": latest_at}
 
 
-def list_recent_comments(limit: int = 20) -> list[dict]:
-    """가장 최근 댓글을 최신순으로 가져온다 (관리자 대시보드 "게시글 관리" 표시용)."""
+def list_comments_admin(page: int, page_size: int) -> list[dict]:
+    """관리자 대시보드 "게시글 관리" 표시용 — 게시글 구분 없이 전체 댓글을 최신순으로
+    `page`번째 페이지만 가져온다. list_comments_by_post()는 특정 글 하나에 달린
+    댓글만 보므로(회원용 게시글 상세 화면), 관리자용은 별도 함수로 분리했다.
+    """
+    start = (page - 1) * page_size
+    end = start + page_size - 1
     res = (
         get_client()
         .table("comments")
         .select("*")
         .order("created_at", desc=True)
-        .limit(limit)
+        .range(start, end)
         .execute()
     )
     return res.data
+
+
+def count_comments() -> int:
+    """전체 댓글 수를 센다. 관리자 대시보드에서 "전체 페이지 수"를 계산할 때 쓴다."""
+    res = get_client().table("comments").select("id", count="exact").execute()
+    return res.count or 0
 
 
 # ============================================================================

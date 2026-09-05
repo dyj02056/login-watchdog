@@ -549,6 +549,15 @@ def admin_dashboard():
     return render_template("admin_dashboard.html", poll_interval_ms=config.ADMIN_DASHBOARD_POLL_MS)
 
 
+def _page_param(name: str) -> int:
+    """쿼리 파라미터로 받은 페이지 번호를 정수로 변환한다. board_list()의 page
+    처리와 동일한 원칙 — 값이 없거나 이상해도(?users_page=abc) 에러 없이
+    1페이지로 취급한다.
+    """
+    page = request.args.get(name, 1, type=int)
+    return page if page and page > 0 else 1
+
+
 @app.route("/api/status", methods=["GET"])
 @login_required
 def api_status():
@@ -557,19 +566,33 @@ def api_status():
     JSON이란? 파이썬의 딕셔너리(dict)와 거의 똑같이 생긴, 서버와 브라우저가
     데이터를 주고받을 때 가장 널리 쓰이는 표준 형식이다. jsonify()는 파이썬
     딕셔너리를 이 JSON 형식으로 자동 변환해서 브라우저에 보내주는 Flask 도구다.
+
+    회원/게시글/댓글 관리 표는 ?users_page=, ?posts_page=, ?comments_page=로
+    현재 보고 있는 페이지 번호를 받는다 — dashboard.js가 board_list()와 동일한
+    페이지 번호 방식으로 표를 그릴 수 있도록, 각 표의 이번 페이지 데이터와
+    전체 페이지 수(*_total_pages)를 함께 내려준다 (예전에는 최근 N개만 고정으로
+    가져와서, 그 이상 쌓이면 오래된 항목이 화면에서 아예 사라졌었다).
     """
     soar.try_release_expired_lockouts()
+
+    users_page = _page_param("users_page")
+    posts_page = _page_param("posts_page")
+    comments_page = _page_param("comments_page")
+
     return jsonify(
         {
             "recent_attempts": _attach_locations(db.list_recent_attempts(50)),
             "active_lockouts": db.list_active_lockouts(),
             "admin_login_log": db.list_admin_login_log(20),
-            "users": db.list_users(100),
+            "users": db.list_users(users_page, config.ADMIN_PAGE_SIZE),
+            "users_total_pages": max(1, math.ceil(db.count_users() / config.ADMIN_PAGE_SIZE)),
             "signup_enabled": db.get_signup_enabled(),
             # 게시판 관리 섹션(관리자 대시보드)용 — recent_attempts 등과 같은 폴링
             # 주기(dashboard.js, 10초)로 함께 갱신된다.
-            "recent_posts": db.list_recent_posts(20),
-            "recent_comments": db.list_recent_comments(20),
+            "recent_posts": db.list_posts(posts_page, config.ADMIN_PAGE_SIZE),
+            "posts_total_pages": max(1, math.ceil(db.count_posts() / config.ADMIN_PAGE_SIZE)),
+            "recent_comments": db.list_comments_admin(comments_page, config.ADMIN_PAGE_SIZE),
+            "comments_total_pages": max(1, math.ceil(db.count_comments() / config.ADMIN_PAGE_SIZE)),
         }
     )
 

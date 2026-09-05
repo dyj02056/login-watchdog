@@ -89,13 +89,16 @@
                 </thead>
                 <tbody id="users-table-body"></tbody>
             </table>
+            <!-- dashboard.js가 renderPagination()으로 board_list.html과 동일한
+                 "← 이전 | N / 총페이지 | 다음 →" 형태를 채워넣는다. -->
+            <nav id="users-pagination" class="admin-pagination"></nav>
         </section>
 
         <section>
             <!-- 회원용 게시판(/board)과는 별개로, 관리자는 여기서 전체 글/댓글을
                  조회하고 삭제할 수 있다(docs/board-comment/02-design-decisions.md
                  결정 #1·#2). 데이터는 /api/status 폴링에 함께 실려온다. -->
-            <h2>게시판 관리 — 최근 게시글</h2>
+            <h2>게시판 관리 — 게시글</h2>
             <table class="data-table">
                 <thead>
                     <tr>
@@ -107,10 +110,11 @@
                 </thead>
                 <tbody id="posts-table-body"></tbody>
             </table>
+            <nav id="posts-pagination" class="admin-pagination"></nav>
         </section>
 
         <section>
-            <h2>게시판 관리 — 최근 댓글</h2>
+            <h2>게시판 관리 — 댓글</h2>
             <table class="data-table">
                 <thead>
                     <tr>
@@ -122,6 +126,7 @@
                 </thead>
                 <tbody id="comments-table-body"></tbody>
             </table>
+            <nav id="comments-pagination" class="admin-pagination"></nav>
         </section>
 
         <section>
