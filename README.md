@@ -4,6 +4,8 @@
 
 **배포 주소**: https://login-watchdog.vercel.app (Vercel — 회원가입/로그인/관리자 대시보드까지 실제 스모크 테스트로 검증됨)
 
+**IP 스푸핑 시뮬레이션 주소**: https://login-watchdog-git-demo-ip-spoof-jsw7.vercel.app (`demo-ip-spoof` 브랜치 전용 Vercel 프리뷰 배포. 무료 VPN으로 접속 IP를 바꿔가며 브루트포스 IP 잠금 및 GeoIP 국가/도시 표시 기능을 시연할 때 이 주소를 대상으로 `scripts/bruteforce_sim.py`를 실행한다. 프리뷰 배포라 Vercel Authentication으로 보호되어 있으며, 진행 절차 전체는 [docs/vpn-demo-guide.md](docs/vpn-demo-guide.md) 참고)
+
 ## 주요 기능
 
 - **회원가입 / 로그인** — Supabase에 저장된 실제 계정으로 로그인하는 감시 대상 화면 (`/signup`, `/login`)
