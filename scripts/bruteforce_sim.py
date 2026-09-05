@@ -108,6 +108,11 @@ def run(
     print(f"[*] {base_url}/login 에 틀린 비밀번호로 {attempts}회 연속 로그인 시도")
 
     session = requests.Session()
+    # Flask-WTF는 HTTPS 요청에 대해 Referer 헤더가 있는지 검사한다
+    # (WTF_CSRF_SSL_STRICT 기본값 True). 로컬(HTTP)에서는 이 검사가 적용되지
+    # 않아 지금까지 드러나지 않았지만, HTTPS로 배포된 사이트(Vercel 등)를
+    # 대상으로 하면 이 헤더 없이는 CSRF 토큰이 맞아도 매번 400으로 거부된다.
+    session.headers["Referer"] = f"{base_url}/login"
     if ip:
         session.headers["X-Forwarded-For"] = ip
         print(f"[*] X-Forwarded-For: {ip} 헤더를 함께 보냅니다 "
