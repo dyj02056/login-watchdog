@@ -4,7 +4,7 @@
 # 이 프로그램의 다른 파일(detector.py, soar.py, app.py 등)은 데이터베이스에
 # 직접 말을 걸지 않고, 항상 이 파일의 함수를 통해서만 데이터를 읽고 씁니다.
 # 그래야 "데이터를 어떻게 저장/조회하는지"에 대한 규칙이 한 곳에만 있어서
-# 관리하기 쉬워집니다.ㄴㅇㄹㄴㅇㄹㅇㄴㄹㄴㅇㄹㄴㄷㅁㄹ
+# 관리하기 쉬워집니다.
 # ============================================================================
 
 import os
@@ -79,20 +79,50 @@ def count_recent_failures(ip: str, window_seconds: int = config.DETECTION_WINDOW
     return res.count or 0  # 만약 count가 없으면(None) 0으로 처리
 
 
-def list_recent_attempts(limit: int = 50) -> list[dict]:
-    """가장 최근 로그인 시도 기록을 최신순으로 최대 `limit`개 가져온다.
+def count_recent_distinct_usernames(ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS) -> int:
+    """이 IP가 최근 몇 초(기본 60초) 안에 몇 개의 서로 다른 아이디로 로그인
+    실패를 시도했는지 센다.
 
-    관리자 대시보드 화면에 "최근 로그인 기록" 목록을 보여줄 때 쓰인다.
+    count_recent_failures()는 "몇 번" 두드렸는지만 알려주지만, 이 값은 "몇 개의
+    서로 다른 문(아이디)"을 두드렸는지를 알려준다 — 1개면 계정 하나를 노린
+    전형적인 Brute Force, 2개 이상이면 여러 계정을 돌아가며 시도하는 Password
+    Spraying으로 의심할 수 있다 (soar.enforce_lockout이 Slack 알림에 이 값을
+    함께 표시해서 두 패턴을 구분해준다).
     """
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
     res = (
         get_client()
         .table("login_attempts")
-        .select("*")                      # 이 줄의 모든 칸(id, ip, username 등) 전부 요청
-        .order("attempted_at", desc=True) # 시각 기준으로 내림차순(최신이 맨 위) 정렬
-        .limit(limit)
+        .select("username")
+        .eq("ip_address", ip)
+        .eq("success", False)
+        .gte("attempted_at", cutoff)
         .execute()
     )
-    return res.data
+    return len({row["username"] for row in res.data})
+
+
+def list_recent_attempts(page: int = 1, page_size: int = 50) -> tuple[list[dict], int]:
+    """로그인 시도 기록을 최신순으로 `page`번째 페이지만 가져오고, 전체 건수도 함께 돌려준다.
+
+    관리자 대시보드 화면의 "최근 로그인 시도" 표에 쓰인다. select(..., count="exact")에
+    range()를 함께 쓰면 PostgREST가 "이번 페이지 데이터"와 "range와 무관한 전체 개수"를
+    한 번의 요청으로 같이 돌려준다 — 예전에는 목록 조회와 개수 조회를 별도 쿼리 두 번으로
+    나눠서 했는데, 페이지네이션을 표 5개에 다 붙이고 나니 /api/status 한 번에 왕복이
+    10번(표마다 목록+개수)까지 늘어나 관리자 대시보드 응답이 눈에 띄게 느려졌다. 이렇게
+    합치면 표 하나당 왕복이 1번으로 줄어든다.
+    """
+    start = (page - 1) * page_size
+    end = start + page_size - 1
+    res = (
+        get_client()
+        .table("login_attempts")
+        .select("*", count="exact")       # 이 줄의 모든 칸(id, ip, username 등) 전부 요청
+        .order("attempted_at", desc=True) # 시각 기준으로 내림차순(최신이 맨 위) 정렬
+        .range(start, end)
+        .execute()
+    )
+    return res.data, res.count or 0
 
 
 def list_attempts_since(hours: int = 24) -> list[dict]:
@@ -313,6 +343,26 @@ def count_recent_admin_failures(ip: str, window_seconds: int = config.DETECTION_
     return res.count or 0
 
 
+def count_recent_distinct_admin_usernames(
+    ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS
+) -> int:
+    """count_recent_distinct_usernames()와 완전히 같은 목적이지만, admin_login_log
+    표를 본다 — 관리자 로그인과 감시 대상 로그인은 서로 다른 표에 기록되므로
+    (count_recent_admin_failures와 마찬가지 이유), 여기서도 전용 함수가 필요하다.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+    res = (
+        get_client()
+        .table("admin_login_log")
+        .select("username")
+        .eq("ip_address", ip)
+        .eq("success", False)
+        .gte("attempted_at", cutoff)
+        .execute()
+    )
+    return len({row["username"] for row in res.data})
+
+
 def log_admin_attempt(username: str, success: bool, ip: str) -> None:
     """관리자 로그인 시도(성공이든 실패든) 한 건을 admin_login_log 표에 기록한다.
 
@@ -324,17 +374,22 @@ def log_admin_attempt(username: str, success: bool, ip: str) -> None:
     ).execute()
 
 
-def list_admin_login_log(limit: int = 20) -> list[dict]:
-    """관리자 로그인 시도 기록을 최신순으로 최대 `limit`개 가져온다 (대시보드 표시용)."""
+def list_admin_login_log(page: int = 1, page_size: int = 20) -> tuple[list[dict], int]:
+    """관리자 로그인 시도 기록을 최신순으로 `page`번째 페이지만 가져오고, 전체 건수도
+    함께 돌려준다 (대시보드 표시용). list_recent_attempts()와 동일한 이유로
+    select(..., count="exact") + range()를 한 번에 쓴다.
+    """
+    start = (page - 1) * page_size
+    end = start + page_size - 1
     res = (
         get_client()
         .table("admin_login_log")
-        .select("*")
+        .select("*", count="exact")
         .order("attempted_at", desc=True)
-        .limit(limit)
+        .range(start, end)
         .execute()
     )
-    return res.data
+    return res.data, res.count or 0
 
 
 # ============================================================================
@@ -432,22 +487,27 @@ def update_user_profile(user_id: int, name: str, email: str) -> bool:
     return True
 
 
-def list_users(limit: int = 100) -> list[dict]:
-    """가입된 회원 목록을 최신 가입순으로 가져온다 (관리자 대시보드 표시용).
+def list_users(page: int = 1, page_size: int = 100) -> tuple[list[dict], int]:
+    """가입된 회원 목록을 최신 가입순으로 `page`번째 페이지만 가져오고, 전체 회원 수도
+    함께 돌려준다 (1부터 시작). select(..., count="exact") + range()를 한 번에 써서
+    목록 조회와 전체 개수 조회를 별도 쿼리 두 번이 아니라 한 번의 왕복으로 끝낸다
+    (list_recent_attempts() 참고 — 관리자 대시보드 응답 속도 개선).
 
     password_hash 칸은 일부러 요청하지 않는다 — 암호화된 값이라 그 자체로는
     안전하지만, 화면에 굳이 내보낼 이유가 없는 값은 애초에 조회 단계에서부터
     빼두는 게 "혹시 모를 실수로 노출되는 사고"를 막는 가장 확실한 방법이다.
     """
+    start = (page - 1) * page_size
+    end = start + page_size - 1
     res = (
         get_client()
         .table("users")
-        .select("id, username, email, created_at")
+        .select("id, username, email, created_at", count="exact")
         .order("created_at", desc=True)
-        .limit(limit)
+        .range(start, end)
         .execute()
     )
-    return res.data
+    return res.data, res.count or 0
 
 
 def delete_user(user_id: int) -> bool:
@@ -583,30 +643,27 @@ def get_post(post_id: int) -> dict | None:
     return res.data[0] if res.data else None
 
 
-def list_posts(page: int, page_size: int) -> list[dict]:
-    """게시글 목록을 최신순으로 `page`번째 페이지만 가져온다 (1부터 시작).
+def list_posts(page: int, page_size: int) -> tuple[list[dict], int]:
+    """게시글 목록을 최신순으로 `page`번째 페이지만 가져오고, 전체 게시글 개수도
+    함께 돌려준다 (1부터 시작).
 
     supabase-py의 .range(start, end)는 PostgREST의 offset 기반 페이지네이션을
     그대로 감싼 것이라, 별도 페이지네이션 라이브러리 없이 이 한 줄로 구현된다
-    (docs/board-comment/plan_board.md 7절 "기술 스택 선택과 이유" 참고).
+    (docs/board-comment/plan_board.md 7절 "기술 스택 선택과 이유" 참고). select()에
+    count="exact"를 함께 주면 range()와 무관하게 전체 개수도 같은 응답에 실려 오므로,
+    목록 조회와 개수 조회를 쿼리 두 번으로 나눌 필요가 없다.
     """
     start = (page - 1) * page_size
     end = start + page_size - 1
     res = (
         get_client()
         .table("posts")
-        .select("*")
+        .select("*", count="exact")
         .order("created_at", desc=True)
         .range(start, end)
         .execute()
     )
-    return res.data
-
-
-def count_posts() -> int:
-    """전체 게시글 개수를 센다. 목록 화면에서 "전체 페이지 수"를 계산할 때 쓴다."""
-    res = get_client().table("posts").select("id", count="exact").execute()
-    return res.count or 0
+    return res.data, res.count or 0
 
 
 def update_post(post_id: int, title: str, body: str) -> None:
@@ -624,19 +681,6 @@ def delete_post(post_id: int) -> bool:
     """
     res = get_client().table("posts").delete().eq("id", post_id).execute()
     return len(res.data) > 0
-
-
-def list_recent_posts(limit: int = 20) -> list[dict]:
-    """가장 최근 게시글을 최신순으로 가져온다 (관리자 대시보드 "게시글 관리" 표시용)."""
-    res = (
-        get_client()
-        .table("posts")
-        .select("*")
-        .order("created_at", desc=True)
-        .limit(limit)
-        .execute()
-    )
-    return res.data
 
 
 # ============================================================================
@@ -702,17 +746,23 @@ def get_latest_comment_info(post_id: int) -> dict:
     return {"count": res.count or 0, "latest_at": latest_at}
 
 
-def list_recent_comments(limit: int = 20) -> list[dict]:
-    """가장 최근 댓글을 최신순으로 가져온다 (관리자 대시보드 "게시글 관리" 표시용)."""
+def list_comments_admin(page: int, page_size: int) -> tuple[list[dict], int]:
+    """관리자 대시보드 "게시글 관리" 표시용 — 게시글 구분 없이 전체 댓글을 최신순으로
+    `page`번째 페이지만 가져오고, 전체 댓글 수도 함께 돌려준다. list_comments_by_post()는
+    특정 글 하나에 달린 댓글만 보므로(회원용 게시글 상세 화면), 관리자용은 별도 함수로
+    분리했다. select(..., count="exact") + range()로 목록/개수를 한 번에 가져온다.
+    """
+    start = (page - 1) * page_size
+    end = start + page_size - 1
     res = (
         get_client()
         .table("comments")
-        .select("*")
+        .select("*", count="exact")
         .order("created_at", desc=True)
-        .limit(limit)
+        .range(start, end)
         .execute()
     )
-    return res.data
+    return res.data, res.count or 0
 
 
 # ============================================================================
@@ -753,6 +803,90 @@ def count_recent_comment_attempts(ip: str, window_seconds: int = config.DETECTIO
         .table("comment_attempts")
         .select("id", count="exact")
         .eq("ip_address", ip)
+        .gte("attempted_at", cutoff)
+        .execute()
+    )
+    return res.count or 0
+
+
+# ============================================================================
+# not_found_attempts 표 관련 함수 — Web Scanning(존재하지 않는 경로 반복 요청)
+# 탐지용 로그. signup_attempts/post_attempts와 같은 구조이지만, 어떤 경로를
+# 요청했는지(path)도 함께 남긴다 (21단계, attack_response_state.md 구현 대상 #1).
+# ============================================================================
+
+def log_not_found_attempt(ip: str, path: str) -> None:
+    """404가 발생한 요청 한 건을 not_found_attempts 표에 기록한다."""
+    get_client().table("not_found_attempts").insert({"ip_address": ip, "path": path}).execute()
+
+
+def count_recent_not_found_attempts(
+    ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS
+) -> int:
+    """이 IP가 최근 몇 초(기본 60초) 안에 몇 번이나 404를 유발했는지 센다."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+    res = (
+        get_client()
+        .table("not_found_attempts")
+        .select("id", count="exact")
+        .eq("ip_address", ip)
+        .gte("attempted_at", cutoff)
+        .execute()
+    )
+    return res.count or 0
+
+
+# ============================================================================
+# unauthorized_attempts 표 관련 함수 — 관리자 API(/api/*)에 로그인 세션 없이
+# 접근을 시도한 반복 요청 탐지용 로그. not_found_attempts와 완전히 동일한
+# 구조다 (attack_response_state.md 구현 대상 #2).
+# ============================================================================
+
+def log_unauthorized_attempt(ip: str, path: str) -> None:
+    """세션 없이 관리자 API에 접근한 요청 한 건을 unauthorized_attempts 표에 기록한다."""
+    get_client().table("unauthorized_attempts").insert({"ip_address": ip, "path": path}).execute()
+
+
+def count_recent_unauthorized_attempts(
+    ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS
+) -> int:
+    """이 IP가 최근 몇 초(기본 60초) 안에 몇 번이나 세션 없이 관리자 API를 두드렸는지 센다."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+    res = (
+        get_client()
+        .table("unauthorized_attempts")
+        .select("id", count="exact")
+        .eq("ip_address", ip)
+        .gte("attempted_at", cutoff)
+        .execute()
+    )
+    return res.count or 0
+
+
+# ============================================================================
+# page_access_attempts 표 관련 함수 — 반복 페이지 접근(같은 IP가 같은 GET
+# 경로를 반복 요청) 탐지용 로그. not_found_attempts/unauthorized_attempts와
+# 구조는 같지만, "이 IP의 전체 요청"이 아니라 "이 IP가 이 경로를 요청한
+# 횟수"를 세야 하므로 카운트할 때 path도 함께 필터링한다
+# (attack_response_state.md 구현 대상 #4).
+# ============================================================================
+
+def log_page_access_attempt(ip: str, path: str) -> None:
+    """GET 페이지 요청 한 건을 page_access_attempts 표에 기록한다."""
+    get_client().table("page_access_attempts").insert({"ip_address": ip, "path": path}).execute()
+
+
+def count_recent_page_access_attempts(
+    ip: str, path: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS
+) -> int:
+    """이 IP가 최근 몇 초(기본 60초) 안에 이 경로를 몇 번이나 요청했는지 센다."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+    res = (
+        get_client()
+        .table("page_access_attempts")
+        .select("id", count="exact")
+        .eq("ip_address", ip)
+        .eq("path", path)
         .gte("attempted_at", cutoff)
         .execute()
     )

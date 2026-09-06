@@ -10,7 +10,15 @@
 # ============================================================================
 
 import db
-from config import COMMENT_RATE_LIMIT, FAILURE_THRESHOLD, POST_RATE_LIMIT, SIGNUP_RATE_LIMIT
+from config import (
+    COMMENT_RATE_LIMIT,
+    FAILURE_THRESHOLD,
+    PAGE_ACCESS_ALERT_THRESHOLD,
+    POST_RATE_LIMIT,
+    SIGNUP_RATE_LIMIT,
+    UNAUTHORIZED_ACCESS_ALERT_THRESHOLD,
+    WEB_SCANNING_ALERT_THRESHOLD,
+)
 
 
 def is_suspicious(ip: str) -> tuple[bool, int]:
@@ -38,6 +46,19 @@ def is_admin_suspicious(ip: str) -> tuple[bool, int]:
     """
     failure_count = db.count_recent_admin_failures(ip)
     return failure_count > FAILURE_THRESHOLD, failure_count
+
+
+def count_distinct_usernames(ip: str) -> int:
+    """soar.enforce_lockout이 잠금 알림에 "몇 개의 서로 다른 아이디가 관련됐는지"
+    (Brute Force인지 Password Spraying인지) 표시할 수 있도록, db.py가 센 값을
+    그대로 전달한다. is_suspicious()와 마찬가지로 login_attempts를 본다.
+    """
+    return db.count_recent_distinct_usernames(ip)
+
+
+def count_distinct_admin_usernames(ip: str) -> int:
+    """count_distinct_usernames()와 동일한 목적이지만 admin_login_log를 본다."""
+    return db.count_recent_distinct_admin_usernames(ip)
 
 
 def is_signup_rate_limited(ip: str) -> bool:
@@ -68,6 +89,42 @@ def is_comment_rate_limited(ip: str) -> bool:
     글보다 자주 달릴 수 있어 config.COMMENT_RATE_LIMIT 기본값을 더 넉넉하게 뒀다.
     """
     return db.count_recent_comment_attempts(ip) >= COMMENT_RATE_LIMIT
+
+
+def is_web_scanning(ip: str) -> tuple[bool, int]:
+    """이 IP가 "Web Scanning 의심 상태"인지 판단한다.
+
+    is_suspicious()와 판단 방식(초과 여부)은 동일하지만, 세는 대상이
+    login_attempts가 아니라 not_found_attempts다 — 정상 사용자도 깨진 링크
+    몇 개는 우연히 밟을 수 있으므로, 로그인 실패와 마찬가지로 "초과"부터
+    의심한다 (21단계, attack_response_state.md 구현 대상 #1).
+    """
+    count = db.count_recent_not_found_attempts(ip)
+    return count > WEB_SCANNING_ALERT_THRESHOLD, count
+
+
+def is_unauthorized_access_suspicious(ip: str) -> tuple[bool, int]:
+    """이 IP가 "Unauthorized Access 의심 상태"인지 판단한다.
+
+    is_web_scanning()과 판단 방식(초과 여부)은 동일하지만, unauthorized_attempts
+    표를 본다 — 로그인 세션 없이 관리자 API(/api/*)를 반복 호출하는 패턴을
+    탐지한다 (attack_response_state.md 구현 대상 #2).
+    """
+    count = db.count_recent_unauthorized_attempts(ip)
+    return count > UNAUTHORIZED_ACCESS_ALERT_THRESHOLD, count
+
+
+def is_page_access_suspicious(ip: str, path: str) -> tuple[bool, int]:
+    """이 IP가 이 특정 경로를 "반복 접근 의심 상태"로 요청하고 있는지 판단한다.
+
+    is_web_scanning()/is_unauthorized_access_suspicious()와 판단 방식(초과 여부)은
+    같지만, 세는 대상이 "이 IP의 전체 요청"이 아니라 "이 IP가 이 경로를 요청한
+    횟수"다 — 여러 페이지를 정상적으로 둘러보는 사람과, 같은 페이지 하나를
+    스크립트로 반복 요청하는 패턴을 구분하기 위해서다 (attack_response_state.md
+    구현 대상 #4).
+    """
+    count = db.count_recent_page_access_attempts(ip, path)
+    return count > PAGE_ACCESS_ALERT_THRESHOLD, count
 
 
 def is_locked(ip: str) -> bool:

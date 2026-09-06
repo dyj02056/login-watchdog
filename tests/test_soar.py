@@ -19,18 +19,19 @@ def test_enforce_lockout_creates_lockout_then_sends_alert(monkeypatch):
     def fake_create_lockout(ip, failure_count):
         calls.append(("create_lockout", ip, failure_count))
 
-    def fake_send_lockout_alert(ip, failure_count, locked_at):
-        calls.append(("send_lockout_alert", ip, failure_count))
+    def fake_send_lockout_alert(ip, failure_count, locked_at, distinct_usernames):
+        calls.append(("send_lockout_alert", ip, failure_count, distinct_usernames))
 
     monkeypatch.setattr(db, "create_lockout", fake_create_lockout)
     monkeypatch.setattr(alert, "send_lockout_alert", fake_send_lockout_alert)
 
-    soar.enforce_lockout("9.9.9.9", 6)
+    soar.enforce_lockout("9.9.9.9", 6, 2)
 
-    # 두 함수가 다 호출됐는지, 그리고 "잠그기 → 알리기" 순서가 지켜졌는지 확인.
+    # 두 함수가 다 호출됐는지, 그리고 "잠그기 → 알리기" 순서가 지켜졌는지,
+    # distinct_usernames가 그대로 alert.py까지 전달됐는지 확인.
     assert calls == [
         ("create_lockout", "9.9.9.9", 6),
-        ("send_lockout_alert", "9.9.9.9", 6),
+        ("send_lockout_alert", "9.9.9.9", 6, 2),
     ]
 
 

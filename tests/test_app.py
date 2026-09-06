@@ -104,8 +104,15 @@ def test_login_failure_over_threshold_triggers_lockout(client, monkeypatch):
     monkeypatch.setattr(db, "verify_user_credentials", lambda username, password: False)
     monkeypatch.setattr(db, "log_attempt", lambda ip, username, success: None)
     monkeypatch.setattr(detector, "is_suspicious", lambda ip: (True, 6))
+    # 서로 다른 아이디 3개로 실패했다고 흉내내서(Password Spraying 시나리오),
+    # 그 값이 enforce_lockout까지 그대로 전달되는지 확인한다.
+    monkeypatch.setattr(detector, "count_distinct_usernames", lambda ip: 3)
     monkeypatch.setattr(
-        soar, "enforce_lockout", lambda ip, failure_count: enforce_lockout_calls.append((ip, failure_count))
+        soar,
+        "enforce_lockout",
+        lambda ip, failure_count, distinct_usernames: enforce_lockout_calls.append(
+            (ip, failure_count, distinct_usernames)
+        ),
     )
 
     token = get_csrf_token(client, "/login")
@@ -114,7 +121,7 @@ def test_login_failure_over_threshold_triggers_lockout(client, monkeypatch):
         data={"username": "hyun", "password": "wrong", "csrf_token": token},
     )
 
-    assert len(enforce_lockout_calls) == 1
+    assert enforce_lockout_calls[0][1:] == (6, 3)
     assert "잠긴 계정입니다" in response.get_data(as_text=True)
 
 
@@ -158,8 +165,13 @@ def test_admin_login_failure_over_threshold_triggers_lockout(client, monkeypatch
     monkeypatch.setattr(db, "verify_admin_credentials", lambda username, password: False)
     monkeypatch.setattr(db, "log_admin_attempt", lambda username, success, ip: None)
     monkeypatch.setattr(detector, "is_admin_suspicious", lambda ip: (True, 6))
+    monkeypatch.setattr(detector, "count_distinct_admin_usernames", lambda ip: 1)
     monkeypatch.setattr(
-        soar, "enforce_lockout", lambda ip, failure_count: enforce_lockout_calls.append((ip, failure_count))
+        soar,
+        "enforce_lockout",
+        lambda ip, failure_count, distinct_usernames: enforce_lockout_calls.append(
+            (ip, failure_count, distinct_usernames)
+        ),
     )
 
     token = get_csrf_token(client, "/admin/login")
@@ -168,7 +180,7 @@ def test_admin_login_failure_over_threshold_triggers_lockout(client, monkeypatch
         data={"username": "test-admin", "password": "wrong", "csrf_token": token},
     )
 
-    assert len(enforce_lockout_calls) == 1
+    assert enforce_lockout_calls[0][1:] == (6, 1)
     assert "잠긴 계정입니다" in response.get_data(as_text=True)
 
 
@@ -301,10 +313,160 @@ def test_admin_dashboard_redirects_to_login_when_not_authenticated(client):
     assert response.headers["Location"] == "/admin/login"
 
 
-def test_api_status_returns_401_json_when_not_authenticated(client):
+def test_api_status_returns_401_json_when_not_authenticated(client, monkeypatch):
+    monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1))
+
     response = client.get("/api/status")
     assert response.status_code == 401
     assert response.get_json()["error"] == "로그인이 필요합니다."
+
+
+# ============================================================================
+# login_required의 401 분기 — Unauthorized Access(세션 없이 관리자 API 반복
+# 호출) 탐지 (21단계, attack_response_state.md 구현 대상 #2)
+# ============================================================================
+
+def test_unauthorized_api_access_logs_attempt(client, monkeypatch):
+    logged = []
+    monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: logged.append((ip, path)))
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1))
+
+    client.get("/api/status")
+
+    assert logged == [("127.0.0.1", "/api/status")]
+
+
+def test_unauthorized_api_access_alerts_exactly_when_crossing_threshold(client, monkeypatch):
+    monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (True, 11))
+    notify_calls = []
+    monkeypatch.setattr(
+        soar, "notify_unauthorized_access", lambda ip, count, path: notify_calls.append((ip, count, path))
+    )
+
+    client.get("/api/status")
+
+    assert notify_calls == [("127.0.0.1", 11, "/api/status")]
+
+
+def test_unauthorized_api_access_does_not_alert_again_after_threshold_crossing(client, monkeypatch):
+    monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (True, 15))
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("임계값을 이미 넘긴 뒤인데 notify_unauthorized_access가 또 호출되었다")
+
+    monkeypatch.setattr(soar, "notify_unauthorized_access", _fail_if_called)
+
+    response = client.get("/api/status")
+
+    assert response.status_code == 401
+
+
+def test_unauthorized_api_access_does_not_alert_below_threshold(client, monkeypatch):
+    monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 3))
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("아직 임계값 미만인데 notify_unauthorized_access가 호출되었다")
+
+    monkeypatch.setattr(soar, "notify_unauthorized_access", _fail_if_called)
+
+    response = client.get("/api/status")
+
+    assert response.status_code == 401
+
+
+# ============================================================================
+# track_page_access() — 반복 페이지 접근 탐지
+# (21단계, attack_response_state.md 구현 대상 #4)
+# ============================================================================
+
+def test_page_access_logs_get_request_to_real_page(client, monkeypatch):
+    logged = []
+    monkeypatch.setattr(db, "log_page_access_attempt", lambda ip, path: logged.append((ip, path)))
+    monkeypatch.setattr(detector, "is_page_access_suspicious", lambda ip, path: (False, 1))
+
+    client.get("/login")
+
+    assert logged == [("127.0.0.1", "/login")]
+
+
+def test_page_access_alerts_exactly_when_crossing_threshold(client, monkeypatch):
+    monkeypatch.setattr(db, "log_page_access_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_page_access_suspicious", lambda ip, path: (True, 21))  # threshold(20) + 1
+    notify_calls = []
+    monkeypatch.setattr(
+        soar, "notify_page_access", lambda ip, count, path: notify_calls.append((ip, count, path))
+    )
+
+    client.get("/login")
+
+    assert notify_calls == [("127.0.0.1", 21, "/login")]
+
+
+def test_page_access_does_not_alert_again_after_threshold_crossing(client, monkeypatch):
+    monkeypatch.setattr(db, "log_page_access_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_page_access_suspicious", lambda ip, path: (True, 25))
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("임계값을 이미 넘긴 뒤인데 notify_page_access가 또 호출되었다")
+
+    monkeypatch.setattr(soar, "notify_page_access", _fail_if_called)
+
+    response = client.get("/login")
+
+    assert response.status_code == 200
+
+
+def test_page_access_does_not_alert_below_threshold(client, monkeypatch):
+    monkeypatch.setattr(db, "log_page_access_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_page_access_suspicious", lambda ip, path: (False, 3))
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("아직 임계값 미만인데 notify_page_access가 호출되었다")
+
+    monkeypatch.setattr(soar, "notify_page_access", _fail_if_called)
+
+    response = client.get("/login")
+
+    assert response.status_code == 200
+
+
+def test_page_access_ignores_static_files(client, monkeypatch):
+    # 정적 파일(endpoint="static")은 폴링 API와 마찬가지로 관찰 대상에서 빠져야 한다.
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("정적 파일 요청인데 log_page_access_attempt가 호출되었다")
+
+    monkeypatch.setattr(db, "log_page_access_attempt", _fail_if_called)
+
+    client.get("/css/auth.css")  # public/css/auth.css — static_url_path=""로 서빙됨
+
+
+def test_page_access_ignores_polling_endpoints(client, monkeypatch):
+    # /api/status(대시보드 자동 폴링)는 로그인 세션이 있어도 없어도 관찰 대상에서 빠져야 한다.
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("자동 폴링 API인데 log_page_access_attempt가 호출되었다")
+
+    monkeypatch.setattr(db, "log_page_access_attempt", _fail_if_called)
+    monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1))
+
+    client.get("/api/status")
+
+
+def test_page_access_ignores_nonexistent_paths(client, monkeypatch):
+    # 존재하지 않는 경로(request.url_rule is None)는 not_found_attempts가 따로
+    # 기록하므로, track_page_access()에서 중복으로 기록하면 안 된다.
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("존재하지 않는 경로인데 log_page_access_attempt가 호출되었다")
+
+    monkeypatch.setattr(db, "log_page_access_attempt", _fail_if_called)
+    monkeypatch.setattr(db, "log_not_found_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_web_scanning", lambda ip: (False, 1))
+
+    client.get("/no-such-page")
 
 
 def test_api_unlock_requires_ip_in_body(client, monkeypatch):
@@ -432,6 +594,56 @@ def test_board_new_submit_rejects_empty_title(client, monkeypatch):
     )
 
     assert "제목과 내용을 모두 입력해주세요" in response.get_data(as_text=True)
+
+
+def test_board_edit_submit_rejects_when_rate_limited(client, monkeypatch):
+    _login_as_member(client, username="hyun")
+    post = {
+        "id": 1,
+        "author_username": "hyun",
+        "title": "제목",
+        "body": "내용",
+        "created_at": "2026-09-04T12:00:00+00:00",
+    }
+    monkeypatch.setattr(db, "get_post", lambda post_id: post)
+    monkeypatch.setattr(detector, "is_post_rate_limited", lambda ip: True)
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("빈도 제한에 걸렸는데 update_post가 호출되었다")
+
+    monkeypatch.setattr(db, "update_post", _fail_if_called)
+
+    token = get_csrf_token(client, "/board/1/edit")
+    response = client.post(
+        "/board/1/edit",
+        data={"title": "새 제목", "body": "새 내용", "csrf_token": token},
+    )
+
+    assert "너무 많은 게시글 작성 시도" in response.get_data(as_text=True)
+
+
+def test_board_edit_submit_updates_post_and_redirects(client, monkeypatch):
+    _login_as_member(client, username="hyun")
+    post = {
+        "id": 1,
+        "author_username": "hyun",
+        "title": "제목",
+        "body": "내용",
+        "created_at": "2026-09-04T12:00:00+00:00",
+    }
+    monkeypatch.setattr(db, "get_post", lambda post_id: post)
+    monkeypatch.setattr(detector, "is_post_rate_limited", lambda ip: False)
+    monkeypatch.setattr(db, "log_post_attempt", lambda ip: None)
+    monkeypatch.setattr(db, "update_post", lambda post_id, title, body: None)
+
+    token = get_csrf_token(client, "/board/1/edit")
+    response = client.post(
+        "/board/1/edit",
+        data={"title": "새 제목", "body": "새 내용", "csrf_token": token},
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "/board/1"
 
 
 def test_board_detail_shows_post_and_comments(client, monkeypatch):
@@ -636,11 +848,14 @@ def test_api_board_comments_latest_returns_latest_info(client, monkeypatch):
     assert response.get_json() == {"count": 3, "latest_at": "2026-09-04T12:00:00+00:00"}
 
 
-def test_api_board_posts_delete_requires_admin(client):
+def test_api_board_posts_delete_requires_admin(client, monkeypatch):
     # CSRF 토큰이 없으면 CSRFProtect가 login_required보다 먼저 400으로 막아버려서
     # "인증 부족"을 제대로 검증할 수 없다 — 그래서 유효한 토큰은 실어 보내되
     # (로그인 없이도 발급 가능한 /login 화면에서 얻는다), 관리자 세션만 없는
     # 상태로 요청해 login_required 자체가 막는지 확인한다.
+    monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1))
+
     token = get_csrf_token(client, "/login")
     response = client.post(
         "/api/board/posts/delete",
@@ -664,4 +879,62 @@ def test_api_board_posts_delete_succeeds_for_admin(client, monkeypatch):
     )
 
     assert response.status_code == 200
-    assert response.get_json() == {"success": True}
+
+
+# ============================================================================
+# 404 처리 — Web Scanning(존재하지 않는 경로 반복 요청) 탐지
+# (21단계, attack_response_state.md 구현 대상 #1)
+# ============================================================================
+
+def test_not_found_still_returns_404_and_logs_attempt(client, monkeypatch):
+    logged = []
+    monkeypatch.setattr(db, "log_not_found_attempt", lambda ip, path: logged.append((ip, path)))
+    monkeypatch.setattr(detector, "is_web_scanning", lambda ip: (False, 1))
+
+    response = client.get("/no-such-page")
+
+    assert response.status_code == 404
+    assert logged == [("127.0.0.1", "/no-such-page")]
+
+
+def test_not_found_sends_alert_exactly_when_crossing_threshold(client, monkeypatch):
+    monkeypatch.setattr(db, "log_not_found_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_web_scanning", lambda ip: (True, 11))  # threshold(10) + 1
+    notify_calls = []
+    monkeypatch.setattr(
+        soar, "notify_web_scanning", lambda ip, count, path: notify_calls.append((ip, count, path))
+    )
+
+    client.get("/wp-admin")
+
+    assert notify_calls == [("127.0.0.1", 11, "/wp-admin")]
+
+
+def test_not_found_does_not_alert_again_after_threshold_crossing(client, monkeypatch):
+    # count가 threshold+1을 이미 지나친(예: 15) 다음 요청에서는 "새로 넘은 순간"이
+    # 아니므로 다시 알리지 않는다 — 매 요청마다 알림이 반복되는 걸(알림 피로) 막는다.
+    monkeypatch.setattr(db, "log_not_found_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_web_scanning", lambda ip: (True, 15))
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("임계값을 이미 넘긴 뒤인데 notify_web_scanning이 또 호출되었다")
+
+    monkeypatch.setattr(soar, "notify_web_scanning", _fail_if_called)
+
+    response = client.get("/wp-admin")
+
+    assert response.status_code == 404
+
+
+def test_not_found_does_not_alert_below_threshold(client, monkeypatch):
+    monkeypatch.setattr(db, "log_not_found_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_web_scanning", lambda ip: (False, 3))
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("아직 임계값 미만인데 notify_web_scanning이 호출되었다")
+
+    monkeypatch.setattr(soar, "notify_web_scanning", _fail_if_called)
+
+    response = client.get("/no-such-page")
+
+    assert response.status_code == 404

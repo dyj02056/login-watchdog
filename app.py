@@ -18,6 +18,7 @@
 import math
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import wraps
 
@@ -147,6 +148,66 @@ def get_request_ip() -> str:
     return request.remote_addr
 
 
+@app.errorhandler(404)
+def handle_not_found(error):
+    """존재하지 않는 경로 요청(404)을 기록하고, 반복되면 Web Scanning 의심 알림을 보낸다.
+
+    화면에 보여주는 내용은 Flask/Werkzeug 기본 404 응답 그대로 둔다(error.get_response())
+    — 이 라우트의 목적은 사용자 경험을 바꾸는 게 아니라, 그동안 아무 기록도 남기지
+    않던 404 요청을 관찰 가능하게 만드는 것뿐이다 (21단계, attack_response_state.md
+    구현 대상 #1).
+
+    알림은 "임계값을 막 넘긴 바로 그 요청"에서 딱 한 번만 보낸다(count가 정확히
+    threshold+1일 때). enforce_lockout처럼 "잠긴 상태"라는 별도 표시가 없는 대신,
+    이 방식으로 매 요청마다 알림이 반복되는 걸(알림 피로) 막는다.
+    """
+    ip = get_request_ip()
+    db.log_not_found_attempt(ip, request.path)
+
+    suspicious, count = detector.is_web_scanning(ip)
+    if suspicious and count == config.WEB_SCANNING_ALERT_THRESHOLD + 1:
+        soar.notify_web_scanning(ip, count, request.path)
+
+    return error.get_response()
+
+
+# board.js/dashboard.js가 스스로 만들어내는 자동 폴링 API. 브라우저 탭 하나만
+# 열려 있어도 정상적으로 초당 여러 번씩 호출되므로, track_page_access()가 이걸
+# "반복 접근 의심"으로 잘못 판단하지 않도록 관찰 대상에서 제외한다
+# ("static"은 Flask가 public/의 CSS·JS·이미지를 서빙할 때 쓰는 내장 엔드포인트).
+_PAGE_ACCESS_EXCLUDED_ENDPOINTS = {"static", "api_status", "api_board_comments_latest"}
+
+
+@app.before_request
+def track_page_access():
+    """같은 IP가 같은 GET 페이지를 반복 요청하는지 관찰하고, 반복되면 알린다.
+
+    이 함수는 handle_not_found()와 달리 특정 경로가 아니라 "매 요청"마다 실행된다
+    (Flask가 라우팅을 마친 뒤, 실제 뷰 함수를 부르기 직전에 호출해준다). 그래서
+    대상을 신중하게 좁혀야 한다:
+    - request.url_rule이 None이면 애초에 존재하지 않는 경로(404)라는 뜻이므로
+      제외한다 — 그 경우는 not_found_attempts가 이미 별도로 기록한다.
+    - GET이 아닌 요청(폼 제출 등)은 "페이지 접근"이 아니므로 제외한다.
+    - _PAGE_ACCESS_EXCLUDED_ENDPOINTS에 있는 엔드포인트(정적 파일, 자동 폴링 API)도
+      제외한다 — 이것들을 빼두지 않으면 정상 사용자가 항상 "수상함"으로
+      잘못 판정된다.
+
+    알림은 handle_not_found()와 동일하게 "임계값을 막 넘긴 바로 그 요청"에서
+    딱 한 번만 보낸다 (attack_response_state.md 구현 대상 #4).
+    """
+    if request.method != "GET" or request.url_rule is None:
+        return
+    if request.endpoint in _PAGE_ACCESS_EXCLUDED_ENDPOINTS:
+        return
+
+    ip = get_request_ip()
+    db.log_page_access_attempt(ip, request.path)
+
+    suspicious, count = detector.is_page_access_suspicious(ip, request.path)
+    if suspicious and count == config.PAGE_ACCESS_ALERT_THRESHOLD + 1:
+        soar.notify_page_access(ip, count, request.path)
+
+
 def login_required(view):
     """"관리자 로그인이 되어 있어야만 들어올 수 있는 방"을 만들어주는 장치(데코레이터).
 
@@ -157,6 +218,8 @@ def login_required(view):
 
     - 없으면(로그인 안 된 상태):
         - 주소가 /api/로 시작하는 경우(JS가 fetch로 부르는 API) → 401(인증 필요) JSON 응답
+          (이때 unauthorized_attempts에 기록하고, 반복되면 Unauthorized Access 의심
+          알림을 보낸다 — 21단계, attack_response_state.md 구현 대상 #2)
         - 그 외(사람이 브라우저로 직접 들어온 화면) → 관리자 로그인 페이지로 강제 이동
     - 있으면(로그인 된 상태): 원래 요청했던 라우트 함수를 그대로 실행
     """
@@ -164,6 +227,11 @@ def login_required(view):
     def wrapped_view(*args, **kwargs):
         if "admin_username" not in session:
             if request.path.startswith("/api/"):
+                ip = get_request_ip()
+                db.log_unauthorized_attempt(ip, request.path)
+                suspicious, count = detector.is_unauthorized_access_suspicious(ip)
+                if suspicious and count == config.UNAUTHORIZED_ACCESS_ALERT_THRESHOLD + 1:
+                    soar.notify_unauthorized_access(ip, count, request.path)
                 return jsonify({"error": "로그인이 필요합니다."}), 401
             return redirect(url_for("admin_login"))
         return view(*args, **kwargs)
@@ -373,7 +441,11 @@ def login_submit():
     # 실패했다면, 이 실패로 인해 방금 임계값을 넘었는지 확인한다.
     suspicious, failure_count = detector.is_suspicious(ip)
     if suspicious:
-        soar.enforce_lockout(ip, failure_count)
+        # 최근 실패에 쓰인 아이디가 몇 개였는지도 함께 세서, Slack 알림이 Brute
+        # Force(계정 1개 집중)와 Password Spraying(계정 여러 개 순회)을 구분해
+        # 표시할 수 있게 한다 (attack_response_state.md 구현 대상 #5).
+        distinct_usernames = detector.count_distinct_usernames(ip)
+        soar.enforce_lockout(ip, failure_count, distinct_usernames)
         flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
     else:
         # 사용자 존재 여부(아이디가 없는지, 비밀번호만 틀렸는지)를 구분해서 알려주면
@@ -441,7 +513,8 @@ def admin_login_submit():
     #    표를 공유하므로, 이 IP는 /login 쪽에서도 함께 잠긴다).
     suspicious, failure_count = detector.is_admin_suspicious(ip)
     if suspicious:
-        soar.enforce_lockout(ip, failure_count)
+        distinct_usernames = detector.count_distinct_admin_usernames(ip)
+        soar.enforce_lockout(ip, failure_count, distinct_usernames)
         flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
     else:
         flash("아이디 또는 비밀번호가 올바르지 않습니다.")
@@ -477,6 +550,15 @@ def admin_dashboard():
     return render_template("admin_dashboard.html", poll_interval_ms=config.ADMIN_DASHBOARD_POLL_MS)
 
 
+def _page_param(name: str) -> int:
+    """쿼리 파라미터로 받은 페이지 번호를 정수로 변환한다. board_list()의 page
+    처리와 동일한 원칙 — 값이 없거나 이상해도(?users_page=abc) 에러 없이
+    1페이지로 취급한다.
+    """
+    page = request.args.get(name, 1, type=int)
+    return page if page and page > 0 else 1
+
+
 @app.route("/api/status", methods=["GET"])
 @login_required
 def api_status():
@@ -485,19 +567,71 @@ def api_status():
     JSON이란? 파이썬의 딕셔너리(dict)와 거의 똑같이 생긴, 서버와 브라우저가
     데이터를 주고받을 때 가장 널리 쓰이는 표준 형식이다. jsonify()는 파이썬
     딕셔너리를 이 JSON 형식으로 자동 변환해서 브라우저에 보내주는 Flask 도구다.
+
+    관리자 대시보드의 표 5개(최근 로그인 시도/회원/게시글/댓글/관리자 로그인 기록)는
+    각자 ?attempts_page=, ?users_page=, ?posts_page=, ?comments_page=,
+    ?admin_log_page=로 현재 보고 있는 페이지 번호를 받는다 — dashboard.js가
+    board_list()와 동일한 페이지 번호 방식으로 표를 그릴 수 있도록, 각 표의
+    이번 페이지 데이터와 전체 페이지 수(*_total_pages)를 함께 내려준다 (예전에는
+    최근 N개만 고정으로 가져와서, 그 이상 쌓이면 오래된 항목이 화면에서 아예
+    사라졌었다).
+
+    db.list_*() 함수들은 (이번 페이지 데이터, 전체 개수) 튜플을 돌려준다 — 목록
+    조회와 개수 조회를 별도 쿼리 두 번으로 나누지 않고 한 번의 왕복으로 끝내기
+    위해서다(db.list_recent_attempts() 설명 참고).
+
+    그래도 여전히 서로 무관한 쿼리 7개(로그인 시도/잠긴 IP/관리자 로그인 기록/
+    회원/회원가입 설정/게시글/댓글)를 하나씩 순서대로 기다리면, Supabase까지의
+    왕복 시간(쿼리 하나당 대략 150~500ms)이 그대로 다 더해져서 요청 하나가
+    2~3초까지 걸렸다 — 특히 Vercel 서버리스 환경은 매 요청마다 커넥션을 새로
+    맺어야 해서 체감이 더 심했다. ThreadPoolExecutor로 이 7개를 동시에 보내면
+    전체 소요 시간이 "가장 느린 쿼리 하나" 수준으로 줄어든다(실측 약 5배 개선).
+    IP 위치 조회(_attach_locations)는 attempts 결과가 있어야 시작할 수 있는
+    후속 작업이라 별도로 남겨뒀지만, 나머지 futures가 백그라운드에서 계속
+    돌고 있는 동안 같이 실행되므로 추가 대기 시간은 거의 없다.
     """
     soar.try_release_expired_lockouts()
+
+    attempts_page = _page_param("attempts_page")
+    users_page = _page_param("users_page")
+    posts_page = _page_param("posts_page")
+    comments_page = _page_param("comments_page")
+    admin_log_page = _page_param("admin_log_page")
+
+    with ThreadPoolExecutor(max_workers=7) as executor:
+        attempts_future = executor.submit(db.list_recent_attempts, attempts_page, config.ADMIN_PAGE_SIZE)
+        lockouts_future = executor.submit(db.list_active_lockouts)
+        admin_log_future = executor.submit(db.list_admin_login_log, admin_log_page, config.ADMIN_PAGE_SIZE)
+        users_future = executor.submit(db.list_users, users_page, config.ADMIN_PAGE_SIZE)
+        signup_future = executor.submit(db.get_signup_enabled)
+        posts_future = executor.submit(db.list_posts, posts_page, config.ADMIN_PAGE_SIZE)
+        comments_future = executor.submit(db.list_comments_admin, comments_page, config.ADMIN_PAGE_SIZE)
+
+        attempts, attempts_count = attempts_future.result()
+        recent_attempts = _attach_locations(attempts)  # 다른 future들이 도는 동안 함께 실행됨
+        active_lockouts = lockouts_future.result()
+        admin_log, admin_log_count = admin_log_future.result()
+        users, users_count = users_future.result()
+        signup_enabled = signup_future.result()
+        posts, posts_count = posts_future.result()
+        comments, comments_count = comments_future.result()
+
     return jsonify(
         {
-            "recent_attempts": _attach_locations(db.list_recent_attempts(50)),
-            "active_lockouts": db.list_active_lockouts(),
-            "admin_login_log": db.list_admin_login_log(20),
-            "users": db.list_users(100),
-            "signup_enabled": db.get_signup_enabled(),
+            "recent_attempts": recent_attempts,
+            "attempts_total_pages": max(1, math.ceil(attempts_count / config.ADMIN_PAGE_SIZE)),
+            "active_lockouts": active_lockouts,
+            "admin_login_log": admin_log,
+            "admin_log_total_pages": max(1, math.ceil(admin_log_count / config.ADMIN_PAGE_SIZE)),
+            "users": users,
+            "users_total_pages": max(1, math.ceil(users_count / config.ADMIN_PAGE_SIZE)),
+            "signup_enabled": signup_enabled,
             # 게시판 관리 섹션(관리자 대시보드)용 — recent_attempts 등과 같은 폴링
             # 주기(dashboard.js, 10초)로 함께 갱신된다.
-            "recent_posts": db.list_recent_posts(20),
-            "recent_comments": db.list_recent_comments(20),
+            "recent_posts": posts,
+            "posts_total_pages": max(1, math.ceil(posts_count / config.ADMIN_PAGE_SIZE)),
+            "recent_comments": comments,
+            "comments_total_pages": max(1, math.ceil(comments_count / config.ADMIN_PAGE_SIZE)),
         }
     )
 
@@ -612,8 +746,8 @@ def board_list():
     page = request.args.get("page", 1, type=int)
     if page < 1:
         page = 1
-    posts = db.list_posts(page, config.BOARD_PAGE_SIZE)
-    total_pages = max(1, math.ceil(db.count_posts() / config.BOARD_PAGE_SIZE))
+    posts, total_count = db.list_posts(page, config.BOARD_PAGE_SIZE)
+    total_pages = max(1, math.ceil(total_count / config.BOARD_PAGE_SIZE))
     return render_template("board_list.html", posts=posts, page=page, total_pages=total_pages)
 
 
@@ -713,9 +847,19 @@ def board_edit_submit(post_id):
         flash("본인이 작성한 글만 수정할 수 있습니다.")
         return redirect(url_for("board_detail", post_id=post_id))
 
+    form_action = url_for("board_edit_submit", post_id=post_id)
+
+    # board_new_submit()과 동일한 빈도 제한 — 글 수정도 도배 대상이 될 수 있으므로
+    # 새 글 작성과 같은 post_attempts 카운트를 공유한다 (원래 이 검사가 빠져있던
+    # 공백을 보완, attack_response_state.md 구현 대상 #3).
+    ip = get_request_ip()
+    if detector.is_post_rate_limited(ip):
+        flash("너무 많은 게시글 작성 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.")
+        return render_template("board_form.html", form_action=form_action, post=post)
+    db.log_post_attempt(ip)
+
     title = request.form.get("title", "").strip()
     body = request.form.get("body", "").strip()
-    form_action = url_for("board_edit_submit", post_id=post_id)
 
     if not title or not body:
         flash("제목과 내용을 모두 입력해주세요.")

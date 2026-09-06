@@ -134,6 +134,39 @@ section h2 {
     font-size: 13px;
 }
 
+/* 회원/게시글/댓글 관리 표 아래 페이지 이동 줄. board.css의 .board-pagination과
+   같은 모양이지만, 서버가 렌더링하는 <a href>가 아니라 dashboard.js가 클릭마다
+   fetch()로 다시 그리는 표라서 <button>을 쓴다(그래서 board-pagination 클래스를
+   그대로 재사용하지 않고 admin- 접두사로 분리했다). */
+.admin-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 12px;
+    font-size: 13px;
+}
+
+.admin-pagination-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent-ink);
+    font-weight: 600;
+    font-family: var(--font-body);
+    font-size: 13px;
+    cursor: pointer;
+}
+
+.admin-pagination-disabled {
+    color: var(--ink-faint);
+}
+
+.admin-pagination-current {
+    color: var(--ink-soft);
+    font-family: var(--font-mono);
+}
+
 .data-table {
     width: 100%;
     border-collapse: collapse;
