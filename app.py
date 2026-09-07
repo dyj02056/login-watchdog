@@ -178,6 +178,8 @@ def handle_not_found(error):
 _PAGE_ACCESS_EXCLUDED_ENDPOINTS = {"static", "api_status", "api_board_comments_latest"}
 
 
+
+
 @app.before_request
 def track_page_access():
     """같은 IP가 같은 GET 페이지를 반복 요청하는지 관찰하고, 반복되면 알린다.
