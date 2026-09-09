@@ -1,6 +1,6 @@
 # 22단계 — 통합 보안 위험등급 시스템 (`security-risk-response-summary.md` 후속 조치)
 
-[◀ 21단계](guide21_anomaly_detection.md) · [전체 목차](beginner-guide.md)
+[◀ 21단계](guide21_anomaly_detection.md) · [전체 목차](beginner-guide.md) · [23단계 ▶](guide23_security_events_fixes.md)
 
 > 캡스톤 검토 문서 `security-risk-response-summary.md`(프로젝트 저장소 밖에서 관리되는 리뷰 문서)가 지적한 문제 — "대응 로직(잠금/거부/알림)은 이미 다 구현돼 있지만, 이걸 위험등급(CRITICAL/HIGH/MEDIUM/LOW)이라는 공통 값으로 저장·조회·표시하는 기능은 없다" — 를 해결하기 위해 통합 이벤트 표(`security_events`)와 관리자 대시보드 UI를 추가했습니다. 실제 구현에 들어가기 전에 4가지 설계 결정(LOW 저장 여부, MEDIUM 중복 방지 위치, HIGH 이벤트 기록 여부, `resolved_at`을 채우는 기준)을 먼저 질문으로 확정했고, Plan 서브에이전트의 설계 검토에서 실제 버그 1건과 설계 결함 1건을 미리 잡아낸 뒤에 코드를 작성했습니다.
 
