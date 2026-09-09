@@ -64,21 +64,29 @@ def test_unlock_one_releases_and_returns_true_when_locked(monkeypatch):
     )
     released = []
     monkeypatch.setattr(db, "release_lockout", lambda ip: released.append(ip))
+    resolved = []
+    monkeypatch.setattr(db, "resolve_security_events_for_ip", lambda ip: resolved.append(ip))
 
     result = unlock_ip.unlock_one("127.0.0.1")
 
     assert result is True
     assert released == ["127.0.0.1"]
+    # /admin/dashboard의 "즉시 해제" 버튼과 동일하게, 이 스크립트로 풀 때도
+    # 그 IP의 미해결 CRITICAL 보안 이벤트가 함께 처리 완료로 표시돼야 한다.
+    assert resolved == ["127.0.0.1"]
 
 
 def test_unlock_all_releases_every_ip_in_order(monkeypatch):
     lockouts = [{"ip_address": "1.1.1.1"}, {"ip_address": "2.2.2.2"}]
     released = []
     monkeypatch.setattr(db, "release_lockout", lambda ip: released.append(ip))
+    resolved = []
+    monkeypatch.setattr(db, "resolve_security_events_for_ip", lambda ip: resolved.append(ip))
 
     unlock_ip.unlock_all(lockouts)
 
     assert released == ["1.1.1.1", "2.2.2.2"]
+    assert resolved == ["1.1.1.1", "2.2.2.2"]
 
 
 def test_main_rejects_ip_and_all_together(monkeypatch):

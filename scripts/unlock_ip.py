@@ -73,6 +73,11 @@ def unlock_one(ip: str) -> bool:
         f"(실패 {lockout['failure_count']}회, {lockout['locked_at']} 잠금됨)"
     )
     db.release_lockout(ip)
+    # soar.manual_release()/try_release_expired_lockouts()와 동일하게, 잠금을
+    # 풀 때는 그 IP의 미해결 CRITICAL 보안 이벤트도 함께 처리 완료로 표시한다.
+    # 이 스크립트로 풀 때만 빠뜨리면 대시보드의 "보안 이벤트" 표에는 이미 오래
+    # 전에 풀린 IP가 "자동 해제 대기" 상태로 영원히 남게 된다.
+    db.resolve_security_events_for_ip(ip)
     print(f"[OK] {ip} 잠금을 해제했습니다.")
     return True
 
@@ -81,6 +86,7 @@ def unlock_all(lockouts: list[dict]) -> None:
     """조회된 모든 활성 잠금을 순서대로 해제한다."""
     for lockout in lockouts:
         db.release_lockout(lockout["ip_address"])
+        db.resolve_security_events_for_ip(lockout["ip_address"])
         print(f"[OK] {lockout['ip_address']} 잠금을 해제했습니다.")
 
 
