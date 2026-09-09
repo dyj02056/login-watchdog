@@ -181,7 +181,7 @@ login-watchdog/
 ├── tests/                          # pytest 단위 테스트
 ├── scripts/                         # 유지보수 스크립트 (bruteforce_sim.py, daily_report.py, unlock_ip.py — 위 "유지보수 스크립트" 참고)
 ├── docs/schema.sql                  # Supabase 테이블 정의
-├── docs/beginner-guide/               # 비전공자용 단계별 구현 해설서 (22개 파일로 분리)
+├── docs/beginner-guide/               # 비전공자용 단계별 구현 해설서 (23개 파일로 분리)
 ├── docs/board-comment/                  # 게시판·댓글 기능 설계 문서(분석 → 결정 → 계획 → 결과)
 └── plan.md, research.md                # 설계 근거 문서
 ```
@@ -189,7 +189,7 @@ login-watchdog/
 ## 더 자세히 알고 싶다면
 
 - [plan.md](plan.md) — 각 파일을 왜 이렇게 설계했는지에 대한 상세 근거
-- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide22_security_grading.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
+- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide23_security_events_fixes.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
 - [docs/board-comment/](docs/board-comment) — 게시판·댓글 기능을 왜 이렇게 설계했는지(구현 전 분석 → 모호한 질문 11개 결정 → 구현 계획 → 결과 보고) 순서대로 기록한 문서 4종
 
 ## 알려진 제한사항
