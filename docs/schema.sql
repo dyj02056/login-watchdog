@@ -190,3 +190,16 @@ create table security_events (
 );
 create index idx_security_events_detected_at on security_events (detected_at desc);
 create index idx_security_events_ip_severity on security_events (ip_address, severity);
+
+-- 같은 IP·이벤트 유형·HIGH 등급이면서 아직 처리되지 않은(resolved_at is null) 행은
+-- 항상 최대 1건만 존재하도록 DB가 직접 강제한다. soar.record_rejection()이 삽입 전에
+-- "미해결 이벤트가 있는지" 먼저 확인하지만, 그 확인과 실제 삽입 사이의 아주 짧은
+-- 틈에 동시 요청 두 개가 겹치면 둘 다 통과해버릴 수 있다(경쟁 조건) — 이 인덱스가
+-- 그 드문 경우에도 두 번째 삽입을 막아준다(db.insert_security_event_or_bump 참고).
+-- CRITICAL/MEDIUM은 조건에서 제외한다 — CRITICAL은 애초에 같은 IP가 다시 잠기기 전에
+-- resolve_security_events_for_ip()로 먼저 정리되고, MEDIUM(notify_web_scanning 등)은
+-- "미해결이면 건너뛰기"가 아니라 임계값을 다시 넘길 때마다 새로 기록하는 구조라서
+-- 이 제약을 걸면 정상적인 재알림이 막혀버린다.
+create unique index idx_security_events_high_open_incident
+  on security_events (ip_address, event_type)
+  where resolved_at is null and severity = 'HIGH';
