@@ -145,6 +145,29 @@
             </table>
             <nav id="admin-log-pagination" class="admin-pagination"></nav>
         </section>
+
+        <section>
+            <!-- 위험등급(CRITICAL/HIGH/MEDIUM) 통합 이벤트 표 — 다른 표들과 폴링/페이지네이션
+                 방식은 동일하다(security-risk-response-summary.md 5절). LOW(임계치 미도달)는
+                 여기 나오지 않는다 — 위 "최근 로그인 시도"/"관리자 로그인 기록" 표에서만 확인할 수 있다. -->
+            <h2>보안 이벤트</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>시각</th>
+                        <th>등급</th>
+                        <th>유형</th>
+                        <th>IP</th>
+                        <th>경로</th>
+                        <th>횟수</th>
+                        <th>조치</th>
+                        <th>상태</th>
+                    </tr>
+                </thead>
+                <tbody id="security-events-table-body"></tbody>
+            </table>
+            <nav id="security-events-pagination" class="admin-pagination"></nav>
+        </section>
     </main>
 
     <!-- 이 화면의 동작(2.5초마다 새로고침, 해제 버튼 클릭 처리 등)은

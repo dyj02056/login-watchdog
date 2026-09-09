@@ -28,6 +28,14 @@ let usersPage = 1;
 let postsPage = 1;
 let commentsPage = 1;
 let adminLogPage = 1;
+let securityEventsPage = 1;
+
+// 위험등급 → 배지에 쓸 한글 라벨/이모지. severity-badge 클래스 이름(소문자)도 이 값에서 만든다.
+const SEVERITY_LABELS = {
+    CRITICAL: "🔴 CRITICAL",
+    HIGH: "🟠 HIGH",
+    MEDIUM: "🟡 MEDIUM",
+};
 
 // admin_dashboard.html의 <meta name="csrf-token"> 태그에서 서버가 발급한 CSRF
 // 토큰 값을 읽어온다. 아래 unlockIp/deleteUser/toggleSignup이 fetch()로 서버
@@ -79,6 +87,7 @@ async function fetchStatus() {
         posts_page: postsPage,
         comments_page: commentsPage,
         admin_log_page: adminLogPage,
+        security_events_page: securityEventsPage,
     });
     const response = await fetch(`/api/status?${params}`);
 
@@ -101,6 +110,7 @@ async function fetchStatus() {
     if (postsPage > data.posts_total_pages) { postsPage = data.posts_total_pages; needsRefetch = true; }
     if (commentsPage > data.comments_total_pages) { commentsPage = data.comments_total_pages; needsRefetch = true; }
     if (adminLogPage > data.admin_log_total_pages) { adminLogPage = data.admin_log_total_pages; needsRefetch = true; }
+    if (securityEventsPage > data.security_events_total_pages) { securityEventsPage = data.security_events_total_pages; needsRefetch = true; }
     if (needsRefetch) {
         fetchStatus();
         return;
@@ -118,6 +128,8 @@ async function fetchStatus() {
     renderPagination("posts-pagination", postsPage, data.posts_total_pages);
     renderCommentsTable(data.recent_comments);
     renderPagination("comments-pagination", commentsPage, data.comments_total_pages);
+    renderSecurityEventsTable(data.security_events);
+    renderPagination("security-events-pagination", securityEventsPage, data.security_events_total_pages);
 }
 
 /**
@@ -305,6 +317,50 @@ function renderCommentsTable(comments) {
 }
 
 /**
+ * 보안 이벤트(위험등급 통합) 표를 채운다. 각 줄에 등급 배지와, 미해결 HIGH/MEDIUM
+ * 이벤트에는 "처리 완료" 버튼이 붙는다. CRITICAL(IP 잠금)은 잠금이 풀리면 자동으로
+ * 처리되므로 버튼 대신 안내 문구만 보여준다(soar.py의 resolve_security_events_for_ip 참고).
+ * @param {Array} events - [{id, event_type, severity, ip_address, path, count, action, detected_at, resolved_at}, ...]
+ */
+function renderSecurityEventsTable(events) {
+    const tbody = document.getElementById("security-events-table-body");
+
+    if (events.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">보안 이벤트가 없습니다.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = events
+        .map((event) => {
+            const severityClass = `severity-${event.severity.toLowerCase()}`;
+            const severityLabel = SEVERITY_LABELS[event.severity] || event.severity;
+
+            let statusCell;
+            if (event.resolved_at) {
+                statusCell = `<span class="success-true">처리 완료</span>`;
+            } else if (event.severity === "CRITICAL") {
+                statusCell = `<span class="empty-state">자동 해제 대기</span>`;
+            } else {
+                statusCell = `<button data-event-id="${event.id}" class="resolve-event-btn">처리 완료</button>`;
+            }
+
+            return `
+                <tr>
+                    <td class="mono">${formatTime(event.detected_at)}</td>
+                    <td><span class="severity-badge ${severityClass}">${severityLabel}</span></td>
+                    <td>${escapeHtml(event.event_type)}</td>
+                    <td class="mono">${escapeHtml(event.ip_address)}</td>
+                    <td>${escapeHtml(event.path || "-")}</td>
+                    <td>${event.count}</td>
+                    <td>${escapeHtml(event.action)}</td>
+                    <td>${statusCell}</td>
+                </tr>
+            `;
+        })
+        .join("");
+}
+
+/**
  * 관리자가 게시판 관리 표의 "삭제" 버튼을 눌렀을 때, 확인 후 글을 삭제 요청한다.
  * @param {string} postId
  */
@@ -370,6 +426,20 @@ async function unlockIp(ip) {
     });
     // 해제 요청이 끝나면 화면을 바로 한 번 더 갱신해서, 다음 폴링 주기를
     // 기다리지 않고도 즉시 카드가 사라지는 걸 볼 수 있게 한다.
+    fetchStatus();
+}
+
+/**
+ * 관리자가 보안 이벤트 표의 "처리 완료" 버튼을 눌렀을 때, 그 이벤트를 해결됨으로
+ * 표시해달라고 서버에 요청한다. unlockIp()와 동일한 fetch + CSRF 패턴을 쓴다.
+ * @param {string} eventId
+ */
+async function resolveEvent(eventId) {
+    await fetch("/api/security-events/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ event_id: Number(eventId) }),
+    });
     fetchStatus();
 }
 
@@ -454,6 +524,14 @@ document.getElementById("comments-table-body").addEventListener("click", (event)
     }
 });
 
+// 보안 이벤트 표의 "처리 완료" 버튼도 위와 동일한 이벤트 위임 방식을 쓴다.
+document.getElementById("security-events-table-body").addEventListener("click", (event) => {
+    if (event.target.classList.contains("resolve-event-btn")) {
+        const eventId = event.target.getAttribute("data-event-id");
+        resolveEvent(eventId);
+    }
+});
+
 // 회원/게시글/댓글 페이지네이션 버튼도 renderLockoutCards()의 unlock-btn과 같은
 // 이벤트 위임 방식을 쓴다 — renderPagination()이 매번 버튼을 새로 만들어내기 때문이다.
 function bindPagination(containerId, getPage, setPage) {
@@ -474,6 +552,7 @@ bindPagination("users-pagination", () => usersPage, (page) => { usersPage = page
 bindPagination("posts-pagination", () => postsPage, (page) => { postsPage = page; });
 bindPagination("comments-pagination", () => commentsPage, (page) => { commentsPage = page; });
 bindPagination("admin-log-pagination", () => adminLogPage, (page) => { adminLogPage = page; });
+bindPagination("security-events-pagination", () => securityEventsPage, (page) => { securityEventsPage = page; });
 
 fetchStatus(); // 화면이 열리자마자 한 번 즉시 데이터를 가져온다.
 setInterval(fetchStatus, pollIntervalMs); // 이후로는 pollIntervalMs마다 계속 반복해서 최신 상태로 갱신한다.

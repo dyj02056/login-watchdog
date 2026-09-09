@@ -91,40 +91,54 @@ def is_comment_rate_limited(ip: str) -> bool:
     return db.count_recent_comment_attempts(ip) >= COMMENT_RATE_LIMIT
 
 
-def is_web_scanning(ip: str) -> tuple[bool, int]:
+def is_web_scanning(ip: str) -> tuple[bool, int, bool]:
     """이 IP가 "Web Scanning 의심 상태"인지 판단한다.
 
     is_suspicious()와 판단 방식(초과 여부)은 동일하지만, 세는 대상이
     login_attempts가 아니라 not_found_attempts다 — 정상 사용자도 깨진 링크
     몇 개는 우연히 밟을 수 있으므로, 로그인 실패와 마찬가지로 "초과"부터
     의심한다 (21단계, attack_response_state.md 구현 대상 #1).
+
+    세 번째 반환값(is_first_over_threshold)은 "지금 이 카운트가 임계값을 막
+    넘긴 바로 그 순간인가"를 뜻한다 — count가 임계값+1일 때만 True다. 호출하는
+    쪽(app.py)이 이 값으로 "새로 감지된 시점에만 대응 실행"을 판단해서, 임계값을
+    넘긴 뒤에도 계속되는 요청마다 Slack 알림이 중복 발송되는 걸 막는다(알림
+    피로 방지 — 원래 app.py가 count == threshold + 1로 직접 계산하던 걸 판정
+    로직 쪽으로 옮겨왔다).
     """
     count = db.count_recent_not_found_attempts(ip)
-    return count > WEB_SCANNING_ALERT_THRESHOLD, count
+    suspicious = count > WEB_SCANNING_ALERT_THRESHOLD
+    is_first_over_threshold = count == WEB_SCANNING_ALERT_THRESHOLD + 1
+    return suspicious, count, is_first_over_threshold
 
 
-def is_unauthorized_access_suspicious(ip: str) -> tuple[bool, int]:
+def is_unauthorized_access_suspicious(ip: str) -> tuple[bool, int, bool]:
     """이 IP가 "Unauthorized Access 의심 상태"인지 판단한다.
 
-    is_web_scanning()과 판단 방식(초과 여부)은 동일하지만, unauthorized_attempts
-    표를 본다 — 로그인 세션 없이 관리자 API(/api/*)를 반복 호출하는 패턴을
-    탐지한다 (attack_response_state.md 구현 대상 #2).
+    is_web_scanning()과 판단 방식(초과 여부, is_first_over_threshold의 의미)은
+    동일하지만, unauthorized_attempts 표를 본다 — 로그인 세션 없이 관리자
+    API(/api/*)를 반복 호출하는 패턴을 탐지한다 (attack_response_state.md
+    구현 대상 #2).
     """
     count = db.count_recent_unauthorized_attempts(ip)
-    return count > UNAUTHORIZED_ACCESS_ALERT_THRESHOLD, count
+    suspicious = count > UNAUTHORIZED_ACCESS_ALERT_THRESHOLD
+    is_first_over_threshold = count == UNAUTHORIZED_ACCESS_ALERT_THRESHOLD + 1
+    return suspicious, count, is_first_over_threshold
 
 
-def is_page_access_suspicious(ip: str, path: str) -> tuple[bool, int]:
+def is_page_access_suspicious(ip: str, path: str) -> tuple[bool, int, bool]:
     """이 IP가 이 특정 경로를 "반복 접근 의심 상태"로 요청하고 있는지 판단한다.
 
-    is_web_scanning()/is_unauthorized_access_suspicious()와 판단 방식(초과 여부)은
-    같지만, 세는 대상이 "이 IP의 전체 요청"이 아니라 "이 IP가 이 경로를 요청한
-    횟수"다 — 여러 페이지를 정상적으로 둘러보는 사람과, 같은 페이지 하나를
-    스크립트로 반복 요청하는 패턴을 구분하기 위해서다 (attack_response_state.md
-    구현 대상 #4).
+    is_web_scanning()/is_unauthorized_access_suspicious()와 판단 방식(초과 여부,
+    is_first_over_threshold의 의미)은 같지만, 세는 대상이 "이 IP의 전체 요청"이
+    아니라 "이 IP가 이 경로를 요청한 횟수"다 — 여러 페이지를 정상적으로 둘러보는
+    사람과, 같은 페이지 하나를 스크립트로 반복 요청하는 패턴을 구분하기 위해서다
+    (attack_response_state.md 구현 대상 #4).
     """
     count = db.count_recent_page_access_attempts(ip, path)
-    return count > PAGE_ACCESS_ALERT_THRESHOLD, count
+    suspicious = count > PAGE_ACCESS_ALERT_THRESHOLD
+    is_first_over_threshold = count == PAGE_ACCESS_ALERT_THRESHOLD + 1
+    return suspicious, count, is_first_over_threshold
 
 
 def is_locked(ip: str) -> bool:
