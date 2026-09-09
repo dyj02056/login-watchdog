@@ -37,7 +37,7 @@ def flask_app(monkeypatch):
     # "이 훅과 관련된 걸 테스트하는 몇 개"만 각자 필요한 값으로 다시
     # monkeypatch하고, 나머지 테스트는 이 기본값(수상하지 않음)으로 그냥 통과한다.
     monkeypatch.setattr(db, "log_page_access_attempt", lambda ip, path: None)
-    monkeypatch.setattr(detector, "is_page_access_suspicious", lambda ip, path: (False, 1))
+    monkeypatch.setattr(detector, "is_page_access_suspicious", lambda ip, path: (False, 1, False))
 
     # 이전 테스트가 이미 app을 import해둔 상태일 수 있으므로, sys.modules에서
     # 지워서 위의 monkeypatch가 적용된 새 환경으로 app.py가 다시 실행되게 한다.

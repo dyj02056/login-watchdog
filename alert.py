@@ -44,7 +44,7 @@ def _send_slack_message(message: str) -> None:
 
 
 def send_lockout_alert(
-    ip: str, failure_count: int, locked_at: datetime, distinct_usernames: int
+    ip: str, failure_count: int, locked_at: datetime, distinct_usernames: int, is_admin: bool = False
 ) -> None:
     """IP 잠금이 발생했다는 사실을 Slack 채널에 메시지로 알린다.
 
@@ -61,16 +61,23 @@ def send_lockout_alert(
     # config.LOCKOUT_DURATION_SECONDS(초 단위, 예: 300)를 분 단위로 바꿔서 메시지에 넣는다.
     minutes = config.LOCKOUT_DURATION_SECONDS // 60
 
+    # is_admin이면 관리자 로그인(/admin/login)에서 발생한 잠금이므로, 계정 하나에 집중된
+    # 공격인지 여러 계정을 순회한 공격인지와 무관하게 별도 유형으로 표시한다 — 관리자
+    # 계정이 뚫리면 회원 삭제·잠금 해제까지 장악되므로 일반 회원 로그인 시도보다 우선순위가
+    # 높다는 걸 메시지만 보고도 바로 알 수 있게 하기 위해서다.
     # distinct_usernames가 2개 이상이면 "한 계정을 집중 공격"이 아니라 "여러 계정을
     # 돌아가며 시도"하는 것이므로, Brute Force와 구분해서 Password Spraying으로 표시한다.
-    if distinct_usernames > 1:
+    if is_admin:
+        pattern_line = "공격 유형: 관리자 로그인 무차별 대입"
+    elif distinct_usernames > 1:
         pattern_line = f"공격 유형: Password Spraying 의심 (서로 다른 아이디 {distinct_usernames}개 시도)"
     else:
         pattern_line = "공격 유형: Brute Force (단일 계정 집중 시도)"
 
     # ":rotating_light:"는 Slack에서 🚨(경광등) 이모지로 자동 변환되는 표기법이다.
+    # "[CRITICAL]"은 위험등급을 한눈에 보여준다(security-risk-response-summary.md 5-5절).
     message = (
-        ":rotating_light: 로그인 워치독 알림\n"
+        ":rotating_light: [CRITICAL] 로그인 워치독 알림\n"
         f"시각: {locked_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
         f"시도 IP: {ip}\n"
         f"실패 횟수: {failure_count}회\n"
@@ -94,7 +101,7 @@ def send_web_scanning_alert(ip: str, count: int, path: str) -> None:
     (21단계, attack_response_state.md 구현 대상 #1).
     """
     message = (
-        ":mag: 로그인 워치독 알림\n"
+        ":mag: [MEDIUM] 로그인 워치독 알림\n"
         "공격 유형: Web Scanning 의심 (존재하지 않는 경로 반복 요청)\n"
         f"시도 IP: {ip}\n"
         f"최근 {config.DETECTION_WINDOW_SECONDS}초간 요청 횟수: {count}회\n"
@@ -112,7 +119,7 @@ def send_page_access_alert(ip: str, count: int, path: str) -> None:
     (attack_response_state.md 구현 대상 #4).
     """
     message = (
-        ":mag: 로그인 워치독 알림\n"
+        ":mag: [MEDIUM] 로그인 워치독 알림\n"
         "공격 유형: 반복 페이지 접근 의심 (같은 페이지 반복 요청)\n"
         f"시도 IP: {ip}\n"
         f"최근 {config.DETECTION_WINDOW_SECONDS}초간 요청 횟수: {count}회\n"
@@ -131,7 +138,7 @@ def send_unauthorized_access_alert(ip: str, count: int, path: str) -> None:
     있기 때문이다 (attack_response_state.md 구현 대상 #2).
     """
     message = (
-        ":mag: 로그인 워치독 알림\n"
+        ":mag: [MEDIUM] 로그인 워치독 알림\n"
         "공격 유형: Unauthorized Access 의심 (세션 없이 관리자 API 반복 호출)\n"
         f"시도 IP: {ip}\n"
         f"최근 {config.DETECTION_WINDOW_SECONDS}초간 요청 횟수: {count}회\n"

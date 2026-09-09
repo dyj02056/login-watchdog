@@ -28,6 +28,7 @@
 19. [19단계 — 추가 보안 점검 (관리자 로그인 방어 · 버전 고정 · 가입 빈도 제한)](guide19_security_hardening.md)
 20. [20단계 — 게시판·댓글 기능 추가](guide20_board.md)
 21. [21단계 — 이상행위 탐지 보완 (캡스톤 검토 문서 후속 조치)](guide21_anomaly_detection.md)
+22. [22단계 — 통합 보안 위험등급 시스템 (`security-risk-response-summary.md` 후속 조치)](guide22_security_grading.md)
 
 ---
 
@@ -2521,3 +2522,113 @@ def track_page_access():
 **Supabase 반영 필요**: `docs/schema.sql`에 새로 추가된 `page_access_attempts` 표 생성 SQL을 Supabase SQL Editor에서 직접 실행해야 합니다.
 
 **이 단계에서 만들어지거나 바뀐 파일**: [docs/schema.sql](../schema.sql), [config.py](../../config.py), [db.py](../../db.py), [detector.py](../../detector.py), [alert.py](../../alert.py), [soar.py](../../soar.py), [app.py](../../app.py), [tests/conftest.py](../../tests/conftest.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py)
+
+---
+
+## 22단계 — 통합 보안 위험등급 시스템 (`security-risk-response-summary.md` 후속 조치)
+
+> 캡스톤 검토 문서 `security-risk-response-summary.md`(저장소 밖에서 관리되는 리뷰 문서)가 지적한 문제 — "대응 로직(잠금/거부/알림)은 다 구현돼 있지만, 이걸 위험등급(CRITICAL/HIGH/MEDIUM/LOW)이라는 공통 값으로 저장·조회·표시하는 기능은 없다" — 를 해결했습니다. 구현 전에 4가지 설계 결정(LOW 저장 여부, MEDIUM 중복 방지 위치, HIGH 이벤트 기록 여부, `resolved_at`을 채우는 기준)을 질문으로 먼저 확정했고, Plan 서브에이전트의 설계 검토에서 실제 버그 1건과 설계 결함 1건을 미리 잡아낸 뒤 코드를 작성했습니다. 전체 내용은 [guide22_security_grading.md](guide22_security_grading.md)에 별도로도 정리되어 있습니다.
+
+#### 우리가 한 일 (진행 순서)
+
+| # | 항목 | 성격 |
+|---|---|---|
+| 1 | `security_events` 통합 이벤트 표 신설 (MEDIUM/HIGH/CRITICAL만 저장) | 신규 설계 |
+| 2 | MEDIUM 알림의 "중복 방지" 판단을 `app.py`에서 `detector.py`로 이동 | 리팩터링 |
+| 3 | HIGH(가입·게시글·댓글 거부) 이벤트를 상태 기반 중복 방지와 함께 기록 | 신규 탐지/기록 |
+| 4 | CRITICAL(IP 잠금)이 풀릴 때 이벤트를 자동으로 "처리 완료" 처리 | 신규 로직 |
+| 5 | 관리자 대시보드에 "보안 이벤트" 표 + 등급 배지 + 처리 완료 버튼 추가 | 화면 |
+| 6 | Slack 메시지 첫 줄에 위험등급 표시 | 알림 개선 |
+
+### 1. `security_events` 통합 이벤트 표를 신설했다
+
+**무엇이 문제였는가**: CRITICAL·HIGH·MEDIUM 대응은 이미 다 구현돼 있었지만, 이 셋을 "위험등급"이라는 같은 이름의 값으로 묶어 저장·조회하는 표가 없었습니다. LOW(임계치 미도달)는 정상 트래픽에서도 계속 발생해 표를 폭증시키므로 이 표에는 넣지 않고, 지금처럼 `login_attempts`/`not_found_attempts` 같은 기존 개별 표로만 추세를 봅니다.
+
+```sql
+-- docs/schema.sql
+create table security_events (
+  id bigint generated always as identity primary key,
+  event_type text not null,
+  severity text not null check (severity in ('MEDIUM', 'HIGH', 'CRITICAL')),
+  ip_address text not null,
+  path text,
+  count int not null,
+  action text not null,
+  detected_at timestamptz not null default now(),
+  resolved_at timestamptz
+);
+```
+
+`db.py`에 `insert_security_event`/`list_security_events`/`resolve_security_event`/`resolve_security_events_for_ip`/`has_unresolved_security_event` 5개 함수를 추가했습니다.
+
+**실제로 확인한 것**: `tests/test_db.py`에 5개 함수 단위 테스트 추가(가짜 클라이언트에 `.is_()` 메서드도 함께 추가). `pytest tests/ -v` 전체(155개) 통과.
+
+**Supabase 반영 필요**: `docs/schema.sql`에 새로 추가된 `security_events` 표 생성 SQL을 Supabase SQL Editor에서 직접 실행해야 합니다. (2026-09-09, 실행 완료 및 실 서버로 동작 확인함)
+
+### 2. MEDIUM 알림의 "중복 방지" 판단을 `detector.py`로 옮겼다
+
+**무엇이 문제였는가**: Web Scanning/Unauthorized Access/반복 페이지 접근 세 곳 모두 "같은 사건으로 알림이 중복 발송되지 않게" `app.py`가 호출부에서 직접 `count == 임계값 + 1`을 계산하고 있었습니다.
+
+**어떻게 고쳤는가**: 세 탐지 함수의 반환값을 `(수상한가, 횟수)`에서 `(수상한가, 횟수, 방금_임계값을_넘겼는가)` 3-tuple로 확장했습니다. CRITICAL의 중복 방지(`is_locked()` 상태 확인)는 방식이 달라 그대로 뒀습니다.
+
+```python
+# detector.py
+def is_web_scanning(ip: str) -> tuple[bool, int, bool]:
+    count = db.count_recent_not_found_attempts(ip)
+    suspicious = count > WEB_SCANNING_ALERT_THRESHOLD
+    is_first_over_threshold = count == WEB_SCANNING_ALERT_THRESHOLD + 1
+    return suspicious, count, is_first_over_threshold
+```
+
+**실제로 확인한 것**: 반환값이 바뀌며 `tests/conftest.py`의 공용 fixture(놓치면 전체 테스트가 깨질 뻔했음 — Plan 서브에이전트가 검토 단계에서 미리 발견), `tests/test_app.py` 기존 16곳, `tests/test_detector.py` 기존 6개를 3-tuple에 맞게 수정하고 경계값 테스트를 추가했습니다. `pytest tests/ -v` 전체(155개) 통과.
+
+### 3. HIGH(요청 거부) 이벤트를 상태 기반 중복 방지와 함께 기록했다
+
+**무엇이 문제였는가**: 가입·게시글·댓글 빈도 제한 거부는 사용자에게 안내 문구만 뜨고, Slack 알림도 이벤트 기록도 전혀 없었습니다.
+
+**왜 중복 방지가 필요했는가**: `is_signup_rate_limited` 등은 차단 중엔 시도를 로그에 남기지 않아 count가 고정되므로, MEDIUM처럼 "막 임계값을 넘긴 순간"이라는 신호가 없습니다. 이 사실을 Plan 서브에이전트가 설계 검토에서 지적해줬습니다 — dedup 없이 그대로 기록하면 봇 하나가 60초 창 안에 계속 거부당할 때마다 새 행이 쌓여 `security_events`가 HIGH로 도배되고 CRITICAL/MEDIUM이 묻히게 됩니다.
+
+```python
+# soar.py
+def record_rejection(event_type: str, ip: str, path: str, count: int) -> None:
+    if db.has_unresolved_security_event(ip, event_type):
+        return
+    db.insert_security_event(event_type, "HIGH", ip, path, count, "REJECTED")
+```
+
+**실제로 확인한 것**: `tests/test_soar.py`(dedup 동작), `tests/test_app.py`(4개 호출부 검증) 테스트 추가. 실 서버에서 `/signup`에 6회 연속 요청 → 6번째에 이벤트 1건, 처리 완료 후 다시 6회 요청해도 새 이벤트가 1건만 더 생기는 것(dedup 확인)을 직접 확인했습니다. `pytest tests/ -v` 전체(155개) 통과.
+
+### 4. CRITICAL 잠금이 풀릴 때 이벤트를 자동으로 "처리 완료" 처리했다
+
+**어떻게 결정했는가**: 미리 질문으로 확정한 규칙 — CRITICAL은 잠금 해제 시 자동으로, HIGH/MEDIUM은 관리자가 대시보드에서 직접 눌러야 `resolved_at`이 채워집니다.
+
+```python
+# soar.py
+def manual_release(ip: str) -> bool:
+    active_ips = {row["ip_address"] for row in db.list_active_lockouts()}
+    if ip not in active_ips:
+        return False
+    db.release_lockout(ip)
+    db.resolve_security_events_for_ip(ip)  # CRITICAL 이벤트도 함께 처리 완료로
+    return True
+```
+
+HIGH/MEDIUM용으로는 새 API `POST /api/security-events/resolve`와 `db.resolve_security_event(event_id)`를 추가해 대시보드의 "처리 완료" 버튼이 호출하게 했습니다.
+
+**실제로 확인한 것**: `tests/test_soar.py`(해제 테스트 3개에 검증 추가), `tests/test_app.py`(`/api/unlock`과 동일한 3가지 케이스 추가). 실 서버에서 브루트포스 잠금 → 즉시 해제 → CRITICAL 이벤트 자동 처리 완료, HIGH 이벤트는 대시보드의 실제 버튼을 직접 클릭해 처리 완료로 바뀌는 것 둘 다 확인했습니다. `pytest tests/ -v` 전체(155개) 통과.
+
+### 5. 관리자 대시보드에 "보안 이벤트" 표를 추가했다
+
+**어떻게 고쳤는가**: 기존 5개 표와 동일한 구조(빈 `<tbody>` + `<nav>` 페이지네이션, `/api/status` 폴링, `ThreadPoolExecutor` 병렬 조회 7개→8개)를 재사용했습니다. HIGH 배지용으로 `public/css/tokens.css`에 `--warning`/`--warning-soft` 토큰을 새로 추가했고(CRITICAL은 `--danger`, MEDIUM은 `--accent` 재사용), "처리 완료" 버튼은 미해결이면서 CRITICAL이 아닌 행에만 나타나고 CRITICAL 미해결 행에는 "자동 해제 대기" 문구가 뜹니다.
+
+**실제로 확인한 것**: 로컬 서버에서 관리자로 로그인해 브루트포스 시뮬레이션과 `/signup` 반복 요청으로 실제 이벤트를 발생시켜 등급 배지·유형·상태·버튼 동작을 전부 직접 확인했습니다. 서버 로그·브라우저 콘솔에 관련 에러 없음.
+
+### 6. Slack 메시지 첫 줄에 위험등급을 표시했다
+
+**어떻게 고쳤는가**: CRITICAL 알림 첫 줄에 `[CRITICAL]`, MEDIUM 알림 첫 줄에 `[MEDIUM]`을 추가했습니다. 관리자 로그인에서 발생한 잠금은 `is_admin` 매개변수를 새로 받아 "관리자 로그인 무차별 대입"으로 별도 표시합니다.
+
+**실제로 확인한 것**: `tests/test_soar.py`의 잠금 테스트를 `is_admin` 매개변수까지 포함해 보강했습니다. `pytest tests/ -v` 전체(155개) 통과.
+
+**범위 밖으로 남겨둔 것**: Automated Scraping 탐지 로직 자체(`security-risk-response-summary.md` 6절)와 이벤트별 필터/IP별 이력 화면은 이번 범위에 포함하지 않았습니다 — 이번 작업은 "이미 있는 탐지기에 등급을 붙이고 통합 조회 기능을 만드는 것"까지였습니다.
+
+**이 단계에서 만들어지거나 바뀐 파일**: [docs/schema.sql](../schema.sql), [db.py](../../db.py), [detector.py](../../detector.py), [soar.py](../../soar.py), [alert.py](../../alert.py), [app.py](../../app.py), [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [public/js/dashboard.js](../../public/js/dashboard.js), [public/css/tokens.css](../../public/css/tokens.css), [public/css/dashboard.css](../../public/css/dashboard.css), [tests/conftest.py](../../tests/conftest.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_soar.py](../../tests/test_soar.py), [tests/test_app.py](../../tests/test_app.py)

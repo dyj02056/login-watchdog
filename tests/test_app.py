@@ -20,6 +20,7 @@
 # 테스트가 느려지거나 실패하므로, "이 테스트에 필요한 것만" 최소한으로 막는다.
 # ============================================================================
 
+import config
 import detector
 import soar
 import geoip
@@ -169,8 +170,8 @@ def test_admin_login_failure_over_threshold_triggers_lockout(client, monkeypatch
     monkeypatch.setattr(
         soar,
         "enforce_lockout",
-        lambda ip, failure_count, distinct_usernames: enforce_lockout_calls.append(
-            (ip, failure_count, distinct_usernames)
+        lambda ip, failure_count, distinct_usernames, is_admin=False: enforce_lockout_calls.append(
+            (ip, failure_count, distinct_usernames, is_admin)
         ),
     )
 
@@ -180,7 +181,9 @@ def test_admin_login_failure_over_threshold_triggers_lockout(client, monkeypatch
         data={"username": "test-admin", "password": "wrong", "csrf_token": token},
     )
 
-    assert enforce_lockout_calls[0][1:] == (6, 1)
+    # 관리자 로그인 경로에서 걸린 잠금이므로 is_admin=True가 그대로 전달돼야 한다 —
+    # soar.enforce_lockout이 이 값으로 event_type을 ADMIN_BRUTE_FORCE로 구분한다.
+    assert enforce_lockout_calls[0][1:] == (6, 1, True)
     assert "잠긴 계정입니다" in response.get_data(as_text=True)
 
 
@@ -282,6 +285,7 @@ def test_signup_accepts_valid_input(client, monkeypatch):
 def test_signup_rejects_when_rate_limited(client, monkeypatch):
     monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
     monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: True)
+    monkeypatch.setattr(soar, "record_rejection", lambda *args, **kwargs: None)
 
     def _fail_if_called(*args, **kwargs):
         raise AssertionError("빈도 제한에 걸렸는데 log_signup_attempt가 호출되었다")
@@ -303,6 +307,34 @@ def test_signup_rejects_when_rate_limited(client, monkeypatch):
     assert "너무 많은 가입 시도" in response.get_data(as_text=True)
 
 
+def test_signup_rate_limit_records_high_severity_rejection(client, monkeypatch):
+    # HIGH 등급(Macro/Bot·Spam)은 지금까지 Slack 알림도 이벤트 기록도 전혀 없어 관리자가
+    # 발생 여부를 알 수 없었다 — security-risk-response-summary.md 5절, REJECTED 이벤트 기록 추가.
+    monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
+    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: True)
+    monkeypatch.setattr(db, "log_signup_attempt", lambda ip: None)
+    rejection_calls = []
+    monkeypatch.setattr(
+        soar,
+        "record_rejection",
+        lambda event_type, ip, path, count: rejection_calls.append((event_type, ip, path, count)),
+    )
+
+    token = get_csrf_token(client, "/signup")
+    client.post(
+        "/signup",
+        data={
+            "username": "hyun_3",
+            "email": "hyun3@example.com",
+            "password": "password123",
+            "password_confirm": "password123",
+            "csrf_token": token,
+        },
+    )
+
+    assert rejection_calls == [("SIGNUP_RATE_LIMIT", "127.0.0.1", "/signup", config.SIGNUP_RATE_LIMIT)]
+
+
 # ============================================================================
 # 관리자 대시보드/API — login_required 문지기 및 API 흐름
 # ============================================================================
@@ -315,7 +347,7 @@ def test_admin_dashboard_redirects_to_login_when_not_authenticated(client):
 
 def test_api_status_returns_401_json_when_not_authenticated(client, monkeypatch):
     monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
-    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1))
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1, False))
 
     response = client.get("/api/status")
     assert response.status_code == 401
@@ -330,7 +362,7 @@ def test_api_status_returns_401_json_when_not_authenticated(client, monkeypatch)
 def test_unauthorized_api_access_logs_attempt(client, monkeypatch):
     logged = []
     monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: logged.append((ip, path)))
-    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1))
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1, False))
 
     client.get("/api/status")
 
@@ -339,7 +371,7 @@ def test_unauthorized_api_access_logs_attempt(client, monkeypatch):
 
 def test_unauthorized_api_access_alerts_exactly_when_crossing_threshold(client, monkeypatch):
     monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
-    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (True, 11))
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (True, 11, True))
     notify_calls = []
     monkeypatch.setattr(
         soar, "notify_unauthorized_access", lambda ip, count, path: notify_calls.append((ip, count, path))
@@ -352,7 +384,7 @@ def test_unauthorized_api_access_alerts_exactly_when_crossing_threshold(client, 
 
 def test_unauthorized_api_access_does_not_alert_again_after_threshold_crossing(client, monkeypatch):
     monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
-    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (True, 15))
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (True, 15, False))
 
     def _fail_if_called(*args, **kwargs):
         raise AssertionError("임계값을 이미 넘긴 뒤인데 notify_unauthorized_access가 또 호출되었다")
@@ -366,7 +398,7 @@ def test_unauthorized_api_access_does_not_alert_again_after_threshold_crossing(c
 
 def test_unauthorized_api_access_does_not_alert_below_threshold(client, monkeypatch):
     monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
-    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 3))
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 3, False))
 
     def _fail_if_called(*args, **kwargs):
         raise AssertionError("아직 임계값 미만인데 notify_unauthorized_access가 호출되었다")
@@ -386,7 +418,7 @@ def test_unauthorized_api_access_does_not_alert_below_threshold(client, monkeypa
 def test_page_access_logs_get_request_to_real_page(client, monkeypatch):
     logged = []
     monkeypatch.setattr(db, "log_page_access_attempt", lambda ip, path: logged.append((ip, path)))
-    monkeypatch.setattr(detector, "is_page_access_suspicious", lambda ip, path: (False, 1))
+    monkeypatch.setattr(detector, "is_page_access_suspicious", lambda ip, path: (False, 1, False))
 
     client.get("/login")
 
@@ -395,7 +427,7 @@ def test_page_access_logs_get_request_to_real_page(client, monkeypatch):
 
 def test_page_access_alerts_exactly_when_crossing_threshold(client, monkeypatch):
     monkeypatch.setattr(db, "log_page_access_attempt", lambda ip, path: None)
-    monkeypatch.setattr(detector, "is_page_access_suspicious", lambda ip, path: (True, 21))  # threshold(20) + 1
+    monkeypatch.setattr(detector, "is_page_access_suspicious", lambda ip, path: (True, 21, True))  # threshold(20) + 1
     notify_calls = []
     monkeypatch.setattr(
         soar, "notify_page_access", lambda ip, count, path: notify_calls.append((ip, count, path))
@@ -408,7 +440,7 @@ def test_page_access_alerts_exactly_when_crossing_threshold(client, monkeypatch)
 
 def test_page_access_does_not_alert_again_after_threshold_crossing(client, monkeypatch):
     monkeypatch.setattr(db, "log_page_access_attempt", lambda ip, path: None)
-    monkeypatch.setattr(detector, "is_page_access_suspicious", lambda ip, path: (True, 25))
+    monkeypatch.setattr(detector, "is_page_access_suspicious", lambda ip, path: (True, 25, False))
 
     def _fail_if_called(*args, **kwargs):
         raise AssertionError("임계값을 이미 넘긴 뒤인데 notify_page_access가 또 호출되었다")
@@ -422,7 +454,7 @@ def test_page_access_does_not_alert_again_after_threshold_crossing(client, monke
 
 def test_page_access_does_not_alert_below_threshold(client, monkeypatch):
     monkeypatch.setattr(db, "log_page_access_attempt", lambda ip, path: None)
-    monkeypatch.setattr(detector, "is_page_access_suspicious", lambda ip, path: (False, 3))
+    monkeypatch.setattr(detector, "is_page_access_suspicious", lambda ip, path: (False, 3, False))
 
     def _fail_if_called(*args, **kwargs):
         raise AssertionError("아직 임계값 미만인데 notify_page_access가 호출되었다")
@@ -451,7 +483,7 @@ def test_page_access_ignores_polling_endpoints(client, monkeypatch):
 
     monkeypatch.setattr(db, "log_page_access_attempt", _fail_if_called)
     monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
-    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1))
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1, False))
 
     client.get("/api/status")
 
@@ -464,7 +496,7 @@ def test_page_access_ignores_nonexistent_paths(client, monkeypatch):
 
     monkeypatch.setattr(db, "log_page_access_attempt", _fail_if_called)
     monkeypatch.setattr(db, "log_not_found_attempt", lambda ip, path: None)
-    monkeypatch.setattr(detector, "is_web_scanning", lambda ip: (False, 1))
+    monkeypatch.setattr(detector, "is_web_scanning", lambda ip: (False, 1, False))
 
     client.get("/no-such-page")
 
@@ -507,6 +539,46 @@ def test_api_unlock_without_csrf_header_is_rejected(client, monkeypatch):
         sess["admin_username"] = "test-admin"
 
     response = client.post("/api/unlock", json={"ip": "1.2.3.4"})
+
+    assert response.status_code == 400
+
+
+def test_api_security_events_resolve_requires_event_id_in_body(client, monkeypatch):
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "test-admin"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/security-events/resolve",
+        json={},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 400
+
+
+def test_api_security_events_resolve_marks_event_resolved_when_authenticated(client, monkeypatch):
+    monkeypatch.setattr(db, "resolve_security_event", lambda event_id: event_id == 42)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "test-admin"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/security-events/resolve",
+        json={"event_id": 42},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"success": True}
+
+
+def test_api_security_events_resolve_without_csrf_header_is_rejected(client, monkeypatch):
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "test-admin"
+
+    response = client.post("/api/security-events/resolve", json={"event_id": 42})
 
     assert response.status_code == 400
 
@@ -558,6 +630,7 @@ def test_board_new_submit_creates_post_and_redirects(client, monkeypatch):
 def test_board_new_submit_rejects_when_rate_limited(client, monkeypatch):
     _login_as_member(client)
     monkeypatch.setattr(detector, "is_post_rate_limited", lambda ip: True)
+    monkeypatch.setattr(soar, "record_rejection", lambda *args, **kwargs: None)
 
     def _fail_if_called(*args, **kwargs):
         raise AssertionError("빈도 제한에 걸렸는데 create_post가 호출되었다")
@@ -571,6 +644,25 @@ def test_board_new_submit_rejects_when_rate_limited(client, monkeypatch):
     )
 
     assert "너무 많은 게시글 작성 시도" in response.get_data(as_text=True)
+
+
+def test_board_new_submit_rate_limit_records_high_severity_rejection(client, monkeypatch):
+    _login_as_member(client)
+    monkeypatch.setattr(detector, "is_post_rate_limited", lambda ip: True)
+    rejection_calls = []
+    monkeypatch.setattr(
+        soar,
+        "record_rejection",
+        lambda event_type, ip, path, count: rejection_calls.append((event_type, ip, path, count)),
+    )
+
+    token = get_csrf_token(client, "/board/new")
+    client.post(
+        "/board/new",
+        data={"title": "제목", "body": "내용", "csrf_token": token},
+    )
+
+    assert rejection_calls == [("POST_RATE_LIMIT", "127.0.0.1", "/board/new", config.POST_RATE_LIMIT)]
 
 
 def test_board_new_submit_without_csrf_token_is_rejected(client, monkeypatch):
@@ -607,6 +699,7 @@ def test_board_edit_submit_rejects_when_rate_limited(client, monkeypatch):
     }
     monkeypatch.setattr(db, "get_post", lambda post_id: post)
     monkeypatch.setattr(detector, "is_post_rate_limited", lambda ip: True)
+    monkeypatch.setattr(soar, "record_rejection", lambda *args, **kwargs: None)
 
     def _fail_if_called(*args, **kwargs):
         raise AssertionError("빈도 제한에 걸렸는데 update_post가 호출되었다")
@@ -777,6 +870,7 @@ def test_board_comment_submit_rejects_when_rate_limited(client, monkeypatch):
     )
     monkeypatch.setattr(db, "list_comments_by_post", lambda post_id: [])
     monkeypatch.setattr(detector, "is_comment_rate_limited", lambda ip: True)
+    monkeypatch.setattr(soar, "record_rejection", lambda *args, **kwargs: None)
 
     def _fail_if_called(*args, **kwargs):
         raise AssertionError("빈도 제한에 걸렸는데 create_comment가 호출되었다")
@@ -789,6 +883,36 @@ def test_board_comment_submit_rejects_when_rate_limited(client, monkeypatch):
     )
 
     assert response.status_code == 302
+
+
+def test_board_comment_submit_rate_limit_records_high_severity_rejection(client, monkeypatch):
+    _login_as_member(client, username="hyun")
+    monkeypatch.setattr(
+        db,
+        "get_post",
+        lambda post_id: {
+            "id": post_id,
+            "author_username": "hyun",
+            "title": "제목",
+            "body": "내용",
+            "created_at": "2026-09-04T12:00:00+00:00",
+        },
+    )
+    monkeypatch.setattr(db, "list_comments_by_post", lambda post_id: [])
+    monkeypatch.setattr(detector, "is_comment_rate_limited", lambda ip: True)
+    rejection_calls = []
+    monkeypatch.setattr(
+        soar,
+        "record_rejection",
+        lambda event_type, ip, path, count: rejection_calls.append((event_type, ip, path, count)),
+    )
+
+    token = get_csrf_token(client, "/board/1")
+    client.post("/board/1/comments", data={"body": "댓글 내용", "csrf_token": token})
+
+    assert rejection_calls == [
+        ("COMMENT_RATE_LIMIT", "127.0.0.1", "/board/1/comments", config.COMMENT_RATE_LIMIT)
+    ]
 
 
 def test_board_comment_delete_rejected_when_not_owner(client, monkeypatch):
@@ -854,7 +978,7 @@ def test_api_board_posts_delete_requires_admin(client, monkeypatch):
     # (로그인 없이도 발급 가능한 /login 화면에서 얻는다), 관리자 세션만 없는
     # 상태로 요청해 login_required 자체가 막는지 확인한다.
     monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
-    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1))
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1, False))
 
     token = get_csrf_token(client, "/login")
     response = client.post(
@@ -889,7 +1013,7 @@ def test_api_board_posts_delete_succeeds_for_admin(client, monkeypatch):
 def test_not_found_still_returns_404_and_logs_attempt(client, monkeypatch):
     logged = []
     monkeypatch.setattr(db, "log_not_found_attempt", lambda ip, path: logged.append((ip, path)))
-    monkeypatch.setattr(detector, "is_web_scanning", lambda ip: (False, 1))
+    monkeypatch.setattr(detector, "is_web_scanning", lambda ip: (False, 1, False))
 
     response = client.get("/no-such-page")
 
@@ -899,7 +1023,7 @@ def test_not_found_still_returns_404_and_logs_attempt(client, monkeypatch):
 
 def test_not_found_sends_alert_exactly_when_crossing_threshold(client, monkeypatch):
     monkeypatch.setattr(db, "log_not_found_attempt", lambda ip, path: None)
-    monkeypatch.setattr(detector, "is_web_scanning", lambda ip: (True, 11))  # threshold(10) + 1
+    monkeypatch.setattr(detector, "is_web_scanning", lambda ip: (True, 11, True))  # threshold(10) + 1
     notify_calls = []
     monkeypatch.setattr(
         soar, "notify_web_scanning", lambda ip, count, path: notify_calls.append((ip, count, path))
@@ -914,7 +1038,7 @@ def test_not_found_does_not_alert_again_after_threshold_crossing(client, monkeyp
     # count가 threshold+1을 이미 지나친(예: 15) 다음 요청에서는 "새로 넘은 순간"이
     # 아니므로 다시 알리지 않는다 — 매 요청마다 알림이 반복되는 걸(알림 피로) 막는다.
     monkeypatch.setattr(db, "log_not_found_attempt", lambda ip, path: None)
-    monkeypatch.setattr(detector, "is_web_scanning", lambda ip: (True, 15))
+    monkeypatch.setattr(detector, "is_web_scanning", lambda ip: (True, 15, False))
 
     def _fail_if_called(*args, **kwargs):
         raise AssertionError("임계값을 이미 넘긴 뒤인데 notify_web_scanning이 또 호출되었다")
@@ -928,7 +1052,7 @@ def test_not_found_does_not_alert_again_after_threshold_crossing(client, monkeyp
 
 def test_not_found_does_not_alert_below_threshold(client, monkeypatch):
     monkeypatch.setattr(db, "log_not_found_attempt", lambda ip, path: None)
-    monkeypatch.setattr(detector, "is_web_scanning", lambda ip: (False, 3))
+    monkeypatch.setattr(detector, "is_web_scanning", lambda ip: (False, 3, False))
 
     def _fail_if_called(*args, **kwargs):
         raise AssertionError("아직 임계값 미만인데 notify_web_scanning이 호출되었다")
