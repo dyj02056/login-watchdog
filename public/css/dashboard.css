@@ -201,3 +201,45 @@ section h2 {
     color: var(--danger);
     font-weight: 600;
 }
+
+/* 보안 이벤트 표의 위험등급 배지 — success-true/-false와 같은 "색으로 상태를
+   구분한다"는 원칙을 따르되, 배경까지 채워서 표 안에서 한눈에 띄게 한다. */
+.severity-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.severity-critical {
+    color: var(--danger);
+    background: var(--danger-soft);
+}
+
+.severity-high {
+    color: var(--warning);
+    background: var(--warning-soft);
+}
+
+.severity-medium {
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+}
+
+.resolve-event-btn {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--ink-soft);
+    border-radius: var(--radius-s);
+    padding: 4px 10px;
+    font-family: var(--font-body);
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.resolve-event-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent-ink);
+}

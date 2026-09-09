@@ -167,3 +167,26 @@ create table page_access_attempts (
   attempted_at timestamptz not null default now()
 );
 create index idx_page_access_attempts_ip_path_time on page_access_attempts (ip_address, path, attempted_at);
+
+-- ============================================================================
+-- 통합 보안 위험등급 (security-risk-response-summary.md 5절 참고)
+-- ============================================================================
+
+-- MEDIUM/HIGH/CRITICAL 이상행위 이벤트를 등급과 함께 기록하는 공통 표.
+-- LOW(임계치 미도달)는 여기 넣지 않는다 — 정상 트래픽만으로 이 표가 폭증하는 걸
+-- 막기 위해, 기존 개별 테이블(login_attempts, not_found_attempts 등) 조회로만
+-- 추세를 본다. resolved_at은 CRITICAL(IP 잠금)은 잠금 해제 시 자동으로,
+-- HIGH/MEDIUM은 관리자가 대시보드에서 "처리 완료"를 눌러야 채워진다.
+create table security_events (
+  id bigint generated always as identity primary key,
+  event_type text not null,
+  severity text not null check (severity in ('MEDIUM', 'HIGH', 'CRITICAL')),
+  ip_address text not null,
+  path text,
+  count int not null,
+  action text not null,
+  detected_at timestamptz not null default now(),
+  resolved_at timestamptz
+);
+create index idx_security_events_detected_at on security_events (detected_at desc);
+create index idx_security_events_ip_severity on security_events (ip_address, severity);

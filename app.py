@@ -164,8 +164,8 @@ def handle_not_found(error):
     ip = get_request_ip()
     db.log_not_found_attempt(ip, request.path)
 
-    suspicious, count = detector.is_web_scanning(ip)
-    if suspicious and count == config.WEB_SCANNING_ALERT_THRESHOLD + 1:
+    suspicious, count, is_first_over_threshold = detector.is_web_scanning(ip)
+    if suspicious and is_first_over_threshold:
         soar.notify_web_scanning(ip, count, request.path)
 
     return error.get_response()
@@ -205,8 +205,8 @@ def track_page_access():
     ip = get_request_ip()
     db.log_page_access_attempt(ip, request.path)
 
-    suspicious, count = detector.is_page_access_suspicious(ip, request.path)
-    if suspicious and count == config.PAGE_ACCESS_ALERT_THRESHOLD + 1:
+    suspicious, count, is_first_over_threshold = detector.is_page_access_suspicious(ip, request.path)
+    if suspicious and is_first_over_threshold:
         soar.notify_page_access(ip, count, request.path)
 
 
@@ -231,8 +231,8 @@ def login_required(view):
             if request.path.startswith("/api/"):
                 ip = get_request_ip()
                 db.log_unauthorized_attempt(ip, request.path)
-                suspicious, count = detector.is_unauthorized_access_suspicious(ip)
-                if suspicious and count == config.UNAUTHORIZED_ACCESS_ALERT_THRESHOLD + 1:
+                suspicious, count, is_first_over_threshold = detector.is_unauthorized_access_suspicious(ip)
+                if suspicious and is_first_over_threshold:
                     soar.notify_unauthorized_access(ip, count, request.path)
                 return jsonify({"error": "로그인이 필요합니다."}), 401
             return redirect(url_for("admin_login"))
@@ -345,6 +345,7 @@ def signup_submit():
     # 검증에서 계속 걸러지는 값을 반복 제출하는 남용도 함께 막는다.
     ip = get_request_ip()
     if detector.is_signup_rate_limited(ip):
+        soar.record_rejection("SIGNUP_RATE_LIMIT", ip, request.path, config.SIGNUP_RATE_LIMIT)
         flash("너무 많은 가입 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.")
         return render_template("signup.html", signup_enabled=True)
     db.log_signup_attempt(ip)
@@ -516,7 +517,7 @@ def admin_login_submit():
     suspicious, failure_count = detector.is_admin_suspicious(ip)
     if suspicious:
         distinct_usernames = detector.count_distinct_admin_usernames(ip)
-        soar.enforce_lockout(ip, failure_count, distinct_usernames)
+        soar.enforce_lockout(ip, failure_count, distinct_usernames, is_admin=True)
         flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
     else:
         flash("아이디 또는 비밀번호가 올바르지 않습니다.")
@@ -570,23 +571,23 @@ def api_status():
     데이터를 주고받을 때 가장 널리 쓰이는 표준 형식이다. jsonify()는 파이썬
     딕셔너리를 이 JSON 형식으로 자동 변환해서 브라우저에 보내주는 Flask 도구다.
 
-    관리자 대시보드의 표 5개(최근 로그인 시도/회원/게시글/댓글/관리자 로그인 기록)는
-    각자 ?attempts_page=, ?users_page=, ?posts_page=, ?comments_page=,
-    ?admin_log_page=로 현재 보고 있는 페이지 번호를 받는다 — dashboard.js가
-    board_list()와 동일한 페이지 번호 방식으로 표를 그릴 수 있도록, 각 표의
-    이번 페이지 데이터와 전체 페이지 수(*_total_pages)를 함께 내려준다 (예전에는
-    최근 N개만 고정으로 가져와서, 그 이상 쌓이면 오래된 항목이 화면에서 아예
-    사라졌었다).
+    관리자 대시보드의 표 6개(최근 로그인 시도/회원/게시글/댓글/관리자 로그인 기록/
+    보안 이벤트)는 각자 ?attempts_page=, ?users_page=, ?posts_page=, ?comments_page=,
+    ?admin_log_page=, ?security_events_page=로 현재 보고 있는 페이지 번호를 받는다 —
+    dashboard.js가 board_list()와 동일한 페이지 번호 방식으로 표를 그릴 수 있도록,
+    각 표의 이번 페이지 데이터와 전체 페이지 수(*_total_pages)를 함께 내려준다
+    (예전에는 최근 N개만 고정으로 가져와서, 그 이상 쌓이면 오래된 항목이 화면에서
+    아예 사라졌었다).
 
     db.list_*() 함수들은 (이번 페이지 데이터, 전체 개수) 튜플을 돌려준다 — 목록
     조회와 개수 조회를 별도 쿼리 두 번으로 나누지 않고 한 번의 왕복으로 끝내기
     위해서다(db.list_recent_attempts() 설명 참고).
 
-    그래도 여전히 서로 무관한 쿼리 7개(로그인 시도/잠긴 IP/관리자 로그인 기록/
-    회원/회원가입 설정/게시글/댓글)를 하나씩 순서대로 기다리면, Supabase까지의
+    그래도 여전히 서로 무관한 쿼리 8개(로그인 시도/잠긴 IP/관리자 로그인 기록/
+    회원/회원가입 설정/게시글/댓글/보안 이벤트)를 하나씩 순서대로 기다리면, Supabase까지의
     왕복 시간(쿼리 하나당 대략 150~500ms)이 그대로 다 더해져서 요청 하나가
     2~3초까지 걸렸다 — 특히 Vercel 서버리스 환경은 매 요청마다 커넥션을 새로
-    맺어야 해서 체감이 더 심했다. ThreadPoolExecutor로 이 7개를 동시에 보내면
+    맺어야 해서 체감이 더 심했다. ThreadPoolExecutor로 이 8개를 동시에 보내면
     전체 소요 시간이 "가장 느린 쿼리 하나" 수준으로 줄어든다(실측 약 5배 개선).
     IP 위치 조회(_attach_locations)는 attempts 결과가 있어야 시작할 수 있는
     후속 작업이라 별도로 남겨뒀지만, 나머지 futures가 백그라운드에서 계속
@@ -599,8 +600,9 @@ def api_status():
     posts_page = _page_param("posts_page")
     comments_page = _page_param("comments_page")
     admin_log_page = _page_param("admin_log_page")
+    security_events_page = _page_param("security_events_page")
 
-    with ThreadPoolExecutor(max_workers=7) as executor:
+    with ThreadPoolExecutor(max_workers=8) as executor:
         attempts_future = executor.submit(db.list_recent_attempts, attempts_page, config.ADMIN_PAGE_SIZE)
         lockouts_future = executor.submit(db.list_active_lockouts)
         admin_log_future = executor.submit(db.list_admin_login_log, admin_log_page, config.ADMIN_PAGE_SIZE)
@@ -608,6 +610,9 @@ def api_status():
         signup_future = executor.submit(db.get_signup_enabled)
         posts_future = executor.submit(db.list_posts, posts_page, config.ADMIN_PAGE_SIZE)
         comments_future = executor.submit(db.list_comments_admin, comments_page, config.ADMIN_PAGE_SIZE)
+        security_events_future = executor.submit(
+            db.list_security_events, security_events_page, config.ADMIN_PAGE_SIZE
+        )
 
         attempts, attempts_count = attempts_future.result()
         recent_attempts = _attach_locations(attempts)  # 다른 future들이 도는 동안 함께 실행됨
@@ -617,6 +622,7 @@ def api_status():
         signup_enabled = signup_future.result()
         posts, posts_count = posts_future.result()
         comments, comments_count = comments_future.result()
+        security_events, security_events_count = security_events_future.result()
 
     return jsonify(
         {
@@ -634,6 +640,9 @@ def api_status():
             "posts_total_pages": max(1, math.ceil(posts_count / config.ADMIN_PAGE_SIZE)),
             "recent_comments": comments,
             "comments_total_pages": max(1, math.ceil(comments_count / config.ADMIN_PAGE_SIZE)),
+            # 보안 이벤트(위험등급 통합) 섹션 — security-risk-response-summary.md 5절.
+            "security_events": security_events,
+            "security_events_total_pages": max(1, math.ceil(security_events_count / config.ADMIN_PAGE_SIZE)),
         }
     )
 
@@ -654,6 +663,25 @@ def api_unlock():
 
     released = soar.manual_release(ip)
     return jsonify({"success": released})
+
+
+@app.route("/api/security-events/resolve", methods=["POST"])
+@login_required
+def api_security_events_resolve():
+    """대시보드의 "처리 완료" 버튼을 눌렀을 때 브라우저가 호출하는 API.
+
+    /api/board/posts/delete와 동일한 패턴 — login_required가 이미 "로그인된 관리자의
+    요청"임을 보장해주므로, db.resolve_security_event는 권한 확인 없이 바로 실행한다.
+    CRITICAL(IP 잠금) 이벤트는 잠금이 풀릴 때 자동으로 처리되므로(soar.py의
+    resolve_security_events_for_ip 참고), 이 버튼은 HIGH/MEDIUM 이벤트에서만 쓰인다.
+    """
+    data = request.get_json(silent=True) or {}
+    event_id = data.get("event_id")
+    if not event_id:
+        return jsonify({"success": False, "error": "event_id 값이 필요합니다."}), 400
+
+    resolved = db.resolve_security_event(event_id)
+    return jsonify({"success": resolved})
 
 
 @app.route("/api/users/delete", methods=["POST"])
@@ -772,6 +800,7 @@ def board_new_submit():
     # 같은 IP가 짧은 시간에 너무 많이 글을 올리면 거부한다 (signup_submit()과 동일한
     # "먼저 판정 → 성공/실패 무관하게 시도 자체를 기록" 순서, 결정 #7).
     if detector.is_post_rate_limited(ip):
+        soar.record_rejection("POST_RATE_LIMIT", ip, request.path, config.POST_RATE_LIMIT)
         flash("너무 많은 게시글 작성 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.")
         return render_template("board_form.html", form_action=url_for("board_new_submit"), post=None)
     db.log_post_attempt(ip)
@@ -856,6 +885,7 @@ def board_edit_submit(post_id):
     # 공백을 보완, attack_response_state.md 구현 대상 #3).
     ip = get_request_ip()
     if detector.is_post_rate_limited(ip):
+        soar.record_rejection("POST_RATE_LIMIT", ip, request.path, config.POST_RATE_LIMIT)
         flash("너무 많은 게시글 작성 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.")
         return render_template("board_form.html", form_action=form_action, post=post)
     db.log_post_attempt(ip)
@@ -907,6 +937,7 @@ def board_comment_submit(post_id):
 
     ip = get_request_ip()
     if detector.is_comment_rate_limited(ip):
+        soar.record_rejection("COMMENT_RATE_LIMIT", ip, request.path, config.COMMENT_RATE_LIMIT)
         flash("너무 많은 댓글 작성 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.")
         return redirect(url_for("board_detail", post_id=post_id))
     db.log_comment_attempt(ip)
