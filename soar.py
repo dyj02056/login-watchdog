@@ -100,15 +100,28 @@ def record_rejection(event_type: str, ip: str, path: str, count: int) -> None:
 
     is_signup_rate_limited() 등은 차단되는 동안 시도 자체를 로그에 남기지 않아 count가
     차단 기간 내내 고정된다 — MEDIUM의 is_first_over_threshold처럼 "지금이 막 넘긴
-    순간"이라는 신호가 없다는 뜻이다. 그래서 매 거부마다 새로 기록하는 대신,
+    순간"이라는 신호가 없다는 뜻이다. 그래서 매 거부마다 새 행을 만드는 대신,
     is_locked()와 같은 방식으로 "이 IP·유형에 이미 미해결 이벤트가 있으면 새로 만들지
     않는다"는 상태 기반 중복 방지를 쓴다 — 없으면 봇 한 대가 60초 창 안에 거부당할
     때마다 새 행이 쌓여 security_events가 HIGH로 도배되고 CRITICAL/MEDIUM이 묻힌다.
-    관리자가 "처리 완료"를 누르면 다음 거부부터 다시 새 이벤트가 생긴다.
+
+    다만 "새로 안 만든다"고 끝내면 이미 열린 사건이 실제로 몇 번이나 반복됐는지
+    알 수 없다(count가 처음 거부됐을 때 값에 영원히 고정됨) — 그래서 미해결
+    이벤트가 있으면 무시하는 대신, 그 행의 count를 1 올린다. 관리자가 "처리
+    완료"를 누르면 다음 거부부터 다시 새 이벤트가 생긴다.
+
+    db.insert_security_event_or_bump()를 쓰는 이유: 여기서 "미해결 이벤트가
+    있는지" 확인한 바로 그 순간과 실제로 새로 삽입하는 순간 사이에 아주 잠깐의
+    틈이 있어서, 동시에 두 요청이 이 함수를 거의 같은 순간에 통과하면 둘 다
+    "없음"을 보고 각자 삽입해버릴 수 있다(경쟁 조건). insert_security_event_or_bump는
+    그 드문 경우에도 DB의 유니크 인덱스가 두 번째 삽입을 막아주면 count 증가로
+    자동 대체한다.
     """
-    if db.has_unresolved_security_event(ip, event_type):
+    existing = db.get_unresolved_security_event(ip, event_type)
+    if existing:
+        db.update_security_event_count(existing["id"], existing["count"] + 1)
         return
-    db.insert_security_event(event_type, "HIGH", ip, path, count, "REJECTED")
+    db.insert_security_event_or_bump(event_type, "HIGH", ip, path, count, "REJECTED")
 
 
 def try_release_expired_lockouts() -> None:

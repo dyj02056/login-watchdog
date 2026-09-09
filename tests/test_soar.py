@@ -204,11 +204,11 @@ def test_notify_page_access_sends_alert_then_records_medium_event(monkeypatch):
 # ============================================================================
 
 def test_record_rejection_inserts_event_when_none_unresolved(monkeypatch):
-    monkeypatch.setattr(db, "has_unresolved_security_event", lambda ip, event_type: False)
+    monkeypatch.setattr(db, "get_unresolved_security_event", lambda ip, event_type: None)
     calls = []
     monkeypatch.setattr(
         db,
-        "insert_security_event",
+        "insert_security_event_or_bump",
         lambda event_type, severity, ip, path, count, action: calls.append(
             (event_type, severity, ip, path, count, action)
         ),
@@ -219,12 +219,21 @@ def test_record_rejection_inserts_event_when_none_unresolved(monkeypatch):
     assert calls == [("SIGNUP_RATE_LIMIT", "HIGH", "9.9.9.9", "/signup", 5, "REJECTED")]
 
 
-def test_record_rejection_skips_insert_when_already_unresolved(monkeypatch):
+def test_record_rejection_bumps_count_when_already_unresolved(monkeypatch):
     # 봇이 60초 창 안에 계속 거부당해도, 이미 처리되지 않은 이벤트가 있으면 매번
     # 새로 기록하지 않는다 — 그렇지 않으면 security_events가 HIGH로 도배된다.
-    monkeypatch.setattr(db, "has_unresolved_security_event", lambda ip, event_type: True)
-    monkeypatch.setattr(db, "insert_security_event", lambda *args, **kwargs: (_ for _ in ()).throw(
-        AssertionError("이미 미해결 이벤트가 있는데 insert_security_event가 또 호출되었다")
+    # 대신 이미 열려있는 사건이 몇 번이나 반복됐는지 알 수 있도록 count를 올린다.
+    monkeypatch.setattr(
+        db, "get_unresolved_security_event", lambda ip, event_type: {"id": 7, "count": 5}
+    )
+    monkeypatch.setattr(db, "insert_security_event_or_bump", lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError("이미 미해결 이벤트가 있는데 insert_security_event_or_bump가 또 호출되었다")
     ))
+    bump_calls = []
+    monkeypatch.setattr(
+        db, "update_security_event_count", lambda event_id, count: bump_calls.append((event_id, count))
+    )
 
-    soar.record_rejection("SIGNUP_RATE_LIMIT", "9.9.9.9", "/signup", 5)  # 예외가 안 나면 통과
+    soar.record_rejection("SIGNUP_RATE_LIMIT", "9.9.9.9", "/signup", 5)
+
+    assert bump_calls == [(7, 6)]

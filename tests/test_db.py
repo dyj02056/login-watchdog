@@ -10,6 +10,8 @@
 # 깔아주는 방식이다.
 # ============================================================================
 
+import pytest
+from postgrest.exceptions import APIError
 from werkzeug.security import generate_password_hash
 
 import db
@@ -25,12 +27,19 @@ class _FakeQuery:
 
     count : select(..., count="exact") 뒤에 res.count로 읽히는 값을 흉내낼 때만
     넘겨준다(기본 None → res.count or 0 패턴에서 0으로 처리됨).
+
+    raise_error : insert_security_event_or_bump()의 "삽입이 DB 제약에 걸려 실패하는"
+    경로를 흉내낼 때만 넘겨준다. execute()가 처음 한 번만 이 예외를 던지고(진짜
+    Supabase도 실패한 요청 자체는 재시도하지 않으므로), 그 다음부터는 평소처럼
+    rows/count를 돌려준다 — 실패 이후 db.py가 이어서 하는 조회/갱신 호출은
+    정상적으로 응답받아야 하기 때문이다.
     """
 
-    def __init__(self, rows, calls=None, count=None):
+    def __init__(self, rows, calls=None, count=None, raise_error=None):
         self._rows = rows
         self.calls = calls if calls is not None else []
         self._count = count
+        self._raise_error = raise_error
 
     def table(self, *args, **kwargs):
         self.calls.append(("table", args, kwargs))
@@ -87,6 +96,9 @@ class _FakeQuery:
         return self
 
     def execute(self):
+        if self._raise_error is not None:
+            error, self._raise_error = self._raise_error, None
+            raise error
         return _FakeResult(self._rows, self._count)
 
 
@@ -539,6 +551,17 @@ def test_resolve_security_event_false_when_already_resolved(monkeypatch):
     assert db.resolve_security_event(5) is False
 
 
+def test_resolve_security_event_excludes_critical_severity(monkeypatch):
+    # CRITICAL은 이 함수로 처리되면 안 된다 — 잠금이 아직 안 풀렸는데 이벤트만
+    # "처리 완료"로 표시되는 상태를 막기 위해 severity 조건을 쿼리에 건다.
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.resolve_security_event(5)
+
+    assert ("neq", ("severity", "CRITICAL"), {}) in fake_client.calls
+
+
 def test_resolve_security_events_for_ip_filters_by_ip_and_critical_severity(monkeypatch):
     fake_client = _FakeQuery(rows=[{"id": 1}])
     monkeypatch.setattr(db, "get_client", lambda: fake_client)
@@ -549,18 +572,73 @@ def test_resolve_security_events_for_ip_filters_by_ip_and_critical_severity(monk
     assert ("eq", ("severity", "CRITICAL"), {}) in fake_client.calls
 
 
-def test_has_unresolved_security_event_true_when_row_exists(monkeypatch):
-    fake_client = _FakeQuery(rows=[{"id": 1}])
+def test_get_unresolved_security_event_returns_row_when_exists(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 1, "count": 5}])
     monkeypatch.setattr(db, "get_client", lambda: fake_client)
 
-    assert db.has_unresolved_security_event("9.9.9.9", "SIGNUP_RATE_LIMIT") is True
+    assert db.get_unresolved_security_event("9.9.9.9", "SIGNUP_RATE_LIMIT") == {"id": 1, "count": 5}
 
 
-def test_has_unresolved_security_event_false_when_no_row(monkeypatch):
+def test_get_unresolved_security_event_returns_none_when_no_row(monkeypatch):
     fake_client = _FakeQuery(rows=[])
     monkeypatch.setattr(db, "get_client", lambda: fake_client)
 
-    assert db.has_unresolved_security_event("9.9.9.9", "SIGNUP_RATE_LIMIT") is False
+    assert db.get_unresolved_security_event("9.9.9.9", "SIGNUP_RATE_LIMIT") is None
+
+
+def test_update_security_event_count_updates_expected_row(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 7, "count": 6}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.update_security_event_count(7, 6)
+
+    assert ("update", ({"count": 6},), {}) in fake_client.calls
+    assert ("eq", ("id", 7), {}) in fake_client.calls
+
+
+def test_insert_security_event_or_bump_inserts_when_no_conflict(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.insert_security_event_or_bump("SIGNUP_RATE_LIMIT", "HIGH", "9.9.9.9", "/signup", 5, "REJECTED")
+
+    assert (
+        "insert",
+        (
+            {
+                "event_type": "SIGNUP_RATE_LIMIT",
+                "severity": "HIGH",
+                "ip_address": "9.9.9.9",
+                "path": "/signup",
+                "count": 5,
+                "action": "REJECTED",
+            },
+        ),
+        {},
+    ) in fake_client.calls
+
+
+def test_insert_security_event_or_bump_falls_back_to_increment_on_conflict(monkeypatch):
+    # 삽입이 idx_security_events_high_open_incident 유니크 인덱스에 걸려 실패하면
+    # (동시 요청이 실제로 겹친 드문 경우), 새로 만드는 대신 이미 삽입된 행을 찾아
+    # count만 올려야 한다.
+    conflict = APIError({"code": "23505", "message": "duplicate key value violates unique constraint"})
+    fake_client = _FakeQuery(rows=[{"id": 7, "count": 5}], raise_error=conflict)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.insert_security_event_or_bump("SIGNUP_RATE_LIMIT", "HIGH", "9.9.9.9", "/signup", 5, "REJECTED")
+
+    assert ("insert", ({"event_type": "SIGNUP_RATE_LIMIT", "severity": "HIGH", "ip_address": "9.9.9.9", "path": "/signup", "count": 5, "action": "REJECTED"},), {}) in fake_client.calls
+    assert ("update", ({"count": 6},), {}) in fake_client.calls
+
+
+def test_insert_security_event_or_bump_reraises_non_conflict_errors(monkeypatch):
+    other_error = APIError({"code": "42501", "message": "permission denied"})
+    fake_client = _FakeQuery(rows=[], raise_error=other_error)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    with pytest.raises(APIError):
+        db.insert_security_event_or_bump("SIGNUP_RATE_LIMIT", "HIGH", "9.9.9.9", "/signup", 5, "REJECTED")
 
 
 def test_delete_comment_false_when_id_not_found(monkeypatch):
