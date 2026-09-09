@@ -29,6 +29,7 @@
 20. [20단계 — 게시판·댓글 기능 추가](guide20_board.md)
 21. [21단계 — 이상행위 탐지 보완 (캡스톤 검토 문서 후속 조치)](guide21_anomaly_detection.md)
 22. [22단계 — 통합 보안 위험등급 시스템 (`security-risk-response-summary.md` 후속 조치)](guide22_security_grading.md)
+23. [23단계 — 보안 이벤트 코드 리뷰에서 발견된 4가지 문제 수정](guide23_security_events_fixes.md)
 
 ---
 
@@ -2632,3 +2633,73 @@ HIGH/MEDIUM용으로는 새 API `POST /api/security-events/resolve`와 `db.resol
 **범위 밖으로 남겨둔 것**: Automated Scraping 탐지 로직 자체(`security-risk-response-summary.md` 6절)와 이벤트별 필터/IP별 이력 화면은 이번 범위에 포함하지 않았습니다 — 이번 작업은 "이미 있는 탐지기에 등급을 붙이고 통합 조회 기능을 만드는 것"까지였습니다.
 
 **이 단계에서 만들어지거나 바뀐 파일**: [docs/schema.sql](../schema.sql), [db.py](../../db.py), [detector.py](../../detector.py), [soar.py](../../soar.py), [alert.py](../../alert.py), [app.py](../../app.py), [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [public/js/dashboard.js](../../public/js/dashboard.js), [public/css/tokens.css](../../public/css/tokens.css), [public/css/dashboard.css](../../public/css/dashboard.css), [tests/conftest.py](../../tests/conftest.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_soar.py](../../tests/test_soar.py), [tests/test_app.py](../../tests/test_app.py)
+
+---
+
+## 23단계 — 보안 이벤트 코드 리뷰에서 발견된 4가지 문제 수정
+
+> 22단계 기능이 실제로 안전한지 점검하려고 프로젝트 전체를 다시 훑는 리뷰를 진행했고, 그중 우선순위가 높은 4가지를 골라 고쳤습니다. 4번은 고치는 방식이 두 갈래로 갈릴 수 있어 미리 질문으로 방향을 확정했습니다. 전체 내용은 [guide23_security_events_fixes.md](guide23_security_events_fixes.md)에 별도로도 정리되어 있습니다.
+
+#### 우리가 한 일 (진행 순서)
+
+| # | 문제 | 성격 |
+|---|---|---|
+| 1 | `scripts/unlock_ip.py`로 풀면 CRITICAL 보안 이벤트가 영원히 "자동 해제 대기"로 남음 | 기존 결함 보완 |
+| 2 | CRITICAL 이벤트를 API로 직접 "처리 완료" 처리할 수 있었음 | 기존 결함 보완 |
+| 3 | HIGH 이벤트의 count가 최초 거부 시점 값에 영원히 고정됨 | 설계 개선 |
+| 4 | 동시 요청이 겹치면 미해결 이벤트가 중복 생성될 수 있는 경쟁 조건 | 신규 설계(DB 제약) |
+
+### 1. `unlock_ip.py`가 잠금만 풀고 보안 이벤트는 방치했다
+
+**무엇이 문제였는가**: 관리자 본인 IP가 잠겨 대시보드 접속이 막혔을 때 쓰는 뒷문 스크립트 `scripts/unlock_ip.py`가 `db.release_lockout()`만 호출했습니다. 대시보드의 "즉시 해제" 버튼과 자동 만료는 잠금을 풀 때 그 IP의 CRITICAL 보안 이벤트도 함께 "처리 완료"로 표시하는데, 이 스크립트만 그 절차를 빠뜨리고 있었습니다.
+
+**어떻게 고쳤는가**: `unlock_one()`, `unlock_all()` 두 곳 모두 `db.release_lockout()` 다음 줄에 `db.resolve_security_events_for_ip()`를 추가했습니다.
+
+**실제로 확인한 것**: `tests/test_unlock_ip.py`에 검증 추가. 실제로 잠근 뒤 이 스크립트로 풀어봤더니 해당 CRITICAL 이벤트가 즉시 "처리 완료"로 바뀌는 것을 로컬·배포 사이트 양쪽에서 확인. `pytest tests/ -v` 전체(160개) 통과.
+
+**이 단계에서 만들어지거나 바뀐 파일**: [scripts/unlock_ip.py](../../scripts/unlock_ip.py), [tests/test_unlock_ip.py](../../tests/test_unlock_ip.py)
+
+### 2. CRITICAL 이벤트를 API로 직접 "처리 완료" 처리할 수 있었다
+
+**무엇이 문제였는가**: "처리 완료" 버튼을 CRITICAL 행에는 안 보여주는 게 화면(`dashboard.js`)에만 있던 규칙이었고, 실제 서버 함수 `db.resolve_security_event()`는 등급을 전혀 확인하지 않았습니다. 로그인된 관리자가 API를 직접 호출하면, IP가 여전히 잠긴 상태에서도 CRITICAL 이벤트만 "처리 완료"로 표시할 수 있었습니다.
+
+**어떻게 고쳤는가**: `db.resolve_security_event()`의 쿼리에 `.neq("severity", "CRITICAL")`을 추가했습니다.
+
+```python
+# db.py
+.update({"resolved_at": _now_iso()}).eq("id", event_id).neq("severity", "CRITICAL").is_("resolved_at", "null")
+```
+
+**실제로 확인한 것**: `tests/test_db.py`에 검증 테스트 추가. IP가 아직 잠긴 상태에서 그 CRITICAL 이벤트 id로 API를 직접 호출해봤더니 `{"success": false}`, 미해결 상태 유지를 로컬·배포 사이트 양쪽에서 확인.
+
+**이 단계에서 만들어지거나 바뀐 파일**: [db.py](../../db.py), [tests/test_db.py](../../tests/test_db.py)
+
+### 3. HIGH 이벤트의 count가 최초 값에 고정됐다
+
+**무엇이 문제였는가**: HIGH 등급은 거부되는 동안 시도가 로그에 안 남다 보니, `soar.record_rejection()`이 매번 제한값(예: `5`)만 기록했고 미해결 이벤트가 있으면 아예 새로 기록하지 않아 이 숫자가 사건이 열려있는 내내 절대 안 바뀌었습니다. 봇이 6번 찔러보든 수천 번 찔러보든 대시보드에 똑같은 숫자만 찍혀 공격 규모를 구분할 수 없었습니다.
+
+**어떻게 고쳤는가**: 미해결 이벤트가 있으면 무시하는 대신 그 행의 count를 1씩 올리도록 바꿨습니다. `has_unresolved_security_event(ip, event_type) -> bool`을 `get_unresolved_security_event(ip, event_type) -> dict | None`으로 확장하고(행 전체 반환), `update_security_event_count(event_id, count)`를 신규 추가했습니다.
+
+**실제로 확인한 것**: `/signup`을 여러 차례 나눠 총 13번 추가로 거부시켰더니, 새 행 없이 같은 행의 count가 5 → 17로 정확히 누적되는 것을 확인(5 + 6 + 6 = 17).
+
+**이 단계에서 만들어지거나 바뀐 파일**: [db.py](../../db.py), [soar.py](../../soar.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_soar.py](../../tests/test_soar.py)
+
+### 4. 동시 요청이 겹치면 중복 행이 생길 수 있었다 — DB 제약으로 원천 차단
+
+**무엇이 문제였는가**: 3번에서 고친 "미해결 이벤트 확인 → 없으면 삽입" 로직은 확인과 삽입 사이에 짧은 틈이 있어서, 같은 IP에서 거의 동시에 요청 두 개가 몰리면 둘 다 "없음"을 보고 각자 삽입해버릴 수 있었습니다(경쟁 조건).
+
+**어떻게 고쳤는가**: "DB에 유니크 인덱스를 걸지, 문서에만 한계로 남길지" 미리 질문으로 확정하고 전자를 택했습니다. `security_events`에 부분 유니크 인덱스를 추가해 같은 IP·유형·**HIGH**·미해결 행이 항상 최대 1건만 존재하도록 Postgres가 직접 강제합니다(CRITICAL/MEDIUM은 각자 다른 동작 방식이라 조건에서 제외). 삽입이 이 제약(`23505 unique_violation`)에 걸려 실패하면 자동으로 count 증가로 대체하는 `insert_security_event_or_bump()`를 추가했습니다.
+
+```sql
+create unique index idx_security_events_high_open_incident
+  on security_events (ip_address, event_type)
+  where resolved_at is null and severity = 'HIGH';
+```
+
+**실제로 확인한 것**: `tests/test_db.py`에 충돌 시나리오 테스트 추가. 사용자가 Supabase에 인덱스를 실제로 적용한 뒤, 같은 IP·유형으로 두 번째 삽입을 직접 시도해 **진짜 Postgres가 `23505 duplicate key` 오류로 거부**하는 것과, `insert_security_event_or_bump()`가 그 오류를 받아 기존 행의 count를 자동으로 올리는 것까지 실제 데이터베이스로 확인했습니다.
+
+**Supabase 반영 필요**: 위 인덱스 생성 SQL을 Supabase SQL Editor에서 직접 실행해야 합니다. (실행 완료 및 실제 충돌 상황까지 재현해 확인함)
+
+**이 단계에서 만들어지거나 바뀐 파일**: [docs/schema.sql](../schema.sql), [db.py](../../db.py), [soar.py](../../soar.py), [tests/test_db.py](../../tests/test_db.py)
+
+**배포까지 확인한 것**: 네 가지 수정 모두 `main`과 나머지 5개 브랜치에 반영하고(강제 푸시 없이 병합), 1·2번 항목을 실제 배포 사이트에서도 재현해 로컬과 동일하게 동작하는 것을 확인했습니다.
