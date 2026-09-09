@@ -123,57 +123,97 @@ def test_is_web_scanning_false_at_exact_threshold(monkeypatch):
     # (is_suspicious와 동일하게 "초과"부터 수상함).
     monkeypatch.setattr(db, "count_recent_not_found_attempts", lambda ip: 10)
 
-    suspicious, count = detector.is_web_scanning("1.2.3.4")
+    suspicious, count, is_first_over_threshold = detector.is_web_scanning("1.2.3.4")
 
     assert suspicious is False
     assert count == 10
+    assert is_first_over_threshold is False
 
 
-def test_is_web_scanning_true_when_exceeds_threshold(monkeypatch):
+def test_is_web_scanning_true_and_first_over_threshold_when_exactly_crossing(monkeypatch):
+    # 임계값을 막 넘긴 바로 그 순간(threshold + 1)에만 is_first_over_threshold가 True다 —
+    # soar.notify_web_scanning()이 이 값으로 "새로 감지된 시점에만" Slack 알림을 보낸다.
     monkeypatch.setattr(db, "count_recent_not_found_attempts", lambda ip: 11)
 
-    suspicious, count = detector.is_web_scanning("1.2.3.4")
+    suspicious, count, is_first_over_threshold = detector.is_web_scanning("1.2.3.4")
 
     assert suspicious is True
     assert count == 11
+    assert is_first_over_threshold is True
+
+
+def test_is_web_scanning_true_but_not_first_over_threshold_when_already_past_it(monkeypatch):
+    # 임계값을 넘긴 지 한참 지난 뒤(threshold + 5)에는 여전히 수상하지만, 이미 한 번
+    # 알림을 보낸 뒤라 is_first_over_threshold는 다시 True가 되면 안 된다.
+    monkeypatch.setattr(db, "count_recent_not_found_attempts", lambda ip: 15)
+
+    suspicious, count, is_first_over_threshold = detector.is_web_scanning("1.2.3.4")
+
+    assert suspicious is True
+    assert count == 15
+    assert is_first_over_threshold is False
 
 
 def test_is_unauthorized_access_suspicious_false_at_exact_threshold(monkeypatch):
     # UNAUTHORIZED_ACCESS_ALERT_THRESHOLD 기본값은 10 — 정확히 10회는 아직 아니다.
     monkeypatch.setattr(db, "count_recent_unauthorized_attempts", lambda ip: 10)
 
-    suspicious, count = detector.is_unauthorized_access_suspicious("1.2.3.4")
+    suspicious, count, is_first_over_threshold = detector.is_unauthorized_access_suspicious("1.2.3.4")
 
     assert suspicious is False
     assert count == 10
+    assert is_first_over_threshold is False
 
 
-def test_is_unauthorized_access_suspicious_true_when_exceeds_threshold(monkeypatch):
+def test_is_unauthorized_access_suspicious_true_and_first_over_threshold_when_exactly_crossing(monkeypatch):
     monkeypatch.setattr(db, "count_recent_unauthorized_attempts", lambda ip: 11)
 
-    suspicious, count = detector.is_unauthorized_access_suspicious("1.2.3.4")
+    suspicious, count, is_first_over_threshold = detector.is_unauthorized_access_suspicious("1.2.3.4")
 
     assert suspicious is True
     assert count == 11
+    assert is_first_over_threshold is True
+
+
+def test_is_unauthorized_access_suspicious_true_but_not_first_over_threshold_when_already_past_it(monkeypatch):
+    monkeypatch.setattr(db, "count_recent_unauthorized_attempts", lambda ip: 15)
+
+    suspicious, count, is_first_over_threshold = detector.is_unauthorized_access_suspicious("1.2.3.4")
+
+    assert suspicious is True
+    assert count == 15
+    assert is_first_over_threshold is False
 
 
 def test_is_page_access_suspicious_false_at_exact_threshold(monkeypatch):
     # PAGE_ACCESS_ALERT_THRESHOLD 기본값은 20 — 정확히 20회는 아직 아니다.
     monkeypatch.setattr(db, "count_recent_page_access_attempts", lambda ip, path: 20)
 
-    suspicious, count = detector.is_page_access_suspicious("1.2.3.4", "/board")
+    suspicious, count, is_first_over_threshold = detector.is_page_access_suspicious("1.2.3.4", "/board")
 
     assert suspicious is False
     assert count == 20
+    assert is_first_over_threshold is False
 
 
-def test_is_page_access_suspicious_true_when_exceeds_threshold(monkeypatch):
+def test_is_page_access_suspicious_true_and_first_over_threshold_when_exactly_crossing(monkeypatch):
     monkeypatch.setattr(db, "count_recent_page_access_attempts", lambda ip, path: 21)
 
-    suspicious, count = detector.is_page_access_suspicious("1.2.3.4", "/board")
+    suspicious, count, is_first_over_threshold = detector.is_page_access_suspicious("1.2.3.4", "/board")
 
     assert suspicious is True
     assert count == 21
+    assert is_first_over_threshold is True
+
+
+def test_is_page_access_suspicious_true_but_not_first_over_threshold_when_already_past_it(monkeypatch):
+    monkeypatch.setattr(db, "count_recent_page_access_attempts", lambda ip, path: 25)
+
+    suspicious, count, is_first_over_threshold = detector.is_page_access_suspicious("1.2.3.4", "/board")
+
+    assert suspicious is True
+    assert count == 25
+    assert is_first_over_threshold is False
 
 
 def test_is_locked_true_when_lockout_exists(monkeypatch):

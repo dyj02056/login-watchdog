@@ -1,6 +1,6 @@
 # 21단계 — 이상행위 탐지 보완 (캡스톤 검토 문서 후속 조치)
 
-[◀ 20단계](guide20_board.md) · [전체 목차](beginner-guide.md)
+[◀ 20단계](guide20_board.md) · [전체 목차](beginner-guide.md) · [22단계 ▶](guide22_security_grading.md)
 
 > 캡스톤 프로젝트 검토 문서(`attack_response_state.md`)에서 "구현 가능성 있는 항목"으로 정리했던 6가지를, 리스크가 낮은 것부터(기존 결함 보완 → 기존 패턴 재사용 → 새 설계가 필요한 것 순으로) 하나씩 구현합니다. 항목이 늘어날 때마다 이 문서에 절을 추가합니다.
 

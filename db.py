@@ -891,3 +891,95 @@ def count_recent_page_access_attempts(
         .execute()
     )
     return res.count or 0
+
+
+# ============================================================================
+# security_events 표 관련 함수 — MEDIUM/HIGH/CRITICAL 이상행위를 위험등급과
+# 함께 기록하는 공통 표 (security-risk-response-summary.md 5절 참고). LOW는
+# 여기 저장하지 않고 위 개별 테이블 조회로만 추세를 본다.
+# ============================================================================
+
+def insert_security_event(
+    event_type: str, severity: str, ip: str, path: str | None, count: int, action: str
+) -> None:
+    """이상행위 이벤트 한 건을 security_events 표에 기록한다."""
+    get_client().table("security_events").insert(
+        {
+            "event_type": event_type,
+            "severity": severity,
+            "ip_address": ip,
+            "path": path,
+            "count": count,
+            "action": action,
+        }
+    ).execute()
+
+
+def list_security_events(page: int = 1, page_size: int = 20) -> tuple[list[dict], int]:
+    """보안 이벤트를 최신순으로 `page`번째 페이지만 가져오고, 전체 건수도 함께 돌려준다.
+
+    관리자 대시보드의 "보안 이벤트" 표에 쓰인다. list_recent_attempts()와 동일하게
+    select(..., count="exact") + range()로 목록과 개수를 한 번의 왕복으로 가져온다.
+    """
+    start = (page - 1) * page_size
+    end = start + page_size - 1
+    res = (
+        get_client()
+        .table("security_events")
+        .select("*", count="exact")
+        .order("detected_at", desc=True)
+        .range(start, end)
+        .execute()
+    )
+    return res.data, res.count or 0
+
+
+def resolve_security_event(event_id: int) -> bool:
+    """관리자가 대시보드에서 "처리 완료"를 눌렀을 때, 이 이벤트를 해결됨으로 표시한다.
+
+    아직 미해결(resolved_at이 비어있음)인 경우에만 실제로 값이 바뀌므로, 이미
+    처리된 이벤트를 다시 눌러도 안전하다(res.data가 비어있으면 False를 돌려줌).
+    """
+    res = (
+        get_client()
+        .table("security_events")
+        .update({"resolved_at": _now_iso()})
+        .eq("id", event_id)
+        .is_("resolved_at", "null")
+        .execute()
+    )
+    return bool(res.data)
+
+
+def resolve_security_events_for_ip(ip: str) -> None:
+    """이 IP의 미해결 CRITICAL 이벤트를 전부 해결됨으로 표시한다.
+
+    CRITICAL(로그인 잠금)은 관리자가 따로 처리 완료를 누르지 않아도, 잠금이
+    풀리는 순간(자동 만료든 수동 해제든) 그 사건도 함께 끝난 것으로 본다
+    (soar.try_release_expired_lockouts/manual_release가 release_lockout 직후 호출).
+    """
+    get_client().table("security_events").update({"resolved_at": _now_iso()}).eq(
+        "ip_address", ip
+    ).eq("severity", "CRITICAL").is_("resolved_at", "null").execute()
+
+
+def has_unresolved_security_event(ip: str, event_type: str) -> bool:
+    """이 IP·이벤트 유형에 대해 아직 처리되지 않은 이벤트가 있는지 확인한다.
+
+    HIGH(요청 거부) 탐지 함수들은 차단되는 동안 시도 자체를 로그에 남기지 않아
+    count가 차단 기간 내내 고정된다 — MEDIUM처럼 "정확히 임계값+1일 때만"이라는
+    신호가 없다. 그래서 매 거부마다 기록하는 대신, is_locked()와 같은 방식으로
+    "이미 열린 사건이 있으면 새로 만들지 않는다"는 상태 기반 중복 방지를 쓴다
+    (soar.record_rejection 참고).
+    """
+    res = (
+        get_client()
+        .table("security_events")
+        .select("id")
+        .eq("ip_address", ip)
+        .eq("event_type", event_type)
+        .is_("resolved_at", "null")
+        .limit(1)
+        .execute()
+    )
+    return bool(res.data)

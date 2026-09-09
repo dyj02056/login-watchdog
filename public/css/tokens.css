@@ -52,6 +52,11 @@
     --danger: #c85a4f;
     --danger-soft: #fbe9e6;
 
+    /* 위험등급 배지(HIGH)용 — success/danger와 마찬가지로 "흰 글자가 아니라 옅은
+       배경 위에 놓이는 글자색"이라 다크모드에서 -soft 값만 바뀐다(아래 참고). */
+    --warning: #b8791f;
+    --warning-soft: #faf0dc;
+
     --shadow-card: 0 1px 3px rgba(20, 40, 35, 0.08);
 
     --radius-s: 6px;
@@ -100,6 +105,7 @@
 
         --success-soft: #1a3327;
         --danger-soft: #3c221e;
+        --warning-soft: #3a2e14;
 
         --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px -12px rgba(0, 0, 0, 0.55);
     }

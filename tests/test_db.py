@@ -52,6 +52,10 @@ class _FakeQuery:
         self.calls.append(("gte", args, kwargs))
         return self
 
+    def is_(self, *args, **kwargs):
+        self.calls.append(("is_", args, kwargs))
+        return self
+
     def limit(self, *args, **kwargs):
         return self
 
@@ -474,6 +478,89 @@ def test_delete_comment_true_when_row_was_deleted(monkeypatch):
     monkeypatch.setattr(db, "get_client", lambda: fake_client)
 
     assert db.delete_comment(7) is True
+
+
+# ============================================================================
+# security_events 표 관련 함수 — 위험등급 통합 (security-risk-response-summary.md 5절)
+# ============================================================================
+
+def test_insert_security_event_inserts_expected_row(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.insert_security_event("WEB_SCANNING", "MEDIUM", "9.9.9.9", "/no-such-page", 11, "ALERTED")
+
+    assert (
+        "insert",
+        (
+            {
+                "event_type": "WEB_SCANNING",
+                "severity": "MEDIUM",
+                "ip_address": "9.9.9.9",
+                "path": "/no-such-page",
+                "count": 11,
+                "action": "ALERTED",
+            },
+        ),
+        {},
+    ) in fake_client.calls
+
+
+def test_list_security_events_returns_rows_and_count_from_client(monkeypatch):
+    rows = [
+        {"id": 2, "event_type": "WEB_SCANNING", "severity": "MEDIUM"},
+        {"id": 1, "event_type": "BRUTE_FORCE", "severity": "CRITICAL"},
+    ]
+    fake_client = _FakeQuery(rows=rows, count=9)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result, total = db.list_security_events()
+
+    assert result == rows
+    assert total == 9
+
+
+def test_resolve_security_event_true_when_row_was_updated(monkeypatch):
+    # 아직 미해결(resolved_at이 비어있음)이었던 이벤트만 실제로 업데이트되므로,
+    # Supabase가 업데이트된 행을 돌려주면 "진짜 처리됐다"는 뜻이다.
+    fake_client = _FakeQuery(rows=[{"id": 5, "resolved_at": "2026-09-09T00:00:00Z"}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.resolve_security_event(5) is True
+    assert ("is_", ("resolved_at", "null"), {}) in fake_client.calls
+
+
+def test_resolve_security_event_false_when_already_resolved(monkeypatch):
+    # 이미 처리된 이벤트는 is_("resolved_at", "null") 조건에 안 걸려 아무 행도
+    # 업데이트되지 않는다 — 같은 버튼을 두 번 눌러도 안전해야 한다.
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.resolve_security_event(5) is False
+
+
+def test_resolve_security_events_for_ip_filters_by_ip_and_critical_severity(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 1}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.resolve_security_events_for_ip("9.9.9.9")
+
+    assert ("eq", ("ip_address", "9.9.9.9"), {}) in fake_client.calls
+    assert ("eq", ("severity", "CRITICAL"), {}) in fake_client.calls
+
+
+def test_has_unresolved_security_event_true_when_row_exists(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 1}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.has_unresolved_security_event("9.9.9.9", "SIGNUP_RATE_LIMIT") is True
+
+
+def test_has_unresolved_security_event_false_when_no_row(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.has_unresolved_security_event("9.9.9.9", "SIGNUP_RATE_LIMIT") is False
 
 
 def test_delete_comment_false_when_id_not_found(monkeypatch):
