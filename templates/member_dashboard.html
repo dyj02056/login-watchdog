@@ -19,7 +19,7 @@
         <h1>로그인 워치독</h1>
         <div class="topbar-actions">
             <button id="theme-toggle" type="button" class="theme-toggle">다크 모드</button>
-            <form method="post" action="{{ url_for('member_logout') }}">
+            <form method="post" action="{{ url_for('member.member_logout') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="logout-btn">로그아웃</button>
             </form>
@@ -34,9 +34,9 @@
             <h2>안녕하세요, {{ display_name }}님 반갑습니다.</h2>
 
             <div class="member-actions">
-                <a href="{{ url_for('member_history') }}">최근 로그인 기록 보기</a>
-                <a href="{{ url_for('member_profile') }}">프로필 보기 · 수정</a>
-                <a href="{{ url_for('board_list') }}">게시판 바로가기</a>
+                <a href="{{ url_for('member.member_history') }}">최근 로그인 기록 보기</a>
+                <a href="{{ url_for('member.member_profile') }}">프로필 보기 · 수정</a>
+                <a href="{{ url_for('board.board_list') }}">게시판 바로가기</a>
             </div>
         </div>
     </main>

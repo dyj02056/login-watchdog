@@ -20,7 +20,7 @@
         <h1>로그인 워치독</h1>
         <div class="topbar-actions">
             <button id="theme-toggle" type="button" class="theme-toggle">다크 모드</button>
-            <form method="post" action="{{ url_for('member_logout') }}">
+            <form method="post" action="{{ url_for('member.member_logout') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="logout-btn">로그아웃</button>
             </form>
@@ -31,7 +31,7 @@
         <div class="member-card board-card">
             <div class="board-list-header">
                 <h2>게시판</h2>
-                <a class="board-write-btn" href="{{ url_for('board_new') }}">글쓰기</a>
+                <a class="board-write-btn" href="{{ url_for('board.board_new') }}">글쓰기</a>
             </div>
 
             {% with messages = get_flashed_messages() %}
@@ -50,7 +50,7 @@
                 <ul class="board-post-list">
                     {% for post in posts %}
                         <li class="board-post-item">
-                            <a href="{{ url_for('board_detail', post_id=post.id) }}">{{ post.title }}</a>
+                            <a href="{{ url_for('board.board_detail', post_id=post.id) }}">{{ post.title }}</a>
                             <div class="board-post-meta">
                                 <span>{{ post.author_username }}</span>
                                 <span class="mono">{{ post.created_at | kr_time }}</span>
@@ -61,13 +61,13 @@
 
                 <nav class="board-pagination">
                     {% if page > 1 %}
-                        <a href="{{ url_for('board_list', page=page - 1) }}">← 이전</a>
+                        <a href="{{ url_for('board.board_list', page=page - 1) }}">← 이전</a>
                     {% else %}
                         <span class="board-pagination-disabled">← 이전</span>
                     {% endif %}
                     <span class="board-pagination-current">{{ page }} / {{ total_pages }}</span>
                     {% if page < total_pages %}
-                        <a href="{{ url_for('board_list', page=page + 1) }}">다음 →</a>
+                        <a href="{{ url_for('board.board_list', page=page + 1) }}">다음 →</a>
                     {% else %}
                         <span class="board-pagination-disabled">다음 →</span>
                     {% endif %}
@@ -76,7 +76,7 @@
                 <p class="empty-state">아직 등록된 게시글이 없습니다.</p>
             {% endif %}
 
-            <a class="back-link" href="{{ url_for('member_dashboard') }}">← 대시보드로 돌아가기</a>
+            <a class="back-link" href="{{ url_for('member.member_dashboard') }}">← 대시보드로 돌아가기</a>
         </div>
     </main>
 </body>
