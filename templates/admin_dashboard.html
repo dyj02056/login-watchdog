@@ -2,7 +2,7 @@
   admin_dashboard.html — 관리자 모니터링 화면의 "뼈대" (주소: /admin/dashboard)
 
   중요한 특징: 이 화면 안의 표들은 처음엔 전부 비어있다. 화면이 열리자마자
-  public/js/dashboard.js가 /api/status를 호출해서 데이터를 받아온 뒤,
+  public/js/dashboard/main.js가 /api/status를 호출해서 데이터를 받아온 뒤,
   자바스크립트가 직접 표 안에 <tr> 줄들을 만들어 채워넣는다. 그래서 이 HTML
   파일 자체에는 실제 로그 데이터가 전혀 적혀있지 않다 — 오직 "표의 틀"만 있다.
 
@@ -14,12 +14,12 @@
 <head>
     <meta charset="utf-8">
     <title>로그인 워치독 — 관리자 대시보드</title>
-    <!-- dashboard.js가 fetch()로 /api/unlock, /api/users/delete, /api/settings/signup을
+    <!-- dashboard/api.js가 fetch()로 /api/unlock, /api/users/delete, /api/settings/signup을
          호출할 때 이 meta 태그의 값을 읽어서 X-CSRFToken 헤더에 실어 보낸다. 폼과
          달리 fetch() 요청에는 hidden input을 넣을 수 없으므로, 이렇게 화면 어딘가에
          값을 심어두고 자바스크립트가 꺼내 쓰는 방식을 쓴다(CSRF 방어, 2번째 보안 수정). -->
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <!-- dashboard.js가 몇 밀리초마다 /api/status를 다시 부를지. config.py의
+    <!-- dashboard/api.js가 몇 밀리초마다 /api/status를 다시 부를지. config.py의
          ADMIN_DASHBOARD_POLL_MS 값을 app.py가 그대로 내려준다(board_detail.html의
          data-poll-interval-ms와 같은 목적, 화면마다 관례가 다른 이유는
          csrf-token처럼 이미 meta 태그로 값을 내려주는 화면이라 그 패턴을 따름). -->
@@ -35,7 +35,7 @@
             <button id="theme-toggle" type="button" class="theme-toggle">다크 모드</button>
             <!-- 로그아웃은 "링크"가 아니라 "폼 버튼"으로 만든다. 로그아웃처럼 서버 상태를
                  바꾸는 동작은 GET(단순 조회) 대신 POST로 보내는 것이 안전한 관례이기 때문이다. -->
-            <form method="post" action="{{ url_for('admin_logout') }}">
+            <form method="post" action="{{ url_for('admin.admin_logout') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="logout-btn">로그아웃</button>
             </form>
@@ -172,9 +172,13 @@
         </section>
     </main>
 
-    <!-- 이 화면의 동작(2.5초마다 새로고침, 해제 버튼 클릭 처리 등)은
-         전부 dashboard.js 한 파일에 들어있다. HTML 맨 아래에 스크립트를 두면
-         화면 요소들이 먼저 다 그려진 뒤에 스크립트가 실행되어 더 안전하다. -->
-    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    <!-- 이 화면의 동작(10초마다 새로고침, 해제 버튼 클릭 처리 등)은 public/js/dashboard/
+         디렉터리 아래 파일 6개(state/utils/render/api/events/main.js)로 나뉘어 있다 —
+         원래는 dashboard.js 한 파일이었다(분리 배경: docs/refactor/2026-09-15-file-split.md).
+         type="module"로 불러오면 브라우저가 main.js의 import 구문을 따라가며 나머지
+         파일을 전부 알아서 불러온다. 모듈 스크립트는 기본적으로 defer처럼 동작해서
+         (화면 요소가 먼저 다 그려진 뒤 실행됨) 맨 아래 둘 필요는 없지만, 기존 관례를
+         그대로 유지했다. -->
+    <script type="module" src="{{ url_for('static', filename='js/dashboard/main.js') }}"></script>
 </body>
 </html>

@@ -19,7 +19,7 @@
 
 | 영역 | 사용 기술 |
 |---|---|
-| 백엔드 | Flask (단일 `app.py`, Blueprint 미사용) |
+| 백엔드 | Flask (Blueprint 4개로 라우트 분리, `routes/` 참고) |
 | 데이터베이스 | Supabase (PostgreSQL) |
 | 알림 | Slack Incoming Webhook |
 | 인증 | Flask 세션 + `werkzeug.security` (비밀번호 해시) |
@@ -167,15 +167,17 @@ python scripts/unlock_ip.py --all           # 활성 잠금 전부 즉시 해제
 
 ```
 login-watchdog/
-├── app.py              # Flask 진입점 — 라우트, 세션, 로그인 흐름
-├── db.py                # Supabase 연동 (읽기/쓰기 전담)
-├── detector.py           # 브루트포스 판정 로직
-├── soar.py                # 판정 결과에 따른 조치(잠금/해제) 실행
-├── alert.py                # Slack 알림 전송
-├── geoip.py                  # IP 위치(국가·도시) 조회, 캐싱
-├── config.py                   # 임계값·윈도우·잠금시간 등 상수
-├── templates/                   # Jinja2 HTML 템플릿
-├── public/css, public/js         # 스타일 및 대시보드 자바스크립트
+├── app.py              # Flask 진입점 — 앱 생성, 세션/CSRF 설정, 에러 핸들러, Blueprint 등록
+├── helpers.py            # 라우트 전체가 공유하는 문지기 데코레이터·공용 함수
+├── routes/                 # Blueprint 4개 (auth/admin/board/member) — 실제 화면 라우트
+├── db/                       # Supabase 연동 (읽기/쓰기 전담), 표 묶음별로 분리된 패키지
+├── detector.py                 # 브루트포스 판정 로직
+├── soar.py                       # 판정 결과에 따른 조치(잠금/해제) 실행
+├── alert.py                        # Slack 알림 전송
+├── geoip.py                          # IP 위치(국가·도시) 조회, 캐싱
+├── config.py                           # 임계값·윈도우·잠금시간 등 상수
+├── templates/                            # Jinja2 HTML 템플릿
+├── public/css, public/js/dashboard/        # 스타일 및 대시보드 자바스크립트(ES 모듈 6개)
 ├── tests/                          # pytest 단위 테스트
 ├── scripts/                         # 유지보수 스크립트 (bruteforce_sim.py, daily_report.py, unlock_ip.py — 위 "유지보수 스크립트" 참고)
 ├── docs/schema.sql                  # Supabase 테이블 정의
@@ -189,6 +191,7 @@ login-watchdog/
 - [plan.md](plan.md) — 각 파일을 왜 이렇게 설계했는지에 대한 상세 근거
 - [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide23_security_events_fixes.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
 - [docs/board-comment/](docs/board-comment) — 게시판·댓글 기능을 왜 이렇게 설계했는지(구현 전 분석 → 모호한 질문 11개 결정 → 구현 계획 → 결과 보고) 순서대로 기록한 문서 4종
+- [docs/refactor/2026-09-15-file-split.md](docs/refactor/2026-09-15-file-split.md) — `app.py`/`db.py`/`dashboard.js`를 각각 `routes/`+`helpers.py`, `db/` 패키지, `public/js/dashboard/` ES 모듈로 나눈 리팩터링 배경과 과정
 
 ## 알려진 제한사항
 
