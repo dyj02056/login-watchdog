@@ -21,7 +21,7 @@
         <h1>로그인 워치독</h1>
         <div class="topbar-actions">
             <button id="theme-toggle" type="button" class="theme-toggle">다크 모드</button>
-            <form method="post" action="{{ url_for('member_logout') }}">
+            <form method="post" action="{{ url_for('member.member_logout') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="logout-btn">로그아웃</button>
             </form>
@@ -65,8 +65,8 @@
 
             {% if is_owner %}
                 <div class="board-post-actions">
-                    <a href="{{ url_for('board_edit', post_id=post.id) }}">수정</a>
-                    <form method="post" action="{{ url_for('board_delete', post_id=post.id) }}"
+                    <a href="{{ url_for('board.board_edit', post_id=post.id) }}">수정</a>
+                    <form method="post" action="{{ url_for('board.board_delete', post_id=post.id) }}"
                           onsubmit="return confirm('이 게시글을 정말 삭제할까요?');">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit">삭제</button>
@@ -85,7 +85,7 @@
                         <p class="board-comment-body">{{ comment.body }}</p>
                         {% if comment.author_username == session.username %}
                             <form method="post"
-                                  action="{{ url_for('board_comment_delete', post_id=post.id, comment_id=comment.id) }}"
+                                  action="{{ url_for('board.board_comment_delete', post_id=post.id, comment_id=comment.id) }}"
                                   onsubmit="return confirm('이 댓글을 정말 삭제할까요?');">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="board-comment-delete-btn">삭제</button>
@@ -97,14 +97,14 @@
                 {% endfor %}
             </ul>
 
-            <form method="post" action="{{ url_for('board_comment_submit', post_id=post.id) }}" class="board-comment-form">
+            <form method="post" action="{{ url_for('board.board_comment_submit', post_id=post.id) }}" class="board-comment-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <label for="body">댓글 작성</label>
                 <textarea id="body" name="body" rows="3" maxlength="1000" required></textarea>
                 <button type="submit">댓글 등록</button>
             </form>
 
-            <a class="back-link" href="{{ url_for('board_list') }}">← 게시판으로 돌아가기</a>
+            <a class="back-link" href="{{ url_for('board.board_list') }}">← 게시판으로 돌아가기</a>
         </div>
     </main>
 
