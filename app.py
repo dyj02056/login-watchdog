@@ -24,9 +24,12 @@
 
 import os
 from datetime import datetime
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from flask import Flask, flash, redirect, request, url_for
+from flask_limiter import Limiter
+from flask_limiter.errors import RateLimitExceeded
 from flask_wtf import CSRFProtect
 from flask_wtf.csrf import CSRFError
 
@@ -35,6 +38,7 @@ from flask_wtf.csrf import CSRFError
 # 그 모듈들이 필요한 값을 정상적으로 찾을 수 있다.
 load_dotenv()
 
+import config
 import db
 import detector
 import soar
@@ -93,6 +97,77 @@ app.register_blueprint(board_bp)
 app.register_blueprint(member_bp)
 
 
+# ============================================================================
+# 전역 HTTP 플러딩(대량 요청 도배) 방어 (L7 공격 보강 계획 Tier 2)
+#
+# 지금까지의 *_RATE_LIMIT(로그인/가입/글쓰기/댓글)은 "특정 폼 제출"에만 걸려
+# 있었고, 일반 GET 페이지(/board, /dashboard 등)는 아무리 요청이 쏟아져도 다
+# 받아줬다 — Flask-Limiter로 "같은 IP가 1분에 이 횟수 이상 요청하면 429로
+# 거절"하는 전역 기본 한도를 하나 더 건다. key_func으로 helpers.get_request_ip를
+# 그대로 재사용해서, TRUST_FORWARDED_FOR 설정에 따라 실제 IP/신뢰하는 헤더 값
+# 중 이미 검증된 같은 기준으로 카운트한다.
+#
+# board.js/dashboard.js가 스스로 만들어내는 자동 폴링 API(_PAGE_ACCESS_EXCLUDED_
+# ENDPOINTS, track_page_access() 참고)는 정상적으로도 이 한도를 넘길 만큼 자주
+# 호출되므로, default_limits_exempt_when으로 그 엔드포인트들만 제외한다.
+# ============================================================================
+limiter = Limiter(
+    key_func=get_request_ip,
+    app=app,
+    default_limits=[f"{config.GLOBAL_RATE_LIMIT_PER_MINUTE} per minute"],
+    default_limits_exempt_when=lambda: request.endpoint in _PAGE_ACCESS_EXCLUDED_ENDPOINTS,
+)
+
+
+@app.errorhandler(RateLimitExceeded)
+def handle_rate_limit_exceeded(error):
+    """전역 요청 한도(GLOBAL_RATE_LIMIT_PER_MINUTE)를 넘긴 요청을 429로 거절하고 기록한다.
+
+    soar.record_rejection()은 signup/post/comment 요청 거부와 동일한 HIGH 등급
+    "상태 기반 중복 방지" 패턴을 쓴다 — 같은 IP가 계속 도배해도 미해결 이벤트
+    하나의 count만 올리고, security_events가 HIGH로 도배되지 않게 한다.
+    """
+    ip = get_request_ip()
+    soar.record_rejection("HTTP_FLOOD", ip, request.path, config.GLOBAL_RATE_LIMIT_PER_MINUTE)
+    return error.get_response()
+
+
+@app.after_request
+def set_security_headers(response):
+    """모든 응답에 클릭재킹/콘텐츠 스니핑 방어용 보안 헤더를 추가한다 (L7 공격 보강 계획 Tier 2).
+
+    - X-Frame-Options / Content-Security-Policy(frame-ancestors): 이 사이트를
+      다른 사이트가 <iframe>에 몰래 끼워넣고 투명하게 겹친 뒤 클릭을 유도하는
+      클릭재킹을 막는다. "즉시 해제"/"회원 삭제" 같은 파괴적 버튼이 있는 관리자
+      대시보드일수록 이 방어가 중요하다. 두 헤더를 함께 쓰는 이유는
+      X-Frame-Options가 예전 브라우저 호환용이고, CSP의 frame-ancestors가 최신
+      표준이기 때문이다.
+    - Content-Security-Policy(그 외 지시문): 이 사이트가 직접 서빙하지 않는
+      스크립트/스타일/이미지가 끼어드는 것을 막는다. style-src/font-src에
+      Google Fonts 도메인만 예외로 열어둔 이유는 public/css/tokens.css가
+      @import로 그 폰트를 불러오기 때문이다 — 그 외 템플릿/정적 파일은
+      전부 이 사이트("'self'")에서만 가져온다.
+    - X-Content-Type-Options: 브라우저가 응답의 Content-Type을 무시하고
+      내용만 보고 실행 방식을 "추측"하는 MIME 스니핑을 막는다.
+    - Referrer-Policy: 다른 사이트로 이동할 때 이 사이트의 전체 URL(쿼리스트링
+      포함)이 Referer 헤더로 그대로 넘어가는 것을 줄인다.
+    """
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self'; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
 @app.errorhandler(CSRFError)
 def handle_csrf_error(error):
     """CSRF 토큰이 없거나 틀렸을 때 Flask-WTF가 던지는 예외를 붙잡아 처리한다.
@@ -100,9 +175,20 @@ def handle_csrf_error(error):
     기본 동작(그냥 400 에러 페이지)도 안전하긴 하지만, 이 프로젝트의 다른 화면들과
     똑같이 flash 메시지 + 로그인 화면으로 안내하는 편이 사용자 경험상 자연스럽다.
     (세션이 너무 오래돼 토큰이 만료된 경우가 실제 사용자에게 가장 흔한 원인이다.)
+
+    오픈 리다이렉트 방지 (L7 공격 보강 계획 Tier 4): request.referrer는 브라우저가
+    보내는 값이지만, 결국 요청을 보낸 클라이언트가 자유롭게 설정할 수 있는 헤더다.
+    예전에는 이 값을 검증 없이 그대로 redirect()에 넘겨서, 공격자 사이트에서 이
+    CSRF 에러 핸들러로 링크를 걸면 이론상 그 값을 우리 사이트가 신뢰하는 이동
+    경로처럼 돌려주는 경로가 있었다. urlparse로 "이 사이트(request.host)로
+    돌아가는 주소인지"부터 확인하고, 아니거나 아예 없으면 로그인 화면으로 고정
+    폴백한다.
     """
     flash("보안 토큰이 만료되었거나 올바르지 않습니다. 다시 시도해주세요.")
-    return redirect(request.referrer or url_for("auth.login")), 400
+    referrer = request.referrer
+    if referrer and urlparse(referrer).netloc == request.host:
+        return redirect(referrer), 400
+    return redirect(url_for("auth.login")), 400
 
 
 # 서버가 켜질 때 딱 한 번, 관리자 계정이 하나도 없으면 .env 값으로 자동 생성한다.

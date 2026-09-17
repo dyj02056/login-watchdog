@@ -54,6 +54,57 @@ def enforce_lockout(
     db.insert_security_event(event_type, "CRITICAL", ip, None, failure_count, "LOCKED")
 
 
+def enforce_account_lockout(
+    username: str, failure_count: int, distinct_ip_count: int, triggering_ip: str
+) -> None:
+    """이 계정에 실제로 잠금을 걸고, Slack으로 알리고, CRITICAL 이벤트로 기록한다.
+
+    enforce_lockout()(IP 잠금)과 짝을 이루는 계정 잠금 버전이다 — 공격이 여러
+    IP에 나뉘어 있어 IP 잠금만으로는 못 잡을 때, 계정 자체를 잠가서 막는다
+    (L7 공격 보강 계획 Tier 1: 분산/저속 브루트포스 대응).
+
+    triggering_ip는 "잠금을 유발한 마지막 시도의 IP"다 — 실제 잠금 판단
+    기준(계정 전체 실패 횟수, IP와 무관)과는 별개로, security_events에서
+    이벤트를 훑어보는 관리자가 "가장 최근엔 어디서 왔는지" 참고할 수 있게
+    남겨둔다.
+    """
+    db.create_account_lockout(username, failure_count)
+    alert.send_account_lockout_alert(
+        username, failure_count, datetime.now(timezone.utc), distinct_ip_count
+    )
+    db.insert_security_event(
+        "DISTRIBUTED_BRUTE_FORCE",
+        "CRITICAL",
+        triggering_ip,
+        None,
+        failure_count,
+        "ACCOUNT_LOCKED",
+        username=username,
+    )
+
+
+def try_release_expired_account_lockouts() -> None:
+    """5분이 지났는데 아직 안 풀린 계정 잠금들을 찾아서 전부 풀어준다.
+
+    try_release_expired_lockouts()(IP 잠금)와 동일하게, 별도의 타이머 프로그램
+    없이 요청이 들어올 때마다 확인하는 방식으로 "자동 해제"를 흉내낸다.
+    """
+    for lockout in db.list_expired_active_account_lockouts():
+        db.release_account_lockout(lockout["username"])
+        db.resolve_security_events_for_username(lockout["username"])
+
+
+def notify_bot_detected(ip: str, path: str) -> None:
+    """허니팟 필드가 채워진 요청(자동화 스크립트/봇 의심)을 MEDIUM 이벤트로 기록한다.
+
+    Slack 알림은 보내지 않는다 — 로그인 실패 반복이나 게시글 도배처럼 그 자체로
+    실제 피해로 이어지는 사건이 아니라 "이 트래픽에 자동화 스크립트가 섞여
+    있다"는 관찰 정보이므로, notify_web_scanning() 등과 같은 급의 MEDIUM으로
+    로그에만 남긴다 (L7 공격 보강 계획 Tier 3).
+    """
+    db.insert_security_event("BOT_DETECTED", "MEDIUM", ip, path, 1, "REJECTED")
+
+
 def notify_web_scanning(ip: str, count: int, path: str) -> None:
     """Web Scanning 의심 알림을 Slack으로 보내고, MEDIUM 이벤트로 기록한다.
 

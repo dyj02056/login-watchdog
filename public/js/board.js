@@ -51,3 +51,15 @@ document.getElementById("new-comment-refresh").addEventListener("click", () => {
 });
 
 setInterval(checkForNewComments, boardPollIntervalMs);
+
+// 글/댓글 삭제 폼의 "정말 삭제할까요?" 확인창. 원래는 각 <form>에 직접
+// onsubmit="return confirm(...)"을 붙여뒀지만, 새로 추가한 CSP(script-src 'self')가
+// 이런 인라인 이벤트 핸들러를 차단한다(L7 공격 보강 계획 Tier 2) — 'unsafe-inline'으로
+// CSP를 느슨하게 푸는 대신, 이 외부 파일에서 확인창을 붙이는 방식으로 옮겼다.
+document.querySelectorAll(".js-confirm-delete").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+        if (!confirm(form.dataset.confirmMessage)) {
+            event.preventDefault();
+        }
+    });
+});

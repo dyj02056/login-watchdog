@@ -84,9 +84,20 @@ def count_recent_page_access_attempts(
 
 
 def insert_security_event(
-    event_type: str, severity: str, ip: str, path: str | None, count: int, action: str
+    event_type: str,
+    severity: str,
+    ip: str,
+    path: str | None,
+    count: int,
+    action: str,
+    username: str | None = None,
 ) -> None:
-    """이상행위 이벤트 한 건을 security_events 표에 기록한다."""
+    """이상행위 이벤트 한 건을 security_events 표에 기록한다.
+
+    username은 계정 단위 이벤트(예: 분산 브루트포스로 인한 account_lockouts
+    잠금)일 때만 채운다 — 기존 IP 단위 이벤트(BRUTE_FORCE 등)는 인자를 넘기지
+    않으면 그대로 None(비어있음)이라 호출부 코드가 하나도 안 바뀐다.
+    """
     db.get_client().table("security_events").insert(
         {
             "event_type": event_type,
@@ -95,6 +106,7 @@ def insert_security_event(
             "path": path,
             "count": count,
             "action": action,
+            "username": username,
         }
     ).execute()
 
@@ -152,6 +164,19 @@ def resolve_security_events_for_ip(ip: str) -> None:
     """
     db.get_client().table("security_events").update({"resolved_at": db._now_iso()}).eq(
         "ip_address", ip
+    ).eq("severity", "CRITICAL").is_("resolved_at", "null").execute()
+
+
+def resolve_security_events_for_username(username: str) -> None:
+    """이 계정의 미해결 CRITICAL 이벤트를 전부 해결됨으로 표시한다.
+
+    resolve_security_events_for_ip()의 계정 버전이다 — 분산 브루트포스로 인한
+    계정 잠금(soar.enforce_account_lockout)은 IP가 아니라 계정을 잠그므로,
+    그 잠금이 풀리는 순간(soar.try_release_expired_account_lockouts) 이 함수로
+    관련 CRITICAL 이벤트도 함께 정리한다.
+    """
+    db.get_client().table("security_events").update({"resolved_at": db._now_iso()}).eq(
+        "username", username
     ).eq("severity", "CRITICAL").is_("resolved_at", "null").execute()
 
 
