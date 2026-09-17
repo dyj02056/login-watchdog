@@ -12,6 +12,8 @@
 # Supabase에 저장해두고, 다음부터는 외부 API 대신 그 저장값을 재사용한다.
 # ============================================================================
 
+import ipaddress
+
 import requests
 
 import db
@@ -25,13 +27,27 @@ def _fetch_location(ip: str) -> dict:
     이 함수는 캐시를 전혀 신경 쓰지 않는다 — "무조건 새로 조회한다"는 역할만
     한다. 캐시를 먼저 확인할지 말지는 이 함수를 부르는 get_locations()가 결정한다.
 
-    실패하는 경우가 두 가지 있다:
-    1. 네트워크 자체가 안 되거나 응답이 이상한 경우 (requests.RequestException)
-    2. 127.0.0.1 같은 사설/예약된 IP라서 애초에 위치가 없는 경우
+    실패하는 경우가 세 가지 있다:
+    1. ip가 애초에 올바른 IP 형식이 아닌 경우 (SSRF 방지, 아래 설명)
+    2. 네트워크 자체가 안 되거나 응답이 이상한 경우 (requests.RequestException)
+    3. 127.0.0.1 같은 사설/예약된 IP라서 애초에 위치가 없는 경우
        (ip-api.com이 {"status": "fail", "message": "reserved range"} 같은
        응답을 돌려준다)
-    두 경우 다 "조회 실패"로 취급하고, 국가/지역/도시는 전부 None으로 채운다.
+    세 경우 다 "조회 실패"로 취급하고, 국가/지역/도시는 전부 None으로 채운다.
+
+    SSRF 방지 (L7 공격 보강 계획 Tier 3): ip는 보통 helpers.get_request_ip()가
+    돌려준 값인데, config.TRUST_FORWARDED_FOR=true(데모 전용 설정)일 때는 그
+    값이 클라이언트가 보낸 X-Forwarded-For 헤더에서 그대로 온다. 이 함수가
+    ip 값을 검증 없이 _API_URL.format(ip=ip)에 그대로 꽂아 외부로 요청을
+    보내므로, 헤더에 URL 조작을 노린 문자열이 들어오면 그 문자열이 그대로
+    외부 요청 주소에 섞여 들어갈 수 있었다. ipaddress.ip_address()로 "진짜
+    IP 형식인가"만 먼저 확인하고, 아니면 요청 자체를 보내지 않는다.
     """
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError:
+        return {"country": None, "region_name": None, "city": None, "lookup_failed": True}
+
     try:
         response = requests.get(
             _API_URL.format(ip=ip),

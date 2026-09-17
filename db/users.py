@@ -10,6 +10,11 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 import db
 
+# 타이밍 사이드채널 방지용 더미 해시 (L7 공격 보강 계획 Tier 3) — verify_user_credentials
+# 참고. 모듈이 처음 로드될 때 딱 한 번만 계산해서 고정해둔다 — 요청마다 새로
+# generate_password_hash를 부르면 그 계산 자체가 또 다른 시간차를 만들어버린다.
+_DUMMY_PASSWORD_HASH = generate_password_hash("dummy-password-for-timing-safety")
+
 
 def get_user_by_username(username: str) -> dict | None:
     """아이디로 사용자 한 명을 찾는다. 없으면 None을 돌려준다."""
@@ -69,11 +74,19 @@ def verify_user_credentials(username: str, password: str) -> bool:
 
     동작 원리는 verify_admin_credentials와 동일 — 저장된 암호문과
     "지금 입력한 비밀번호를 암호화한 결과"가 일치하는지만 비교한다.
+
+    타이밍 사이드채널 방지 (L7 공격 보강 계획 Tier 3): 예전에는 아이디가 없으면
+    check_password_hash()를 아예 건너뛰고 바로 False를 돌려줬다. 이 해시 비교는
+    일부러 느리게 설계된 연산이라, "즉시 반환(아이디 없음)"과 "해시 비교 후
+    반환(비밀번호만 틀림)" 사이에 응답 시간 차이가 생겨 공격자가 그 차이만으로
+    "이 아이디가 존재하는가"를 추측할 수 있었다(화면 메시지는 이미 통일돼
+    있었지만 타이밍까지는 못 가렸다). 아이디가 없을 때도 미리 만들어둔 더미
+    해시로 항상 같은 비교 연산을 거치게 해서 응답 시간을 균일화한다.
     """
     user = get_user_by_username(username)
-    if user is None:
-        return False  # 그런 아이디로 가입한 사람이 없음
-    return check_password_hash(user["password_hash"], password)
+    password_hash = user["password_hash"] if user else _DUMMY_PASSWORD_HASH
+    result = check_password_hash(password_hash, password)
+    return result if user else False
 
 
 def update_user_profile(user_id: int, name: str, email: str) -> bool:

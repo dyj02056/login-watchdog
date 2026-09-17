@@ -58,7 +58,9 @@ def test_login_page_loads(client):
 
 def test_login_success_creates_session_and_redirects(client, monkeypatch):
     monkeypatch.setattr(soar, "try_release_expired_lockouts", lambda: None)
+    monkeypatch.setattr(soar, "try_release_expired_account_lockouts", lambda: None)
     monkeypatch.setattr(detector, "is_locked", lambda ip: False)
+    monkeypatch.setattr(detector, "is_account_locked", lambda username: False)
     monkeypatch.setattr(db, "verify_user_credentials", lambda username, password: True)
     monkeypatch.setattr(db, "log_attempt", lambda ip, username, success: None)
     monkeypatch.setattr(
@@ -85,6 +87,7 @@ def test_login_locked_ip_short_circuits_before_checking_credentials(client, monk
         raise AssertionError("잠긴 IP인데 verify_user_credentials가 호출되었다")
 
     monkeypatch.setattr(soar, "try_release_expired_lockouts", lambda: None)
+    monkeypatch.setattr(soar, "try_release_expired_account_lockouts", lambda: None)
     monkeypatch.setattr(detector, "is_locked", lambda ip: True)
     monkeypatch.setattr(db, "verify_user_credentials", _fail_if_called)
 
@@ -101,7 +104,9 @@ def test_login_failure_over_threshold_triggers_lockout(client, monkeypatch):
     enforce_lockout_calls = []
 
     monkeypatch.setattr(soar, "try_release_expired_lockouts", lambda: None)
+    monkeypatch.setattr(soar, "try_release_expired_account_lockouts", lambda: None)
     monkeypatch.setattr(detector, "is_locked", lambda ip: False)
+    monkeypatch.setattr(detector, "is_account_locked", lambda username: False)
     monkeypatch.setattr(db, "verify_user_credentials", lambda username, password: False)
     monkeypatch.setattr(db, "log_attempt", lambda ip, username, success: None)
     monkeypatch.setattr(detector, "is_suspicious", lambda ip: (True, 6))
@@ -126,6 +131,64 @@ def test_login_failure_over_threshold_triggers_lockout(client, monkeypatch):
     assert "잠긴 계정입니다" in response.get_data(as_text=True)
 
 
+def test_login_failure_account_wide_over_threshold_triggers_account_lockout(client, monkeypatch):
+    # IP 단위로는 아직 수상하지 않지만(is_suspicious=False), 이 계정이 여러 IP에
+    # 걸쳐 총합으로 임계값을 넘었다면 IP가 아니라 계정을 잠가야 한다
+    # (L7 공격 보강 계획 Tier 1: 분산/저속 브루트포스 대응).
+    enforce_account_lockout_calls = []
+
+    monkeypatch.setattr(soar, "try_release_expired_lockouts", lambda: None)
+    monkeypatch.setattr(soar, "try_release_expired_account_lockouts", lambda: None)
+    monkeypatch.setattr(detector, "is_locked", lambda ip: False)
+    monkeypatch.setattr(detector, "is_account_locked", lambda username: False)
+    monkeypatch.setattr(db, "verify_user_credentials", lambda username, password: False)
+    monkeypatch.setattr(db, "log_attempt", lambda ip, username, success: None)
+    monkeypatch.setattr(detector, "is_suspicious", lambda ip: (False, 2))
+    monkeypatch.setattr(detector, "is_account_suspicious", lambda username: (True, 9))
+    monkeypatch.setattr(detector, "count_distinct_ips_by_username", lambda username: 4)
+    monkeypatch.setattr(
+        soar,
+        "enforce_account_lockout",
+        lambda username, failure_count, distinct_ip_count, triggering_ip: enforce_account_lockout_calls.append(
+            (username, failure_count, distinct_ip_count, triggering_ip)
+        ),
+    )
+
+    token = get_csrf_token(client, "/login")
+    response = client.post(
+        "/login",
+        data={"username": "victim", "password": "wrong", "csrf_token": token},
+    )
+
+    assert enforce_account_lockout_calls[0][:3] == ("victim", 9, 4)
+    assert "잠긴 계정입니다" in response.get_data(as_text=True)
+
+
+def test_login_rejects_when_honeypot_field_is_filled(client, monkeypatch):
+    # 허니팟 필드(templates/login_form.html의 숨김 "website" 입력칸)가 채워져
+    # 있으면 자격 증명 확인 없이 즉시 거부한다 (L7 공격 보강 계획 Tier 3).
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("허니팟에 걸렸는데 이 함수가 호출되었다")
+
+    monkeypatch.setattr(soar, "try_release_expired_lockouts", lambda: None)
+    monkeypatch.setattr(soar, "try_release_expired_account_lockouts", lambda: None)
+    monkeypatch.setattr(db, "verify_user_credentials", _fail_if_called)
+    monkeypatch.setattr(db, "log_attempt", _fail_if_called)
+    bot_events = []
+    monkeypatch.setattr(
+        soar, "notify_bot_detected", lambda ip, path: bot_events.append((ip, path))
+    )
+
+    token = get_csrf_token(client, "/login")
+    response = client.post(
+        "/login",
+        data={"username": "hyun", "password": "whatever", "website": "http://spam.example", "csrf_token": token},
+    )
+
+    assert bot_events == [("127.0.0.1", "/login")]
+    assert "아이디 또는 비밀번호가 올바르지 않습니다" in response.get_data(as_text=True)
+
+
 def test_login_post_without_csrf_token_is_rejected(client, monkeypatch):
     monkeypatch.setattr(soar, "try_release_expired_lockouts", lambda: None)
     monkeypatch.setattr(detector, "is_locked", lambda ip: False)
@@ -133,6 +196,42 @@ def test_login_post_without_csrf_token_is_rejected(client, monkeypatch):
     response = client.post("/login", data={"username": "hyun", "password": "whatever"})
 
     assert response.status_code == 400
+
+
+def test_csrf_error_redirects_to_login_when_no_referrer(client):
+    # 오픈 리다이렉트 방지 (L7 공격 보강 계획 Tier 4) — Referer 헤더가 아예
+    # 없으면(예: 브라우저가 Referer를 안 보내는 설정) 로그인 화면으로 폴백해야 한다.
+    response = client.post("/login", data={"username": "hyun", "password": "whatever"})
+
+    assert response.status_code == 400
+    assert response.headers["Location"] == "/login"
+
+
+def test_csrf_error_preserves_same_origin_referrer(client):
+    # 같은 사이트 안의 페이지(예: /signup)에서 CSRF 오류가 났다면, 그 페이지로
+    # 그대로 돌려보내는 기존 사용자 경험은 유지되어야 한다.
+    response = client.post(
+        "/login",
+        data={"username": "hyun", "password": "whatever"},
+        headers={"Referer": "http://localhost/signup"},
+    )
+
+    assert response.status_code == 400
+    assert response.headers["Location"] == "http://localhost/signup"
+
+
+def test_csrf_error_ignores_cross_origin_referrer(client):
+    # 오픈 리다이렉트 방지 핵심 케이스 — 공격자 사이트가 이 핸들러로 링크를 걸어
+    # Referer를 자신의 사이트로 조작해도, 우리 사이트가 아닌 주소로는 절대
+    # 돌려보내면 안 된다.
+    response = client.post(
+        "/login",
+        data={"username": "hyun", "password": "whatever"},
+        headers={"Referer": "http://evil.example.com/phishing"},
+    )
+
+    assert response.status_code == 400
+    assert response.headers["Location"] == "/login"
 
 
 # ============================================================================
@@ -209,6 +308,38 @@ def test_admin_login_success_still_creates_session_when_not_suspicious(client, m
 # ============================================================================
 # /signup — 회원가입 입력 검증
 # ============================================================================
+
+def test_signup_rejects_when_honeypot_field_is_filled(client, monkeypatch):
+    # 허니팟 필드(templates/signup.html의 숨김 "website" 입력칸)가 채워져
+    # 있으면 자동화 스크립트로 간주해 즉시 거부한다 (L7 공격 보강 계획 Tier 3).
+    monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("허니팟에 걸렸는데 이 함수가 호출되었다")
+
+    monkeypatch.setattr(detector, "is_signup_rate_limited", _fail_if_called)
+    monkeypatch.setattr(db, "log_signup_attempt", _fail_if_called)
+    monkeypatch.setattr(db, "create_user", _fail_if_called)
+    bot_events = []
+    monkeypatch.setattr(
+        soar, "notify_bot_detected", lambda ip, path: bot_events.append((ip, path))
+    )
+
+    token = get_csrf_token(client, "/signup")
+    client.post(
+        "/signup",
+        data={
+            "username": "botuser",
+            "email": "bot@example.com",
+            "password": "password123",
+            "password_confirm": "password123",
+            "website": "http://spam.example",
+            "csrf_token": token,
+        },
+    )
+
+    assert bot_events == [("127.0.0.1", "/signup")]
+
 
 def test_signup_rejects_username_with_html_special_characters(client, monkeypatch):
     monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
