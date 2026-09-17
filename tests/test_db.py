@@ -138,6 +138,29 @@ def test_verify_admin_credentials_false_when_username_not_found(monkeypatch):
     assert result is False
 
 
+def test_verify_admin_credentials_hashes_even_when_username_not_found(monkeypatch):
+    # test_verify_user_credentials_hashes_even_when_username_not_found와 동일한
+    # 목적의 관리자 로그인 버전 (L7 공격 보강 계획 Tier 3).
+    from db import admin as admin_module
+
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    calls = []
+    original_check = admin_module.check_password_hash
+
+    def spy_check_password_hash(pwhash, password):
+        calls.append((pwhash, password))
+        return original_check(pwhash, password)
+
+    monkeypatch.setattr(admin_module, "check_password_hash", spy_check_password_hash)
+
+    db.verify_admin_credentials("no_such_admin", "anything")
+
+    assert len(calls) == 1
+    assert calls[0][0] == admin_module._DUMMY_PASSWORD_HASH
+
+
 def test_count_recent_distinct_usernames_dedupes_rows(monkeypatch):
     # 같은 아이디("hyun")로 두 번, 다른 아이디("guest")로 한 번 실패한 상황을 흉내낸다.
     # 행은 3개지만 서로 다른 아이디는 2개여야 한다 — Brute Force(1개)와
@@ -147,6 +170,73 @@ def test_count_recent_distinct_usernames_dedupes_rows(monkeypatch):
     monkeypatch.setattr(db, "get_client", lambda: fake_client)
 
     result = db.count_recent_distinct_usernames("1.2.3.4")
+
+    assert result == 2
+
+
+def test_verify_user_credentials_true_for_correct_password(monkeypatch):
+    stored_hash = generate_password_hash("correct-horse-battery-staple")
+    fake_client = _FakeQuery(rows=[{"password_hash": stored_hash}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.verify_user_credentials("hyun", "correct-horse-battery-staple")
+
+    assert result is True
+
+
+def test_verify_user_credentials_false_for_wrong_password(monkeypatch):
+    stored_hash = generate_password_hash("correct-horse-battery-staple")
+    fake_client = _FakeQuery(rows=[{"password_hash": stored_hash}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.verify_user_credentials("hyun", "wrong-password")
+
+    assert result is False
+
+
+def test_verify_user_credentials_false_when_username_not_found(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.verify_user_credentials("no_such_user", "anything")
+
+    assert result is False
+
+
+def test_verify_user_credentials_hashes_even_when_username_not_found(monkeypatch):
+    # 타이밍 사이드채널 방지 확인 (L7 공격 보강 계획 Tier 3) — 아이디가 없을
+    # 때도 check_password_hash가 실제로 호출돼야 한다. 예전 코드는 아이디가
+    # 없으면 이 호출 자체를 건너뛰어서, "즉시 반환"과 "해시 비교 후 반환"
+    # 사이에 응답 시간 차이가 생겼다.
+    from db import users as users_module
+
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    calls = []
+    original_check = users_module.check_password_hash
+
+    def spy_check_password_hash(pwhash, password):
+        calls.append((pwhash, password))
+        return original_check(pwhash, password)
+
+    monkeypatch.setattr(users_module, "check_password_hash", spy_check_password_hash)
+
+    db.verify_user_credentials("no_such_user", "anything")
+
+    assert len(calls) == 1
+    assert calls[0][0] == users_module._DUMMY_PASSWORD_HASH
+
+
+def test_count_recent_distinct_ips_by_username_dedupes_rows(monkeypatch):
+    # 같은 IP("1.1.1.1")에서 두 번, 다른 IP("2.2.2.2")에서 한 번 실패한 상황을
+    # 흉내낸다. 행은 3개지만 서로 다른 IP는 2개여야 한다 — 분산 브루트포스
+    # (여러 IP가 한 계정을 노림) 판단이 정확하려면 이 dedup이 정확해야 한다.
+    rows = [{"ip_address": "1.1.1.1"}, {"ip_address": "1.1.1.1"}, {"ip_address": "2.2.2.2"}]
+    fake_client = _FakeQuery(rows=rows)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.count_recent_distinct_ips_by_username("victim")
 
     assert result == 2
 
@@ -512,6 +602,7 @@ def test_insert_security_event_inserts_expected_row(monkeypatch):
                 "path": "/no-such-page",
                 "count": 11,
                 "action": "ALERTED",
+                "username": None,
             },
         ),
         {},
@@ -612,6 +703,7 @@ def test_insert_security_event_or_bump_inserts_when_no_conflict(monkeypatch):
                 "path": "/signup",
                 "count": 5,
                 "action": "REJECTED",
+                "username": None,
             },
         ),
         {},
@@ -628,7 +720,21 @@ def test_insert_security_event_or_bump_falls_back_to_increment_on_conflict(monke
 
     db.insert_security_event_or_bump("SIGNUP_RATE_LIMIT", "HIGH", "9.9.9.9", "/signup", 5, "REJECTED")
 
-    assert ("insert", ({"event_type": "SIGNUP_RATE_LIMIT", "severity": "HIGH", "ip_address": "9.9.9.9", "path": "/signup", "count": 5, "action": "REJECTED"},), {}) in fake_client.calls
+    assert (
+        "insert",
+        (
+            {
+                "event_type": "SIGNUP_RATE_LIMIT",
+                "severity": "HIGH",
+                "ip_address": "9.9.9.9",
+                "path": "/signup",
+                "count": 5,
+                "action": "REJECTED",
+                "username": None,
+            },
+        ),
+        {},
+    ) in fake_client.calls
     assert ("update", ({"count": 6},), {}) in fake_client.calls
 
 

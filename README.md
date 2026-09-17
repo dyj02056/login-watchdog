@@ -16,12 +16,13 @@
 - **통합 보안 위험등급** — Brute Force/Password Spraying/관리자 로그인 무차별 대입(CRITICAL), 가입·게시글·댓글 도배 거부(HIGH), Web Scanning·Unauthorized Access·반복 페이지 접근 관찰(MEDIUM)을 공통 `security_events` 표에 등급과 함께 기록. 관리자 대시보드 맨 위 "보안 이벤트" 표에서 등급 배지와 함께 조회하고, HIGH/MEDIUM은 "처리 완료" 버튼으로 처리(CRITICAL은 잠금 해제 시 자동 처리). Slack 메시지 첫 줄에도 등급 표시
 - **IP 위치 조회** — [ip-api.com](https://ip-api.com)으로 접속 IP의 국가·도시를 조회해 회원/관리자 대시보드에 표시. 조회 결과는 Supabase(`ip_locations`)에 캐시되어 같은 IP를 반복 조회하지 않음(무료 API의 분당 45건 한도 대응)
 - **게시판·댓글** (`/board`) — 로그인한 회원 전용 게시판. 글 작성/수정/삭제(본인 글만), 댓글 작성/삭제(본인 댓글만), 페이지 번호 방식 목록, 새 댓글이 달리면 알림 배너 표시. 관리자 대시보드에서는 별도로 전체 게시글·댓글을 조회·삭제 가능. 자세한 설계 배경은 [docs/board-comment/](docs/board-comment) 참고
+- **L7 공격 방어 보강** — IP를 나눠 시도하는 분산/저속 브루트포스에 대한 계정 단위 잠금(CRITICAL), 클릭재킹/CSP 방어용 보안 응답 헤더와 전역 HTTP 플러딩 방어(HIGH), 로그인/가입/글쓰기/댓글 폼의 허니팟 봇 차단과 로그인 타이밍 사이드채널 제거·SSRF 입력 검증(MEDIUM), CSRF 에러 핸들러 오픈 리다이렉트 수정(LOW)까지 위험등급별로 대응. 자세한 내용은 [docs/beginner-guide/guide24_l7_attack_hardening.md](docs/beginner-guide/guide24_l7_attack_hardening.md) 참고
 
 ## 기술 스택
 
 | 영역 | 사용 기술 |
 |---|---|
-| 백엔드 | Flask (Blueprint 4개로 라우트 분리, `routes/` 참고) |
+| 백엔드 | Flask (Blueprint 4개로 라우트 분리, `routes/` 참고) + Flask-Limiter (전역 요청 빈도 제한) |
 | 데이터베이스 | Supabase (PostgreSQL) |
 | 알림 | Slack Incoming Webhook |
 | 인증 | Flask 세션 + `werkzeug.security` (비밀번호 해시) |
@@ -183,7 +184,7 @@ login-watchdog/
 ├── tests/                          # pytest 단위 테스트
 ├── scripts/                         # 유지보수 스크립트 (bruteforce_sim.py, daily_report.py, unlock_ip.py — 위 "유지보수 스크립트" 참고)
 ├── docs/schema.sql                  # Supabase 테이블 정의
-├── docs/beginner-guide/               # 비전공자용 단계별 구현 해설서 (23개 파일로 분리)
+├── docs/beginner-guide/               # 비전공자용 단계별 구현 해설서 (24개 파일로 분리)
 ├── docs/board-comment/                  # 게시판·댓글 기능 설계 문서(분석 → 결정 → 계획 → 결과)
 └── plan.md, research.md                # 설계 근거 문서
 ```
@@ -191,7 +192,7 @@ login-watchdog/
 ## 더 자세히 알고 싶다면
 
 - [plan.md](plan.md) — 각 파일을 왜 이렇게 설계했는지에 대한 상세 근거
-- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide23_security_events_fixes.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
+- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide24_l7_attack_hardening.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
 - [docs/board-comment/](docs/board-comment) — 게시판·댓글 기능을 왜 이렇게 설계했는지(구현 전 분석 → 모호한 질문 11개 결정 → 구현 계획 → 결과 보고) 순서대로 기록한 문서 4종
 - [docs/refactor/2026-09-15-file-split.md](docs/refactor/2026-09-15-file-split.md) — `app.py`/`db.py`/`dashboard.js`를 각각 `routes/`+`helpers.py`, `db/` 패키지, `public/js/dashboard/` ES 모듈로 나눈 리팩터링 배경과 과정
 
@@ -200,10 +201,12 @@ login-watchdog/
 - **IP 단위 잠금** — 계정이 아니라 접속 IP를 기준으로 잠급니다. 같은 공유 IP(회사·카페 와이파이 등)의 여러 사용자가 한 명의 실패 때문에 함께 잠길 수 있습니다. `/admin/login`도 `/login`과 같은 IP 기준 잠금을 공유하므로, 같은 컴퓨터에서 브루트포스를 시뮬레이션하다 관리자 계정 IP까지 함께 잠기면 대시보드의 "즉시 해제" 버튼도 쓸 수 없습니다(로그인 자체가 막혀서) — 이때는 `scripts/unlock_ip.py`로 터미널에서 바로 풀 수 있습니다.
 - **관리자 계정 1개 고정** — 회원가입 화면 없이 `.env` 값으로 서버 최초 기동 시 1명만 자동 생성됩니다. 여러 관리자·권한 구분(RBAC)은 지원하지 않습니다.
 - **자동 해제는 "정시"가 아니라 "다음 요청 시"** — 백그라운드 타이머 없이, `/login` 요청이나 대시보드 폴링이 들어올 때 만료된 잠금을 정리합니다. 한동안 요청이 없으면 5분이 지나도 실제 해제가 늦어질 수 있습니다.
-- **`TRUST_FORWARDED_FOR`는 데모 전용** — 켜두면 요청 헤더의 IP를 그대로 신뢰합니다. 운영 환경에서 켜두면 공격자가 헤더 조작만으로 IP 잠금을 우회할 수 있어 위험합니다.
+- **`TRUST_FORWARDED_FOR`는 데모 전용** — 켜두면 요청 헤더의 IP를 신뢰합니다(형식이 올바른 IP인지는 검증하지만, 그 값 자체가 진짜 요청자의 IP인지는 확인할 수 없습니다). 운영 환경에서 켜두면 공격자가 헤더에 임의의(형식은 유효한) IP를 넣는 것만으로 IP 잠금을 우회할 수 있어 위험합니다.
 - **동시 실행 시 경쟁 조건(race condition) 가능성** — 여러 사람이 동시에 같은 IP로 브루트포스를 시뮬레이션하면 Slack 알림이 중복 발송되거나 잠금 처리가 겹칠 수 있습니다. 시연 시 한 명만 시뮬레이션 실행을 권장합니다.
 - **대시보드는 실시간이 아니라 폴링 방식** — 웹소켓 기반 실시간 스트리밍이 아니라 일정 주기(기본 10초)로 새로고침합니다. 최대 그 주기만큼 화면이 실제 상태보다 늦게 보일 수 있습니다. 주기 조절 방법은 [docs/beginner-guide/guide09_quota.md](docs/beginner-guide/guide09_quota.md)를 참고하세요.
 - **개발용 서버 사용** — `app.run(debug=True)`는 Flask가 공식적으로 "운영 배포에 쓰지 말라"고 명시하는 개발용 서버입니다. 외부 공개 서비스로 배포하려면 별도의 프로덕션 WSGI 서버(gunicorn 등)로 교체해야 합니다.
 - **감시 대상 계정은 데모 수준 인증** — 이메일 인증, 비밀번호 재설정, 계정 잠금 셀프 해제 같은 기능은 제공하지 않습니다. `/login`은 실사용 서비스가 아니라 브루트포스 탐지를 시연하기 위한 화면입니다.
 - **IP 위치 조회는 참고용** — ip-api.com 무료 API는 HTTPS를 지원하지 않고(서버 간 통신이라 브라우저 보안 경고와는 무관), 도시 단위 정확도가 완벽하지 않을 수 있습니다. `127.0.0.1` 같은 사설 IP는 항상 "위치 확인 불가"로 표시됩니다.
 - **게시판은 회원 전용, 대댓글·첨부파일 미지원** — 비로그인 사용자는 글 목록조차 볼 수 없고, 댓글은 단일 depth(답글 불가)이며 이미지/파일 첨부도 지원하지 않습니다. 회원이 탈퇴해도 작성한 글·댓글은 삭제되지 않고 흔적만 남습니다(감사 로그와 동일한 정책). 새 댓글 알림은 웹소켓이 아니라 폴링(기본 5초, `BOARD_COMMENT_POLL_MS`) 방식입니다. 설계 배경은 [docs/board-comment/02-design-decisions.md](docs/board-comment/02-design-decisions.md) 참고.
+- **게시글 id 순차 조회(스크래핑) 미차단** — 로그인만 하면 다른 회원의 글 id를 하나씩 순차 조회해 게시판 전체를 스크래핑하는 것 자체는 막지 않습니다. 게시판이 "회원 전체 공개" 설계이므로 이는 버그가 아니라 의도된 범위입니다.
+- **Slowloris 등 저속 연결형 DoS는 스코프 밖** — 연결을 아주 느리게 유지해 서버 자원을 고갈시키는 공격은 애플리케이션 코드가 아니라 리버스 프록시·WAF 같은 인프라 레벨에서 막아야 하는 유형이라 이 프로젝트에서는 다루지 않습니다.

@@ -30,6 +30,7 @@
 21. [21단계 — 이상행위 탐지 보완 (캡스톤 검토 문서 후속 조치)](guide21_anomaly_detection.md)
 22. [22단계 — 통합 보안 위험등급 시스템 (`security-risk-response-summary.md` 후속 조치)](guide22_security_grading.md)
 23. [23단계 — 보안 이벤트 코드 리뷰에서 발견된 4가지 문제 수정](guide23_security_events_fixes.md)
+24. [24단계 — L7 공격 유형 점검과 보강 (분산 브루트포스 / 보안 헤더 / 봇 차단 등)](guide24_l7_attack_hardening.md)
 
 ---
 
@@ -2703,3 +2704,62 @@ create unique index idx_security_events_high_open_incident
 **이 단계에서 만들어지거나 바뀐 파일**: [docs/schema.sql](../schema.sql), [db.py](../../db.py), [soar.py](../../soar.py), [tests/test_db.py](../../tests/test_db.py)
 
 **배포까지 확인한 것**: 네 가지 수정 모두 `main`과 나머지 5개 브랜치에 반영하고(강제 푸시 없이 병합), 1·2번 항목을 실제 배포 사이트에서도 재현해 로컬과 동일하게 동작하는 것을 확인했습니다.
+
+## 24단계 — L7 공격 유형 점검과 보강 (분산 브루트포스 / 보안 헤더 / 봇 차단 등)
+
+> 이 프로젝트가 실제로 막는 공격이 "IP 하나가 짧은 시간에 반복 두드리는" 브루트포스류와 CSRF/XSS 기본 방어뿐이라는 걸 코드로 확인하고, 아직 적용되지 않은 L7(애플리케이션 계층) 공격 유형 9가지를 정리했습니다. 그중 코드로 대응 가능한 7가지를 기존 위험등급(CRITICAL/HIGH/MEDIUM/LOW) 순으로 4단계(Tier)에 나눠 구현하고, 매 Tier가 끝날 때마다 로컬 서버로 실제 동작을 확인했습니다. 전체 내용은 [guide24_l7_attack_hardening.md](guide24_l7_attack_hardening.md)에 별도로도 정리되어 있습니다.
+
+#### 미적용 L7 공격 유형 9가지와 위험등급 분류
+
+| # | 항목 | 분류 | 대응 |
+|---|---|---|---|
+| 1 | 분산형/저속형 브루트포스 (여러 IP로 나눠서 한 계정만 노림) | CRITICAL | Tier 1 |
+| 2 | 보안 응답 헤더 미설정 (클릭재킹/CSP 부재) | HIGH | Tier 2 |
+| 3 | L7 볼류메트릭 플러딩 | HIGH | Tier 2 |
+| 4 | 봇 차단(CAPTCHA/허니팟) 부재 | MEDIUM | Tier 3 |
+| 5 | 계정 존재 여부 타이밍 사이드채널 | MEDIUM | Tier 3 |
+| 6 | SSRF (`TRUST_FORWARDED_FOR=true`일 때 조건부) | MEDIUM/LOW | Tier 3 |
+| 7 | 오픈 리다이렉트 (CSRF 에러 핸들러) | LOW | Tier 4 |
+| 8 | Slowloris류 느린 요청 공격 | LOW | 스코프 밖(문서화만) |
+| 9 | IDOR/게시글 순차 스크래핑 | LOW | 설계상 허용(문서화만) |
+
+### Tier 1 (CRITICAL) — 분산/저속 브루트포스 방어
+
+**무엇이 문제였는가**: 잠금이 전부 IP 기준이라, 공격자가 IP를 여러 개 돌려가며 같은 계정만 노리면 각 IP의 실패 횟수가 임계값(5회)을 안 넘어 탐지되지 않았습니다.
+
+**어떻게 고쳤는가**: `lockouts`(IP 잠금)와 짝을 이루는 `account_lockouts` 표를 새로 만들고, IP와 무관하게 "이 계정이 총 몇 번 실패당했는가"를 세는 `count_recent_failures_by_username()`을 `ACCOUNT_FAILURE_THRESHOLD`(기본 8회)와 비교해 초과하면 계정 자체를 잠급니다. `detector.py`/`soar.py`에 기존 IP 잠금 함수와 대칭되는 계정 잠금 함수를 추가했습니다.
+
+**실제로 확인한 것**: `pytest` 170개 통과. 로컬 서버에서 서로 다른 IP로 나눠 8회를 넘기면 계정이 잠기고, 이후 올바른 비밀번호로도 로그인이 거부되는 것을 확인.
+
+**Supabase 반영 필요**: `account_lockouts` 테이블, `security_events.username` 컬럼 추가 SQL 실행. **사용자가 실행 완료함.**
+
+### Tier 2 (HIGH) — 보안 응답 헤더 + 전역 HTTP 플러딩 방어
+
+**무엇이 문제였는가**: `X-Frame-Options`/CSP 같은 보안 헤더가 전혀 없어 관리자 대시보드가 클릭재킹(UI 리드레싱)에 노출돼 있었고, 일반 GET 페이지는 요청이 쏟아져도 막을 수단이 없었습니다.
+
+**어떻게 고쳤는가**: `app.py`의 `after_request` 훅으로 4개 보안 헤더를 모든 응답에 추가하고(CSP는 `'unsafe-inline'` 없이 엄격하게), `flask-limiter`로 전역 분당 요청 한도(`GLOBAL_RATE_LIMIT_PER_MINUTE`, 기본 120)를 걸었습니다. board.js/dashboard.js 자동 폴링 API는 기존 제외 목록을 재사용해 한도에서 뺐습니다. CSP 때문에 `board_detail.html`의 인라인 `onsubmit="confirm(...)"` 두 곳을 외부 JS로 옮겼습니다.
+
+**실제로 확인한 것**: `curl -I`로 보안 헤더 확인. `/login`에 130회 연속 요청 시 **정확히 121번째부터 429**(임계값 120과 일치), 대시보드에 `HIGH · HTTP_FLOOD` 이벤트 기록 확인. 브라우저로 회원가입~게시판 삭제까지 CSP 위반 없이 정상 동작 확인.
+
+### Tier 3 (MEDIUM) — 타이밍 사이드채널 / 봇 차단(허니팟) / SSRF 입력 검증
+
+**타이밍 사이드채널**: 아이디가 없으면 해시 비교를 건너뛰어 생기던 응답 시간 차이를, 더미 해시로 항상 같은 비교를 거치게 해서 없앴습니다(회원·관리자 로그인 둘 다).
+
+**봇 차단**: 외부 CAPTCHA 대신 무료 허니팟 필드(`website`, CSS로 숨김)를 로그인/가입/관리자로그인/글쓰기/댓글 폼에 심어, 채워져 있으면 자동화 스크립트로 간주해 즉시 거부하고 `MEDIUM · BOT_DETECTED`만 기록합니다.
+
+**SSRF**: `geoip.py`와 `helpers.get_request_ip()` 두 곳에 `ipaddress.ip_address()` 형식 검증을 추가해, `TRUST_FORWARDED_FOR=true`일 때 조작된 헤더 값이 외부 API 요청 주소에 그대로 섞여 들어가지 못하게 막았습니다.
+
+**실제로 확인한 것**: 허니팟 필드를 채운 회원가입 시도가 계정 생성 없이 거부되고 이벤트가 기록되는 것, 정상 가입은 그대로 동작하는 것을 로컬 서버로 확인. `TRUST_FORWARDED_FOR=true` 환경에서 조작된 헤더로 로그인해도 크래시 없이 실제 접속 IP로 안전하게 대체되고, 정상 스푸핑 IP(데모 기능)는 그대로 동작하는 것을 확인. `pytest` 184개 통과.
+
+### Tier 4 (LOW) — 오픈 리다이렉트 수정 + 문서화
+
+**무엇이 문제였는가**: CSRF 에러 핸들러가 `request.referrer`를 검증 없이 그대로 리다이렉트에 사용했습니다.
+
+**어떻게 고쳤는가**: `urlparse(referrer).netloc`이 `request.host`와 같을 때만 그 값을 쓰고, 아니면 로그인 화면으로 폴백합니다.
+
+**실제로 확인한 것**: 같은 출처/다른 출처/Referer 없음 세 경우를 `curl`로 직접 재현해 `Location` 헤더가 의도대로 나오는 것을 확인. `pytest` 187개 통과.
+
+**문서화만 한 항목**: Slowloris류(인프라 레벨 방어 대상, 스코프 밖), 게시판 IDOR/스크래핑(회원 전체 공개 설계라 정책 위반 아님) — README 알려진 제한사항에 반영.
+
+### 전체 검증 결과
+4개 Tier를 통틀어 `pytest tests/ -v` 전체 187개 테스트 통과. 각 Tier가 끝날 때마다 로컬 서버를 직접 띄워 브라우저·`curl`로 실제 동작을 확인한 뒤 다음 Tier로 넘어갔습니다.

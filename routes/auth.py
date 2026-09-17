@@ -13,7 +13,7 @@ import config
 import db
 import detector
 import soar
-from helpers import get_request_ip
+from helpers import get_request_ip, is_bot_submission
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -78,11 +78,19 @@ def signup_submit():
         flash("현재 회원가입이 잠시 중단되어 있습니다.")
         return render_template("signup.html", signup_enabled=False)
 
+    ip = get_request_ip()
+
+    # 허니팟 필드가 채워져 있으면 사람이 아니라 자동화 스크립트라고 보고,
+    # 시도 기록조차 남기지 않고 즉시 거부한다 (L7 공격 보강 계획 Tier 3).
+    if is_bot_submission():
+        soar.notify_bot_detected(ip, request.path)
+        flash("일시적인 오류가 발생했습니다. 다시 시도해주세요.")
+        return render_template("signup.html", signup_enabled=True)
+
     # 같은 IP가 짧은 시간에 너무 많이 가입을 시도하면 거부한다 — 이전에는 이 주소에
     # 요청 빈도 제한이 전혀 없어서, 스크립트로 계정을 무제한 찍어낼 수 있었다
     # (18단계 보안 점검에서 발견 및 보완). 성공/실패와 무관하게 시도 자체를 세므로,
     # 검증에서 계속 걸러지는 값을 반복 제출하는 남용도 함께 막는다.
-    ip = get_request_ip()
     if detector.is_signup_rate_limited(ip):
         soar.record_rejection("SIGNUP_RATE_LIMIT", ip, request.path, config.SIGNUP_RATE_LIMIT)
         flash("너무 많은 가입 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.")
@@ -145,27 +153,37 @@ def login_submit():
     """로그인 폼 제출을 처리한다. 이 함수 하나가 이 프로젝트의 핵심 흐름을 담당한다.
 
     처리 순서:
-    1. 혹시 자동으로 풀어줘야 할 만료된 잠금이 있으면 먼저 정리한다.
-    2. 이번 요청을 보낸 IP를 알아낸다.
-    3. 이 IP가 지금 잠긴 상태라면, 아이디/비밀번호를 확인하지도 않고
-       곧바로 "잠긴 계정입니다" 메시지를 보여준다.
+    1. 혹시 자동으로 풀어줘야 할 만료된 잠금(IP 단위 + 계정 단위)이 있으면 먼저 정리한다.
+    2. 이번 요청을 보낸 IP와 입력된 아이디를 알아낸다.
+    3. 이 IP가 지금 잠긴 상태이거나, 이 계정 자체가 (다른 IP들이 나눠서 공격해서)
+       잠긴 상태라면 아이디/비밀번호를 확인하지도 않고 곧바로 거부한다.
     4. 잠긴 상태가 아니라면 실제로 아이디/비밀번호를 확인하고, 그 시도를 기록한다.
-    5. 만약 이번 시도가 실패였다면 "혹시 이 IP가 수상한 수준(5회 초과)이 됐는지"
-       판정하고, 그렇다면 즉시 잠근다(soar.enforce_lockout이 알림까지 같이 보냄).
+    5. 실패했다면 "혹시 이 IP가 수상한 수준(5회 초과)이 됐는지"를 먼저 보고,
+       아니라면 "혹시 이 계정이 여러 IP에 걸쳐 총합으로 수상한 수준(8회 초과)이
+       됐는지"도 본다 — 전자는 soar.enforce_lockout(IP 잠금), 후자는
+       soar.enforce_account_lockout(계정 잠금)이 알림까지 같이 보낸다
+       (L7 공격 보강 계획 Tier 1: 분산/저속 브루트포스 대응).
     6. 성공했다면 회원 세션을 만들어서 회원 대시보드로 이동시킨다(12단계에서 추가).
     """
-    # 1) 시간이 지나 자동으로 풀려야 할 잠금들을 정리
+    # 1) 시간이 지나 자동으로 풀려야 할 잠금들을 정리 (IP 단위 + 계정 단위)
     soar.try_release_expired_lockouts()
+    soar.try_release_expired_account_lockouts()
 
     ip = get_request_ip()
-
-    # 2) 이미 잠긴 IP라면 계정 검증 자체를 건너뛰고 즉시 거부
-    if detector.is_locked(ip):
-        flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
-        return render_template("login_form.html", form_action=url_for("auth.login_submit"))
-
     username = request.form.get("username", "")
     password = request.form.get("password", "")
+
+    # 허니팟 필드가 채워져 있으면 사람이 아니라 자동화 스크립트라고 보고,
+    # 자격 증명 확인/시도 기록 없이 즉시 거부한다 (L7 공격 보강 계획 Tier 3).
+    if is_bot_submission():
+        soar.notify_bot_detected(ip, request.path)
+        flash("아이디 또는 비밀번호가 올바르지 않습니다.")
+        return render_template("login_form.html", form_action=url_for("auth.login_submit"))
+
+    # 2) 이미 잠긴 IP이거나, 이미 잠긴 계정이라면 검증 자체를 건너뛰고 즉시 거부
+    if detector.is_locked(ip) or detector.is_account_locked(username):
+        flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
+        return render_template("login_form.html", form_action=url_for("auth.login_submit"))
 
     success = db.verify_user_credentials(username, password)
     db.log_attempt(ip, username, success)
@@ -180,7 +198,7 @@ def login_submit():
         session["user_id"] = user["id"]
         return redirect(url_for("member.member_dashboard"))
 
-    # 실패했다면, 이 실패로 인해 방금 임계값을 넘었는지 확인한다.
+    # 실패했다면, 먼저 이 IP가 방금 임계값을 넘었는지 확인한다.
     suspicious, failure_count = detector.is_suspicious(ip)
     if suspicious:
         # 최근 실패에 쓰인 아이디가 몇 개였는지도 함께 세서, Slack 알림이 Brute
@@ -190,8 +208,17 @@ def login_submit():
         soar.enforce_lockout(ip, failure_count, distinct_usernames)
         flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
     else:
-        # 사용자 존재 여부(아이디가 없는지, 비밀번호만 틀렸는지)를 구분해서 알려주면
-        # 공격자에게 힌트를 주게 되므로, 항상 똑같은 문구로만 실패를 알린다.
-        flash("아이디 또는 비밀번호가 올바르지 않습니다.")
+        # IP 단위로는 아직 수상하지 않더라도, 이 계정이 여러 IP에 걸쳐 나뉘어서
+        # 총합 기준으로 수상한 수준이 됐는지 확인한다 — 공격자가 IP를 돌려가며
+        # (봇넷/프록시 로테이션) 한 계정만 노리는 분산 브루트포스를 잡아낸다.
+        account_suspicious, account_failure_count = detector.is_account_suspicious(username)
+        if account_suspicious:
+            distinct_ips = detector.count_distinct_ips_by_username(username)
+            soar.enforce_account_lockout(username, account_failure_count, distinct_ips, ip)
+            flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
+        else:
+            # 사용자 존재 여부(아이디가 없는지, 비밀번호만 틀렸는지)를 구분해서
+            # 알려주면 공격자에게 힌트를 주게 되므로, 항상 똑같은 문구로만 실패를 알린다.
+            flash("아이디 또는 비밀번호가 올바르지 않습니다.")
 
     return render_template("login_form.html", form_action=url_for("auth.login_submit"))

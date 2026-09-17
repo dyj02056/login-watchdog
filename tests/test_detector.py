@@ -216,6 +216,49 @@ def test_is_page_access_suspicious_true_but_not_first_over_threshold_when_alread
     assert is_first_over_threshold is False
 
 
+def test_is_account_suspicious_false_at_exact_threshold(monkeypatch):
+    # ACCOUNT_FAILURE_THRESHOLD 기본값은 8 — 정확히 8회는 아직 수상하지 않다
+    # (is_suspicious와 동일하게 "초과"부터 수상함).
+    monkeypatch.setattr(db, "count_recent_failures_by_username", lambda username: 8)
+
+    suspicious, count = detector.is_account_suspicious("victim")
+
+    assert suspicious is False
+    assert count == 8
+
+
+def test_is_account_suspicious_true_when_failures_exceed_threshold(monkeypatch):
+    # 9번 실패하면 기준치(8)를 "초과"했으므로 수상해야 한다 — 이 실패들이
+    # 서로 다른 IP에서 왔더라도(분산 브루트포스) 계정 기준 총합으로 판단한다.
+    monkeypatch.setattr(db, "count_recent_failures_by_username", lambda username: 9)
+
+    suspicious, count = detector.is_account_suspicious("victim")
+
+    assert suspicious is True
+    assert count == 9
+
+
+def test_count_distinct_ips_by_username_passes_through_db_value(monkeypatch):
+    # count_distinct_ips_by_username은 판정을 하지 않고 db.py가 센 값을 그대로 전달만 한다.
+    monkeypatch.setattr(db, "count_recent_distinct_ips_by_username", lambda username: 4)
+
+    assert detector.count_distinct_ips_by_username("victim") == 4
+
+
+def test_is_account_locked_true_when_lockout_exists(monkeypatch):
+    monkeypatch.setattr(
+        db, "get_active_account_lockout", lambda username: {"username": username, "active": True}
+    )
+
+    assert detector.is_account_locked("victim") is True
+
+
+def test_is_account_locked_false_when_no_lockout(monkeypatch):
+    monkeypatch.setattr(db, "get_active_account_lockout", lambda username: None)
+
+    assert detector.is_account_locked("victim") is False
+
+
 def test_is_locked_true_when_lockout_exists(monkeypatch):
     # get_active_lockout이 "잠금 정보가 있다"는 뜻으로 딕셔너리를 돌려주는 상황을 흉내낸다.
     monkeypatch.setattr(db, "get_active_lockout", lambda ip: {"ip_address": ip, "active": True})

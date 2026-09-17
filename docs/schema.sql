@@ -1,6 +1,18 @@
 -- login-watchdog Supabase 스키마
 -- Supabase SQL 편집기에서 1회 실행. 이 저장소에서 직접 실행되는 마이그레이션 파일이 아니라 문서용 기록입니다.
 -- 근거: plan.md 3-3절(로그/잠금/관리자 테이블) + 회원가입 기능 확장(users 테이블)
+--
+-- 이미 이 스키마로 테이블을 만들어둔 기존 Supabase 프로젝트라면, 이 파일 전체를
+-- 다시 실행할 필요 없이 L7 공격 보강 계획(Tier 1)에서 추가된 아래 두 문장만
+-- Supabase SQL 편집기에서 실행하면 된다:
+--   create table account_lockouts (
+--     username text primary key,
+--     locked_at timestamptz not null default now(),
+--     unlock_at timestamptz not null,
+--     failure_count int not null,
+--     active boolean not null default true
+--   );
+--   alter table security_events add column username text;
 
 -- 감시 대상 /login 화면에 실제로 가입해 로그인하는 사용자 계정
 -- name: 로그인 아이디(username)와 별개인 "표시 이름". 회원가입 때는 안 받고 기본값 ''(빈 문자열)로
@@ -27,6 +39,19 @@ create index idx_login_attempts_ip_time on login_attempts (ip_address, attempted
 -- IP 단위 잠금 "현재 상태" (login_attempts와 분리 — research.md 5-2절 참고)
 create table lockouts (
   ip_address text primary key,
+  locked_at timestamptz not null default now(),
+  unlock_at timestamptz not null,
+  failure_count int not null,
+  active boolean not null default true
+);
+
+-- 계정(아이디) 단위 잠금 "현재 상태" (lockouts와 짝을 이루는 표).
+-- lockouts는 "이 IP가 얼마나 실패했는가"만 보므로, 공격자가 여러 IP로 나눠서
+-- 같은 계정만 노리면 각 IP는 임계값을 넘지 않아 안 잠긴다. 이 표는 IP와
+-- 무관하게 "이 계정이 총 몇 번 실패당했는가"를 기준으로 잠가서 분산/저속
+-- 브루트포스(L7 공격 보강 계획 Tier 1)에 대응한다.
+create table account_lockouts (
+  username text primary key,
   locked_at timestamptz not null default now(),
   unlock_at timestamptz not null,
   failure_count int not null,
@@ -177,6 +202,9 @@ create index idx_page_access_attempts_ip_path_time on page_access_attempts (ip_a
 -- 막기 위해, 기존 개별 테이블(login_attempts, not_found_attempts 등) 조회로만
 -- 추세를 본다. resolved_at은 CRITICAL(IP 잠금)은 잠금 해제 시 자동으로,
 -- HIGH/MEDIUM은 관리자가 대시보드에서 "처리 완료"를 눌러야 채워진다.
+-- username: 계정 단위 이벤트(예: 분산 브루트포스로 인한 account_lockouts 잠금)에만
+-- 채워지는 참고용 칸이다. IP 단위 이벤트(기존 BRUTE_FORCE 등)는 계속 비워둔다
+-- (L7 공격 보강 계획 Tier 1) — 기존 행과 호환되도록 nullable로 추가했다.
 create table security_events (
   id bigint generated always as identity primary key,
   event_type text not null,
@@ -185,6 +213,7 @@ create table security_events (
   path text,
   count int not null,
   action text not null,
+  username text,
   detected_at timestamptz not null default now(),
   resolved_at timestamptz
 );

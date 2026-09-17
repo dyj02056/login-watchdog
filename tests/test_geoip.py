@@ -89,6 +89,23 @@ def test_get_locations_marks_reserved_range_as_failed(monkeypatch):
     assert result["127.0.0.1"]["lookup_failed"] is True
 
 
+def test_get_locations_rejects_non_ip_value_without_calling_external_api(monkeypatch):
+    # SSRF 방지 (L7 공격 보강 계획 Tier 3) — ip 값이 진짜 IP 형식이 아니면
+    # (예: TRUST_FORWARDED_FOR=true일 때 조작된 X-Forwarded-For 헤더 값),
+    # _API_URL.format(ip=ip)에 그대로 꽂아 외부로 요청을 보내면 안 된다.
+    monkeypatch.setattr(db, "get_cached_ip_locations", lambda ips: {})
+    monkeypatch.setattr(db, "save_ip_location", lambda *args: None)
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("IP 형식이 아닌 값인데 외부 API를 호출하면 안 된다")
+
+    monkeypatch.setattr(requests, "get", fail_if_called)
+
+    result = geoip.get_locations(["not-an-ip; rm -rf /"])
+
+    assert result["not-an-ip; rm -rf /"]["lookup_failed"] is True
+
+
 def test_get_locations_dedupes_duplicate_ips(monkeypatch):
     monkeypatch.setattr(db, "get_cached_ip_locations", lambda ips: {})
     call_count = {"n": 0}

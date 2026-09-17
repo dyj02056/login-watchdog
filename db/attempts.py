@@ -70,6 +70,54 @@ def count_recent_distinct_usernames(ip: str, window_seconds: int = config.DETECT
     return len({row["username"] for row in res.data})
 
 
+def count_recent_failures_by_username(
+    username: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS
+) -> int:
+    """이 아이디가 최근 몇 초(기본 60초) 안에 (어느 IP에서 왔든) 몇 번이나
+    로그인에 실패했는지 센다.
+
+    count_recent_failures()는 IP 기준이라, 공격자가 IP를 여러 개 돌려가며
+    같은 계정만 노리면 IP 하나당 실패 횟수는 임계값을 넘지 않아 탐지를
+    피해간다. 이 함수는 IP와 무관하게 "이 계정이 총 몇 번 공격당했는가"를
+    세서 그 빈틈을 메운다 (config.ACCOUNT_FAILURE_THRESHOLD와 함께 쓰임).
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+    res = (
+        db.get_client()
+        .table("login_attempts")
+        .select("id", count="exact")
+        .eq("username", username)
+        .eq("success", False)
+        .gte("attempted_at", cutoff)
+        .execute()
+    )
+    return res.count or 0
+
+
+def count_recent_distinct_ips_by_username(
+    username: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS
+) -> int:
+    """이 아이디에 대한 최근 로그인 실패 시도가 몇 개의 서로 다른 IP에서
+    왔는지 센다.
+
+    count_recent_distinct_usernames()(한 IP가 몇 개의 아이디를 시도했는지)의
+    반대 방향이다 — 한 계정에 몰리는 IP가 많을수록 분산 브루트포스(봇넷/
+    프록시 로테이션) 의심이 커진다는 걸 alert.py가 메시지에 보여줄 수 있게
+    한다.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+    res = (
+        db.get_client()
+        .table("login_attempts")
+        .select("ip_address")
+        .eq("username", username)
+        .eq("success", False)
+        .gte("attempted_at", cutoff)
+        .execute()
+    )
+    return len({row["ip_address"] for row in res.data})
+
+
 def list_recent_attempts(page: int = 1, page_size: int = 50) -> tuple[list[dict], int]:
     """로그인 시도 기록을 최신순으로 `page`번째 페이지만 가져오고, 전체 건수도 함께 돌려준다.
 

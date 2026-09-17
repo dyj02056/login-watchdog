@@ -29,6 +29,13 @@
 # ============================================================================
 
 from ._client import _now_iso, get_client
+from .account_lockouts import (
+    create_account_lockout,
+    get_active_account_lockout,
+    list_active_account_lockouts,
+    list_expired_active_account_lockouts,
+    release_account_lockout,
+)
 from .admin import (
     count_recent_admin_failures,
     count_recent_distinct_admin_usernames,
@@ -38,8 +45,10 @@ from .admin import (
     verify_admin_credentials,
 )
 from .attempts import (
+    count_recent_distinct_ips_by_username,
     count_recent_distinct_usernames,
     count_recent_failures,
+    count_recent_failures_by_username,
     list_attempts_by_username,
     list_attempts_since,
     list_recent_attempts,
@@ -84,6 +93,7 @@ from .security_events import (
     log_unauthorized_attempt,
     resolve_security_event,
     resolve_security_events_for_ip,
+    resolve_security_events_for_username,
     update_security_event_count,
 )
 from .settings import (
@@ -113,6 +123,8 @@ __all__ = [
     "log_attempt",
     "count_recent_failures",
     "count_recent_distinct_usernames",
+    "count_recent_failures_by_username",
+    "count_recent_distinct_ips_by_username",
     "list_recent_attempts",
     "list_attempts_since",
     "list_attempts_by_username",
@@ -122,6 +134,11 @@ __all__ = [
     "list_active_lockouts",
     "list_expired_active_lockouts",
     "list_lockouts_since",
+    "create_account_lockout",
+    "get_active_account_lockout",
+    "release_account_lockout",
+    "list_active_account_lockouts",
+    "list_expired_active_account_lockouts",
     "get_user_by_username",
     "get_user_by_id",
     "create_user",
@@ -163,4 +180,5 @@ __all__ = [
     "get_unresolved_security_event",
     "update_security_event_count",
     "insert_security_event_or_bump",
+    "resolve_security_events_for_username",
 ]

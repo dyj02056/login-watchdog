@@ -14,7 +14,7 @@ import config
 import db
 import detector
 import soar
-from helpers import _attach_locations, get_request_ip, login_required
+from helpers import _attach_locations, get_request_ip, is_bot_submission, login_required
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -51,6 +51,13 @@ def admin_login_submit():
     soar.try_release_expired_lockouts()
 
     ip = get_request_ip()
+
+    # 허니팟 필드가 채워져 있으면 사람이 아니라 자동화 스크립트라고 보고,
+    # 자격 증명 확인/시도 기록 없이 즉시 거부한다 (L7 공격 보강 계획 Tier 3).
+    if is_bot_submission():
+        soar.notify_bot_detected(ip, request.path)
+        flash("아이디 또는 비밀번호가 올바르지 않습니다.")
+        return render_template("login_form.html", form_action=url_for("admin.admin_login_submit"))
 
     # 2) 이미 잠긴 IP라면 자격 증명 확인 자체를 건너뛰고 즉시 거부
     if detector.is_locked(ip):
