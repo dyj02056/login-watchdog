@@ -18,7 +18,7 @@ import config
 import db
 import detector
 import soar
-from helpers import get_request_ip, member_login_required
+from helpers import get_request_ip, is_bot_submission, member_login_required
 
 board_bp = Blueprint("board", __name__)
 
@@ -67,6 +67,13 @@ def board_new():
 def board_new_submit():
     """글쓰기 폼 제출을 처리한다."""
     ip = get_request_ip()
+
+    # 허니팟 필드가 채워져 있으면 사람이 아니라 자동화 스크립트라고 보고,
+    # 시도 기록조차 남기지 않고 즉시 거부한다 (L7 공격 보강 계획 Tier 3).
+    if is_bot_submission():
+        soar.notify_bot_detected(ip, request.path)
+        flash("일시적인 오류가 발생했습니다. 다시 시도해주세요.")
+        return render_template("board_form.html", form_action=url_for("board.board_new_submit"), post=None)
 
     # 같은 IP가 짧은 시간에 너무 많이 글을 올리면 거부한다 (signup_submit()과 동일한
     # "먼저 판정 → 성공/실패 무관하게 시도 자체를 기록" 순서, 결정 #7).
@@ -150,11 +157,18 @@ def board_edit_submit(post_id):
         return redirect(url_for("board.board_detail", post_id=post_id))
 
     form_action = url_for("board.board_edit_submit", post_id=post_id)
+    ip = get_request_ip()
+
+    # 허니팟 필드가 채워져 있으면 사람이 아니라 자동화 스크립트라고 보고 즉시 거부한다
+    # (L7 공격 보강 계획 Tier 3).
+    if is_bot_submission():
+        soar.notify_bot_detected(ip, request.path)
+        flash("일시적인 오류가 발생했습니다. 다시 시도해주세요.")
+        return render_template("board_form.html", form_action=form_action, post=post)
 
     # board_new_submit()과 동일한 빈도 제한 — 글 수정도 도배 대상이 될 수 있으므로
     # 새 글 작성과 같은 post_attempts 카운트를 공유한다 (원래 이 검사가 빠져있던
     # 공백을 보완, attack_response_state.md 구현 대상 #3).
-    ip = get_request_ip()
     if detector.is_post_rate_limited(ip):
         soar.record_rejection("POST_RATE_LIMIT", ip, request.path, config.POST_RATE_LIMIT)
         flash("너무 많은 게시글 작성 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.")
@@ -207,6 +221,13 @@ def board_comment_submit(post_id):
         return redirect(url_for("board.board_list"))
 
     ip = get_request_ip()
+
+    # 허니팟 필드가 채워져 있으면 사람이 아니라 자동화 스크립트라고 보고 즉시 거부한다
+    # (L7 공격 보강 계획 Tier 3).
+    if is_bot_submission():
+        soar.notify_bot_detected(ip, request.path)
+        return redirect(url_for("board.board_detail", post_id=post_id))
+
     if detector.is_comment_rate_limited(ip):
         soar.record_rejection("COMMENT_RATE_LIMIT", ip, request.path, config.COMMENT_RATE_LIMIT)
         flash("너무 많은 댓글 작성 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.")

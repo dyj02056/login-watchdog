@@ -180,3 +180,19 @@
     top: 20px;
     right: 20px;
 }
+
+/* 허니팟(봇 탐지)용 숨김 필드 — 로그인/가입/글쓰기/댓글 폼에 심어둔 입력칸을
+   사람 눈에는 안 보이게 화면 밖으로 밀어낸다(helpers.is_bot_submission 참고).
+   display:none 대신 화면 밖으로 옮기는 방식을 쓰는 이유: 일부 자동화
+   스크립트는 "display:none인 칸은 건너뛰어야 진짜 사람처럼 보인다"는 걸
+   흉내내기도 하는데, 이 방식은 그런 스크립트도 여전히 폼의 모든 입력칸을
+   기계적으로 순회하며 채우면 걸려들게 한다. tabindex="-1"과
+   autocomplete="off"는 화면 밖으로 밀려난 이 칸에 키보드 탭이나 자동완성이
+   실수로라도 닿지 않게 한다(HTML 쪽 속성, 이 클래스와 함께 적용). */
+.hp-field {
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+}
