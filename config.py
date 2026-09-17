@@ -5,6 +5,14 @@ DETECTION_WINDOW_SECONDS = int(os.environ.get("DETECTION_WINDOW_SECONDS", 60))
 LOCKOUT_DURATION_SECONDS = int(os.environ.get("LOCKOUT_DURATION_SECONDS", 300))
 TRUST_FORWARDED_FOR = os.environ.get("TRUST_FORWARDED_FOR", "false").lower() == "true"
 
+# 계정(아이디) 단위 실패 횟수 임계값 — FAILURE_THRESHOLD(IP 단위)와 별개로 둔다.
+# 공격자가 여러 IP로 나눠서(봇넷/프록시 로테이션) 같은 계정만 노리면 IP당 실패
+# 횟수는 임계값을 넘지 않아 탐지를 피해갈 수 있다. 이 값은 "어느 IP에서 왔든
+# 이 계정이 총 몇 번 실패당했는가"를 기준으로 삼아 그 빈틈을 메운다. IP 임계값
+# (5)보다 높게 잡은 이유: 정상 사용자가 여러 기기/브라우저에서 비밀번호를
+# 몇 번 틀리는 정도로는 계정 전체가 잠기지 않게 여유를 주기 위해서다.
+ACCOUNT_FAILURE_THRESHOLD = int(os.environ.get("ACCOUNT_FAILURE_THRESHOLD", 8))
+
 # 회원가입(/signup) 요청 빈도 제한 — 같은 IP가 DETECTION_WINDOW_SECONDS(기본 60초) 안에
 # 이 횟수 이상 가입을 시도하면(성공/실패 무관) 추가 요청을 거부한다. 로그인 브루트포스
 # 탐지(FAILURE_THRESHOLD)와 별개로, 계정 대량 생성(테이블 flooding) 남용을 막기 위한 값.
@@ -54,3 +62,11 @@ UNAUTHORIZED_ACCESS_ALERT_THRESHOLD = int(os.environ.get("UNAUTHORIZED_ACCESS_AL
 # 대상으로 한다 — 정상적인 수동 새로고침보다는 넉넉하게 잡는다
 # (attack_response_state.md 구현 대상 #4).
 PAGE_ACCESS_ALERT_THRESHOLD = int(os.environ.get("PAGE_ACCESS_ALERT_THRESHOLD", 20))
+
+# 전역 HTTP 플러딩(대량 요청 도배) 방어 — 위의 *_RATE_LIMIT들은 로그인/가입/글쓰기
+# 등 "특정 폼 제출"에만 걸려있고, 일반 GET 페이지는 아무리 요청이 쏟아져도 다
+# 받아준다. 이 값은 같은 IP가 1분 안에 "전체 요청 종류를 합쳐서" 몇 번까지
+# 허용할지를 정한다 — Flask-Limiter의 전역 기본 한도로 쓰인다(app.py 참고).
+# 폴링 API(_PAGE_ACCESS_EXCLUDED_ENDPOINTS)는 정상적으로도 이 한도를 넘길 만큼
+# 자주 호출되므로 이 제한에서 제외한다.
+GLOBAL_RATE_LIMIT_PER_MINUTE = int(os.environ.get("GLOBAL_RATE_LIMIT_PER_MINUTE", 120))

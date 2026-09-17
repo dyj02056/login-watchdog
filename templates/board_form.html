@@ -44,6 +44,13 @@
             <form method="post" action="{{ form_action }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
+                <!-- 허니팟(봇 탐지)용 숨김 필드 — helpers.is_bot_submission() 참고.
+                     사람에게는 안 보이므로 절대 채우면 안 된다. -->
+                <div class="hp-field" aria-hidden="true">
+                    <label for="website">웹사이트</label>
+                    <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+                </div>
+
                 <label for="title">제목</label>
                 <input type="text" id="title" name="title" maxlength="100"
                        value="{{ post.title if post else '' }}" required>

@@ -81,6 +81,75 @@ def test_enforce_lockout_records_admin_brute_force_when_is_admin(monkeypatch):
     assert alert_calls == [True]
 
 
+def test_enforce_account_lockout_creates_lockout_then_alerts_then_records_event(monkeypatch):
+    calls = []
+
+    def fake_create_account_lockout(username, failure_count):
+        calls.append(("create_account_lockout", username, failure_count))
+
+    def fake_send_account_lockout_alert(username, failure_count, locked_at, distinct_ip_count):
+        calls.append(("send_account_lockout_alert", username, failure_count, distinct_ip_count))
+
+    def fake_insert_security_event(event_type, severity, ip, path, count, action, username=None):
+        calls.append(("insert_security_event", event_type, severity, ip, path, count, action, username))
+
+    monkeypatch.setattr(db, "create_account_lockout", fake_create_account_lockout)
+    monkeypatch.setattr(alert, "send_account_lockout_alert", fake_send_account_lockout_alert)
+    monkeypatch.setattr(db, "insert_security_event", fake_insert_security_event)
+
+    soar.enforce_account_lockout("victim", 9, 4, "9.9.9.9")
+
+    # "잠그기 → 알리기 → 이벤트 기록" 순서, 그리고 이벤트에는 username이 채워지고
+    # ip_address 칸에는 잠금을 유발한 마지막 시도의 IP(참고용)가 남는지 확인.
+    assert calls == [
+        ("create_account_lockout", "victim", 9),
+        ("send_account_lockout_alert", "victim", 9, 4),
+        (
+            "insert_security_event",
+            "DISTRIBUTED_BRUTE_FORCE",
+            "CRITICAL",
+            "9.9.9.9",
+            None,
+            9,
+            "ACCOUNT_LOCKED",
+            "victim",
+        ),
+    ]
+
+
+def test_try_release_expired_account_lockouts_releases_each_expired_username(monkeypatch):
+    expired = [{"username": "victim1"}, {"username": "victim2"}]
+    released = []
+    resolved = []
+
+    monkeypatch.setattr(db, "list_expired_active_account_lockouts", lambda: expired)
+    monkeypatch.setattr(db, "release_account_lockout", lambda username: released.append(username))
+    monkeypatch.setattr(
+        db, "resolve_security_events_for_username", lambda username: resolved.append(username)
+    )
+
+    soar.try_release_expired_account_lockouts()
+
+    assert released == ["victim1", "victim2"]
+    assert resolved == ["victim1", "victim2"]
+
+
+def test_try_release_expired_account_lockouts_does_nothing_when_none_expired(monkeypatch):
+    monkeypatch.setattr(db, "list_expired_active_account_lockouts", lambda: [])
+    monkeypatch.setattr(db, "release_account_lockout", lambda username: (_ for _ in ()).throw(
+        AssertionError("풀어줄 게 없는데 release_account_lockout이 호출되면 안 된다")
+    ))
+    monkeypatch.setattr(
+        db,
+        "resolve_security_events_for_username",
+        lambda username: (_ for _ in ()).throw(
+            AssertionError("풀어줄 게 없는데 resolve_security_events_for_username이 호출되면 안 된다")
+        ),
+    )
+
+    soar.try_release_expired_account_lockouts()  # 예외가 안 나면 통과
+
+
 def test_try_release_expired_lockouts_releases_each_expired_ip(monkeypatch):
     expired = [{"ip_address": "1.1.1.1"}, {"ip_address": "2.2.2.2"}]
     released = []
