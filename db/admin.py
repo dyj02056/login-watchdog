@@ -13,6 +13,10 @@ from werkzeug.security import check_password_hash, generate_password_hash
 import config
 import db
 
+# 타이밍 사이드채널 방지용 더미 해시 (L7 공격 보강 계획 Tier 3, db/users.py의
+# _DUMMY_PASSWORD_HASH와 동일한 목적) — verify_admin_credentials 참고.
+_DUMMY_PASSWORD_HASH = generate_password_hash("dummy-password-for-timing-safety")
+
 
 def ensure_bootstrap_admin() -> None:
     """관리자 계정이 하나도 없으면, .env에 적힌 아이디/비밀번호로 1명을 자동으로 만든다.
@@ -42,6 +46,11 @@ def verify_admin_credentials(username: str, password: str) -> bool:
     비밀번호는 저장할 때 이미 암호화(해시)되어 있으므로, "원래 글자를 복원"해서
     비교하는 게 아니라 "입력한 비밀번호를 똑같은 방식으로 암호화했을 때 저장된
     암호문과 글자가 일치하는가"만 확인한다 (check_password_hash가 이 비교를 해줌).
+
+    타이밍 사이드채널 방지 (L7 공격 보강 계획 Tier 3, db/users.py의
+    verify_user_credentials와 동일한 이유): 아이디가 없을 때도 더미 해시로
+    항상 같은 비교 연산을 거치게 해서, "즉시 반환"과 "해시 비교 후 반환" 사이의
+    응답 시간 차이로 관리자 아이디 존재 여부를 추측하지 못하게 한다.
     """
     res = (
         db.get_client()
@@ -51,9 +60,9 @@ def verify_admin_credentials(username: str, password: str) -> bool:
         .limit(1)
         .execute()
     )
-    if not res.data:
-        return False  # 그런 아이디의 관리자가 아예 없음
-    return check_password_hash(res.data[0]["password_hash"], password)
+    password_hash = res.data[0]["password_hash"] if res.data else _DUMMY_PASSWORD_HASH
+    result = check_password_hash(password_hash, password)
+    return result if res.data else False
 
 
 def count_recent_admin_failures(ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS) -> int:

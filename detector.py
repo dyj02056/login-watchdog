@@ -11,6 +11,7 @@
 
 import db
 from config import (
+    ACCOUNT_FAILURE_THRESHOLD,
     COMMENT_RATE_LIMIT,
     FAILURE_THRESHOLD,
     PAGE_ACCESS_ALERT_THRESHOLD,
@@ -46,6 +47,34 @@ def is_admin_suspicious(ip: str) -> tuple[bool, int]:
     """
     failure_count = db.count_recent_admin_failures(ip)
     return failure_count > FAILURE_THRESHOLD, failure_count
+
+
+def is_account_suspicious(username: str) -> tuple[bool, int]:
+    """이 계정(아이디)이 여러 IP에 걸쳐 분산 공격당하고 있는 상태인지 판단한다.
+
+    is_suspicious(ip)는 "한 IP가 얼마나 실패했는가"만 보므로, 공격자가 IP를
+    나눠 쓰면(봇넷/프록시 로테이션) 각 IP는 임계값을 넘기지 않는다. 이 함수는
+    IP와 무관하게 "이 계정이 총 몇 번 실패당했는가"(ACCOUNT_FAILURE_THRESHOLD,
+    기본 8회)를 기준으로 판단해서 그 빈틈을 메운다 (L7 공격 보강 계획 Tier 1).
+    """
+    failure_count = db.count_recent_failures_by_username(username)
+    return failure_count > ACCOUNT_FAILURE_THRESHOLD, failure_count
+
+
+def count_distinct_ips_by_username(username: str) -> int:
+    """soar.enforce_account_lockout이 "몇 개의 서로 다른 IP에서 시도됐는지"를
+    잠금 알림에 표시할 수 있도록, db.py가 센 값을 그대로 전달한다.
+    """
+    return db.count_recent_distinct_ips_by_username(username)
+
+
+def is_account_locked(username: str) -> bool:
+    """이 계정이 지금 이 순간 잠긴 상태인지 True/False로 알려준다.
+
+    is_locked(ip)의 계정 버전 — db.get_active_account_lockout()의 결과가
+    있는지(None이 아닌지)만 확인한다.
+    """
+    return db.get_active_account_lockout(username) is not None
 
 
 def count_distinct_usernames(ip: str) -> int:
