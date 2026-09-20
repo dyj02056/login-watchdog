@@ -40,7 +40,7 @@ COMMENT_RATE_LIMIT = int(os.environ.get("COMMENT_RATE_LIMIT", 10))
 # 그동안 board.js/dashboard.js 각 파일에 숫자로 흩어져 있던 걸 다른 상수들처럼
 # 한 곳에 모았다.
 BOARD_COMMENT_POLL_MS = int(os.environ.get("BOARD_COMMENT_POLL_MS", 5000))
-ADMIN_DASHBOARD_POLL_MS = int(os.environ.get("ADMIN_DASHBOARD_POLL_MS", 10000))
+ADMIN_DASHBOARD_POLL_MS = int(os.environ.get("ADMIN_DASHBOARD_POLL_MS", 5000))
 
 # Web Scanning(존재하지 않는 경로 반복 요청) 탐지 임계값 — 같은 IP가
 # DETECTION_WINDOW_SECONDS(기본 60초) 안에 이 횟수를 "초과"해서 404를 유발하면
