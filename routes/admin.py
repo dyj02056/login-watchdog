@@ -203,7 +203,7 @@ def api_status():
             "users_total_pages": max(1, math.ceil(users_count / config.ADMIN_PAGE_SIZE)),
             "signup_enabled": signup_enabled,
             # 게시판 관리 섹션(관리자 대시보드)용 — recent_attempts 등과 같은 폴링
-            # 주기(dashboard.js, 10초)로 함께 갱신된다.
+            # 주기(dashboard.js, 5초)로 함께 갱신된다.
             "recent_posts": posts,
             "posts_total_pages": max(1, math.ceil(posts_count / config.ADMIN_PAGE_SIZE)),
             "recent_comments": comments,
