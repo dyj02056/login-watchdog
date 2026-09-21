@@ -140,9 +140,6 @@ pytest tests/
 실제 Supabase에 접속하지 않고 가짜 데이터(monkeypatch)로 판정 로직만 검증하므로 몇 초 안에 끝납니다. 현재 총 187개 테스트가 모두 통과합니다.
 
 ## 유지보수 스크립트
-(김재호)
-Web Scanning 탐지는 `py scripts/web_scanning_sim.py --host http://127.0.0.1:5000`으로
-GET 11회를 보내 재현할 수 있습니다. [실행 조건과 알림 확인 방법](docs/web-scanning-demo.md)을 참고하세요.
 
 `scripts/` 아래에 있으며, 웹 서버(`app.py`)와 별개로 터미널에서 직접 실행하는 도구들입니다. 실행 전 가상환경 활성화가 필요합니다(`.\venv\Scripts\Activate.ps1` 등).
 
