@@ -159,6 +159,23 @@ def list_attempts_since(hours: int = 24) -> list[dict]:
     return res.data
 
 
+def list_attempts_between(start_time: str, end_time: str) -> list[dict]:
+    """지정한 시작 시각(start_time)부터 종료 시각(end_time) 사이의 로그인 시도 기록 전체를 가져온다.
+
+    특정 정적 기간(예: 2026-09-01T00:00:00 ~ 2026-09-01T12:00:00) 동안 발생한
+    공격 기록을 정밀 분석/리포팅할 때 daily_report.py 등에서 사용된다.
+    """
+    res = (
+        db.get_client()
+        .table("login_attempts")
+        .select("*")
+        .gte("attempted_at", start_time)  # start_time 이상
+        .lte("attempted_at", end_time)    # end_time 이하
+        .execute()
+    )
+    return res.data
+
+
 def list_attempts_by_username(username: str, limit: int = 20) -> list[dict]:
     """특정 아이디의 로그인 시도 기록만 최신순으로 가져온다.
 
