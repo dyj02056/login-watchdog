@@ -11,12 +11,19 @@
 #
 # 기본 시나리오:
 #   1. GET /signup으로 CSRF 토큰과 세션 쿠키 획득
+#      (CSRF 토큰이란: 다른 사이트가 사용자 몰래 이 사이트에 요청을 대신
+#      보내는 것을 막기 위해, 서버가 화면을 열 때마다 한 번씩 발급하는
+#      1회용 비밀 값이다. 이 토큰 없이 POST를 보내면 서버가 거절한다.)
 #   2. 고유한 아이디와 이메일을 생성
-#   3. POST /signup 요청을 짧은 간격으로 6회 전송
+#   3. POST /signup 요청을 짧은 간격으로 DEFAULT_ATTEMPTS(기본 3)회 전송
 #
-# 예상 흐름:
-#   - 1~5번째 요청: 테스트 계정 생성
-#   - 6번째 요청: 회원가입 빈도 제한으로 거부
+# 서버 임계값과의 관계:
+#   config.py의 SIGNUP_RATE_LIMIT 기본값은 5다("60초 안에 같은 IP가 5번
+#   넘게 가입을 시도하면 거부"). 임계값을 실제로 "초과"시키려면
+#   5+1=6번 이상 보내야 하므로, 이 목적으로 쓰려면 run()을 호출할 때
+#   attempts=6 이상으로 지정해야 한다. 기본값 3은 정상적인 소량 가입만
+#   재현하며, 별도의 --attempts 같은 커맨드라인 옵션은 없으므로 값을
+#   바꾸려면 아래 DEFAULT_ATTEMPTS 상수나 run() 호출부를 직접 수정한다.
 #
 # 안전 원칙:
 #   실제 테스트 계정이 DB에 생성되므로 로컬 또는 팀 소유 테스트 서버에서만
@@ -49,7 +56,13 @@ REQUEST_TIMEOUT = 5
 
 
 class CsrfTokenParser(HTMLParser):
-    """HTML의 hidden input에서 CSRF 토큰을 추출한다."""
+    """HTML의 hidden input에서 CSRF 토큰을 추출한다.
+
+    회원가입 화면 HTML 안에는 눈에 보이지 않는
+    <input type="hidden" name="csrf_token" value="..."> 태그가 있는데,
+    이 클래스는 HTML을 한 줄씩 읽어가며 그 값만 뽑아낸다. 사람이 직접
+    화면 소스보기로 찾는 것을 프로그램이 대신 해주는 것이다.
+    """
 
     def __init__(self) -> None:
         super().__init__()
@@ -93,7 +106,9 @@ def create_account_data(index: int) -> dict[str, str]:
     """요청마다 중복되지 않는 테스트 계정 정보를 생성한다.
 
     현재 시각을 아이디와 이메일에 포함하여 스크립트를 다시 실행해도
-    기존 계정과 최대한 중복되지 않도록 한다.
+    기존 계정과 최대한 중복되지 않도록 한다. 완전한 무작위 값이 아니라
+    "시각+순번" 조합이라 같은 초 안에 실행해도 index 덕분에 서로 겹치지
+    않는다(예: bot0922213045_1, bot0922213045_2, ...).
     """
     timestamp = datetime.now().strftime("%m%d%H%M%S")
 
@@ -217,9 +232,13 @@ def run(
         )
 
         if created:
+            # 302로 /login에 보내졌다 = 서버가 계정을 정상적으로 만들고
+            # "이제 로그인하라"고 안내한 것 = 회원가입 성공.
             successful_accounts.append(account_data["username"])
             result = "계정 생성"
         else:
+            # 그 외의 응답(200으로 폼을 다시 보여주거나 429 등)은 서버가
+            # 이 요청을 거부했다는 뜻으로 본다 — 빈도 제한에 걸렸을 수 있다.
             rejected_attempts += 1
             result = "생성 거부"
 
