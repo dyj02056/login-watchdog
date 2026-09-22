@@ -13,7 +13,18 @@
 #   1. GET /login 요청으로 CSRF 토큰과 세션 쿠키 획득
 #   2. POST /login 요청으로 테스트 계정 로그인
 #   3. GET /board/new 요청으로 게시글 작성용 CSRF 토큰 획득
-#   4. POST /board/new 요청을 짧은 간격으로 반복 전송
+#   4. POST /board/new 요청을 짧은 간격으로 DEFAULT_ATTEMPTS(기본 6)회 반복 전송
+#
+# 서버 임계값과의 관계:
+#   config.py의 POST_RATE_LIMIT 기본값은 5다("같은 IP가 60초 안에
+#   게시글을 5번 넘게 작성하면 거부"). 임계값을 실제로 "초과"시키려면
+#   5+1=6번 이상 보내야 하는데, 이 스크립트의 기본 6회가 정확히 그
+#   지점이다. 즉 1~5번째 요청은 정상적으로 통과하고, 6번째 요청에서
+#   서버가 거부해야 정상 동작이다.
+#
+# 이 스크립트가 하지 않는 것:
+#   댓글 작성(COMMENT_RATE_LIMIT)이나 회원가입(SIGNUP_RATE_LIMIT) 반복은
+#   다루지 않는다. 오직 "로그인한 사용자의 게시글 작성 남용"만 재현한다.
 #
 # 주의:
 #   실제 게시글 데이터가 생성되므로 반드시 로컬 서버와 테스트 계정을 사용한다.
@@ -48,7 +59,12 @@ REQUEST_TIMEOUT = 5
 
 
 class CsrfTokenParser(HTMLParser):
-    """HTML의 hidden input에서 CSRF 토큰을 추출한다."""
+    """HTML의 hidden input에서 CSRF 토큰을 추출한다.
+
+    로그인/글쓰기 화면 HTML 안에는 눈에 보이지 않는
+    <input type="hidden" name="csrf_token" value="..."> 태그가 있는데,
+    이 클래스는 HTML을 한 줄씩 읽어가며 그 값만 뽑아낸다.
+    """
 
     def __init__(self) -> None:
         super().__init__()
@@ -135,6 +151,8 @@ def login(
     location = response.headers.get("Location", "")
 
     if response.status_code in (301, 302, 303) and "/dashboard" in location:
+        # 로그인에 성공한 사용자는 서버가 자동으로 /dashboard로 이동시킨다.
+        # 이 리다이렉트가 "로그인 성공"을 확인하는 유일한 방법이다.
         print(f"[OK] 테스트 계정 '{username}'으로 로그인했습니다.")
         return True
 
@@ -176,7 +194,12 @@ def create_spam_post_data(
     attempt_number: int,
     csrf_token: str,
 ) -> dict[str, str]:
-    """요청마다 구분 가능한 스팸 게시글 데이터를 생성한다."""
+    """요청마다 구분 가능한 스팸 게시글 데이터를 생성한다.
+
+    제목에 "[SPAM-TEST]" 표시와 타임스탬프·요청 번호를 넣어서, 실제
+    게시판을 열어봤을 때 "이게 테스트로 만든 글이구나"를 한눈에 알아보고
+    나중에 관리자 화면에서 쉽게 찾아 지울 수 있게 한다.
+    """
     timestamp = int(time.time())
 
     return {
@@ -280,10 +303,14 @@ def run(
         )
 
         if created:
+            # 302로 /board/숫자 형태로 보내졌다 = 서버가 글을 정상적으로
+            # 만들고 방금 쓴 글 상세 화면으로 안내한 것 = 작성 성공.
             created_count += 1
             created_locations.append(location)
             result = "게시글 생성"
         else:
+            # 그 외 응답은 서버가 거부했다는 뜻 — POST_RATE_LIMIT(기본 5회)를
+            # 넘겨서 막혔을 가능성이 크다.
             rejected_count += 1
             result = "작성 거부"
 
