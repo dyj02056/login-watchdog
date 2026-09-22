@@ -31,6 +31,7 @@
 22. [22단계 — 통합 보안 위험등급 시스템 (`security-risk-response-summary.md` 후속 조치)](guide22_security_grading.md)
 23. [23단계 — 보안 이벤트 코드 리뷰에서 발견된 4가지 문제 수정](guide23_security_events_fixes.md)
 24. [24단계 — L7 공격 유형 점검과 보강 (분산 브루트포스 / 보안 헤더 / 봇 차단 등)](guide24_l7_attack_hardening.md)
+25. [25단계 — 팀원 브랜치 병합 정리 및 `daily_report.py` AI 보안 총평(Gemini) 연동](guide25_scripts_merge_ai_report.md)
 
 ---
 
@@ -2763,3 +2764,33 @@ create unique index idx_security_events_high_open_incident
 
 ### 전체 검증 결과
 4개 Tier를 통틀어 `pytest tests/ -v` 전체 187개 테스트 통과. 각 Tier가 끝날 때마다 로컬 서버를 직접 띄워 브라우저·`curl`로 실제 동작을 확인한 뒤 다음 Tier로 넘어갔습니다.
+
+## 25단계 — 팀원 브랜치 병합 정리 및 `daily_report.py` AI 보안 총평(Gemini) 연동
+
+> 팀원별로 나뉘어 있던 로컬 브랜치(`main`, `seunghoon`, `yoojieun`)를 순서대로 검토하고 병합했습니다. 병합 과정에서 각 브랜치의 신규 스크립트에 비전공자용 설명 주석을 보강했고, `yoojieun` 브랜치에서 시도했던 "AI 보안 총평" 기능이 실제로는 크래시가 나거나 미완성 상태였던 것을 발견해 직접 고친 뒤 Google Gemini API와 실제로 연동했습니다. 전체 내용은 [guide25_scripts_merge_ai_report.md](guide25_scripts_merge_ai_report.md)에 별도로도 정리되어 있습니다.
+
+**`scripts/jh` 폴더 정리(main)**: `web_scanning_sim.py`/`unauthorized_access_sim.py`/`password_spraying_sim.py`를 `scripts/jh/`에서 `scripts/`로 옮기고 빈 폴더를 삭제한 뒤, 세 파일 모두 상단 설명 블록과 함수별 주석을 비전공자용으로 대폭 보강했습니다.
+
+**`seunghoon` 브랜치 병합**: `repeated_access_sim.py`(반복 페이지 접근), `signup_abuse_sim.py`(회원가입 남용), `spam_sim.py`(게시글 스팸) 3개 시뮬레이터를 충돌 없이 병합했습니다. 각 스크립트의 기본 요청 횟수가 서버(`config.py`)의 실제 임계값(`PAGE_ACCESS_ALERT_THRESHOLD`, `SIGNUP_RATE_LIMIT`, `POST_RATE_LIMIT`)과 어떻게 연결되는지 설명하는 주석을 추가했습니다.
+
+**`yoojieun` 브랜치 검토에서 발견한 문제**:
+1. `db/attempts.py`의 `list_attempts_between()`이 `db/__init__.py`에 등록되지 않아 `daily_report.py --start/--end` 사용 시 `AttributeError`로 즉시 크래시하는 버그
+2. `list_lockouts_between()` 함수 자체가 없어서, 특정 기간을 조회해도 잠금 건수는 항상 "최근 24시간" 기준으로만 나오던 조용한 오류(크래시 없이 틀린 결과를 보여줌)
+3. `--start`만 입력하고 `--end`를 빼먹어도 조용히 `--hours` 기본값으로 넘어가던 문제, 잘못된 날짜 형식·역순 기간·`--hours` 0 이하 값을 걸러내지 않던 문제
+4. `build_report()`가 `llm_summary` 값을 받으면 리포트에 넣어주는 코드는 있었지만, 실제로 AI를 호출해 그 값을 채워주는 코드가 어디에도 없어 절대 동작할 수 없었던 미완성 기능
+
+**어떻게 고쳤는가**: 1·2번은 `db/__init__.py` 등록과 `db/lockouts.py`의 `list_lockouts_between()` 신규 구현으로 해결했습니다. 3번은 `main()`에 실행 전 검증(짝 확인, ISO 형식 확인, 순서 확인, 양수 확인)을 추가해 잘못된 입력을 이해하기 쉬운 한국어 메시지로 즉시 막도록 했습니다. 4번은 별도 구글 SDK 없이 기존 `requests`로 Gemini REST API를 직접 호출하는 `generate_ai_summary()`를 구현하고 `--ai` 옵션으로 연결했습니다. API 키는 `.env`의 `GEMINI_API_KEY`에서만 읽고, 키가 없거나 호출이 실패해도 `[WARN]` 메시지만 남긴 뒤 숫자 집계 리포트는 정상 출력되도록 했습니다.
+
+```python
+# scripts/daily_report.py
+def generate_ai_summary(report_text: str) -> str:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    ...
+    response = requests.post(GEMINI_API_URL, params={"key": api_key},
+                              json={"contents": [{"parts": [{"text": prompt}]}]},
+                              timeout=GEMINI_REQUEST_TIMEOUT)
+```
+
+**실제로 확인한 것**: 로컬에서 `python scripts/daily_report.py --ai`를 실행해 Gemini가 실제 리포트 데이터를 근거로("반복 실패했지만 자동 차단됨", "출처가 내부 IP라 테스트일 가능성도 있음") 맥락 있는 한국어 요약을 만들어주는 것을 확인했습니다. 처음엔 모델명(`gemini-2.0-flash`)이 단종되어 404가 났었고, 구글이 안내한 대체 모델(`gemini-3.6-flash`)로 교체한 뒤 정상 동작을 확인했습니다. `main`/`seunghoon`/`yoojieun` 세 브랜치를 병합하기 전 `git merge-tree`로 충돌 가능성을 미리 점검했고, 실제 병합도 충돌 없이 완료됐습니다. `pytest tests/` 전체 232개 테스트 통과.
+
+**이 단계에서 만들어지거나 바뀐 파일**: [scripts/web_scanning_sim.py](../../scripts/web_scanning_sim.py), [scripts/unauthorized_access_sim.py](../../scripts/unauthorized_access_sim.py), [scripts/password_spraying_sim.py](../../scripts/password_spraying_sim.py), [scripts/repeated_access_sim.py](../../scripts/repeated_access_sim.py), [scripts/signup_abuse_sim.py](../../scripts/signup_abuse_sim.py), [scripts/spam_sim.py](../../scripts/spam_sim.py), [db/__init__.py](../../db/__init__.py), [db/lockouts.py](../../db/lockouts.py), [scripts/daily_report.py](../../scripts/daily_report.py), [.env.example](../../.env.example)
