@@ -1,4 +1,30 @@
-"""단일 허가 서버에서 저속 로그인 실패 패턴을 만들고 탐지 결과를 관찰한다."""
+# ============================================================================
+# password_spraying_sim.py — "패스워드 스프레이(Password Spraying)" 공격을
+# 흉내 내서, 우리 서버가 이를 탐지하는지 확인하는 검증 스크립트
+#
+# 패스워드 스프레이란? 브루트포스(한 계정에 비밀번호를 수십 번 바꿔가며
+# 시도)와 반대로, "같은 비밀번호 하나"를 "서로 다른 여러 아이디"에 돌아가며
+# 시도하는 공격이다. 계정 하나만 노리지 않으므로 "한 계정에 5번 틀리면
+# 잠금" 같은 단순한 규칙은 피해갈 수 있는데, 대신 "같은 IP·같은 세션에서
+# 짧은 시간에 서로 다른 아이디로 여러 번 실패"라는 패턴이 남는다. 이
+# 스크립트는 바로 그 패턴을 재현해서 서버가 알아채는지 확인한다.
+#
+# 동작 요약:
+#   1) 하나의 세션(=하나의 접속)을 계속 유지한 채, /login에 POST로 로그인을
+#      시도한다.
+#   2) 매 요청마다 "아이디"는 바꾸지만 "비밀번호"는 항상 똑같은(일부러 틀린)
+#      값을 쓴다 — IP와 세션도 고정한다.
+#   3) 기본 6번 시도하며, FAILURE_THRESHOLD(5)를 넘는 6번째 요청이
+#      "이쯤이면 서버가 의심해야 하는 시점"이다.
+#   4) 실제로 로그인 페이지가 CSRF 토큰(위조 방지용 1회용 값)을 요구하므로,
+#      매번 로그인 폼을 먼저 GET으로 열어서 토큰을 받아온 뒤 그 토큰을
+#      포함해 POST를 보낸다 — 실제 브라우저 사용자와 똑같은 절차를 따른다.
+#
+# 안전 원칙: 기본적으로 로컬 서버(loopback: 127.0.0.1/localhost)만 대상으로
+# 허용하며, 그 외 주소는 --i-know-what-im-doing 플래그 없이는 거부한다.
+# 비밀번호나 CSRF 토큰 같은 민감한 값은 화면에 그대로 출력하지 않고
+# <REDACTED>(가림 처리)로 바꿔서 보여준다.
+# ============================================================================
 
 import argparse
 import ipaddress
@@ -14,14 +40,14 @@ import requests
 
 DEFAULT_HOST = "http://127.0.0.1:5000"
 LOGIN_PATH = "/login"
-DEFAULT_COUNT = 6
-DEFAULT_INTERVAL = 0.5
+DEFAULT_COUNT = 6                # 기본 시도 횟수 (임계값 5를 넘기는 6번째까지 포함)
+DEFAULT_INTERVAL = 0.5           # 요청 사이 대기 시간(초)
 REQUEST_TIMEOUT = 5
-FAILURE_THRESHOLD = 5
+FAILURE_THRESHOLD = 5            # 서버가 "이 횟수를 넘으면 의심"이라고 보는 실패 기준
 USERNAME_FIELD = "username"
 PASSWORD_FIELD = "password"
-CSRF_FIELD = "csrf_token"
-DEFAULT_TEST_PASSWORD = "wrong_test_password"
+CSRF_FIELD = "csrf_token"        # 위조 방지용 1회용 토큰 필드 이름
+DEFAULT_TEST_PASSWORD = "wrong_test_password"  # 항상 틀리도록 고정해 둔 테스트용 비밀번호
 MAX_RESPONSE_PREVIEW = 300
 LOCK_MARKERS = ("잠긴 계정", "계정 잠금", "account locked", "locked account")
 SUCCESS_MARKERS = ("로그인 성공", "로그인에 성공", "login successful",
@@ -29,7 +55,12 @@ SUCCESS_MARKERS = ("로그인 성공", "로그인에 성공", "login successful"
 
 
 class ConfigParser(argparse.ArgumentParser):
-    """CLI 입력 오류를 traceback 없이 설정 오류로 표시한다."""
+    """CLI 입력 오류를 traceback 없이 설정 오류로 표시한다.
+
+    보통 argparse가 잘못된 입력을 받으면 프로그래머용 긴 에러 메시지(traceback)를
+    쏟아내는데, 여기서는 그 대신 "[CONFIG ERROR] ..." 처럼 짧고 이해하기 쉬운
+    한 줄 메시지만 보여주도록 바꿨다.
+    """
 
     def error(self, message):
         """argparse의 오류 종료 코드를 2로 유지한다."""
@@ -37,7 +68,14 @@ class ConfigParser(argparse.ArgumentParser):
 
 
 class LoginHTML(HTMLParser):
-    """숨겨진 CSRF 토큰과 화면에 보이는 문장을 각각 추출한다."""
+    """로그인 페이지 HTML에서 "숨겨진 CSRF 토큰"과 "화면에 보이는 글자"를 따로 뽑아낸다.
+
+    로그인 폼에는 사용자 눈에 보이지 않는 <input type="hidden" name="csrf_token"
+    value="...">라는 위조 방지용 값이 숨어있다. 이 클래스는 HTML을 한 줄씩
+    읽어가며 그 값만 따로 모으고(self.tokens), 동시에 눈에 보이는 문구들도
+    따로 모아서(self.text) 나중에 "로그인 성공/실패 메시지가 있는지" 등을
+    분석할 때 쓴다.
+    """
 
     def __init__(self):
         """토큰은 출력용 본문에 넣지 않는다."""
@@ -66,7 +104,13 @@ class LoginHTML(HTMLParser):
 
 
 class PossibleLoginSuccess(RuntimeError):
-    """로그인 성공이 의심되면 다음 요청을 막기 위한 예외다."""
+    """혹시 진짜로 로그인에 성공한 것 같으면, 이 예외를 던져서 즉시 테스트를 멈춘다.
+
+    이 스크립트는 "일부러 틀린 비밀번호"만 써야 하는데, 만약 우연히 실제
+    계정 정보와 일치해서 로그인이 성공해버리면 위험하다(진짜 계정에
+    영향을 줄 수 있음). 그래서 응답에서 "로그인 성공" 같은 신호가
+    보이면 곧바로 멈추고 사용자에게 경고한다.
+    """
 
 
 def validate_host(url):
@@ -84,7 +128,10 @@ def validate_host(url):
 
 
 def is_loopback_address(hostname):
-    """문자열 IP를 파싱하여 loopback 여부를 판단한다."""
+    """문자열 IP를 파싱하여 loopback 여부를 판단한다.
+
+    "loopback"이란 127.0.0.1처럼 "내 컴퓨터 자신"을 가리키는 특수 주소를 뜻한다.
+    """
     try:
         return ipaddress.ip_address(hostname).is_loopback
     except ValueError:
@@ -92,7 +139,13 @@ def is_loopback_address(hostname):
 
 
 def is_local_host(url):
-    """IP는 loopback만, localhost는 DNS 결과가 모두 loopback일 때만 허용한다."""
+    """이 URL이 정말로 "내 컴퓨터(로컬)"를 가리키는지 확인한다.
+
+    IP 주소로 입력했다면 loopback 주소인지만 보면 되지만, "localhost"라는
+    이름으로 입력했다면 실제로 DNS가 그 이름을 어떤 IP로 해석하는지까지
+    확인해서, 전부 loopback일 때만 "로컬이다"라고 인정한다 — 누군가 DNS
+    설정을 조작해 localhost를 다른 서버로 돌려놓는 상황까지 대비한 것이다.
+    """
     parsed = validate_host(url)
     if parsed.hostname != "localhost":
         return is_loopback_address(parsed.hostname)
@@ -107,7 +160,13 @@ def is_local_host(url):
 
 
 def create_test_session():
-    """테스트 전체에서 한 번 만들며 CSRF용 쿠키를 같은 Session에 유지한다."""
+    """테스트 전체에서 딱 하나만 만들어서 계속 재사용하는 세션(=같은 접속)을 만든다.
+
+    패스워드 스프레이 공격의 핵심 특징 중 하나가 "같은 세션/같은 IP에서
+    여러 아이디를 시도한다"는 것이므로, 이 스크립트도 매 요청마다 새
+    세션을 만들지 않고 하나의 세션을 끝까지 재사용해서 그 상황을
+    그대로 재현한다.
+    """
     session = requests.Session()
     session.trust_env = False
     session.auth = None
@@ -116,7 +175,13 @@ def create_test_session():
 
 
 def parse_usernames(args):
-    """고유 테스트 아이디를 준비하고 중복과 최소 개수를 검사한다."""
+    """이번 테스트에 사용할 "서로 다른 아이디 목록"을 준비하고 유효성을 검사한다.
+
+    --usernames로 직접 콤마(,)로 구분해 지정하거나, --username-prefix로
+    접두사를 주면 spray_user1, spray_user2 ... 식으로 자동 생성한다.
+    아이디가 서로 겹치면(중복) 스프레이 공격의 "여러 계정을 노린다"는
+    전제가 깨지므로 에러로 막고, 최소 개수(임계값+1개)도 검사한다.
+    """
     if args.count < 1:
         raise ValueError("count는 1 이상의 정수여야 합니다.")
     if args.usernames is not None:
@@ -142,7 +207,13 @@ def parse_usernames(args):
 
 
 def get_csrf_token(session, url):
-    """매 POST 직전 같은 Session으로 GET한다. GET은 로그인 실패로 세지 않는 전제다."""
+    """로그인 폼을 먼저 GET으로 열어서, 그 안에 숨어있는 CSRF 토큰을 꺼내온다.
+
+    실제 브라우저 사용자는 로그인 페이지를 먼저 연 뒤 아이디/비밀번호를
+    입력해 제출한다. 이 GET 요청은 "로그인 실패 시도"로 세지 않는다는
+    전제 하에, 매 POST 직전 새로 토큰을 받아온다(토큰은 보통 세션마다
+    한 번만 유효하거나 시간이 지나면 바뀔 수 있기 때문).
+    """
     with session.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=False) as response:
         result = validate_response(response)
         if result["possible_login_success"]:
@@ -159,7 +230,7 @@ def get_csrf_token(session, url):
 
 
 def send_login_attempt(session, url, username, password, use_json, csrf_token):
-    """같은 비밀번호로 POST 한 번만 전송하며 모든 리다이렉트를 관찰만 한다."""
+    """실제 로그인 폼 제출과 똑같은 방식으로 아이디/비밀번호 POST 요청 한 건을 보낸다."""
     payload = {USERNAME_FIELD: username, PASSWORD_FIELD: password}
     headers = {"Referer": url}  # HTTPS Flask-WTF의 동일 출처 검사에 필요한 정상 헤더.
     if csrf_token:
@@ -172,7 +243,12 @@ def send_login_attempt(session, url, username, password, use_json, csrf_token):
 
 
 def redact_json(value):
-    """JSON 응답의 비밀번호, 토큰, 쿠키 관련 필드를 출력 전에 가린다."""
+    """응답 JSON을 화면에 출력하기 전에, 비밀번호·토큰 등 민감한 값은 가려서 보여준다.
+
+    key 이름에 password, token, cookie, secret, authorization, api key
+    같은 단어가 들어있으면 그 값은 <REDACTED>(가림 처리)로 바꾼다. 딕셔너리와
+    리스트는 안쪽까지 재귀적으로(반복해서) 들어가며 검사한다.
+    """
     if isinstance(value, dict):
         return {key: "<REDACTED>" if re.search(
             r"password|token|cookie|secret|authorization|api.?key", key, re.I
@@ -183,7 +259,12 @@ def redact_json(value):
 
 
 def safe_location(location):
-    """Location의 인증정보, query, fragment는 표시하지 않는다."""
+    """서버가 응답에 담아 보낸 "이동할 주소"(Location 헤더)에서 민감한 부분을 지우고 보여준다.
+
+    Location 안에 아이디/비밀번호나 쿼리 파라미터, 해시(#) 값이 섞여 있을 수
+    있으므로, 그런 부분은 다 빼고 "스킴+호스트+경로"만 남긴 안전한 형태로
+    화면에 출력한다.
+    """
     try:
         parsed = urlsplit(location)
         host = parsed.hostname or ""
@@ -197,7 +278,19 @@ def safe_location(location):
 
 
 def validate_response(response):
-    """HTTP·본문의 잠금 신호와 로그인 성공 가능성을 분석하며 이벤트는 확정하지 않는다."""
+    """서버가 보낸 응답 하나를 자세히 뜯어보고, "잠금 신호"나 "로그인 성공 가능성"을 찾아낸다.
+
+    확인 항목:
+      - lock_detected / lock_message: "계정 잠금" 같은 문구가 있는지
+      - possible_login_success: "로그인 성공" 문구나, success/authenticated 같은
+        JSON 필드가 true인 경우, 또는 /dashboard·/account 같은 로그인 후 이동하는
+        페이지로 리다이렉트되는 경우 — 이런 신호가 보이면 "진짜로 로그인이
+        성공했을 수도 있다"고 판단한다(그러면 즉시 멈춰야 함).
+      - error: 예상하지 못한 상태 코드나 CSRF 오류 등 "테스트가 원래 의도대로
+        진행되지 않았다"는 신호.
+    비밀번호나 CSRF 토큰이 응답에 그대로 노출되지 않도록, 우리가 실제로 보낸
+    값과 일치하는 문자열은 화면 출력 전에 <REDACTED>로 가린다.
+    """
     status = response.status_code
     content_type = response.headers.get("Content-Type", "")
     location = response.headers.get("Location", "")
@@ -260,7 +353,7 @@ def validate_response(response):
 
 
 def print_attempt_result(index, total, username, result):
-    """POST 응답과 임계값 확인 시점을 출력한다. Cookie 헤더는 출력하지 않는다."""
+    """로그인 시도 한 건의 결과를 사람이 읽기 쉬운 형태로 화면에 출력한다."""
     print(f"\n[{index:02d}/{total:02d}] POST {LOGIN_PATH}\nUsername     : {username}")
     for label, value in (("Status", result["status"]), ("Content-Type", result["content_type"]),
                          ("Location", result["location"] or "-")):
@@ -272,6 +365,8 @@ def print_attempt_result(index, total, username, result):
     if result["possible_lock"]:
         print("POSSIBLE LOCK / RATE LIMIT - SERVER LOG CHECK REQUIRED")
     if index == FAILURE_THRESHOLD + 1:
+        # 6번째 시도 = 임계값(5)을 넘긴 첫 시도. 이 시점에서 서버가 패스워드
+        # 스프레이로 인식했어야 정상이므로, 사람이 직접 확인해야 할 체크포인트다.
         print(f"[THRESHOLD EXCEEDED]\nFAILURE_THRESHOLD={FAILURE_THRESHOLD} 초과 확인 시점입니다.")
         print("각 POST가 같은 시간창에서 로그인 실패로 기록되었다는 전제입니다.")
         print("[MANUAL CHECK] security_events에서 event_type=PASSWORD_SPRAYING 확인")
@@ -279,7 +374,12 @@ def print_attempt_result(index, total, username, result):
 
 
 def print_plan(args, usernames, url):
-    """실행 계획을 출력하되 비밀번호는 가리고 네트워크는 사용하지 않는다."""
+    """실제 요청을 보내기 전에, 이번 테스트가 어떤 계획으로 진행될지 미리 보여준다.
+
+    비밀번호는 절대 화면에 그대로 노출하지 않고 "********"로만 표시하며,
+    --dry-run(연습 실행) 모드일 때는 이 계획만 보여주고 실제 네트워크
+    요청은 전혀 보내지 않는다.
+    """
     print("Password Spraying Simulation" + (" - DRY RUN" if args.dry_run else ""))
     for label, value in (("Target", url), ("Planned Requests", len(usernames)),
                          ("Distinct Usernames", len(set(usernames))), ("Attack Pattern", "PASSWORD SPRAYING"),
@@ -294,8 +394,10 @@ def print_plan(args, usernames, url):
 
 
 def print_summary(results, usernames, args, elapsed, stop_reason="", possible_login=False):
-    """요청 완료와 탐지 징후를 구분하고 서버 이벤트는 수동 확인으로 남긴다."""
+    """전체 시도가 끝난 뒤(또는 중간에 멈췄을 때), 결과를 종합해서 요약 리포트를 출력한다."""
     possible_login = possible_login or any(row["possible_login_success"] for row in results)
+    # passed: 계획한 모든 요청이 끝까지 진행됐고, 중간에 중단 사유가 없었고,
+    # 실수로 로그인 성공한 것도 아니고, 개별 요청에서 에러도 없었을 때만 성공으로 본다.
     passed = len(results) == len(usernames) and not stop_reason and not possible_login
     passed = passed and all(not row["error"] for row in results)
     print("\n--- Test Summary ---")
@@ -315,6 +417,8 @@ def print_summary(results, usernames, args, elapsed, stop_reason="", possible_lo
         print(f"{label:20}: {value}")
     if stop_reason:
         print(f"[FAIL] {stop_reason}")
+    # 이 스크립트는 요청을 보내고 응답을 확인할 뿐, 서버가 실제로 보안 이벤트를
+    # 만들고 알림을 울렸는지는 알 수 없다. 그래서 항상 사람이 직접 확인하라고 안내한다.
     print("[MANUAL CHECK] 관리자 대시보드 또는 security_events에서")
     print("event_type=PASSWORD_SPRAYING, source IP, failure count, 발생 시간을 확인하세요.")
     print("서로 다른 아이디 수와 탐지 시간창/임계값은 서버 로그·Slack·login_attempts로 확인하세요.")
@@ -344,6 +448,8 @@ def main(argv=None):
         # dry-run은 DNS 조회도 하지 않는다. localhost DNS 안전 검사는 실제 실행 때 한다.
         local = (host.hostname == "localhost" or is_loopback_address(host.hostname)) if args.dry_run else is_local_host(args.host)
         if not local and not args.i_know_what_im_doing:
+            # 로컬(내 컴퓨터)이 아닌 서버를 대상으로 하려면, 실수로 남의
+            # 서버를 공격하는 사고를 막기 위해 일부러 이 플래그를 요구한다.
             raise ValueError("loopback 외의 허가된 테스트 서버는 --i-know-what-im-doing이 필요합니다.")
     except (ValueError, OSError) as error:
         print(f"[CONFIG ERROR] {error}")
@@ -358,6 +464,8 @@ def main(argv=None):
     results, stop_reason, possible_login = [], "", False
     started = time.monotonic()
     try:
+        # with 문으로 세션을 감싸서, 테스트가 끝나면(에러가 나도) 세션이
+        # 자동으로 정리되도록 한다.
         with create_test_session() as session:
             for index, username in enumerate(usernames, 1):
                 token = None if args.no_csrf else get_csrf_token(session, url)
@@ -366,8 +474,11 @@ def main(argv=None):
                 results.append(result)
                 print_attempt_result(index, len(usernames), username, result)
                 if result["possible_login_success"]:
+                    # 진짜로 로그인이 성공한 것처럼 보이면 안전을 위해 즉시 중단한다.
                     raise PossibleLoginSuccess()
                 if index <= FAILURE_THRESHOLD and (result["lock_detected"] or result["possible_lock"]):
+                    # 아직 임계값(5)도 넘기기 전인데 벌써 잠금/제한 신호가 보이면,
+                    # 이전 테스트의 흔적이 남아있는 등 테스트 전제가 깨진 것이므로 중단한다.
                     raise RuntimeError("6번째 이전에 잠금/제한 징후가 있습니다. 기존 기록과 서버 로그를 확인하세요.")
                 if result["error"]:
                     raise RuntimeError(result["error"])
@@ -395,4 +506,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    # 터미널에서 "python password_spraying_sim.py"로 직접 실행했을 때만 동작하고,
+    # 다른 파일에서 import만 했을 때는 자동으로 실행되지 않게 하는 관용적인 표현이다.
     raise SystemExit(main())
