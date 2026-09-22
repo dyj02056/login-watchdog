@@ -57,6 +57,25 @@ def list_lockouts_since(hours: int = 24) -> list[dict]:
     return res.data
 
 
+def list_lockouts_between(start_time: str, end_time: str) -> list[dict]:
+    """지정한 시작 시각(start_time)부터 종료 시각(end_time) 사이에 새로 걸린 잠금 전체를 가져온다.
+
+    list_lockouts_since()가 "최근 N시간"만 지원하는 것과 달리, 특정 정적 기간
+    (예: 2026-09-01T00:00:00 ~ 2026-09-01T12:00:00)을 지정해 정밀 조회할 때 쓴다.
+    daily_report.py의 --start/--end 옵션이 이 함수를 사용해, 지정한 기간의
+    로그인 시도(list_attempts_between)와 잠금 건수를 같은 기준으로 맞춰 보여준다.
+    """
+    res = (
+        db.get_client()
+        .table("lockouts")
+        .select("*")
+        .gte("locked_at", start_time)  # start_time 이상
+        .lte("locked_at", end_time)    # end_time 이하
+        .execute()
+    )
+    return res.data
+
+
 def get_active_lockout(ip: str) -> dict | None:
     """이 IP가 "지금 이 순간" 실제로 잠겨있는지 확인하고, 잠겨있다면 그 잠금 정보를 돌려준다.
 
