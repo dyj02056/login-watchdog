@@ -7,7 +7,7 @@
 # 리포트"를 그리고 있었지만, 처음엔 프롬프트 설계·모델 선택 등 세부 사양이
 # 정해지지 않아 "AI 요약 없이도 바로 쓸 수 있는 숫자 집계 리포트"만 먼저
 # 만들어뒀었다. 이 버전에서는 그 AI 요약 기능을 실제로 이어붙였다:
-#   - --ai 옵션을 주면 Gemini API를 호출해서 리포트 내용을 바탕으로 한국어
+#   - --ai 옵션을 주면 Groq API를 호출해서 리포트 내용을 바탕으로 한국어
 #     보안 총평을 만들고, 그 총평을 리포트 맨 아래에 추가로 붙여준다.
 #   - --start/--end 옵션으로 "이 시간대에 무슨 일이 있었는지"처럼 특정
 #     기간만 정밀하게 뽑아서 AI에게 넘길 수 있다(전체 기록을 통째로 주는
@@ -23,6 +23,7 @@
 import argparse
 import os
 import sys
+import time
 from collections import Counter
 from datetime import datetime, timezone
 
@@ -36,7 +37,7 @@ from dotenv import load_dotenv
 # 이 스크립트를 어느 위치에서 실행하든 항상 성공한다.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# .env 파일에 적어둔 값들(SUPABASE_URL, GEMINI_API_KEY 등)을 환경변수로 읽어온다.
+# .env 파일에 적어둔 값들(SUPABASE_URL, GROQ_API_KEY 등)을 환경변수로 읽어온다.
 # 아래에서 db를 import하기 전에 반드시 먼저 실행해야 한다 — db 모듈이 켜지자마자
 # SUPABASE_URL 같은 값을 곧바로 읽어가기 때문이다.
 load_dotenv()
@@ -44,40 +45,50 @@ load_dotenv()
 import db  # noqa: E402  (load_dotenv()가 SUPABASE_URL 등을 먼저 읽어들인 뒤에 import 해야 함)
 
 
-# Gemini(구글의 AI 모델)에게 요약을 요청할 때 사용하는 주소. 별도의 구글
-# 전용 SDK를 새로 설치하지 않고, 이 프로젝트가 이미 쓰고 있는 requests
-# 라이브러리로 Gemini의 REST API(그냥 인터넷 주소로 데이터를 주고받는 방식)를
-# 직접 호출한다 — 다른 시뮬레이터 스크립트들과 동일한 방식이다.
-GEMINI_API_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-3.6-flash:generateContent"
-)
-# Gemini 서버가 15초 안에 응답하지 않으면 포기하고 다음 단계로 넘어간다.
-# AI 요약은 "있으면 좋은 부가 기능"이라, 여기서 너무 오래 기다리다가
-# 리포트 전체를 못 보여주는 상황은 피하기 위함이다.
-GEMINI_REQUEST_TIMEOUT = 15
+# Groq(전용 LPU 하드웨어로 추론 속도가 매우 빠른 AI 추론 서비스)에게 요약을
+# 요청할 때 쓰는 주소. Groq는 OpenAI와 같은 형식의 REST API(Chat Completions)를
+# 그대로 제공해서, 별도 SDK 없이 이 프로젝트가 이미 쓰는 requests로 바로
+# 호출할 수 있다.
+#
+# 원래는 Google Gemini(gemini-3.6-flash → gemini-flash-lite-latest)를 썼지만,
+# 무료 등급 응답이 24~45초씩 걸리거나 "고수요(503)"로 자주 실패해서(구글 쪽
+# 서버 사정, 우리 코드 문제가 아니었다) Groq로 교체했다. Groq는 전용 하드웨어
+# 덕분에 보통 1~2초 안에 응답이 오고, 카드 등록 없이 영구적으로 무료다.
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+# 2026년 9월 기준 Groq 무료 등급에서 쓸 수 있는 모델 중 하나. Llama 계열은
+# 2026년 8월부로 무료 등급에서 빠졌고, 지금은 openai/gpt-oss-* 나 qwen 계열이
+# 무료로 제공된다. Groq 콘솔(console.groq.com/docs/models)에서 최신 무료
+# 모델 목록을 확인할 수 있다.
+GROQ_MODEL = "openai/gpt-oss-120b"
+# Groq는 원래도 빠르지만(보통 1~2초), 드물게 느려질 수 있으니 여유 있게 잡았다.
+GROQ_REQUEST_TIMEOUT = 20
+# 일시적인 오류(429 요청 과다, 5xx 서버 오류)를 만났을 때 몇 번까지 다시
+# 시도할지, 재시도 사이에 몇 초 쉴지.
+GROQ_MAX_RETRIES = 3
+GROQ_RETRY_DELAY_SECONDS = 3
 
 
 def generate_ai_summary(report_text: str) -> str:
-    """이미 만들어진 리포트 텍스트를 Google Gemini에게 보내서, 한국어로 된
+    """이미 만들어진 리포트 텍스트를 Groq에게 보내서, 한국어로 된
     짧은 "보안 총평"을 받아온다.
 
-    API 키는 코드에 직접 적지 않고 .env 파일의 GEMINI_API_KEY 환경변수에서만
+    API 키는 코드에 직접 적지 않고 .env 파일의 GROQ_API_KEY 환경변수에서만
     읽는다(비밀번호처럼 다뤄야 하는 값이라 소스코드에 남기면 안 된다 — 실수로
     깃허브에 올라가면 누구나 그 키로 내 계정의 API 사용량을 써버릴 수 있다).
     키가 없거나 API 호출이 실패하면 예외를 던진다 — 이 함수를 부르는 쪽(main())
     에서 그 예외를 잡아서, 실패해도 "AI 요약만 빠진 리포트"를 대신 보여줄 수
     있게 설계했다(AI가 잠깐 안 된다고 리포트 전체를 못 보면 안 되니까).
     """
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
         raise RuntimeError(
-            "GEMINI_API_KEY가 설정되어 있지 않습니다. "
-            ".env 파일에 GEMINI_API_KEY=발급받은키 형식으로 추가하세요."
+            "GROQ_API_KEY가 설정되어 있지 않습니다. "
+            ".env 파일에 GROQ_API_KEY=발급받은키 형식으로 추가하세요."
         )
 
-    # Gemini에게 "무엇을, 어떤 톤으로 써달라"고 요청하는 지시문(프롬프트).
-    # 방금 만든 리포트 텍스트를 통째로 붙여서, 그 내용을 바탕으로 요약하게 한다.
+    # Groq(및 대부분의 OpenAI 호환 API)에게 "무엇을, 어떤 톤으로 써달라"고
+    # 요청하는 지시문(프롬프트). 방금 만든 리포트 텍스트를 통째로 붙여서,
+    # 그 내용을 바탕으로 요약하게 한다.
     prompt = (
         "다음은 웹 서비스의 로그인 보안 모니터링 시스템이 집계한 리포트다.\n"
         "보안 지식이 없는 사람도 이해할 수 있는 쉬운 한국어로, 3~5문장 분량의 "
@@ -86,28 +97,48 @@ def generate_ai_summary(report_text: str) -> str:
         f"{report_text}"
     )
 
-    # Gemini API에 "이 프롬프트에 대한 답을 만들어줘"라고 요청하는 POST 요청.
-    # API 키는 URL 뒤에 ?key=... 형태(params)로 함께 보낸다 — 이게 Gemini API의
-    # 정해진 인증 방식이다.
-    response = requests.post(
-        GEMINI_API_URL,
-        params={"key": api_key},
-        json={"contents": [{"parts": [{"text": prompt}]}]},
-        timeout=GEMINI_REQUEST_TIMEOUT,
-    )
-    # 상태 코드가 400번대/500번대(에러)면 여기서 바로 예외를 던지게 한다.
-    # 이걸 안 하면 에러 응답의 이상한 내용을 정상 응답인 것처럼 잘못 읽어버릴 수 있다.
-    response.raise_for_status()
+    # Groq API는 OpenAI Chat Completions와 같은 형식을 쓴다: messages 배열에
+    # role(누가 말하는지)과 content(내용)를 담아 보낸다. 인증은 구글과 달리
+    # URL이 아니라 Authorization 헤더에 "Bearer <키>" 형태로 넣는다.
+    headers = {"Authorization": f"Bearer {api_key}"}
+    payload = {
+        "model": GROQ_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+
+    # 429(요청 과다)나 5xx(서버 오류), 타임아웃을 만나면 곧바로 포기하지 않고
+    # 짧게 쉬었다가 최대 GROQ_MAX_RETRIES번까지 다시 시도한다. Groq는 대체로
+    # 안정적이지만, 만약을 대비해 Gemini 때와 같은 재시도 구조를 유지했다.
+    for attempt in range(1, GROQ_MAX_RETRIES + 1):
+        try:
+            response = requests.post(
+                GROQ_API_URL, headers=headers, json=payload, timeout=GROQ_REQUEST_TIMEOUT
+            )
+            # 상태 코드가 400번대/500번대(에러)면 여기서 바로 예외를 던지게 한다.
+            # 이걸 안 하면 에러 응답의 이상한 내용을 정상 응답인 것처럼 잘못 읽어버릴 수 있다.
+            response.raise_for_status()
+            break
+        except (requests.exceptions.Timeout, requests.exceptions.HTTPError) as error:
+            is_retryable_http_error = (
+                isinstance(error, requests.exceptions.HTTPError)
+                and error.response is not None
+                and error.response.status_code in (429, 500, 502, 503, 504)
+            )
+            is_last_attempt = attempt == GROQ_MAX_RETRIES
+            if is_last_attempt or not (
+                isinstance(error, requests.exceptions.Timeout) or is_retryable_http_error
+            ):
+                raise
+            time.sleep(GROQ_RETRY_DELAY_SECONDS)
+
     data = response.json()
     try:
-        # Gemini 응답은 여러 겹의 딕셔너리/리스트 구조 안에 실제 답변 텍스트가
-        # 들어있다. candidates(후보 답변들) 중 첫 번째의, content(내용) 안의,
-        # parts(조각들) 중 첫 번째의 text(글자) 값을 꺼낸다.
-        return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        # OpenAI 호환 API 응답은 choices(후보 답변들) 중 첫 번째의 message
+        # 안의 content(글자) 값에 실제 답변 텍스트가 들어있다.
+        return data["choices"][0]["message"]["content"].strip()
     except (KeyError, IndexError, TypeError) as error:
-        # 응답은 정상(200)으로 왔지만 구조가 예상과 다르면(구글이 응답 형식을
-        # 바꿨거나, 안전 필터에 걸려 답변이 아예 없는 경우 등) 여기서 걸러낸다.
-        raise RuntimeError(f"Gemini 응답 형식을 해석하지 못했습니다: {error}") from error
+        # 응답은 정상(200)으로 왔지만 구조가 예상과 다르면 여기서 걸러낸다.
+        raise RuntimeError(f"Groq 응답 형식을 해석하지 못했습니다: {error}") from error
 
 
 def build_report(
@@ -127,7 +158,7 @@ def build_report(
         hours (int, optional): 최근 몇 시간의 기록을 집계할지 설정 (기본값: 24시간).
         start (str, optional): 정적 조회 시작 시각 (예: '2026-09-01T00:00:00').
         end (str, optional): 정적 조회 종료 시각 (예: '2026-09-01T12:00:00').
-        llm_summary (str, optional): Gemini가 생성한 보안 요약/총평 문장.
+        llm_summary (str, optional): Groq가 생성한 보안 요약/총평 문장.
             이 값이 있으면 리포트 맨 아래에 별도 섹션으로 추가된다.
     """
     # 1. 정적 기간 조회 (--start 및 --end 지정 시)
@@ -184,7 +215,7 @@ def build_report(
             )
 
     # LLM 보안 총평 섹션 (llm_summary 값이 전달되었을 때만 추가).
-    # build_report() 자신은 Gemini를 직접 호출하지 않는다 — main()이 먼저
+    # build_report() 자신은 Groq를 직접 호출하지 않는다 — main()이 먼저
     # generate_ai_summary()로 요약문을 만들어서 여기로 전달해주는 구조다.
     # 이렇게 나눠둔 이유: build_report()는 "데이터를 모아 글로 만드는 역할"만,
     # generate_ai_summary()는 "AI에게 물어보는 역할"만 맡게 해서, AI 연동이
@@ -234,8 +265,8 @@ def main() -> None:
         "--ai",
         action="store_true",
         help=(
-            "Gemini API로 AI 보안 총평을 리포트에 추가한다. "
-            ".env 파일에 GEMINI_API_KEY가 설정되어 있어야 한다."
+            "Groq API로 AI 보안 총평을 리포트에 추가한다. "
+            ".env 파일에 GROQ_API_KEY가 설정되어 있어야 한다."
         ),
     )
     args = parser.parse_args()
@@ -279,7 +310,7 @@ def main() -> None:
 
     report_text = build_report(**period_kwargs)
 
-    # --ai가 켜져 있으면 방금 만든 리포트를 Gemini에게 보여주고 총평을 받아와서,
+    # --ai가 켜져 있으면 방금 만든 리포트를 Groq에게 보여주고 총평을 받아와서,
     # 그 총평을 포함한 리포트를 다시 만든다(조회 조건은 동일하게 유지).
     # 데이터베이스 조회를 한 번 더 하게 되지만, 이 스크립트는 사람이 가끔
     # 수동으로 실행하는 리포트 도구라 성능보다는 코드를 단순하게 유지하는
@@ -291,7 +322,7 @@ def main() -> None:
         except (RuntimeError, requests.RequestException) as error:
             # AI 요약이 실패해도 숫자 집계 리포트 자체는 이미 있으므로,
             # 전체를 중단하지 않고 경고만 남긴 뒤 AI 요약 없이 계속 진행한다.
-            # (API 키가 없거나, Gemini 서버가 일시적으로 응답이 없거나 등)
+            # (API 키가 없거나, Groq 서버가 일시적으로 응답이 없거나 등)
             print(f"[WARN] AI 요약 생성에 실패했습니다: {error}", file=sys.stderr)
 
     # 콘솔 출력 — --output 여부와 상관없이 항상 화면에도 보여준다.
