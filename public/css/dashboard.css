@@ -171,13 +171,36 @@ section h2 {
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
+    /* 경로(path)처럼 공백 없이 긴 문자열이 표 바깥으로 삐져나가는 것을 막는다.
+       table-layout: fixed로 열 너비를 내용 크기가 아니라 표 전체 너비 기준으로
+       고정해야, 아래 overflow-wrap이 "이 칸은 줄바꿈할 공간이 없다"고 판단해서
+       실제로 줄을 바꾼다(auto 레이아웃에서는 셀이 내용에 맞춰 계속 넓어진다). */
+    table-layout: fixed;
 }
 
 .data-table th, .data-table td {
     text-align: left;
     padding: 6px 8px;
     border-bottom: 1px solid var(--line);
+    /* 단어 사이에 공백이 없는 긴 값(URL 경로, 이메일, IP 등)도 셀 너비에 맞춰
+       강제로 줄바꿈한다 — "관리자 대시보드 밑의 다른 항목들도" 요청대로
+       .data-table을 쓰는 모든 표(로그인 시도/회원/게시글/댓글/보안 이벤트 등)에
+       공통 적용된다. */
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
+
+/* 보안 이벤트 표는 8개 열이 전부 같은 너비로 나뉘면 "경로" 칸이 URL을 담기엔
+   너무 좁아서 계속 여러 줄로 빽빽하게 끊긴다. 다른 열(등급/횟수처럼 짧은 값만
+   들어가는 칸)은 좁혀주고, 그만큼을 "경로" 칸에 몰아준다. 비율 합은 100%. */
+#security-events-table th:nth-child(1), #security-events-table td:nth-child(1) { width: 11%; } /* 시각 */
+#security-events-table th:nth-child(2), #security-events-table td:nth-child(2) { width: 8%; }  /* 등급 */
+#security-events-table th:nth-child(3), #security-events-table td:nth-child(3) { width: 11%; } /* 유형 */
+#security-events-table th:nth-child(4), #security-events-table td:nth-child(4) { width: 10%; } /* IP */
+#security-events-table th:nth-child(5), #security-events-table td:nth-child(5) { width: 34%; } /* 경로 */
+#security-events-table th:nth-child(6), #security-events-table td:nth-child(6) { width: 6%; }  /* 횟수 */
+#security-events-table th:nth-child(7), #security-events-table td:nth-child(7) { width: 10%; } /* 조치 */
+#security-events-table th:nth-child(8), #security-events-table td:nth-child(8) { width: 10%; } /* 상태 */
 
 .data-table th {
     color: var(--ink-faint);
