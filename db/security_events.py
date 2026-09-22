@@ -215,6 +215,65 @@ def update_security_event_count(event_id: int, count: int) -> None:
     db.get_client().table("security_events").update({"count": count}).eq("id", event_id).execute()
 
 
+def count_security_events() -> dict:
+    """보안 이벤트 총 건수와 처리완료/미해결 건수를 나눠서 센다.
+
+    scripts/delete_security_events.py가 아무 옵션 없이 실행됐을 때(=삭제하지
+    않고 조회만 할 때) 지금 표에 뭐가 얼마나 쌓여있는지 보여주는 용도다.
+    """
+    total = db.get_client().table("security_events").select("id", count="exact").execute().count or 0
+    resolved = (
+        db.get_client()
+        .table("security_events")
+        .select("id", count="exact")
+        .not_.is_("resolved_at", "null")
+        .execute()
+        .count
+        or 0
+    )
+    return {"total": total, "resolved": resolved, "unresolved": total - resolved}
+
+
+def delete_security_event(event_id: int) -> bool:
+    """보안 이벤트 한 건을 id로 영구 삭제한다.
+
+    resolve_security_event()와 달리 행 자체를 지우므로 되돌릴 수 없다 — 대시보드
+    화면(관리자가 실수로 누르기 쉬운 곳)에는 이 기능을 두지 않고, 터미널에서만
+    실행하는 scripts/delete_security_events.py 전용으로 db 계층에만 만들어둔다.
+    """
+    res = db.get_client().table("security_events").delete().eq("id", event_id).execute()
+    return bool(res.data)
+
+
+def delete_resolved_security_events() -> int:
+    """처리 완료(resolved_at이 채워진) 보안 이벤트를 전부 영구 삭제하고, 삭제된 건수를 돌려준다.
+
+    CRITICAL(자동 해제)과 HIGH/MEDIUM("처리 완료" 버튼) 둘 다 resolved_at만
+    채워질 뿐 행이 지워지지는 않으므로(resolve_security_event 등 참고), 이미
+    다 처리된 오래된 기록을 정리하고 싶을 때 이 함수를 쓴다. 미해결 이벤트는
+    건드리지 않는다.
+    """
+    res = (
+        db.get_client()
+        .table("security_events")
+        .delete()
+        .not_.is_("resolved_at", "null")
+        .execute()
+    )
+    return len(res.data)
+
+
+def delete_all_security_events() -> int:
+    """보안 이벤트 표 전체(미해결 포함)를 영구 삭제하고, 삭제된 건수를 돌려준다.
+
+    scripts/delete_security_events.py의 --all 전용 — 미해결 이벤트까지 지우므로
+    가장 위험한 삭제다. id는 항상 1 이상이므로 .neq("id", 0)은 "전부"를
+    뜻하는 필터다(PostgREST는 delete에 필터가 최소 하나 있어야 한다).
+    """
+    res = db.get_client().table("security_events").delete().neq("id", 0).execute()
+    return len(res.data)
+
+
 def insert_security_event_or_bump(
     event_type: str, severity: str, ip: str, path: str | None, count: int, action: str
 ) -> None:

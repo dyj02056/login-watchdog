@@ -171,12 +171,23 @@ section h2 {
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
+    /* 경로(path)처럼 공백 없이 긴 문자열이 표 바깥으로 삐져나가는 것을 막는다.
+       table-layout: fixed로 열 너비를 내용 크기가 아니라 표 전체 너비 기준으로
+       고정해야, 아래 overflow-wrap이 "이 칸은 줄바꿈할 공간이 없다"고 판단해서
+       실제로 줄을 바꾼다(auto 레이아웃에서는 셀이 내용에 맞춰 계속 넓어진다). */
+    table-layout: fixed;
 }
 
 .data-table th, .data-table td {
     text-align: left;
     padding: 6px 8px;
     border-bottom: 1px solid var(--line);
+    /* 단어 사이에 공백이 없는 긴 값(URL 경로, 이메일, IP 등)도 셀 너비에 맞춰
+       강제로 줄바꿈한다 — "관리자 대시보드 밑의 다른 항목들도" 요청대로
+       .data-table을 쓰는 모든 표(로그인 시도/회원/게시글/댓글/보안 이벤트 등)에
+       공통 적용된다. */
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .data-table th {
