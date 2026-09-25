@@ -65,6 +65,29 @@ def verify_admin_credentials(username: str, password: str) -> bool:
     return result if res.data else False
 
 
+def get_admin_role(username: str) -> str | None:
+    """이 관리자 아이디의 role(security_viewer/security_admin/super_admin)을 돌려준다.
+
+    Track B guide26에서 helpers.require_permission()이 요청마다 이 함수를 호출해서
+    "지금 이 관리자가 어떤 역할인지"부터 확인한다. has_permission()과 마찬가지로
+    캐싱하지 않고 매번 조회한다 — super_admin이 다른 관리자의 role을 바꾸거나
+    회수했을 때(guide28 권한회수), 그 관리자가 로그아웃하지 않아도 바로 다음
+    요청부터 새 role이 적용되어야 하기 때문이다.
+
+    계정이 없으면(이미 삭제됐거나 오타) None을 돌려준다 — 호출부(require_permission)는
+    None을 "아무 권한도 없음"으로 취급한다.
+    """
+    res = (
+        db.get_client()
+        .table("admin_users")
+        .select("role")
+        .eq("username", username)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0]["role"] if res.data else None
+
+
 def count_recent_admin_failures(ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS) -> int:
     """이 IP가 최근 몇 초(기본 60초) 안에 관리자 로그인을 몇 번이나 실패했는지 센다.
 

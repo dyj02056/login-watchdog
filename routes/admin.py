@@ -14,7 +14,7 @@ import config
 import db
 import detector
 import soar
-from helpers import _attach_locations, get_request_ip, is_bot_submission, login_required
+from helpers import _attach_locations, get_request_ip, is_bot_submission, login_required, require_permission
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -216,7 +216,7 @@ def api_status():
 
 
 @admin_bp.route("/api/unlock", methods=["POST"])
-@login_required
+@require_permission("unlock_ip")
 def api_unlock():
     """대시보드의 "즉시 해제" 버튼을 눌렀을 때 브라우저가 호출하는 API.
 
@@ -234,7 +234,7 @@ def api_unlock():
 
 
 @admin_bp.route("/api/security-events/resolve", methods=["POST"])
-@login_required
+@require_permission("resolve_security_event")
 def api_security_events_resolve():
     """대시보드의 "처리 완료" 버튼을 눌렀을 때 브라우저가 호출하는 API.
 
@@ -253,7 +253,7 @@ def api_security_events_resolve():
 
 
 @admin_bp.route("/api/users/delete", methods=["POST"])
-@login_required
+@require_permission("delete_user")
 def api_users_delete():
     """대시보드의 회원 목록에서 "삭제" 버튼을 눌렀을 때 호출되는 API.
 
@@ -270,7 +270,7 @@ def api_users_delete():
 
 
 @admin_bp.route("/api/settings/signup", methods=["POST"])
-@login_required
+@require_permission("toggle_signup")
 def api_settings_signup():
     """대시보드의 "회원가입 켜기/끄기" 토글을 눌렀을 때 호출되는 API.
 
@@ -289,7 +289,7 @@ def api_settings_signup():
 
 
 @admin_bp.route("/api/board/posts/delete", methods=["POST"])
-@login_required
+@require_permission("delete_post")
 def api_board_posts_delete():
     """관리자 대시보드의 "게시글 관리" 섹션에서 임의 게시글을 삭제할 때 호출되는 API.
 
@@ -307,7 +307,7 @@ def api_board_posts_delete():
 
 
 @admin_bp.route("/api/board/comments/delete", methods=["POST"])
-@login_required
+@require_permission("delete_comment")
 def api_board_comments_delete():
     """관리자 대시보드에서 임의 댓글을 삭제할 때 호출되는 API. 위 함수와 동일한 패턴."""
     data = request.get_json(silent=True) or {}

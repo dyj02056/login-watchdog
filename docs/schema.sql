@@ -232,3 +232,54 @@ create index idx_security_events_ip_severity on security_events (ip_address, sev
 create unique index idx_security_events_high_open_incident
   on security_events (ip_address, event_type)
   where resolved_at is null and severity = 'HIGH';
+
+-- ============================================================================
+-- RBAC 기본 구조 (Track B guide26 — login_watchdog_expansion_plan.md 참고)
+-- ============================================================================
+
+-- 관리자 역할 3종. security_viewer < security_admin < super_admin 순으로
+-- 할 수 있는 일이 늘어나지만, 이 표 자체에는 "포함 관계"를 표현하지 않는다 —
+-- 아래 permissions 표에 역할별로 할 수 있는 액션을 전부 한 줄씩 나열한다.
+create table roles (
+  role text primary key check (role in ('security_viewer', 'security_admin', 'super_admin'))
+);
+insert into roles (role) values ('security_viewer'), ('security_admin'), ('super_admin');
+
+-- role이 할 수 있는 action 하나하나를 나열한 표. routes/admin.py의 쓰기 API
+-- 6개(unlock_ip / resolve_security_event / toggle_signup / delete_user /
+-- delete_post / delete_comment)에 1:1로 대응한다. require_permission()
+-- 데코레이터가 요청마다 이 표를 조회해서 "지금 이 관리자의 역할이 이 액션을
+-- 할 수 있는가"를 확인한다.
+create table permissions (
+  role text not null references roles(role),
+  action text not null check (
+    action in (
+      'unlock_ip', 'resolve_security_event', 'toggle_signup',
+      'delete_user', 'delete_post', 'delete_comment'
+    )
+  ),
+  primary key (role, action)
+);
+insert into permissions (role, action) values
+  ('security_admin', 'unlock_ip'),
+  ('security_admin', 'resolve_security_event'),
+  ('super_admin', 'unlock_ip'),
+  ('super_admin', 'resolve_security_event'),
+  ('super_admin', 'toggle_signup'),
+  ('super_admin', 'delete_user'),
+  ('super_admin', 'delete_post'),
+  ('super_admin', 'delete_comment');
+-- security_viewer는 어떤 액션도 없다 — 대시보드 조회(GET /admin/dashboard,
+-- /api/status)는 지금처럼 login_required만으로 충분해서 permissions에
+-- "view_dashboard" 같은 행을 따로 두지 않았다(세 역할 모두 어차피 볼 수 있으므로
+-- 권한 구분의 의미가 없다).
+
+-- 기존 admin_users 표에 역할 칸을 추가한다. 이미 있는 관리자 계정(예:
+-- sktmaster123)도 이 ALTER 한 번으로 전부 기본값 'security_admin'을 갖게 된다 —
+-- 그 중 최종 책임자 계정만 아래 UPDATE로 super_admin으로 올려준다.
+alter table admin_users add column role text not null references roles(role) default 'security_admin';
+
+-- 이미 있는 최종 책임자 계정을 super_admin으로 승격 (계정을 새로 만드는 게
+-- 아니라 기존 행의 role 값만 바꾸는 것 — login_watchdog_expansion_plan.md 논의 참고).
+-- 이 프로젝트의 실제 최종 책임자 계정 이름으로 바꿔서 한 번만 실행하면 된다.
+update admin_users set role = 'super_admin' where username = 'sktmaster123';

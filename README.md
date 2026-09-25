@@ -17,6 +17,7 @@
 - **IP 위치 조회** — [ip-api.com](https://ip-api.com)으로 접속 IP의 국가·도시를 조회해 회원/관리자 대시보드에 표시. 조회 결과는 Supabase(`ip_locations`)에 캐시되어 같은 IP를 반복 조회하지 않음(무료 API의 분당 45건 한도 대응)
 - **게시판·댓글** (`/board`) — 로그인한 회원 전용 게시판. 글 작성/수정/삭제(본인 글만), 댓글 작성/삭제(본인 댓글만), 페이지 번호 방식 목록, 새 댓글이 달리면 알림 배너 표시. 관리자 대시보드에서는 별도로 전체 게시글·댓글을 조회·삭제 가능. 자세한 설계 배경은 [docs/board-comment/](docs/board-comment) 참고
 - **L7 공격 방어 보강** — IP를 나눠 시도하는 분산/저속 브루트포스에 대한 계정 단위 잠금(CRITICAL), 클릭재킹/CSP 방어용 보안 응답 헤더와 전역 HTTP 플러딩 방어(HIGH), 로그인/가입/글쓰기/댓글 폼의 허니팟 봇 차단과 로그인 타이밍 사이드채널 제거·SSRF 입력 검증(MEDIUM), CSRF 에러 핸들러 오픈 리다이렉트 수정(LOW)까지 위험등급별로 대응. 자세한 내용은 [docs/beginner-guide/guide24_l7_attack_hardening.md](docs/beginner-guide/guide24_l7_attack_hardening.md) 참고
+- **관리자 역할 기반 접근 제어(RBAC)** — 관리자 계정이 `security_viewer`(조회만) / `security_admin`(IP 잠금 해제·보안 이벤트 처리) / `super_admin`(회원·게시글·댓글 삭제, 회원가입 On/Off까지 전부)으로 나뉘어, 로그인만 되면 뭐든 할 수 있던 이진 구조를 액션 단위 권한으로 세분화. 요청마다 실시간으로 역할을 조회해 권한 회수가 재로그인 없이 즉시 반영됨. 새 관리자 계정은 회원가입 화면이 아니라 `scripts/create_admin.py`로 생성. 자세한 내용은 [docs/beginner-guide/guide26_rbac_foundation.md](docs/beginner-guide/guide26_rbac_foundation.md) 참고
 
 ## 기술 스택
 
@@ -46,7 +47,7 @@ pip install -r requirements.txt
 
 ### 3. Supabase 프로젝트 준비
 1. [supabase.com](https://supabase.com)에서 프로젝트 생성
-2. **SQL Editor**에서 [docs/schema.sql](docs/schema.sql) 내용 전체 실행 (`users`, `login_attempts`, `lockouts`, `account_lockouts`, `admin_users`, `admin_login_log`, `app_settings`, `ip_locations`, `signup_attempts`, `posts`, `comments`, `post_attempts`, `comment_attempts`, `not_found_attempts`, `unauthorized_attempts`, `page_access_attempts`, `security_events` 17개 테이블 생성)
+2. **SQL Editor**에서 [docs/schema.sql](docs/schema.sql) 내용 전체 실행 (`users`, `login_attempts`, `lockouts`, `account_lockouts`, `admin_users`, `admin_login_log`, `app_settings`, `ip_locations`, `signup_attempts`, `posts`, `comments`, `post_attempts`, `comment_attempts`, `not_found_attempts`, `unauthorized_attempts`, `page_access_attempts`, `security_events`, `roles`, `permissions` 19개 테이블 생성)
 3. **Project Settings → API**에서 `Project URL`과 `service_role` key 확인
 
 ### 4. 환경변수 설정
@@ -62,7 +63,7 @@ cp .env.example .env
 | `SUPABASE_KEY` | `service_role` key (서버 전용, 절대 노출 금지) |
 | `SLACK_WEBHOOK_URL` | Slack Incoming Webhook 주소. 비워두면 알림이 콘솔 로그로 대체됨 |
 | `SECRET_KEY` | Flask 세션 쿠키 서명용 임의 문자열 (예: `python -c "import secrets; print(secrets.token_hex(32))"`) |
-| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 서버 최초 기동 시 자동 생성될 관리자 계정 (이미 계정이 있으면 무시됨) |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | 서버 최초 기동 시 자동 생성될 관리자 계정 (이미 계정이 있으면 무시됨). RBAC 도입 후 이 계정을 `super_admin`으로 지정하려면 `docs/schema.sql`의 `update admin_users set role = 'super_admin' where username = '...'`을 이 값과 맞게 수정해서 실행해야 함 |
 | `TRUST_FORWARDED_FOR` | `X-Forwarded-For` 헤더 신뢰 여부. **데모/시연 전용, 운영에서는 반드시 `false`** |
 | `VERCEL_AUTOMATION_BYPASS_SECRET` | Vercel Authentication(프리뷰 배포 보호)을 우회하는 Protection Bypass Secret. `scripts/bruteforce_sim.py`로 Vercel 프리뷰 배포를 대상으로 테스트할 때만 필요, 로컬 서버·운영 배포에는 불필요 |
 
@@ -137,7 +138,7 @@ python app.py
 ```bash
 pytest tests/
 ```
-실제 Supabase에 접속하지 않고 가짜 데이터(monkeypatch)로 판정 로직만 검증하므로 몇 초 안에 끝납니다. 현재 총 187개 테스트가 모두 통과합니다.
+실제 Supabase에 접속하지 않고 가짜 데이터(monkeypatch)로 판정 로직만 검증하므로 몇 초 안에 끝납니다. 현재 총 238개 테스트가 모두 통과합니다.
 
 ## 유지보수 스크립트
 (김재호)
@@ -151,6 +152,7 @@ GET 11회를 보내 재현할 수 있습니다. [실행 조건과 알림 확인 
 | `scripts/bruteforce_sim.py` | `/login`에 일부러 틀린 비밀번호를 반복 제출해, 설정된 횟수(기본 5회 초과)에서 실제로 IP가 잠기는지 검증하는 시뮬레이터. 팀이 소유한 로컬 서버만 대상으로 하며, 그 외 주소는 `--i-know-what-im-doing` 없이는 거부됨. `--ip`로 가짜 공격자 IP를 지정하거나, Vercel 프리뷰 배포처럼 Vercel Authentication이 걸린 주소를 대상으로 할 때는 `--bypass-secret`으로 우회할 수도 있음(아래 참고) |
 | `scripts/daily_report.py` | 최근 N시간(기본 24시간)의 로그인 시도/잠금 현황을 콘솔에 텍스트로 요약 |
 | `scripts/unlock_ip.py` | 지금 잠겨있는 IP를 조회하거나 즉시 해제. `/admin/login`도 `/login`과 같은 IP 기준 잠금을 공유하므로, 브루트포스 시뮬레이션 도중 관리자 계정 IP까지 함께 잠기면 대시보드의 "즉시 해제" 버튼조차 쓸 수 없는 상황이 생기는데(로그인 자체가 막혀서), 이때 서버·로그인 없이 터미널에서 바로 풀 때 사용 |
+| `scripts/create_admin.py` | `security_viewer`/`security_admin`/`super_admin` 역할을 가진 새 관리자 계정을 생성. `admin_users`는 회원가입 화면이 없어서(위 "관리자 역할 기반 접근 제어" 참고), 부트스트랩 계정 외의 관리자는 이 스크립트로만 만들 수 있음 |
 
 `bruteforce_sim.py`의 `--ip` 옵션: 로컬 환경에서는 팀원 전원이 다 같은 `127.0.0.1`로 접속하게 되어 "서로 다른 공격자 IP에서 왔다"는 상황을 재현할 수 없다. `--ip 1.2.3.4`를 주면 그 값을 `X-Forwarded-For` 헤더에 실어 보내는데, 이 헤더는 대상 서버의 `.env`에서 `TRUST_FORWARDED_FOR=true`로 켜뒀을 때만 실제 접속 IP처럼 반영된다(운영 환경 기본값인 `false`에서는 서버가 헤더를 무시하고 진짜 접속 IP를 그대로 씀 — 배포 사이트에서 이 옵션이 안전하게 아무 효과가 없는 이유).
 ```bash
@@ -169,45 +171,71 @@ python scripts/unlock_ip.py --ip 127.0.0.1  # 이 IP 하나만 즉시 해제
 python scripts/unlock_ip.py --all           # 활성 잠금 전부 즉시 해제
 ```
 
+`create_admin.py` 사용 예:
+```bash
+python scripts/create_admin.py --username sktviewer123 --password <비밀번호> --role security_viewer
+python scripts/create_admin.py --username sktadmin123 --password <비밀번호> --role security_admin
+```
+
 ## 프로젝트 구조
+
+`app.py`(1,108줄)와 `db.py`(1,030줄)가 파일 하나에 너무 많은 책임을 담고 있어 원하는 코드를 찾기 어려워졌던 것을 계기로, 각각 `routes/` Blueprint 4개와 `db/` 표 묶음별 패키지로 쪼갰습니다(배경은 [docs/refactor/2026-09-15-file-split.md](docs/refactor/2026-09-15-file-split.md) 참고). 호출부(`app.py`/`detector.py`/`soar.py`/`scripts/*.py`/테스트)는 지금도 예전처럼 `import db` 후 `db.log_attempt(...)`처럼 쓰며, 어느 파일이 실제로 그 함수를 담고 있는지는 몰라도 됩니다.
 
 ```
 login-watchdog/
-├── app.py              # Flask 진입점 — 앱 생성, 세션/CSRF 설정, 에러 핸들러, Blueprint 등록
-├── helpers.py            # 라우트 전체가 공유하는 문지기 데코레이터·공용 함수
-├── routes/                 # Blueprint 4개 (auth/admin/board/member) — 실제 화면 라우트
-├── db/                       # Supabase 연동 (읽기/쓰기 전담), 표 묶음별로 분리된 패키지
-├── detector.py                 # 브루트포스 판정 로직
-├── soar.py                       # 판정 결과에 따른 조치(잠금/해제) 실행
-├── alert.py                        # Slack 알림 전송
-├── geoip.py                          # IP 위치(국가·도시) 조회, 캐싱
-├── config.py                           # 임계값·윈도우·잠금시간 등 상수
-├── templates/                            # Jinja2 HTML 템플릿
-├── public/css, public/js/dashboard/        # 스타일 및 대시보드 자바스크립트(ES 모듈 6개)
-├── tests/                          # pytest 단위 테스트
-├── scripts/                         # 유지보수 스크립트 (bruteforce_sim.py, daily_report.py, unlock_ip.py — 위 "유지보수 스크립트" 참고)
-├── docs/schema.sql                  # Supabase 테이블 정의
-├── docs/beginner-guide/               # 비전공자용 단계별 구현 해설서 (24개 파일로 분리)
-├── docs/board-comment/                  # 게시판·댓글 기능 설계 문서(분석 → 결정 → 계획 → 결과)
-└── plan.md, research.md                # 설계 근거 문서
+├── app.py                         # Flask 진입점(축소) — 앱 생성, 세션/CSRF 설정, 에러 핸들러, before_request, Blueprint 4개 등록
+├── helpers.py                     # 라우트 전체가 공유하는 문지기 데코레이터(login_required/require_permission/member_login_required)·공용 함수
+├── routes/                        # Blueprint 4개 — 실제 화면 라우트 (app.py에서 분리)
+│   ├── auth.py                    #   auth_bp: /signup, /login
+│   ├── admin.py                   #   admin_bp: /admin/login, /admin/dashboard, /api/*(관리자용, RBAC로 세분화)
+│   ├── board.py                   #   board_bp: /board/*
+│   └── member.py                  #   member_bp: /dashboard/*
+├── db/                             # Supabase 연동 — 표 묶음별로 분리된 패키지 (db.py에서 분리)
+│   ├── __init__.py                 #   하위 모듈 함수를 전부 다시 내보내기(re-export), 호출부는 여전히 db.함수명()으로 사용
+│   ├── _client.py                  #   get_client(), _now_iso() — Supabase 연결
+│   ├── attempts.py                 #   login_attempts (로그인 시도 기록)
+│   ├── lockouts.py                 #   lockouts (IP 잠금 현재 상태)
+│   ├── account_lockouts.py         #   account_lockouts (계정 단위 잠금, 분산 브루트포스 대응)
+│   ├── admin.py                    #   admin_users, admin_login_log (관리자 계정/로그인 기록/역할)
+│   ├── roles.py                    #   roles, permissions (RBAC — 역할별 허용 액션)
+│   ├── users.py                    #   users (회원 계정)
+│   ├── settings.py                 #   app_settings, signup_attempts (설정값, 가입 빈도 제한)
+│   ├── geoip_cache.py              #   ip_locations (IP 위치 조회 캐시)
+│   ├── board.py                    #   posts, comments, post_attempts, comment_attempts (게시판)
+│   └── security_events.py          #   not_found/unauthorized/page_access_attempts, security_events
+├── detector.py                    # 브루트포스 판정 로직
+├── soar.py                        # 판정 결과에 따른 조치(잠금/해제) 실행
+├── alert.py                       # Slack 알림 전송
+├── geoip.py                       # IP 위치(국가·도시) 조회, 캐싱
+├── config.py                      # 임계값·윈도우·잠금시간 등 상수
+├── templates/                     # Jinja2 HTML 템플릿
+├── public/css, public/js/dashboard/ # 스타일 및 대시보드 자바스크립트(ES 모듈 6개)
+├── tests/                         # pytest 단위 테스트
+├── scripts/                       # 유지보수 스크립트 (bruteforce_sim.py, daily_report.py, unlock_ip.py, create_admin.py 등 — 위 "유지보수 스크립트" 참고)
+├── docs/schema.sql                # Supabase 테이블 정의
+├── docs/beginner-guide/           # 비전공자용 단계별 구현 해설서 (26개 파일로 분리)
+├── docs/board-comment/            # 게시판·댓글 기능 설계 문서(분석 → 결정 → 계획 → 결과)
+├── docs/refactor/                 # app.py/db.py/dashboard.js 파일 분리 리팩터링 배경 기록
+└── plan.md, research.md           # 설계 근거 문서
 ```
 
 ## 더 자세히 알고 싶다면
 
 - [plan.md](plan.md) — 각 파일을 왜 이렇게 설계했는지에 대한 상세 근거
-- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide24_l7_attack_hardening.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
+- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide26_rbac_foundation.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
 - [docs/board-comment/](docs/board-comment) — 게시판·댓글 기능을 왜 이렇게 설계했는지(구현 전 분석 → 모호한 질문 11개 결정 → 구현 계획 → 결과 보고) 순서대로 기록한 문서 4종
 - [docs/refactor/2026-09-15-file-split.md](docs/refactor/2026-09-15-file-split.md) — `app.py`/`db.py`/`dashboard.js`를 각각 `routes/`+`helpers.py`, `db/` 패키지, `public/js/dashboard/` ES 모듈로 나눈 리팩터링 배경과 과정
 
 ## 알려진 제한사항
 
 - **IP 단위 잠금** — 계정이 아니라 접속 IP를 기준으로 잠급니다. 같은 공유 IP(회사·카페 와이파이 등)의 여러 사용자가 한 명의 실패 때문에 함께 잠길 수 있습니다. `/admin/login`도 `/login`과 같은 IP 기준 잠금을 공유하므로, 같은 컴퓨터에서 브루트포스를 시뮬레이션하다 관리자 계정 IP까지 함께 잠기면 대시보드의 "즉시 해제" 버튼도 쓸 수 없습니다(로그인 자체가 막혀서) — 이때는 `scripts/unlock_ip.py`로 터미널에서 바로 풀 수 있습니다.
-- **관리자 계정 1개 고정** — 회원가입 화면 없이 `.env` 값으로 서버 최초 기동 시 1명만 자동 생성됩니다. 여러 관리자·권한 구분(RBAC)은 지원하지 않습니다.
+- **관리자 계정은 여전히 회원가입 화면 없음** — `.env` 값으로 서버 최초 기동 시 부트스트랩 계정 1명만 자동 생성됩니다. 역할 구분(RBAC: `security_viewer`/`security_admin`/`super_admin`)은 guide26부터 지원하지만, 새 관리자 계정을 추가하려면 여전히 `scripts/create_admin.py`를 터미널에서 직접 실행해야 합니다(관리자 대시보드 안에서 계정을 만드는 화면은 없음). 또한 `super_admin` 인원수를 1명으로 강제하는 로직도 없어서(운영 정책으로만 지켜지는 중), 최종 책임자 계정이 유일한 super_admin일 때 그 계정이 잠기거나 삭제되면 Supabase에 직접 접속하지 않고는 아무도 새 super_admin을 만들 수 없습니다.
 - **자동 해제는 "정시"가 아니라 "다음 요청 시"** — 백그라운드 타이머 없이, `/login` 요청이나 대시보드 폴링이 들어올 때 만료된 잠금을 정리합니다. 한동안 요청이 없으면 5분이 지나도 실제 해제가 늦어질 수 있습니다.
 - **`TRUST_FORWARDED_FOR`는 데모 전용** — 켜두면 요청 헤더의 IP를 신뢰합니다(형식이 올바른 IP인지는 검증하지만, 그 값 자체가 진짜 요청자의 IP인지는 확인할 수 없습니다). 운영 환경에서 켜두면 공격자가 헤더에 임의의(형식은 유효한) IP를 넣는 것만으로 IP 잠금을 우회할 수 있어 위험합니다.
 - **동시 실행 시 경쟁 조건(race condition) 가능성** — 여러 사람이 동시에 같은 IP로 브루트포스를 시뮬레이션하면 Slack 알림이 중복 발송되거나 잠금 처리가 겹칠 수 있습니다. 시연 시 한 명만 시뮬레이션 실행을 권장합니다.
 - **대시보드는 실시간이 아니라 폴링 방식** — 웹소켓 기반 실시간 스트리밍이 아니라 일정 주기(기본 5초, `ADMIN_DASHBOARD_POLL_MS`)로 새로고침합니다. 최대 그 주기만큼 화면이 실제 상태보다 늦게 보일 수 있습니다. 원래는 Supabase 무료 쿼터 보호를 위해 10초로 늘렸었지만, 공격 대응 상황을 더 빠르게 확인할 수 있도록 5초로 다시 줄였습니다 — 오래 켜두는 환경에서 쿼터가 걱정되면 `.env`에서 다시 늘릴 수 있습니다. 주기 조절 방법은 [docs/beginner-guide/guide09_quota.md](docs/beginner-guide/guide09_quota.md)를 참고하세요.
 - **계정 단위 잠금은 수동 해제 미지원** — IP 잠금과 달리 `account_lockouts`(분산 브루트포스 대응)는 관리자 대시보드의 "즉시 해제" 버튼이 아직 없어, 5분 자동 해제만 기다릴 수 있습니다.
+- **대시보드 화면은 아직 역할을 모름** — RBAC는 서버 API(`require_permission`)에서만 강제됩니다. `dashboard.js`는 로그인한 관리자의 역할과 무관하게 버튼(회원 삭제, 회원가입 토글 등)을 전부 그려서 보여주고, 권한이 없는 역할이 눌러도 서버가 403으로 막을 뿐 화면에 "권한 없음" 안내는 뜨지 않고 조용히 실패합니다.
 - **L3/L4(네트워크/전송 계층) 공격 대응은 아직 없음** — 현재 방어 로직은 전부 HTTP 요청(L7) 내용을 근거로 판단합니다. SYN Flood, 포트 스캐닝처럼 그보다 아래 계층에서 발생하는 공격은 별도의 관찰 지점(리버스 프록시/방화벽 등) 설계가 필요하며, 이 프로젝트의 다음 확장 목표입니다.
 - **개발용 서버 사용** — `app.run(debug=True)`는 Flask가 공식적으로 "운영 배포에 쓰지 말라"고 명시하는 개발용 서버입니다. 외부 공개 서비스로 배포하려면 별도의 프로덕션 WSGI 서버(gunicorn 등)로 교체해야 합니다.
 - **감시 대상 계정은 데모 수준 인증** — 이메일 인증, 비밀번호 재설정, 계정 잠금 셀프 해제 같은 기능은 제공하지 않습니다. `/login`은 실사용 서비스가 아니라 브루트포스 탐지를 시연하기 위한 화면입니다.

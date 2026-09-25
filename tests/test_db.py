@@ -161,6 +161,44 @@ def test_verify_admin_credentials_hashes_even_when_username_not_found(monkeypatc
     assert calls[0][0] == admin_module._DUMMY_PASSWORD_HASH
 
 
+def test_get_admin_role_returns_stored_role(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"role": "super_admin"}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.get_admin_role("sktmaster123")
+
+    assert result == "super_admin"
+
+
+def test_get_admin_role_none_when_username_not_found(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.get_admin_role("no_such_admin")
+
+    assert result is None
+
+
+def test_has_permission_true_when_row_exists(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"role": "security_admin"}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.has_permission("security_admin", "unlock_ip")
+
+    assert result is True
+
+
+def test_has_permission_false_when_no_matching_row(monkeypatch):
+    # security_viewer는 permissions 표에 아무 행도 없으므로(guide26 시드 데이터),
+    # 어떤 action을 물어봐도 항상 False여야 한다.
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.has_permission("security_viewer", "unlock_ip")
+
+    assert result is False
+
+
 def test_count_recent_distinct_usernames_dedupes_rows(monkeypatch):
     # 같은 아이디("hyun")로 두 번, 다른 아이디("guest")로 한 번 실패한 상황을 흉내낸다.
     # 행은 3개지만 서로 다른 아이디는 2개여야 한다 — Brute Force(1개)와

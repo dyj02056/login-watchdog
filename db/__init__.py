@@ -40,6 +40,7 @@ from .admin import (
     count_recent_admin_failures,
     count_recent_distinct_admin_usernames,
     ensure_bootstrap_admin,
+    get_admin_role,
     list_admin_login_log,
     log_admin_attempt,
     verify_admin_credentials,
@@ -73,6 +74,7 @@ from .board import (
     update_post,
 )
 from .geoip_cache import get_cached_ip_locations, save_ip_location
+from .roles import has_permission
 from .lockouts import (
     create_lockout,
     get_active_lockout,
@@ -122,6 +124,8 @@ __all__ = [
     "get_client",
     "ensure_bootstrap_admin",
     "verify_admin_credentials",
+    "get_admin_role",
+    "has_permission",
     "count_recent_admin_failures",
     "count_recent_distinct_admin_usernames",
     "log_admin_attempt",

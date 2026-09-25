@@ -113,6 +113,43 @@ def login_required(view):
     return wrapped_view
 
 
+def require_permission(action: str):
+    """login_required보다 한 단계 더 세밀한 문지기 — "로그인됐는가"뿐 아니라
+    "이 관리자의 역할이 정말 이 action을 해도 되는가"까지 확인한다
+    (Track B guide26, RBAC 기본 구조).
+
+    login_required와 다르게 데코레이터 팩토리(괄호로 action을 받아 진짜
+    데코레이터를 만들어 돌려주는 함수) 형태다 — `@require_permission("delete_user")`
+    처럼 라우트마다 어떤 액션을 확인할지 지정해야 하기 때문이다.
+
+    순서: 1) 로그인 여부는 login_required와 완전히 동일하게 확인(미로그인 시
+    /api/*는 401 JSON + 미인증 API 접근 기록, 그 외는 로그인 화면으로 리다이렉트).
+    2) 로그인은 됐지만 role이 이 action을 못 하면 403(권한 없음) JSON을 돌려준다
+    — 이미 로그인된 상태에서 걸리는 경우이므로 화면 리다이렉트가 아니라 항상
+    JSON으로 응답한다(이 데코레이터가 보호하는 라우트는 전부 /api/* 뿐이라서).
+    """
+    def decorator(view):
+        @wraps(view)
+        def wrapped_view(*args, **kwargs):
+            if "admin_username" not in session:
+                if request.path.startswith("/api/"):
+                    ip = get_request_ip()
+                    db.log_unauthorized_attempt(ip, request.path)
+                    suspicious, count, is_first_over_threshold = detector.is_unauthorized_access_suspicious(ip)
+                    if suspicious and is_first_over_threshold:
+                        soar.notify_unauthorized_access(ip, count, request.path)
+                    return jsonify({"error": "로그인이 필요합니다."}), 401
+                return redirect(url_for("admin.admin_login"))
+
+            role = db.get_admin_role(session["admin_username"])
+            if role is None or not db.has_permission(role, action):
+                return jsonify({"error": "이 작업을 수행할 권한이 없습니다."}), 403
+
+            return view(*args, **kwargs)
+        return wrapped_view
+    return decorator
+
+
 def member_login_required(view):
     """"회원 로그인이 되어 있어야만 들어올 수 있는 방" 문지기 — login_required와
     구조는 완전히 똑같지만, 확인하는 세션 값이 다르다("admin_username"이 아니라

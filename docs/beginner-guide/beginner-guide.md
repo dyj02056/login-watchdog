@@ -32,6 +32,7 @@
 23. [23단계 — 보안 이벤트 코드 리뷰에서 발견된 4가지 문제 수정](guide23_security_events_fixes.md)
 24. [24단계 — L7 공격 유형 점검과 보강 (분산 브루트포스 / 보안 헤더 / 봇 차단 등)](guide24_l7_attack_hardening.md)
 25. [25단계 — 팀원 브랜치 병합 정리 및 `daily_report.py` AI 보안 총평(Gemini) 연동](guide25_scripts_merge_ai_report.md)
+26. [26단계 — RBAC 기본 구조 (Track B 1/3)](guide26_rbac_foundation.md)
 
 ---
 

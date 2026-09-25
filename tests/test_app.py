@@ -634,6 +634,8 @@ def test_page_access_ignores_nonexistent_paths(client, monkeypatch):
 
 def test_api_unlock_requires_ip_in_body(client, monkeypatch):
     monkeypatch.setattr(soar, "try_release_expired_lockouts", lambda: None)
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
 
     with client.session_transaction() as sess:
         sess["admin_username"] = "test-admin"
@@ -650,6 +652,8 @@ def test_api_unlock_requires_ip_in_body(client, monkeypatch):
 
 def test_api_unlock_releases_ip_when_authenticated(client, monkeypatch):
     monkeypatch.setattr(soar, "manual_release", lambda ip: ip == "1.2.3.4")
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
 
     with client.session_transaction() as sess:
         sess["admin_username"] = "test-admin"
@@ -665,6 +669,25 @@ def test_api_unlock_releases_ip_when_authenticated(client, monkeypatch):
     assert response.get_json() == {"success": True}
 
 
+def test_api_unlock_returns_403_when_role_lacks_permission(client, monkeypatch):
+    # security_viewer는 unlock_ip 권한이 없다(guide26 시드 데이터) — require_permission이
+    # login_required와 별개로 이 경우까지 막아주는지 확인한다.
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_viewer")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: False)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "test-viewer"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/unlock",
+        json={"ip": "1.2.3.4"},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 403
+
+
 def test_api_unlock_without_csrf_header_is_rejected(client, monkeypatch):
     with client.session_transaction() as sess:
         sess["admin_username"] = "test-admin"
@@ -675,6 +698,9 @@ def test_api_unlock_without_csrf_header_is_rejected(client, monkeypatch):
 
 
 def test_api_security_events_resolve_requires_event_id_in_body(client, monkeypatch):
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
+
     with client.session_transaction() as sess:
         sess["admin_username"] = "test-admin"
 
@@ -690,6 +716,8 @@ def test_api_security_events_resolve_requires_event_id_in_body(client, monkeypat
 
 def test_api_security_events_resolve_marks_event_resolved_when_authenticated(client, monkeypatch):
     monkeypatch.setattr(db, "resolve_security_event", lambda event_id: event_id == 42)
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
 
     with client.session_transaction() as sess:
         sess["admin_username"] = "test-admin"
@@ -1125,6 +1153,8 @@ def test_api_board_posts_delete_succeeds_for_admin(client, monkeypatch):
     with client.session_transaction() as sess:
         sess["admin_username"] = "test-admin"
     monkeypatch.setattr(db, "delete_post", lambda post_id: post_id == 1)
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
 
     token = get_csrf_token(client, "/admin/dashboard")
     response = client.post(
@@ -1134,6 +1164,25 @@ def test_api_board_posts_delete_succeeds_for_admin(client, monkeypatch):
     )
 
     assert response.status_code == 200
+
+
+def test_api_board_posts_delete_returns_403_for_security_admin(client, monkeypatch):
+    # delete_post는 super_admin 전용 액션이다(guide26 시드 데이터) — security_admin이
+    # unlock_ip/resolve_security_event는 할 수 있어도 삭제는 못 해야 한다.
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: False)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "test-admin"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/board/posts/delete",
+        json={"post_id": 1},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 403
 
 
 # ============================================================================

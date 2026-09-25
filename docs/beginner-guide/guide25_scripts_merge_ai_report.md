@@ -1,6 +1,6 @@
 # 25단계 — 팀원 브랜치 병합 정리 및 `daily_report.py` AI 보안 총평(Gemini) 연동
 
-[◀ 24단계](guide24_l7_attack_hardening.md) · [전체 목차](beginner-guide.md)
+[◀ 24단계](guide24_l7_attack_hardening.md) · [전체 목차](beginner-guide.md) · [26단계 ▶](guide26_rbac_foundation.md)
 
 > 팀원별로 나뉘어 있던 로컬 브랜치(`main`, `seunghoon`, `yoojieun`)를 순서대로 검토하고 병합했습니다. 병합 과정에서 각 브랜치의 신규 스크립트에 비전공자용 설명 주석을 보강했고, `yoojieun` 브랜치에서 시도했던 "AI 보안 총평" 기능이 실제로는 크래시가 나거나 미완성 상태였던 것을 발견해 직접 고친 뒤 Google Gemini API와 실제로 연동했습니다.
 
