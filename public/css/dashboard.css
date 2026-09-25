@@ -225,24 +225,35 @@ section h2 {
 
 /* 보안 이벤트 표는 8개 열이 전부 같은 너비로 나뉘면 "경로" 칸이 URL을 담기엔
    너무 좁아서 계속 여러 줄로 빽빽하게 끊긴다. 다른 열(등급/횟수처럼 짧은 값만
-   들어가는 칸)은 좁혀주고, 그만큼을 "경로" 칸에 몰아준다. 비율 합은 100%. */
-#security-events-table th:nth-child(1), #security-events-table td:nth-child(1) { width: 11%; } /* 시각 */
-#security-events-table th:nth-child(2), #security-events-table td:nth-child(2) { width: 8%; }  /* 등급 */
-#security-events-table th:nth-child(3), #security-events-table td:nth-child(3) { width: 11%; } /* 유형 */
-#security-events-table th:nth-child(4), #security-events-table td:nth-child(4) { width: 10%; } /* IP */
-#security-events-table th:nth-child(5), #security-events-table td:nth-child(5) { width: 34%; } /* 경로 */
-#security-events-table th:nth-child(6), #security-events-table td:nth-child(6) { width: 6%; }  /* 횟수 */
-#security-events-table th:nth-child(7), #security-events-table td:nth-child(7) { width: 10%; } /* 조치 */
-#security-events-table th:nth-child(8), #security-events-table td:nth-child(8) { width: 10%; } /* 상태 */
+   들어가는 칸)은 좁혀주고, 그만큼을 "경로" 칸에 몰아준다. 비율 합은 100%.
+   단, "등급" 칸은 너무 좁히면 배지("CRITICAL" 등)가 칸 너비보다 넓어져
+   overflow로 옆 "유형" 칸 글자 위에 겹쳐 보이므로, 배지가 한 줄로 들어갈
+   만큼의 최소 너비를 확보해둔다. */
+#security-events-table th:nth-child(1), #security-events-table td:nth-child(1) { width: 10%; } /* 시각 */
+#security-events-table th:nth-child(2), #security-events-table td:nth-child(2) { width: 13%; } /* 등급 */
+#security-events-table th:nth-child(3), #security-events-table td:nth-child(3) { width: 14%; } /* 유형 */
+#security-events-table th:nth-child(4), #security-events-table td:nth-child(4) { width: 9%; }  /* IP */
+#security-events-table th:nth-child(5), #security-events-table td:nth-child(5) { width: 31%; } /* 경로 */
+#security-events-table th:nth-child(6), #security-events-table td:nth-child(6) { width: 5%; }  /* 횟수 */
+#security-events-table th:nth-child(7), #security-events-table td:nth-child(7) { width: 9%; }  /* 조치 */
+#security-events-table th:nth-child(8), #security-events-table td:nth-child(8) { width: 9%; }  /* 상태 */
 
 /* 연관 사건 표(Track C guide27)도 "관련 유형" 칸에 여러 유형이 쉼표로
-   이어지므로, 보안 이벤트 표와 같은 이유로 비율을 따로 지정한다. */
+   이어지므로, 보안 이벤트 표와 같은 이유로 비율을 따로 지정한다. "등급" 칸도
+   위와 같은 이유로 배지가 겹치지 않을 만큼 넓혀둔다. */
 #security-incidents-table th:nth-child(1), #security-incidents-table td:nth-child(1) { width: 15%; } /* 시작 */
 #security-incidents-table th:nth-child(2), #security-incidents-table td:nth-child(2) { width: 15%; } /* 마지막 활동 */
-#security-incidents-table th:nth-child(3), #security-incidents-table td:nth-child(3) { width: 10%; } /* 등급 */
-#security-incidents-table th:nth-child(4), #security-incidents-table td:nth-child(4) { width: 35%; } /* 관련 유형 */
+#security-incidents-table th:nth-child(3), #security-incidents-table td:nth-child(3) { width: 12%; } /* 등급 */
+#security-incidents-table th:nth-child(4), #security-incidents-table td:nth-child(4) { width: 33%; } /* 관련 유형 */
 #security-incidents-table th:nth-child(5), #security-incidents-table td:nth-child(5) { width: 15%; } /* IP */
 #security-incidents-table th:nth-child(6), #security-incidents-table td:nth-child(6) { width: 10%; } /* 상태 */
+
+/* 배지가 오른쪽 여백 없이 칸 끝에 바짝 붙는 것도 보기 불편하므로,
+   너비 확보와 별개로 오른쪽에 약간의 여유 공간을 더 준다. */
+#security-events-table td:nth-child(2),
+#security-incidents-table td:nth-child(3) {
+    padding-right: 14px;
+}
 
 .data-table th {
     color: var(--ink-faint);
