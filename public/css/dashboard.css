@@ -118,7 +118,8 @@ section h2 {
    delete-comment-btn 클래스가 전부 이 규칙을 공유). */
 .delete-user-btn,
 .delete-post-btn,
-.delete-comment-btn {
+.delete-comment-btn,
+.delete-admin-user-btn {
     background: var(--danger);
     color: white;
     border: none;
@@ -127,6 +128,38 @@ section h2 {
     cursor: pointer;
     font-family: var(--font-body);
     font-size: 12px;
+}
+
+/* "관리자 계정 관리" 카드의 생성 폼 — 아이디/비밀번호/역할 선택/버튼을 한 줄에
+   나란히 배치한다. 입력창 스타일은 auth.css의 로그인/회원가입 폼과 같은 토큰
+   (--input-border)을 쓰되, 이 화면은 카드 폭이 넓어서 줄바꿈되게 wrap만 켜둔다. */
+.admin-user-create-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.admin-user-create-form input,
+.admin-user-create-form select {
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-s);
+    padding: 6px 10px;
+    background: var(--surface);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 13px;
+}
+
+.admin-user-create-form button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: var(--radius-s);
+    padding: 6px 14px;
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-size: 13px;
 }
 
 .empty-state {

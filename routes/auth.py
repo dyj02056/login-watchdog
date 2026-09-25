@@ -33,19 +33,14 @@ auth_bp = Blueprint("auth", __name__)
 # db.create_user()를 아예 호출하지 않고 바로 안내 메시지를 보여준다.
 # ============================================================================
 
-# 아이디: 영문자/숫자/밑줄(_)만 허용, 3~20자. `<`, `"`, 공백 같은 HTML/스크립트에
-# 쓰이는 특수문자는 애초에 통과하지 못한다.
-USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{3,20}$")
+# 아이디/비밀번호 규칙은 config.USERNAME_PATTERN / config.MIN_PASSWORD_LENGTH로
+# 옮겨졌다 — scripts/create_admin.py, 대시보드 "관리자 계정 관리"(Track B guide26)도
+# 같은 규칙을 써야 해서 공용 상수가 됐다(config.py 상단 주석 참고).
 
 # 이메일: "글자@글자.글자" 형태의 아주 기본적인 모양만 확인한다. 완벽한 RFC 5322
 # 검증은 아니지만(그런 정규식은 매우 복잡하다), "이메일처럼 안 생긴 값"을 걸러내는
 # 데는 충분하고, 실제 도달 가능 여부는 어차피 별도의 인증 메일 없이는 확인할 수 없다.
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-
-# 비밀번호 최소 길이. 복잡도(대소문자/특수문자 조합 강제)까지는 요구하지 않는다 —
-# 최근 보안 가이드라인(NIST 등)은 억지로 복잡한 조합을 강제하는 것보다 "충분히
-# 긴 비밀번호"를 권장하는 추세다.
-MIN_PASSWORD_LENGTH = 8
 
 
 # ============================================================================
@@ -106,7 +101,7 @@ def signup_submit():
         flash("아이디, 이메일, 비밀번호를 모두 입력해주세요.")
         return render_template("signup.html", signup_enabled=True)
 
-    if not USERNAME_PATTERN.match(username):
+    if not config.USERNAME_PATTERN.match(username):
         flash("아이디는 영문자, 숫자, 밑줄(_)만 사용해 3~20자로 입력해주세요.")
         return render_template("signup.html", signup_enabled=True)
 
@@ -114,8 +109,8 @@ def signup_submit():
         flash("올바른 이메일 형식이 아닙니다.")
         return render_template("signup.html", signup_enabled=True)
 
-    if len(password) < MIN_PASSWORD_LENGTH:
-        flash(f"비밀번호는 최소 {MIN_PASSWORD_LENGTH}자 이상이어야 합니다.")
+    if len(password) < config.MIN_PASSWORD_LENGTH:
+        flash(f"비밀번호는 최소 {config.MIN_PASSWORD_LENGTH}자 이상이어야 합니다.")
         return render_template("signup.html", signup_enabled=True)
 
     if password != password_confirm:

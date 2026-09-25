@@ -255,7 +255,7 @@ create table permissions (
   action text not null check (
     action in (
       'unlock_ip', 'resolve_security_event', 'toggle_signup',
-      'delete_user', 'delete_post', 'delete_comment'
+      'delete_user', 'delete_post', 'delete_comment', 'manage_admin_users'
     )
   ),
   primary key (role, action)
@@ -268,7 +268,11 @@ insert into permissions (role, action) values
   ('super_admin', 'toggle_signup'),
   ('super_admin', 'delete_user'),
   ('super_admin', 'delete_post'),
-  ('super_admin', 'delete_comment');
+  ('super_admin', 'delete_comment'),
+  -- 대시보드 "관리자 계정 관리"(guide26 후속) — security_viewer/security_admin
+  -- 계정을 생성·삭제하는 액션. super_admin만 가지며, 이 액션 자체로는
+  -- super_admin 계정을 만들거나 지울 수 없다(routes/admin.py에서 role 검증).
+  ('super_admin', 'manage_admin_users');
 -- security_viewer는 어떤 액션도 없다 — 대시보드 조회(GET /admin/dashboard,
 -- /api/status)는 지금처럼 login_required만으로 충분해서 permissions에
 -- "view_dashboard" 같은 행을 따로 두지 않았다(세 역할 모두 어차피 볼 수 있으므로

@@ -7,6 +7,7 @@
 
 import {
     renderAdminLoginLog,
+    renderAdminUsersTable,
     renderAttemptsTable,
     renderCommentsTable,
     renderLockoutCards,
@@ -76,6 +77,7 @@ export async function fetchStatus() {
     renderPagination("comments-pagination", pages.comments, data.comments_total_pages);
     renderSecurityEventsTable(data.security_events);
     renderPagination("security-events-pagination", pages.securityEvents, data.security_events_total_pages);
+    renderAdminUsersTable(data.admin_users);
 }
 
 /**
@@ -167,6 +169,52 @@ export async function deleteComment(commentId) {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
         body: JSON.stringify({ comment_id: Number(commentId) }),
+    });
+    fetchStatus();
+}
+
+/**
+ * "관리자 계정 관리" 카드의 생성 폼이 제출됐을 때 호출된다. 다른 삭제류 함수와
+ * 달리, 실패(아이디 중복·형식 오류 등)를 화면에 알려줘야 한다 — 그래서 여기만
+ * response.ok를 확인하고 실패 시 서버가 보낸 error 메시지를 alert()로 보여준다
+ * (이 화면의 나머지 fetch()들은 성공을 전제로 조용히 fetchStatus()만 다시 부른다).
+ * @param {string} username
+ * @param {string} password
+ * @param {string} role
+ * @returns {Promise<boolean>} 생성 성공 여부 — events.js가 성공했을 때만 폼을 비운다.
+ */
+export async function createAdminUser(username, password, role) {
+    const response = await fetch("/api/admin-users/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ username: username, password: password, role: role }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+        alert(data.error || "관리자 계정 생성에 실패했습니다.");
+        return false;
+    }
+    fetchStatus();
+    return true;
+}
+
+/**
+ * 관리자 계정 관리 표의 "삭제" 버튼을 눌렀을 때, 확인 후 계정을 삭제 요청한다.
+ * deleteUser()와 동일한 패턴 — super_admin 행에는 이 버튼 자체가 그려지지
+ * 않으므로(render.js), 여기서 추가로 role을 확인할 필요는 없다.
+ * @param {string} adminId
+ * @param {string} username
+ */
+export async function deleteAdminUser(adminId, username) {
+    const confirmed = confirm(`관리자 계정 "${username}"을(를) 정말 삭제할까요? 이 작업은 되돌릴 수 없습니다.`);
+    if (!confirmed) {
+        return;
+    }
+
+    await fetch("/api/admin-users/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ admin_id: Number(adminId) }),
     });
     fetchStatus();
 }

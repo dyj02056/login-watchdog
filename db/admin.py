@@ -88,6 +88,62 @@ def get_admin_role(username: str) -> str | None:
     return res.data[0]["role"] if res.data else None
 
 
+def list_admin_users() -> list[dict]:
+    """전체 관리자 계정 목록을 id/username/role/created_at만 골라 돌려준다
+    (Track B guide26 후속, 대시보드 "관리자 계정 관리" 카드용).
+
+    db/users.py의 list_users()와 같은 이유로 password_hash 칸은 애초에
+    select하지 않는다 — 화면에 내보낼 이유가 없는 값은 조회 단계에서부터 뺀다.
+    """
+    res = db.get_client().table("admin_users").select("id, username, role, created_at").execute()
+    return res.data
+
+
+def get_admin_role_by_id(admin_id: int) -> str | None:
+    """id로 관리자 계정의 role을 조회한다. get_admin_role()은 username으로
+    찾지만(require_permission이 세션의 아이디로 조회), 대시보드의 "계정 삭제"
+    버튼은 행의 기본키(id)만 들고 있으므로 이 조회가 따로 필요하다.
+
+    routes/admin.py가 삭제 전에 이 함수로 대상이 super_admin인지 먼저 확인해
+    "이 화면에서는 super_admin을 지울 수 없다"는 규칙을 지킨다.
+    """
+    res = db.get_client().table("admin_users").select("role").eq("id", admin_id).limit(1).execute()
+    return res.data[0]["role"] if res.data else None
+
+
+def create_admin_user(username: str, password: str, role: str) -> bool:
+    """새 관리자 계정을 role과 함께 만든다.
+
+    scripts/create_admin.py(터미널 스크립트)와 대시보드 "관리자 계정 관리"
+    (routes/admin.py)가 둘 다 이 함수를 통해서만 계정을 만든다 — insert 로직이
+    두 곳에 따로 있으면 한쪽만 고치고 잊어버리는 사고가 나기 쉽다.
+
+    아이디가 이미 있으면(unique 제약) 아무것도 만들지 않고 False를 돌려준다.
+    """
+    existing = (
+        db.get_client().table("admin_users").select("id").eq("username", username).limit(1).execute()
+    )
+    if existing.data:
+        return False
+
+    db.get_client().table("admin_users").insert(
+        {"username": username, "password_hash": generate_password_hash(password), "role": role}
+    ).execute()
+    return True
+
+
+def delete_admin_user(admin_id: int) -> bool:
+    """관리자 계정을 하나 삭제한다.
+
+    super_admin을 지우면 안 되는 규칙(login_watchdog_expansion_plan.md 논의 —
+    super_admin은 1명만 두기로 결정)은 여기가 아니라 호출부(routes/admin.py)가
+    delete_admin_user 호출 전에 get_admin_role_by_id로 먼저 확인한다 — 이 함수는
+    db/users.py의 delete_user()와 동일하게 "삭제 실행"에만 집중한다.
+    """
+    res = db.get_client().table("admin_users").delete().eq("id", admin_id).execute()
+    return len(res.data) > 0
+
+
 def count_recent_admin_failures(ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS) -> int:
     """이 IP가 최근 몇 초(기본 60초) 안에 관리자 로그인을 몇 번이나 실패했는지 센다.
 

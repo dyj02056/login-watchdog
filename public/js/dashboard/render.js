@@ -113,6 +113,46 @@ export function renderUsersTable(users) {
 }
 
 /**
+ * "관리자 계정 관리" 카드를 채운다. renderUsersTable()과 같은 패턴이지만,
+ * 이 데이터는 super_admin에게만 응답에 실려온다(routes/admin.py 참고) —
+ * data가 undefined면(다른 role로 로그인) 카드 자체를 숨긴다.
+ * @param {Array|undefined} adminUsers - [{id, username, role, created_at}, ...] | undefined
+ */
+export function renderAdminUsersTable(adminUsers) {
+    const section = document.getElementById("admin-users-section");
+
+    if (adminUsers === undefined) {
+        section.hidden = true;
+        return;
+    }
+    section.hidden = false;
+
+    const tbody = document.getElementById("admin-users-table-body");
+
+    // super_admin 행은 삭제 버튼을 아예 그리지 않는다 — "super_admin은 1명만
+    // 둔다"는 정책을 이 화면에서부터 지키게 한다(서버도 routes/admin.py에서
+    // 한 번 더 막는다).
+    tbody.innerHTML = adminUsers
+        .map(
+            (adminUser) => `
+                <tr>
+                    <td class="mono">${formatTime(adminUser.created_at)}</td>
+                    <td>${escapeHtml(adminUser.username)}</td>
+                    <td>${escapeHtml(adminUser.role)}</td>
+                    <td>
+                        ${
+                            adminUser.role === "super_admin"
+                                ? ""
+                                : `<button data-admin-id="${adminUser.id}" data-username="${escapeHtml(adminUser.username)}" class="delete-admin-user-btn">삭제</button>`
+                        }
+                    </td>
+                </tr>
+            `
+        )
+        .join("");
+}
+
+/**
  * 게시판 관리 — 최근 게시글 표를 채운다. 각 줄에 "삭제" 버튼이 붙는다.
  * @param {Array} posts - [{id, title, author_username, created_at}, ...]
  */

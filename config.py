@@ -1,4 +1,12 @@
 import os
+import re
+
+# 아이디/비밀번호 형식 규칙. 원래 routes/auth.py 안에만 있었는데, Track B
+# guide26 이후 관리자 계정 생성(scripts/create_admin.py, 대시보드 "관리자 계정
+# 관리")도 같은 규칙을 써야 해서 여러 곳에서 참조하는 값들과 같은 원칙으로
+# config.py 한 곳에 모았다.
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{3,20}$")
+MIN_PASSWORD_LENGTH = 8
 
 FAILURE_THRESHOLD = int(os.environ.get("FAILURE_THRESHOLD", 5))
 DETECTION_WINDOW_SECONDS = int(os.environ.get("DETECTION_WINDOW_SECONDS", 60))

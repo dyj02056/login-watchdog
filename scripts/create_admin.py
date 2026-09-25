@@ -19,30 +19,24 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 load_dotenv()
 
+import config  # noqa: E402
 import db  # noqa: E402  (load_dotenv()가 SUPABASE_URL 등을 먼저 읽어들인 뒤에 import 해야 함)
-from werkzeug.security import generate_password_hash  # noqa: E402
 
-MIN_PASSWORD_LENGTH = 8  # routes/auth.py의 회원가입 규칙과 동일하게 맞춤
 VALID_ROLES = ("security_viewer", "security_admin", "super_admin")
 
 
 def create_admin(username: str, password: str, role: str) -> bool:
     """admin_users 표에 새 관리자 계정 한 개를 role과 함께 추가한다.
 
-    아이디가 이미 있으면(unique 제약) 아무것도 만들지 않고 False를 돌려준다 —
-    ensure_bootstrap_admin()이 "이미 있으면 건너뛰기"로 중복 생성을 막는 것과
-    같은 이유로, 이 스크립트도 실수로 두 번 실행해도 안전해야 한다.
+    실제 insert 로직은 db.create_admin_user()에 있다 — 대시보드 "관리자 계정
+    관리"(routes/admin.py)도 같은 함수를 쓴다. 아이디가 이미 있으면 아무것도
+    만들지 않고 False를 돌려준다(중복 생성 방지, ensure_bootstrap_admin()과
+    같은 원칙 — 이 스크립트도 실수로 두 번 실행해도 안전해야 한다).
     """
-    existing = (
-        db.get_client().table("admin_users").select("id").eq("username", username).limit(1).execute()
-    )
-    if existing.data:
+    created = db.create_admin_user(username, password, role)
+    if not created:
         print(f"[*] {username}은(는) 이미 존재하는 관리자 계정입니다. 만들지 않았습니다.")
         return False
-
-    db.get_client().table("admin_users").insert(
-        {"username": username, "password_hash": generate_password_hash(password), "role": role}
-    ).execute()
     print(f"[OK] {username} 계정을 role={role}로 생성했습니다.")
     return True
 
@@ -56,8 +50,10 @@ def main() -> None:
     parser.add_argument("--role", required=True, choices=VALID_ROLES, help="부여할 역할")
     args = parser.parse_args()
 
-    if len(args.password) < MIN_PASSWORD_LENGTH:
-        parser.error(f"비밀번호는 최소 {MIN_PASSWORD_LENGTH}자 이상이어야 합니다.")
+    if not config.USERNAME_PATTERN.match(args.username):
+        parser.error("아이디는 영문/숫자/밑줄(_)만 사용해 3~20자여야 합니다.")
+    if len(args.password) < config.MIN_PASSWORD_LENGTH:
+        parser.error(f"비밀번호는 최소 {config.MIN_PASSWORD_LENGTH}자 이상이어야 합니다.")
 
     create_admin(args.username, args.password, args.role)
 

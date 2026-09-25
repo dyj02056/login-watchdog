@@ -170,7 +170,7 @@ def api_status():
     admin_log_page = _page_param("admin_log_page")
     security_events_page = _page_param("security_events_page")
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=9) as executor:
         attempts_future = executor.submit(db.list_recent_attempts, attempts_page, config.ADMIN_PAGE_SIZE)
         lockouts_future = executor.submit(db.list_active_lockouts)
         admin_log_future = executor.submit(db.list_admin_login_log, admin_log_page, config.ADMIN_PAGE_SIZE)
@@ -181,6 +181,11 @@ def api_status():
         security_events_future = executor.submit(
             db.list_security_events, security_events_page, config.ADMIN_PAGE_SIZE
         )
+        # "관리자 계정 관리" 카드가 이 응답에 포함될지 결정하려면 지금 요청한
+        # 관리자의 role을 알아야 한다 — 다른 8개 쿼리와 같은 배치에 묶어서
+        # 병렬로 조회하면(순서상 9번째지만 동시에 실행됨) 이 role 조회 때문에
+        # 폴링 응답이 느려지지 않는다.
+        role_future = executor.submit(db.get_admin_role, session["admin_username"])
 
         attempts, attempts_count = attempts_future.result()
         recent_attempts = _attach_locations(attempts)  # 다른 future들이 도는 동안 함께 실행됨
@@ -191,9 +196,9 @@ def api_status():
         posts, posts_count = posts_future.result()
         comments, comments_count = comments_future.result()
         security_events, security_events_count = security_events_future.result()
+        role = role_future.result()
 
-    return jsonify(
-        {
+    response_data = {
             "recent_attempts": recent_attempts,
             "attempts_total_pages": max(1, math.ceil(attempts_count / config.ADMIN_PAGE_SIZE)),
             "active_lockouts": active_lockouts,
@@ -212,7 +217,14 @@ def api_status():
             "security_events": security_events,
             "security_events_total_pages": max(1, math.ceil(security_events_count / config.ADMIN_PAGE_SIZE)),
         }
-    )
+
+    # "관리자 계정 관리" 카드는 super_admin(manage_admin_users 권한 보유자)에게만
+    # 응답에 실어 보낸다 — viewer/security_admin의 화면에는 이 키 자체가 없어서
+    # dashboard.js가 카드를 숨긴다(다른 관리자 계정 목록이 노출되지 않음).
+    if role is not None and db.has_permission(role, "manage_admin_users"):
+        response_data["admin_users"] = db.list_admin_users()
+
+    return jsonify(response_data)
 
 
 @admin_bp.route("/api/unlock", methods=["POST"])
@@ -316,4 +328,62 @@ def api_board_comments_delete():
         return jsonify({"success": False, "error": "comment_id 값이 필요합니다."}), 400
 
     deleted = db.delete_comment(comment_id)
+    return jsonify({"success": deleted})
+
+
+# super_admin만 만들 수 있는 역할. 여기 super_admin을 넣지 않은 게 핵심 안전장치다 —
+# 이 화면(그리고 아래 삭제 API)으로는 super_admin 계정을 만들거나 지울 수 없게
+# 만들어서, "super_admin은 1명만 둔다"는 운영 정책(login_watchdog_expansion_plan.md
+# 논의)을 코드 수준에서도 지키게 한다.
+_CREATABLE_ADMIN_ROLES = ("security_viewer", "security_admin")
+
+
+@admin_bp.route("/api/admin-users/create", methods=["POST"])
+@require_permission("manage_admin_users")
+def api_admin_users_create():
+    """대시보드 "관리자 계정 관리" 카드의 생성 폼이 호출하는 API.
+
+    scripts/create_admin.py와 동일한 검증 규칙(아이디 형식, 비밀번호 길이)을
+    쓰고, db.create_admin_user()도 그대로 재사용한다 — 다만 역할은
+    _CREATABLE_ADMIN_ROLES 두 가지로만 제한한다. 화면(select 옵션)에서도
+    super_admin을 아예 안 보여주지만, fetch()를 직접 조작해 super_admin을
+    보내는 요청도 여기서 한 번 더 막아야 실질적인 방어가 된다.
+    """
+    data = request.get_json(silent=True) or {}
+    username = data.get("username", "")
+    password = data.get("password", "")
+    role = data.get("role", "")
+
+    if not config.USERNAME_PATTERN.match(username):
+        return jsonify({"success": False, "error": "아이디는 영문/숫자/밑줄 3~20자여야 합니다."}), 400
+    if len(password) < config.MIN_PASSWORD_LENGTH:
+        return jsonify({"success": False, "error": f"비밀번호는 최소 {config.MIN_PASSWORD_LENGTH}자 이상이어야 합니다."}), 400
+    if role not in _CREATABLE_ADMIN_ROLES:
+        return jsonify({"success": False, "error": "role은 security_viewer 또는 security_admin만 가능합니다."}), 400
+
+    created = db.create_admin_user(username, password, role)
+    if not created:
+        return jsonify({"success": False, "error": "이미 존재하는 아이디입니다."}), 400
+    return jsonify({"success": True})
+
+
+@admin_bp.route("/api/admin-users/delete", methods=["POST"])
+@require_permission("manage_admin_users")
+def api_admin_users_delete():
+    """대시보드 "관리자 계정 관리" 카드의 "삭제" 버튼이 호출하는 API.
+
+    삭제 전에 대상의 role을 먼저 조회해서 super_admin이면 거부한다 —
+    db.delete_admin_user() 자체는 그 구분을 하지 않으므로(db/admin.py 설명 참고),
+    여기서 막지 않으면 마지막 super_admin 계정까지 지워질 수 있다.
+    """
+    data = request.get_json(silent=True) or {}
+    admin_id = data.get("admin_id")
+    if not admin_id:
+        return jsonify({"success": False, "error": "admin_id 값이 필요합니다."}), 400
+
+    target_role = db.get_admin_role_by_id(admin_id)
+    if target_role == "super_admin":
+        return jsonify({"success": False, "error": "super_admin 계정은 이 화면에서 삭제할 수 없습니다."}), 400
+
+    deleted = db.delete_admin_user(admin_id)
     return jsonify({"success": deleted})

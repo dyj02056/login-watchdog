@@ -199,6 +199,81 @@ def test_has_permission_false_when_no_matching_row(monkeypatch):
     assert result is False
 
 
+def test_list_admin_users_returns_rows_from_client(monkeypatch):
+    rows = [
+        {"id": 1, "username": "sktmaster123", "role": "super_admin", "created_at": "2026-01-01T00:00:00Z"},
+        {"id": 2, "username": "sktviewer123", "role": "security_viewer", "created_at": "2026-01-02T00:00:00Z"},
+    ]
+    fake_client = _FakeQuery(rows=rows)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.list_admin_users()
+
+    assert result == rows
+
+
+def test_get_admin_role_by_id_returns_stored_role(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"role": "security_admin"}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.get_admin_role_by_id(2)
+
+    assert result == "security_admin"
+
+
+def test_get_admin_role_by_id_none_when_not_found(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.get_admin_role_by_id(999)
+
+    assert result is None
+
+
+def test_create_admin_user_true_when_username_available(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.create_admin_user("sktviewer123", "TestViewer2026!", "security_viewer")
+
+    assert result is True
+    insert_calls = [call for call in fake_client.calls if call[0] == "insert"]
+    assert len(insert_calls) == 1
+    inserted_row = insert_calls[0][1][0]
+    assert inserted_row["username"] == "sktviewer123"
+    assert inserted_row["role"] == "security_viewer"
+    assert inserted_row["password_hash"] != "TestViewer2026!"  # 평문이 아니라 해시로 저장됨
+
+
+def test_create_admin_user_false_when_username_taken(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 1}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.create_admin_user("sktviewer123", "TestViewer2026!", "security_viewer")
+
+    assert result is False
+    assert not any(call[0] == "insert" for call in fake_client.calls)
+
+
+def test_delete_admin_user_true_when_row_was_deleted(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 2}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.delete_admin_user(2)
+
+    assert result is True
+    assert ("delete", (), {}) in fake_client.calls
+
+
+def test_delete_admin_user_false_when_id_not_found(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.delete_admin_user(999)
+
+    assert result is False
+
+
 def test_count_recent_distinct_usernames_dedupes_rows(monkeypatch):
     # 같은 아이디("hyun")로 두 번, 다른 아이디("guest")로 한 번 실패한 상황을 흉내낸다.
     # 행은 3개지만 서로 다른 아이디는 2개여야 한다 — Brute Force(1개)와

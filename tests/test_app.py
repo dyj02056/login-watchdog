@@ -1186,6 +1186,170 @@ def test_api_board_posts_delete_returns_403_for_security_admin(client, monkeypat
 
 
 # ============================================================================
+# 관리자 계정 관리 — super_admin 전용 카드/API (Track B guide26 후속)
+# ============================================================================
+
+def _mock_full_status(monkeypatch):
+    """/api/status가 도는 ThreadPoolExecutor 배치 8개 쿼리 + role 조회를 전부
+    빈 데이터로 막아둔다. admin_users 필드의 유무만 확인하고 싶은 테스트가
+    나머지 6개 표 렌더링 데이터까지 일일이 준비하지 않아도 되게 하기 위한 헬퍼.
+    """
+    monkeypatch.setattr(soar, "try_release_expired_lockouts", lambda: None)
+    monkeypatch.setattr(db, "list_recent_attempts", lambda page, size: ([], 0))
+    monkeypatch.setattr(db, "list_active_lockouts", lambda: [])
+    monkeypatch.setattr(db, "list_admin_login_log", lambda page, size: ([], 0))
+    monkeypatch.setattr(db, "list_users", lambda page, size: ([], 0))
+    monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
+    monkeypatch.setattr(db, "list_posts", lambda page, size: ([], 0))
+    monkeypatch.setattr(db, "list_comments_admin", lambda page, size: ([], 0))
+    monkeypatch.setattr(db, "list_security_events", lambda page, size: ([], 0))
+
+
+def test_api_status_includes_admin_users_for_super_admin(client, monkeypatch):
+    _mock_full_status(monkeypatch)
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
+    monkeypatch.setattr(db, "list_admin_users", lambda: [{"id": 1, "username": "sktmaster123", "role": "super_admin", "created_at": "x"}])
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "sktmaster123"
+
+    response = client.get("/api/status")
+
+    assert response.status_code == 200
+    assert "admin_users" in response.get_json()
+
+
+def test_api_status_omits_admin_users_for_security_admin(client, monkeypatch):
+    _mock_full_status(monkeypatch)
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: False)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "test-admin"
+
+    response = client.get("/api/status")
+
+    assert response.status_code == 200
+    assert "admin_users" not in response.get_json()
+
+
+def test_api_admin_users_create_returns_403_when_role_lacks_permission(client, monkeypatch):
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: False)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "test-admin"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/admin-users/create",
+        json={"username": "sktviewer123", "password": "TestViewer2026!", "role": "security_viewer"},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 403
+
+
+def test_api_admin_users_create_rejects_super_admin_role(client, monkeypatch):
+    # 폼(select 옵션)에는 super_admin이 아예 없지만, 요청을 직접 조작해서
+    # role=super_admin을 보내는 경우까지 서버가 한 번 더 막아야 한다.
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "sktmaster123"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/admin-users/create",
+        json={"username": "sktnew123", "password": "TestPassword2026!", "role": "super_admin"},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 400
+
+
+def test_api_admin_users_create_rejects_short_password(client, monkeypatch):
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "sktmaster123"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/admin-users/create",
+        json={"username": "sktnew123", "password": "short", "role": "security_viewer"},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 400
+
+
+def test_api_admin_users_create_succeeds_for_super_admin(client, monkeypatch):
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
+    monkeypatch.setattr(db, "create_admin_user", lambda username, password, role: True)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "sktmaster123"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/admin-users/create",
+        json={"username": "sktviewer123", "password": "TestViewer2026!", "role": "security_viewer"},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"success": True}
+
+
+def test_api_admin_users_delete_rejects_super_admin_target(client, monkeypatch):
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
+    monkeypatch.setattr(db, "get_admin_role_by_id", lambda admin_id: "super_admin")
+
+    def _fail_if_called(admin_id):
+        raise AssertionError("super_admin 대상인데 delete_admin_user가 호출됐습니다")
+
+    monkeypatch.setattr(db, "delete_admin_user", _fail_if_called)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "sktmaster123"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/admin-users/delete",
+        json={"admin_id": 1},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 400
+
+
+def test_api_admin_users_delete_succeeds_for_non_super_admin_target(client, monkeypatch):
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
+    monkeypatch.setattr(db, "get_admin_role_by_id", lambda admin_id: "security_viewer")
+    monkeypatch.setattr(db, "delete_admin_user", lambda admin_id: admin_id == 2)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "sktmaster123"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/admin-users/delete",
+        json={"admin_id": 2},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"success": True}
+
+
+# ============================================================================
 # 404 처리 — Web Scanning(존재하지 않는 경로 반복 요청) 탐지
 # (21단계, attack_response_state.md 구현 대상 #1)
 # ============================================================================
