@@ -26,7 +26,7 @@ create table permissions (
   role text not null references roles(role),
   action text not null check (action in (
     'unlock_ip', 'resolve_security_event', 'toggle_signup',
-    'delete_user', 'delete_post', 'delete_comment'
+    'delete_user', 'delete_post', 'delete_comment', 'manage_admin_users'
   )),
   primary key (role, action)
 );
@@ -67,30 +67,51 @@ def api_users_delete(): ...
 
 `login_required`와 똑같이 미로그인 시 `/api/*`는 401 JSON, 그 외는 로그인 화면으로 리다이렉트합니다. 로그인은 됐지만 역할에 그 액션이 없으면 403 JSON을 돌려줍니다.
 
-## 4. 새 관리자 계정은 스크립트로 직접 생성 — 회원가입 화면 없음
+## 4. 새 관리자 계정 생성 — 스크립트 + (super_admin 한정) 대시보드
 
-`admin_users`는 원래도 회원가입 화면이 없는 표입니다(부트스트랩 계정 1개만 `.env`로 자동 생성). `security_viewer`/`security_admin` 역할의 계정도 이 흐름을 타지 않으므로 [scripts/create_admin.py](../../scripts/create_admin.py)를 새로 만들었습니다.
+`admin_users`는 원래도 회원가입 화면이 없는 표입니다(부트스트랩 계정 1개만 `.env`로 자동 생성). 처음엔 [scripts/create_admin.py](../../scripts/create_admin.py)를 터미널에서 직접 실행하는 방법만 있었습니다.
 
 ```bash
 python scripts/create_admin.py --username sktviewer123 --password <비밀번호> --role security_viewer
 python scripts/create_admin.py --username sktadmin123 --password <비밀번호> --role security_admin
 ```
 
-이미 있는 아이디면 아무것도 만들지 않고 건너뜁니다(`unlock_account.py` 등 기존 스크립트와 동일한 "실수로 두 번 실행해도 안전" 원칙).
+이미 있는 아이디면 아무것도 만들지 않고 건너뜁니다(`unlock_account.py` 등 기존 스크립트와 동일한 "실수로 두 번 실행해도 안전" 원칙). 이 스크립트는 `--role`에 `super_admin`도 선택할 수 있습니다 — 터미널 접근 자체가 이미 신뢰된 사람만 할 수 있는 작업이라는 전제입니다.
+
+## 5. 대시보드 "관리자 계정 관리" 카드 — super_admin만 보임 (guide26 후속)
+
+터미널을 열어야만 관리자를 추가/제거할 수 있다는 게 guide26의 가장 어색한 지점이었습니다(발표·운영 중에 SSH나 로컬 셸이 필요함). 그래서 `super_admin` 전용으로 대시보드 안에 계정 생성/삭제 기능을 추가했습니다.
+
+새 액션 `manage_admin_users`를 `permissions`에 추가하고(`super_admin`만 보유), 관련 함수를 `db/admin.py`에 더했습니다: `list_admin_users()`, `get_admin_role_by_id()`(id로 role 확인 — 삭제 전에 super_admin인지 확인할 때 씀), `create_admin_user()`(스크립트와 이 화면이 공유), `delete_admin_user()`.
+
+`GET /api/status`는 요청자 role이 `manage_admin_users`를 가졌을 때만 응답에 `admin_users` 키를 실어 보냅니다 — 다른 role로 로그인하면 이 키 자체가 없어서, `render.js`가 카드를 통째로 숨깁니다. role 조회는 다른 8개 쿼리와 같은 `ThreadPoolExecutor` 배치에 병렬로 넣어서, 이 검사 때문에 폴링이 느려지지 않게 했습니다.
+
+```python
+# routes/admin.py — api_status()
+if role is not None and db.has_permission(role, "manage_admin_users"):
+    response_data["admin_users"] = db.list_admin_users()
+```
+
+**"super_admin은 1명만 둔다"는 정책을 화면과 서버 양쪽에서 강제**합니다 — 생성 폼의 `<select>`에는 `security_viewer`/`security_admin` 옵션만 있고(`super_admin` 자체가 없음), 목록 표에서도 `super_admin` 행에는 삭제 버튼을 그리지 않습니다. 다만 화면만 막으면 fetch()를 직접 조작하는 우회가 가능하므로, 서버(`POST /api/admin-users/create`, `POST /api/admin-users/delete`)에서도 각각 role 값 검증과 삭제 대상 role 확인을 한 번 더 합니다.
 
 ## 실제로 확인한 것
 
-`pytest tests/` 전체 238개 통과(기존 232개 + 신규 6개: `db.get_admin_role`/`db.has_permission` 단위 테스트 4개, `security_viewer`가 `unlock_ip`를 못 하는지·`security_admin`이 `delete_post`를 못 하는지 확인하는 통합 테스트 2개).
+`pytest tests/` 전체 253개 통과(guide26 원래 238개 + 이번 추가 15개: `db` 계층 6개, `routes/admin.py` API 9개 — 권한 없음 403, `role=super_admin` 생성 거부 400, `super_admin` 대상 삭제 거부 400, `/api/status`의 `admin_users` 필드 유무 포함).
 
-`docs/schema.sql`의 새 SQL은 Supabase SQL 편집기에서 아직 실행 전입니다 — 이 파일 자체가 "직접 실행되는 마이그레이션이 아니라 문서용 기록"이라는 기존 원칙(파일 상단 주석)을 그대로 따랐습니다. **실제 배포 전 Supabase에서 한 번 실행하고, `sktviewer123`/`sktadmin123` 계정을 `create_admin.py`로 만드는 절차가 아직 남아 있습니다.**
+실제 로컬 서버 + 실제 Supabase로도 검증했습니다: `sktmaster123`으로 로그인해 대시보드에서 직접 계정을 생성하고 화면에 뜨는 것까지 확인했고(브라우저 자동화 환경이라 `confirm()` 팝업만 API 직접 호출로 대체), `security_admin`으로는 `admin_users` 필드 자체가 안 보이고 두 API 모두 403인 것, `super_admin`으로 `role: "super_admin"` 생성과 `sktmaster123` 자기 자신 삭제를 시도해도 둘 다 400으로 막히고 실제로 DB에 반영되지 않는 것까지 확인했습니다. 테스트로 만든 계정은 확인 후 삭제해 DB에 남기지 않았습니다.
 
 ## 이 단계에서 만들어지거나 바뀐 파일
 
 - [docs/schema.sql](../schema.sql)
-- [db/admin.py](../../db/admin.py) — `get_admin_role()` 추가
+- [config.py](../../config.py) — `USERNAME_PATTERN`/`MIN_PASSWORD_LENGTH` 공용 상수로 이동
+- [db/admin.py](../../db/admin.py) — `get_admin_role()`, `list_admin_users()`, `get_admin_role_by_id()`, `create_admin_user()`, `delete_admin_user()`
 - [db/roles.py](../../db/roles.py) — 신규, `has_permission()`
 - [db/__init__.py](../../db/__init__.py)
 - [helpers.py](../../helpers.py) — `require_permission()` 추가
-- [routes/admin.py](../../routes/admin.py)
-- [scripts/create_admin.py](../../scripts/create_admin.py) — 신규
+- [routes/admin.py](../../routes/admin.py) — `/api/admin-users/create`, `/api/admin-users/delete` 신규 + `/api/status` 조건부 `admin_users` 필드
+- [routes/auth.py](../../routes/auth.py) — 아이디/비밀번호 규칙을 `config.py`에서 가져오도록 변경
+- [scripts/create_admin.py](../../scripts/create_admin.py) — 신규, 이후 `db.create_admin_user()` 재사용하도록 리팩터링
+- [templates/admin_dashboard.html](../../templates/admin_dashboard.html) — "관리자 계정 관리" 카드
+- [public/js/dashboard/render.js](../../public/js/dashboard/render.js), [api.js](../../public/js/dashboard/api.js), [events.js](../../public/js/dashboard/events.js)
+- [public/css/dashboard.css](../../public/css/dashboard.css)
 - [tests/test_db.py](../../tests/test_db.py), [tests/test_app.py](../../tests/test_app.py)
