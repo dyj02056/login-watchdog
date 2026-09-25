@@ -76,6 +76,8 @@ def send_incident_escalation_alert(ip, event_types, severity_max):
 
 `pytest tests/` 전체 274개 통과(guide27 시점 268개 + 이번 추가 6개 — `test_correlate.py` 4개: 에스컬레이션 실행/이미 처리된 사건은 재실행 안 함/CRITICAL 아니면 안 함/유형 개수 미달이면 안 함, `test_db.py` 2개: `mark_incident_escalated`, `_insert_incident` 직접 검증). 기존 `record_incident` 관련 테스트 3개는 반환값 검증을 추가해 갱신했습니다.
 
+로컬 서버 + 실제 Supabase로 라이브 검증도 했습니다. `security_incidents`에 `escalated` 컬럼을 실제 DB에 추가한 뒤, `scripts/bruteforce_sim.py` → `scripts/web_scanning_sim.py`를 같은 IP(127.0.0.1)로 순서대로 실행했습니다(27단계 검증과 동일하게, 이번에도 트래픽량 때문에 `HTTP_FLOOD`가 자연스럽게 섞여 유형이 3개가 됐습니다). 실행 직후 `/api/status` 응답에서 해당 사건이 `"escalated": true`로 바뀌어 있는 것을 확인했고, 관리자 대시보드 "연관 사건" 표에도 CRITICAL·`BRUTE_FORCE, HTTP_FLOOD, WEB_SCANNING`·"진행 중"으로 정상적으로 나타났습니다. IP 잠금을 해제하자 `status`가 `CLOSED`로, `escalated`는 `true`로 유지된 채(재알림 방지 플래그이므로 사건이 끝나도 값을 되돌릴 필요가 없음) 정상 종료되는 것도 확인했습니다. 이 환경은 `SLACK_WEBHOOK_URL`이 설정되어 있어 실제 Slack 채널로 에스컬레이션 메시지가 전송됐습니다(콘솔 대체 출력은 발생하지 않음). 테스트용 관리자 계정(`trackc2_verify_tmp`)은 확인 후 삭제했습니다.
+
 ## 이 단계에서 만들어지거나 바뀐 파일
 
 - [docs/schema.sql](../schema.sql) — `security_incidents.escalated` 컬럼 추가
