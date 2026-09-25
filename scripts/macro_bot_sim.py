@@ -104,9 +104,13 @@ def run(base_url: str, username: str, password: str) -> None:
 
     call_target_endpoints(session, base_url, csrf_token)
 
+    # 콘솔 출력에는 em-dash(—) 같은 확장 문자를 넣지 않는다 — Windows 기본
+    # 콘솔(cp949)이 이 문자를 인코딩하지 못해 UnicodeEncodeError로 죽는다
+    # (실제로 이 스크립트를 처음 작성했을 때 이 문제로 실패했었다). 설명은
+    # 위 주석처럼 따로 적어두고, print()에는 일반 괄호/줄바꿈만 쓴다.
     print(
-        "[VERIFY] 서버가 6번의 호출을 전부 403(권한 없음)으로 거절했다면 정상입니다"
-        "(security_viewer 등 권한 없는 계정으로 호출했을 때) — 아무것도 실제로 삭제/변경되지 않았습니다.\n"
+        "[VERIFY] 서버가 6번의 호출을 전부 403(권한 없음)으로 거절했다면 정상입니다. "
+        "아무것도 실제로 삭제/변경되지 않았습니다.\n"
         "  Slack/콘솔 로그: [MEDIUM] '매크로/봇 의심' 확인\n"
         "  관리자 대시보드 또는 로그인된 GET /api/status로 security_events 확인\n"
         "  event_type=API_MACRO_PATTERN, severity=MEDIUM 확인"

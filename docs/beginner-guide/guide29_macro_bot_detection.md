@@ -1,6 +1,6 @@
 # 29단계 — API 엔드포인트별 매크로/봇 탐지 (Track C 3/4)
 
-[◀ 28단계](guide28_soar_playbook.md) · [전체 목차](beginner-guide.md)
+[◀ 28단계](guide28_soar_playbook.md) · [전체 목차](beginner-guide.md) · [30단계 ▶](guide30_threshold_tuning.md)
 
 > 21단계(`guide21_anomaly_detection.md`)에서 `attack_response_state.md` 구현 대상 6번(Macro/Bot — 범용 API 반복 제한)을 사용자가 "1~5번부터 갖춰지면 명확해질 것"이라며 보류했었습니다. 그 뒤 L7 공격 보강(Tier 2)으로 전역 rate-limit(`GLOBAL_RATE_LIMIT_PER_MINUTE`)이 생겼지만, 이건 "IP당 전체 요청 횟수"만 보는 단순 볼류메트릭 기준이라 원래 6번이 염두에 뒀던 "API별로 세분화된 패턴 탐지"와는 결이 달랐습니다. 이번 단계에서 그 남은 부분을 구현해서 보류 항목을 해소했습니다.
 
@@ -70,9 +70,15 @@ def notify_macro_pattern(ip: str, count: int) -> None:
 
 `scripts/macro_bot_sim.py`는 이미 로그인된 관리자 계정으로 서로 다른 관리자 API 6개(잠금 해제, 보안 이벤트 처리, 회원 삭제, 회원가입 설정, 게시글 삭제, 댓글 삭제)를 순서대로 호출합니다. 실제로 뭔가 삭제되면 안 되므로, **아무 권한도 없는 `security_viewer` 역할 계정**으로 호출하도록 설계했습니다 — `require_permission` 데코레이터가 모든 호출을 403으로 거절하지만, `before_request` 훅은 뷰 함수(그리고 그 안의 권한 검사)보다 먼저 실행되므로 403으로 끝나는 요청도 매크로/봇 탐지 로그에는 정상적으로 기록됩니다.
 
+## 5. 라이브 검증에서 발견한 문제 — 콘솔 출력의 em-dash가 Windows에서 죽는다
+
+`scripts/macro_bot_sim.py`를 실제로 Windows 콘솔(cp949 코드페이지)에서 실행하자, 마지막 안내 문구에 넣어둔 em-dash(`—`) 때문에 `UnicodeEncodeError`로 스크립트가 죽었습니다 — 탐지 자체는 이미 정상적으로 끝난 뒤였지만 결과 안내 출력에서 실패했습니다. 기존 스크립트(`bruteforce_sim.py`, `web_scanning_sim.py` 등)를 확인해보니, 이들도 소스 코드 **주석**에는 em-dash를 자유롭게 쓰지만 실제 `print()`로 콘솔에 찍는 문자열에는 한 번도 쓰지 않았습니다 — 이 프로젝트가 이미 암묵적으로 지켜온 규칙이었던 셈입니다. 해당 문구를 일반 괄호/줄바꿈으로 바꿔서 고쳤습니다.
+
 ## 실제로 확인한 것
 
 `pytest tests/` 전체 286개 통과(guide28 시점 274개 + 이번 추가 12개 — `test_detector.py` 3개, `test_db.py` 2개, `test_soar.py` 1개, `test_app.py` 6개).
+
+로컬 서버 + 실제 Supabase로 라이브 검증도 했습니다. `api_access_log` 테이블을 실제 DB에 추가한 뒤, `security_viewer`(무권한) 테스트 계정으로 `scripts/macro_bot_sim.py`를 실행해서 서로 다른 관리자 API 6개를 순서대로 호출했습니다. 모든 호출이 403(권한 없음)으로 안전하게 거절되면서도, `api_access_log`에 6건이 기록되고 `security_events`에 `event_type=API_MACRO_PATTERN, severity=MEDIUM, count=6, action=ALERTED` 이벤트가 실제로 생성되는 것을 DB 조회로 확인했습니다. 이 이벤트 하나만으로는 서로 다른 유형이 1개뿐이라 27단계의 SIEM 상관분석(`security_incidents`)이 새로 사건을 열지 않는 것도 함께 확인했습니다 — "2개 이상일 때만 묶는다"는 설계가 실제로도 과민 반응하지 않음을 보여줍니다. 테스트용 계정(`trackc3_verify_tmp`)은 확인 후 삭제했습니다.
 
 ## 이 단계에서 만들어지거나 바뀐 파일
 

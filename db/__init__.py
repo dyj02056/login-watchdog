@@ -110,6 +110,7 @@ from .security_events import (
     get_unresolved_security_event,
     insert_security_event,
     insert_security_event_or_bump,
+    list_resolved_critical_events_since,
     list_security_events,
     log_not_found_attempt,
     log_page_access_attempt,
@@ -224,4 +225,5 @@ __all__ = [
     "mark_incident_escalated",
     "log_api_access",
     "count_recent_distinct_api_paths",
+    "list_resolved_critical_events_since",
 ]

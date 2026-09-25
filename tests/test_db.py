@@ -65,6 +65,14 @@ class _FakeQuery:
         self.calls.append(("is_", args, kwargs))
         return self
 
+    @property
+    def not_(self):
+        # Supabase의 not_는 메서드가 아니라 속성이다 — .not_.is_(...)처럼 다음에
+        # 오는 조건을 부정한다("NOT resolved_at IS NULL" = "해결됨"). 이 가짜
+        # 객체도 체이닝만 이어가면 되므로 self를 그대로 돌려준다.
+        self.calls.append(("not_", (), {}))
+        return self
+
     def limit(self, *args, **kwargs):
         return self
 
@@ -734,6 +742,23 @@ def test_list_security_events_returns_rows_and_count_from_client(monkeypatch):
 
     assert result == rows
     assert total == 9
+
+
+def test_list_resolved_critical_events_since_filters_by_severity_and_resolved(monkeypatch):
+    # list_attempts_since()와 동일한 패턴 — scripts/tune_thresholds.py(Track C
+    # guide30)가 이 함수로 조기 해제 비율을 계산한다.
+    rows = [
+        {"event_type": "BRUTE_FORCE", "detected_at": "2026-09-25T09:00:00+00:00", "resolved_at": "2026-09-25T09:01:00+00:00"},
+    ]
+    fake_client = _FakeQuery(rows=rows)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.list_resolved_critical_events_since(24)
+
+    assert result == rows
+    assert ("eq", ("severity", "CRITICAL"), {}) in fake_client.calls
+    assert ("not_", (), {}) in fake_client.calls
+    assert ("is_", ("resolved_at", "null"), {}) in fake_client.calls
 
 
 def test_resolve_security_event_true_when_row_was_updated(monkeypatch):

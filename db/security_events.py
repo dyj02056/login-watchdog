@@ -130,6 +130,29 @@ def list_security_events(page: int = 1, page_size: int = 20) -> tuple[list[dict]
     return res.data, res.count or 0
 
 
+def list_resolved_critical_events_since(hours: int) -> list[dict]:
+    """지난 `hours`시간 동안 발생했고 이미 해결된(resolved_at이 채워진)
+    CRITICAL 이벤트 전체를 가져온다 (Track C guide30, 임계값 튜닝 리포트).
+
+    list_attempts_since()와 동일한 "기준 시각 이후만" 패턴이다.
+    scripts/tune_thresholds.py가 각 이벤트의 detected_at~resolved_at 간격을
+    계산해서, config.LOCKOUT_DURATION_SECONDS(자동 만료 시간)보다 훨씬 빨리
+    수동으로 풀린 이벤트가 얼마나 되는지("오탐 후보") 집계할 때 쓴다. 아직
+    안 풀린(resolved_at이 비어있는) 이벤트는 간격을 계산할 수 없으므로 제외한다.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    res = (
+        db.get_client()
+        .table("security_events")
+        .select("event_type, detected_at, resolved_at")
+        .eq("severity", "CRITICAL")
+        .not_.is_("resolved_at", "null")
+        .gte("detected_at", cutoff)
+        .execute()
+    )
+    return res.data
+
+
 def resolve_security_event(event_id: int) -> bool:
     """관리자가 대시보드에서 "처리 완료"를 눌렀을 때, 이 이벤트를 해결됨으로 표시한다.
 
