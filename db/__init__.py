@@ -84,6 +84,7 @@ from .incidents import (
     get_open_incident,
     get_recent_distinct_event_types,
     list_security_incidents,
+    mark_incident_escalated,
     record_incident,
 )
 from .roles import has_permission
@@ -218,4 +219,5 @@ __all__ = [
     "record_incident",
     "close_open_incident_for_ip",
     "list_security_incidents",
+    "mark_incident_escalated",
 ]

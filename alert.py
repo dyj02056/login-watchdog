@@ -151,6 +151,28 @@ def send_page_access_alert(ip: str, count: int, path: str) -> None:
     _send_slack_message(message)
 
 
+def send_incident_escalation_alert(ip: str, event_types: list[str], severity_max: str) -> None:
+    """한 IP에서 여러 종류의 공격이 겹쳐 사건(security_incidents)이 심각한
+    수준에 도달했을 때, 개별 이벤트 알림과 별도로 "복합 공격 발생"을 강조해서
+    알린다 (Track C guide28, SOAR 플레이북).
+
+    send_lockout_alert() 등 개별 이벤트 알림은 이미 각자 따로 나가고 있으므로,
+    이 알림은 "그 이벤트들이 사실 한 IP에서 겹치고 있다"는 상관관계 자체를
+    강조하는 것이 목적이다 — correlate.py가 이미 CRITICAL·서로 다른 유형
+    config.INCIDENT_ESCALATION_MIN_EVENT_TYPES개 이상일 때만, 그리고 사건당
+    한 번만(db.mark_incident_escalated) 호출한다.
+    """
+    message = (
+        ":bangbang: [CRITICAL] 로그인 워치독 SOAR 플레이북 알림\n"
+        f"IP: {ip}\n"
+        f"연관된 공격 유형 {len(event_types)}종: {', '.join(event_types)}\n"
+        f"최고 위험등급: {severity_max}\n"
+        "판단: 한 출처에서 여러 단계에 걸친 공격 흐름으로 의심됨 (SIEM 상관분석)\n"
+        "조치: 관리자 대시보드 '연관 사건' 표에서 상세 확인 요망"
+    )
+    _send_slack_message(message)
+
+
 def send_unauthorized_access_alert(ip: str, count: int, path: str) -> None:
     """Unauthorized Access(로그인 세션 없이 관리자 API 반복 호출)가 의심된다는
     사실을 Slack에 알린다. send_web_scanning_alert()와 마찬가지로 잠그지는

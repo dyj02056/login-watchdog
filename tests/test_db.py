@@ -951,11 +951,12 @@ def test_record_incident_inserts_new_incident_when_none_open(monkeypatch):
     # incidents_module.get_open_incident을 바꿔치기해야 실제로 적용된다.
     monkeypatch.setattr(incidents_module, "get_open_incident", lambda ip: None)
     calls = []
-    monkeypatch.setattr(
-        incidents_module,
-        "_insert_incident",
-        lambda ip, event_types, severity_max: calls.append((ip, event_types, severity_max)),
-    )
+
+    def fake_insert_incident(ip, event_types, severity_max):
+        calls.append((ip, event_types, severity_max))
+        return 99
+
+    monkeypatch.setattr(incidents_module, "_insert_incident", fake_insert_incident)
     monkeypatch.setattr(
         incidents_module,
         "_update_incident",
@@ -964,15 +965,22 @@ def test_record_incident_inserts_new_incident_when_none_open(monkeypatch):
         ),
     )
 
-    db.record_incident("9.9.9.9", ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")
+    result = db.record_incident("9.9.9.9", ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")
 
     assert calls == [("9.9.9.9", ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")]
+    # 새로 연 사건이므로 escalated는 항상 False에서 시작해야 한다(Track C guide28).
+    assert result == {
+        "id": 99,
+        "event_types": ["BRUTE_FORCE", "WEB_SCANNING"],
+        "severity_max": "CRITICAL",
+        "escalated": False,
+    }
 
 
 def test_record_incident_merges_into_existing_open_incident(monkeypatch):
     from db import incidents as incidents_module
 
-    existing = {"id": 5, "event_types": ["BRUTE_FORCE"], "severity_max": "MEDIUM"}
+    existing = {"id": 5, "event_types": ["BRUTE_FORCE"], "severity_max": "MEDIUM", "escalated": False}
     monkeypatch.setattr(incidents_module, "get_open_incident", lambda ip: existing)
     monkeypatch.setattr(
         incidents_module,
@@ -990,9 +998,15 @@ def test_record_incident_merges_into_existing_open_incident(monkeypatch):
 
     # 새로 들어온 이벤트는 WEB_SCANNING/CRITICAL — 기존 사건(BRUTE_FORCE만, MEDIUM)과
     # 병합되면 event_types는 합집합, severity_max는 더 높은 쪽(CRITICAL)이어야 한다.
-    db.record_incident("9.9.9.9", ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")
+    result = db.record_incident("9.9.9.9", ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")
 
     assert calls == [(5, ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")]
+    assert result == {
+        "id": 5,
+        "event_types": ["BRUTE_FORCE", "WEB_SCANNING"],
+        "severity_max": "CRITICAL",
+        "escalated": False,
+    }
 
 
 def test_record_incident_falls_back_to_merge_on_unique_violation(monkeypatch):
@@ -1001,7 +1015,7 @@ def test_record_incident_falls_back_to_merge_on_unique_violation(monkeypatch):
     # 흉내낸다 — 두 번째 get_open_incident() 호출에서는 그 사건을 찾아야 한다.
     from db import incidents as incidents_module
 
-    lookups = [None, {"id": 9, "event_types": ["WEB_SCANNING"], "severity_max": "MEDIUM"}]
+    lookups = [None, {"id": 9, "event_types": ["WEB_SCANNING"], "severity_max": "MEDIUM", "escalated": False}]
     monkeypatch.setattr(incidents_module, "get_open_incident", lambda ip: lookups.pop(0))
 
     conflict = APIError({"code": "23505", "message": "duplicate key value violates unique constraint"})
@@ -1017,9 +1031,15 @@ def test_record_incident_falls_back_to_merge_on_unique_violation(monkeypatch):
         lambda incident_id, event_types, severity_max: calls.append((incident_id, event_types, severity_max)),
     )
 
-    db.record_incident("9.9.9.9", ["BRUTE_FORCE"], "CRITICAL")
+    result = db.record_incident("9.9.9.9", ["BRUTE_FORCE"], "CRITICAL")
 
     assert calls == [(9, ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")]
+    assert result == {
+        "id": 9,
+        "event_types": ["BRUTE_FORCE", "WEB_SCANNING"],
+        "severity_max": "CRITICAL",
+        "escalated": False,
+    }
 
 
 def test_record_incident_reraises_non_conflict_errors(monkeypatch):
@@ -1035,3 +1055,27 @@ def test_record_incident_reraises_non_conflict_errors(monkeypatch):
 
     with pytest.raises(APIError):
         db.record_incident("9.9.9.9", ["BRUTE_FORCE"], "CRITICAL")
+
+
+def test_insert_incident_returns_new_row_id_from_client(monkeypatch):
+    from db import incidents as incidents_module
+
+    fake_client = _FakeQuery(rows=[{"id": 17}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = incidents_module._insert_incident("9.9.9.9", ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")
+
+    assert result == 17
+    inserted = next(call for call in fake_client.calls if call[0] == "insert")
+    assert inserted[1][0]["escalated"] is False
+    assert inserted[1][0]["status"] == "OPEN"
+
+
+def test_mark_incident_escalated_updates_expected_row(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 42, "escalated": True}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.mark_incident_escalated(42)
+
+    assert ("update", ({"escalated": True},), {}) in fake_client.calls
+    assert ("eq", ("id", 42), {}) in fake_client.calls

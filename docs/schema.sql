@@ -315,3 +315,15 @@ create index idx_security_incidents_last_event_at on security_incidents (last_ev
 create unique index idx_security_incidents_open_ip
   on security_incidents (ip_address)
   where status = 'OPEN';
+
+-- ============================================================================
+-- SOAR 플레이북 고도화 (Track C guide28 — login_watchdog_expansion_plan.md 참고)
+-- ============================================================================
+
+-- 사건이 CRITICAL이면서 서로 다른 event_type이 config.INCIDENT_ESCALATION_MIN_EVENT_TYPES
+-- (기본 3) 개 이상 쌓이면, correlate.py가 관리자에게 별도의 "복합 공격" 에스컬레이션
+-- 알림을 보낸다. 이 컬럼은 그 알림을 이미 보낸 사건인지 표시해서, 사건이 갱신될
+-- 때마다 같은 알림이 반복 발송되는 걸 막는다(soar.enforce_lockout의 "잠그는 순간에
+-- 딱 한 번만" 알림 원칙과 동일). 사건이 닫혔다가(CLOSED) 새로 열리면 새 행이므로
+-- 자동으로 false에서 다시 시작한다.
+alter table security_incidents add column escalated boolean not null default false;

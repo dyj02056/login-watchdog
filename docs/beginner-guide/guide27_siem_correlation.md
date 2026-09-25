@@ -1,6 +1,6 @@
 # 27단계 — SIEM 상관분석 엔진 (Track C 1/4)
 
-[◀ 26단계](guide26_rbac_foundation.md) · [전체 목차](beginner-guide.md)
+[◀ 26단계](guide26_rbac_foundation.md) · [전체 목차](beginner-guide.md) · [28단계 ▶](guide28_soar_playbook.md)
 
 > SKT aleph 교육과정 keyword.md 4과목(이상탐지/SIEM 상관분석)을 반영하는 Track C의 첫 단계입니다. 지금까지 `security_events`는 이벤트 하나하나를 독립적으로만 기록했습니다 — 같은 IP가 짧은 시간 안에 브루트포스도 시도하고, 존재하지 않는 페이지도 스캔하고, 관리자 API도 두드렸다면 신고서 세 장이 각각 따로 쌓일 뿐, "이게 한 출처가 벌인 하나의 사건"이라는 건 아무도 연결해주지 않았습니다. 이번 단계에서 그 흩어진 신고를 "사건철"로 묶는 상관분석 엔진(`correlate.py`, `security_incidents`)을 추가했습니다.
 

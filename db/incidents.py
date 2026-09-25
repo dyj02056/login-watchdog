@@ -55,11 +55,15 @@ def list_security_incidents(page: int = 1, page_size: int = 20) -> tuple[list[di
 
 
 def get_open_incident(ip: str) -> dict | None:
-    """이 IP에 지금 열려있는(status='OPEN') 사건이 있으면 그 행을 돌려준다."""
+    """이 IP에 지금 열려있는(status='OPEN') 사건이 있으면 그 행을 돌려준다.
+
+    escalated도 함께 가져온다 — record_incident()가 병합할 때 "이미 에스컬레이션
+    알림을 보낸 사건인지"를 판단해야 하기 때문이다(Track C guide28, SOAR 플레이북).
+    """
     res = (
         db.get_client()
         .table("security_incidents")
-        .select("id, event_types, severity_max")
+        .select("id, event_types, severity_max, escalated")
         .eq("ip_address", ip)
         .eq("status", "OPEN")
         .limit(1)
@@ -68,18 +72,25 @@ def get_open_incident(ip: str) -> dict | None:
     return res.data[0] if res.data else None
 
 
-def _insert_incident(ip: str, event_types: list[str], severity_max: str) -> None:
+def _insert_incident(ip: str, event_types: list[str], severity_max: str) -> int:
     now = db._now_iso()
-    db.get_client().table("security_incidents").insert(
-        {
-            "ip_address": ip,
-            "event_types": event_types,
-            "severity_max": severity_max,
-            "status": "OPEN",
-            "first_event_at": now,
-            "last_event_at": now,
-        }
-    ).execute()
+    res = (
+        db.get_client()
+        .table("security_incidents")
+        .insert(
+            {
+                "ip_address": ip,
+                "event_types": event_types,
+                "severity_max": severity_max,
+                "status": "OPEN",
+                "escalated": False,
+                "first_event_at": now,
+                "last_event_at": now,
+            }
+        )
+        .execute()
+    )
+    return res.data[0]["id"]
 
 
 def _update_incident(incident_id: int, event_types: list[str], severity_max: str) -> None:
@@ -88,15 +99,23 @@ def _update_incident(incident_id: int, event_types: list[str], severity_max: str
     ).eq("id", incident_id).execute()
 
 
-def _merge_into_existing(existing: dict, event_types: list[str], severity: str) -> None:
+def _merge_into_existing(existing: dict, event_types: list[str], severity: str) -> dict:
     merged_types = sorted(set(existing["event_types"]) | set(event_types))
     merged_severity = _higher_severity(existing["severity_max"], severity)
     _update_incident(existing["id"], merged_types, merged_severity)
+    return {
+        "id": existing["id"],
+        "event_types": merged_types,
+        "severity_max": merged_severity,
+        "escalated": existing["escalated"],
+    }
 
 
-def record_incident(ip: str, event_types: list[str], severity: str) -> None:
+def record_incident(ip: str, event_types: list[str], severity: str) -> dict:
     """이 IP에 열린 사건이 있으면 event_types/최고 위험등급을 병합해서 갱신하고,
-    없으면 새로 연다.
+    없으면 새로 연다. 병합/생성된 사건의 최종 상태(id/event_types/severity_max/
+    escalated)를 돌려준다 — correlate.py가 이 값을 보고 SOAR 플레이북(사건
+    에스컬레이션 알림, Track C guide28)을 실행할지 판단한다.
 
     "열려있는지 확인" 후 "새로 연다" 사이의 아주 짧은 틈에 동시 요청 두 개가
     겹치면(드문 경쟁 조건), docs/schema.sql의 idx_security_incidents_open_ip
@@ -106,22 +125,34 @@ def record_incident(ip: str, event_types: list[str], severity: str) -> None:
     """
     existing = get_open_incident(ip)
     if existing:
-        _merge_into_existing(existing, event_types, severity)
-        return
+        return _merge_into_existing(existing, event_types, severity)
     try:
-        _insert_incident(ip, event_types, severity)
+        incident_id = _insert_incident(ip, event_types, severity)
+        return {"id": incident_id, "event_types": event_types, "severity_max": severity, "escalated": False}
     except APIError as e:
         if e.code != "23505":
             raise
         existing = get_open_incident(ip)
-        _merge_into_existing(existing, event_types, severity)
+        return _merge_into_existing(existing, event_types, severity)
+
+
+def mark_incident_escalated(incident_id: int) -> None:
+    """이 사건에 에스컬레이션(SOAR 플레이북) 알림을 이미 보냈다고 표시한다.
+
+    soar.enforce_lockout()이 "잠그는 순간에 딱 한 번만" Slack에 알리는 것과
+    같은 이유 — 이 표시가 없으면 이미 CRITICAL·다유형에 도달한 사건에 이벤트가
+    하나씩 더 붙을 때마다 매번 "복합 공격 발생" 알림이 반복돼서 알림 피로가 생긴다.
+    """
+    db.get_client().table("security_incidents").update({"escalated": True}).eq("id", incident_id).execute()
 
 
 def close_open_incident_for_ip(ip: str) -> None:
     """이 IP의 열린 사건을 닫힘으로 표시한다.
 
     resolve_security_events_for_ip()와 짝을 이룬다 — 잠금이 풀리는 순간(자동
-    만료든 수동 해제든) 그 IP를 둘러싼 사건도 함께 끝난 것으로 본다.
+    만료든 수동 해제든) 그 IP를 둘러싼 사건도 함께 끝난 것으로 본다. 사건이
+    닫힌 뒤 같은 IP에서 새 사건이 열리면 escalated는 새 행이므로 자동으로
+    False에서 다시 시작한다.
     """
     db.get_client().table("security_incidents").update({"status": "CLOSED"}).eq(
         "ip_address", ip

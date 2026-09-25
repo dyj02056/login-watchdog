@@ -34,6 +34,7 @@
 25. [25단계 — 팀원 브랜치 병합 정리 및 `daily_report.py` AI 보안 총평(Gemini) 연동](guide25_scripts_merge_ai_report.md)
 26. [26단계 — RBAC 기본 구조 (Track B 1/3)](guide26_rbac_foundation.md)
 27. [27단계 — SIEM 상관분석 엔진 (Track C 1/4)](guide27_siem_correlation.md)
+28. [28단계 — SOAR 플레이북 고도화 (Track C 2/4)](guide28_soar_playbook.md)
 
 ---
 

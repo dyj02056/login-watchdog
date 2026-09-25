@@ -78,6 +78,14 @@ PAGE_ACCESS_ALERT_THRESHOLD = int(os.environ.get("PAGE_ACCESS_ALERT_THRESHOLD", 
 # 걸친 공격 흐름을 잡아야 해서 더 넓은 시간대를 봐야 한다.
 INCIDENT_CORRELATION_WINDOW_MINUTES = int(os.environ.get("INCIDENT_CORRELATION_WINDOW_MINUTES", 5))
 
+# SOAR 플레이북 고도화(Track C guide28) 에스컬레이션 기준 — 사건(security_incidents)에
+# 묶인 서로 다른 event_type이 이 개수 이상이면서 severity_max가 CRITICAL이면,
+# correlate.py가 "복합 공격 발생" 에스컬레이션 알림을 별도로 보낸다. 상관분석 자체의
+# 기준(2개 이상)보다 한 단계 더 높게 잡은 이유: 2종류만 겹쳐도 사건으로는 묶어서
+# 대시보드에 보여주지만, 그 정도로 관리자에게 "추가로" 긴급 알림까지 보낼 필요는
+# 없고 정말 여러 단계에 걸친 공격(3종류 이상)일 때만 알림 피로 없이 강조한다.
+INCIDENT_ESCALATION_MIN_EVENT_TYPES = int(os.environ.get("INCIDENT_ESCALATION_MIN_EVENT_TYPES", 3))
+
 # 전역 HTTP 플러딩(대량 요청 도배) 방어 — 위의 *_RATE_LIMIT들은 로그인/가입/글쓰기
 # 등 "특정 폼 제출"에만 걸려있고, 일반 GET 페이지는 아무리 요청이 쏟아져도 다
 # 받아준다. 이 값은 같은 IP가 1분 안에 "전체 요청 종류를 합쳐서" 몇 번까지
