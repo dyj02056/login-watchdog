@@ -20,6 +20,7 @@
 - **관리자 역할 기반 접근 제어(RBAC)** — 관리자 계정이 `security_viewer`(조회만) / `security_admin`(IP 잠금 해제·보안 이벤트 처리) / `super_admin`(회원·게시글·댓글 삭제, 회원가입 On/Off, 관리자 계정 관리까지 전부)으로 나뉘어, 로그인만 되면 뭐든 할 수 있던 이진 구조를 액션 단위 권한으로 세분화. 요청마다 실시간으로 역할을 조회해 권한 회수가 재로그인 없이 즉시 반영됨. `super_admin`은 대시보드 안 "관리자 계정 관리" 카드에서 `security_viewer`/`security_admin` 계정을 직접 생성·삭제할 수 있음(터미널 스크립트 없이) — 단 `super_admin` 계정 자체는 이 화면의 생성·삭제 대상에서 화면과 서버 양쪽에서 제외되어 "1명만 둔다"는 정책이 코드로도 지켜짐. 자세한 내용은 [docs/beginner-guide/guide26_rbac_foundation.md](docs/beginner-guide/guide26_rbac_foundation.md) 참고
 - **SIEM 상관분석** — 같은 IP가 `security_events`에 짧은 시간(기본 5분) 안에 서로 다른 유형의 이벤트를 2개 이상 남기면(예: 웹 스캐닝 → 브루트포스), 단발성 이벤트로 각각 남기는 대신 `security_incidents`로 묶어 "하나의 공격 흐름"임을 표시. IP 잠금이 풀리면 사건도 함께 자동으로 닫힘(CLOSED). 관리자 대시보드 "보안 이벤트" 표 바로 아래 "연관 사건" 표에서 확인 가능. 자세한 내용은 [docs/beginner-guide/guide27_siem_correlation.md](docs/beginner-guide/guide27_siem_correlation.md) 참고
 - **SOAR 플레이북 고도화** — 상관분석으로 묶인 사건이 CRITICAL 등급이면서 서로 다른 공격 유형이 3개 이상 겹치면, 개별 이벤트 알림과 별도로 "복합 공격 발생" 에스컬레이션 알림을 Slack에 추가로 전송. 같은 사건이 갱신될 때마다 반복 알림이 나가지 않도록 사건당 한 번만 발송. 자세한 내용은 [docs/beginner-guide/guide28_soar_playbook.md](docs/beginner-guide/guide28_soar_playbook.md) 참고
+- **API 엔드포인트별 매크로/봇 탐지** — 같은 IP가 60초 안에 서로 다른 `/api/*` 경로를 5개 초과해서 호출하면(대시보드 자동 폴링 API는 제외) MEDIUM 관찰 알림. 기존 `track_page_access()`가 "GET, 같은 경로 하나의 반복"만 보던 사각지대(POST API, 여러 경로에 걸친 패턴)를 메운다. 자세한 내용은 [docs/beginner-guide/guide29_macro_bot_detection.md](docs/beginner-guide/guide29_macro_bot_detection.md) 참고
 
 ## 기술 스택
 
@@ -155,6 +156,7 @@ GET 11회를 보내 재현할 수 있습니다. [실행 조건과 알림 확인 
 | `scripts/daily_report.py` | 최근 N시간(기본 24시간)의 로그인 시도/잠금 현황을 콘솔에 텍스트로 요약 |
 | `scripts/unlock_ip.py` | 지금 잠겨있는 IP를 조회하거나 즉시 해제. `/admin/login`도 `/login`과 같은 IP 기준 잠금을 공유하므로, 브루트포스 시뮬레이션 도중 관리자 계정 IP까지 함께 잠기면 대시보드의 "즉시 해제" 버튼조차 쓸 수 없는 상황이 생기는데(로그인 자체가 막혀서), 이때 서버·로그인 없이 터미널에서 바로 풀 때 사용 |
 | `scripts/create_admin.py` | `security_viewer`/`security_admin`/`super_admin` 역할을 가진 새 관리자 계정을 생성. 대시보드 "관리자 계정 관리" 카드는 `super_admin`이 `security_viewer`/`security_admin`만 만들 수 있는 것과 달리, 이 스크립트는 터미널 접근 자체가 신뢰된 작업이라는 전제로 `super_admin`도 만들 수 있음(예: 최초 팀원 온보딩) |
+| `scripts/macro_bot_sim.py` | 이미 만들어진 관리자 계정으로 로그인한 뒤, 서로 다른 관리자 API 6개를 순서대로 호출해 매크로/봇 탐지가 실제로 알림을 울리는지 검증. `security_viewer`(무권한) 계정으로 실행하면 6번 모두 403으로 안전하게 거절되면서도 탐지 로그는 정상적으로 남음 |
 
 `bruteforce_sim.py`의 `--ip` 옵션: 로컬 환경에서는 팀원 전원이 다 같은 `127.0.0.1`로 접속하게 되어 "서로 다른 공격자 IP에서 왔다"는 상황을 재현할 수 없다. `--ip 1.2.3.4`를 주면 그 값을 `X-Forwarded-For` 헤더에 실어 보내는데, 이 헤더는 대상 서버의 `.env`에서 `TRUST_FORWARDED_FOR=true`로 켜뒀을 때만 실제 접속 IP처럼 반영된다(운영 환경 기본값인 `false`에서는 서버가 헤더를 무시하고 진짜 접속 IP를 그대로 씀 — 배포 사이트에서 이 옵션이 안전하게 아무 효과가 없는 이유).
 ```bash
@@ -205,7 +207,8 @@ login-watchdog/
 │   ├── geoip_cache.py              #   ip_locations (IP 위치 조회 캐시)
 │   ├── board.py                    #   posts, comments, post_attempts, comment_attempts (게시판)
 │   ├── security_events.py          #   not_found/unauthorized/page_access_attempts, security_events
-│   └── incidents.py                #   security_incidents (SIEM 상관분석)
+│   ├── incidents.py                #   security_incidents (SIEM 상관분석)
+│   └── api_access_log.py           #   api_access_log (매크로/봇 탐지)
 ├── detector.py                    # 브루트포스 판정 로직
 ├── soar.py                        # 판정 결과에 따른 조치(잠금/해제) 실행
 ├── correlate.py                   # 상관분석 판정 로직 (같은 IP의 서로 다른 이벤트를 사건으로 묶을지)

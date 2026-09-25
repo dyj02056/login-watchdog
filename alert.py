@@ -173,6 +173,23 @@ def send_incident_escalation_alert(ip: str, event_types: list[str], severity_max
     _send_slack_message(message)
 
 
+def send_macro_pattern_alert(ip: str, count: int) -> None:
+    """매크로/봇 의심(짧은 시간 안에 서로 다른 API 여러 개 호출)이 감지됐다는
+    사실을 Slack에 알린다 (Track C guide29). send_web_scanning_alert()와
+    마찬가지로 잠그지 않는다 — 특정 경로 하나가 아니라 여러 경로에 걸친
+    패턴이라 "이 경로를 막는다" 같은 조치 자체가 성립하지 않고, 관찰(알림)까지만
+    자동화한다.
+    """
+    message = (
+        ":robot_face: [MEDIUM] 로그인 워치독 알림\n"
+        "공격 유형: 매크로/봇 의심 (짧은 시간 안에 서로 다른 API 다수 호출)\n"
+        f"시도 IP: {ip}\n"
+        f"최근 {config.DETECTION_WINDOW_SECONDS}초간 호출한 서로 다른 API 경로 수: {count}개\n"
+        "조치: 별도 잠금 없음 (관찰 목적)"
+    )
+    _send_slack_message(message)
+
+
 def send_unauthorized_access_alert(ip: str, count: int, path: str) -> None:
     """Unauthorized Access(로그인 세션 없이 관리자 API 반복 호출)가 의심된다는
     사실을 Slack에 알린다. send_web_scanning_alert()와 마찬가지로 잠그지는

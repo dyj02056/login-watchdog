@@ -1079,3 +1079,34 @@ def test_mark_incident_escalated_updates_expected_row(monkeypatch):
 
     assert ("update", ({"escalated": True},), {}) in fake_client.calls
     assert ("eq", ("id", 42), {}) in fake_client.calls
+
+
+# ============================================================================
+# api_access_log 표 관련 함수 (Track C guide29, 매크로/봇 탐지)
+# ============================================================================
+
+def test_log_api_access_inserts_expected_row(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.log_api_access("9.9.9.9", "/api/unlock", "POST")
+
+    assert (
+        "insert",
+        ({"ip_address": "9.9.9.9", "path": "/api/unlock", "method": "POST"},),
+        {},
+    ) in fake_client.calls
+
+
+def test_count_recent_distinct_api_paths_returns_number_of_unique_paths(monkeypatch):
+    rows = [
+        {"path": "/api/unlock"},
+        {"path": "/api/security-events/resolve"},
+        {"path": "/api/unlock"},
+    ]
+    fake_client = _FakeQuery(rows=rows)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.count_recent_distinct_api_paths("9.9.9.9")
+
+    assert result == 2

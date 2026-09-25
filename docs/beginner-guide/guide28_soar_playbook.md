@@ -1,6 +1,6 @@
 # 28단계 — SOAR 플레이북 고도화 (Track C 2/4)
 
-[◀ 27단계](guide27_siem_correlation.md) · [전체 목차](beginner-guide.md)
+[◀ 27단계](guide27_siem_correlation.md) · [전체 목차](beginner-guide.md) · [29단계 ▶](guide29_macro_bot_detection.md)
 
 > keyword.md 5과목(SOAR 플레이북)을 반영하는 Track C의 두 번째 단계입니다. 27단계에서 만든 "사건철"(`security_incidents`)은 서로 다른 공격 유형이 겹치면 하나로 묶어주긴 했지만, 그 사건이 얼마나 심각한지와 무관하게 대응은 항상 똑같았습니다(각 이벤트별 개별 알림뿐). 이번 단계에서 "사건이 특정 조건을 넘으면 → 이런 대응을 추가로 한다"는 매뉴얼(플레이북)을 선언적으로 연결했습니다.
 

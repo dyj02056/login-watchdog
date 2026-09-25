@@ -129,6 +129,18 @@ def notify_bot_detected(ip: str, path: str) -> None:
     _record_event("BOT_DETECTED", "MEDIUM", ip, path, 1, "REJECTED")
 
 
+def notify_macro_pattern(ip: str, count: int) -> None:
+    """매크로/봇 의심 알림을 Slack으로 보내고, MEDIUM 이벤트로 기록한다
+    (Track C guide29). notify_web_scanning() 등과 마찬가지로 db.create_lockout()을
+    호출하지 않는다 — 경로 하나가 아니라 여러 경로에 걸친 패턴이라 잠글 단일
+    대상이 없고, 관찰(알림 + 이벤트 기록)까지만 자동화한다. path는 이 이벤트가
+    특정 경로 하나가 아니라 IP 전체의 패턴을 가리키므로 None으로 남겨둔다
+    (enforce_lockout이 IP 단위 CRITICAL 이벤트에 path=None을 쓰는 것과 같은 이유).
+    """
+    alert.send_macro_pattern_alert(ip, count)
+    _record_event("API_MACRO_PATTERN", "MEDIUM", ip, None, count, "ALERTED")
+
+
 def notify_web_scanning(ip: str, count: int, path: str) -> None:
     """Web Scanning 의심 알림을 Slack으로 보내고, MEDIUM 이벤트로 기록한다.
 

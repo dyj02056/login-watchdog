@@ -327,3 +327,21 @@ create unique index idx_security_incidents_open_ip
 -- 딱 한 번만" 알림 원칙과 동일). 사건이 닫혔다가(CLOSED) 새로 열리면 새 행이므로
 -- 자동으로 false에서 다시 시작한다.
 alter table security_incidents add column escalated boolean not null default false;
+
+-- ============================================================================
+-- API 엔드포인트별 매크로/봇 탐지 (Track C guide29 — login_watchdog_expansion_plan.md 참고)
+-- ============================================================================
+
+-- not_found_attempts/unauthorized_attempts/page_access_attempts와 같은 목적의
+-- 요청 로그다. 다만 이 표는 "/api/*" 요청 전체(POST 포함)를 메서드와 함께
+-- 기록해서, 같은 IP가 짧은 시간에 서로 다른 API 여러 개를 옮겨 다니는
+-- 패턴(매크로/봇 의심)을 잡는다 — track_page_access()는 GET만, "같은 경로
+-- 하나"의 반복만 보므로 이 패턴은 잡지 못한다.
+create table api_access_log (
+  id bigint generated always as identity primary key,
+  ip_address text not null,
+  path text not null,
+  method text not null,
+  requested_at timestamptz not null default now()
+);
+create index idx_api_access_log_ip_requested_at on api_access_log (ip_address, requested_at desc);

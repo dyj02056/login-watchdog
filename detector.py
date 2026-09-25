@@ -14,6 +14,7 @@ from config import (
     ACCOUNT_FAILURE_THRESHOLD,
     COMMENT_RATE_LIMIT,
     FAILURE_THRESHOLD,
+    MACRO_DISTINCT_API_THRESHOLD,
     PAGE_ACCESS_ALERT_THRESHOLD,
     POST_RATE_LIMIT,
     SIGNUP_RATE_LIMIT,
@@ -167,6 +168,21 @@ def is_page_access_suspicious(ip: str, path: str) -> tuple[bool, int, bool]:
     count = db.count_recent_page_access_attempts(ip, path)
     suspicious = count > PAGE_ACCESS_ALERT_THRESHOLD
     is_first_over_threshold = count == PAGE_ACCESS_ALERT_THRESHOLD + 1
+    return suspicious, count, is_first_over_threshold
+
+
+def is_macro_pattern_suspicious(ip: str) -> tuple[bool, int, bool]:
+    """이 IP가 "매크로/봇 의심 상태"인지 판단한다 (Track C guide29, 매크로/봇 탐지).
+
+    is_web_scanning()과 판단 방식(초과 여부, is_first_over_threshold의 의미)은
+    동일하지만, 세는 대상이 "같은 경로 하나의 반복"이 아니라 "최근
+    DETECTION_WINDOW_SECONDS 안에 호출한 서로 다른 /api/* 경로의 개수"다 —
+    사람이 화면을 눌러가며 API 몇 개를 부르는 것과, 스크립트가 여러 API를
+    기계적으로 훑는 것을 구분한다.
+    """
+    count = db.count_recent_distinct_api_paths(ip)
+    suspicious = count > MACRO_DISTINCT_API_THRESHOLD
+    is_first_over_threshold = count == MACRO_DISTINCT_API_THRESHOLD + 1
     return suspicious, count, is_first_over_threshold
 
 

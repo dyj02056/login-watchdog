@@ -19,6 +19,7 @@
 #   board.py            — posts, comments, post_attempts, comment_attempts (게시판)
 #   security_events.py  — not_found/unauthorized/page_access_attempts, security_events
 #   incidents.py         — security_incidents (SIEM 상관분석, Track C guide27)
+#   api_access_log.py    — api_access_log (매크로/봇 탐지, Track C guide29)
 #
 # 이 파일은 위 각 모듈의 함수를 그대로 다시 내보내기(re-export)만 한다 — 그래서
 # app.py/detector.py/soar.py/scripts/*.py나 테스트 코드는 예전처럼
@@ -50,6 +51,7 @@ from .admin import (
     log_admin_attempt,
     verify_admin_credentials,
 )
+from .api_access_log import count_recent_distinct_api_paths, log_api_access
 from .attempts import (
     count_recent_distinct_ips_by_username,
     count_recent_distinct_usernames,
@@ -220,4 +222,6 @@ __all__ = [
     "close_open_incident_for_ip",
     "list_security_incidents",
     "mark_incident_escalated",
+    "log_api_access",
+    "count_recent_distinct_api_paths",
 ]

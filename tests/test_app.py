@@ -632,6 +632,100 @@ def test_page_access_ignores_nonexistent_paths(client, monkeypatch):
     client.get("/no-such-page")
 
 
+# ============================================================================
+# track_api_access() — 매크로/봇 탐지 (Track C guide29)
+# ============================================================================
+
+def test_api_access_logs_request_to_api_path(client, monkeypatch):
+    # /api/status는 admin.api_status로, 자동 폴링 API라 track_api_access()
+    # 관찰 대상에서 제외된다 — 실제로 관찰되는 경로(/api/unlock)로 확인한다.
+    # 로그인 없이 부르면 login_required가 먼저 401을 돌려주면서 별도로
+    # unauthorized_attempts도 기록하는데(helpers.py 참고), 이 테스트가 확인하려는
+    # 건 그게 아니므로 조용히 통과하게 막아둔다. CSRF도 통과해야 이 훅까지
+    # 도달하므로 /login에서 진짜 토큰을 받아온다.
+    monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1, False))
+    logged = []
+    monkeypatch.setattr(db, "log_api_access", lambda ip, path, method: logged.append((ip, path, method)))
+    monkeypatch.setattr(detector, "is_macro_pattern_suspicious", lambda ip: (False, 1, False))
+
+    token = get_csrf_token(client, "/login")
+    response = client.post("/api/unlock", json={}, headers={"X-CSRFToken": token})
+
+    assert response.status_code == 401
+    assert logged == [("127.0.0.1", "/api/unlock", "POST")]
+
+
+def test_api_access_alerts_exactly_when_crossing_threshold(client, monkeypatch):
+    monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1, False))
+    monkeypatch.setattr(db, "log_api_access", lambda ip, path, method: None)
+    monkeypatch.setattr(detector, "is_macro_pattern_suspicious", lambda ip: (True, 6, True))  # threshold(5) + 1
+    notify_calls = []
+    monkeypatch.setattr(
+        soar, "notify_macro_pattern", lambda ip, count: notify_calls.append((ip, count))
+    )
+
+    token = get_csrf_token(client, "/login")
+    client.post("/api/unlock", json={}, headers={"X-CSRFToken": token})
+
+    assert notify_calls == [("127.0.0.1", 6)]
+
+
+def test_api_access_does_not_alert_again_after_threshold_crossing(client, monkeypatch):
+    monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1, False))
+    monkeypatch.setattr(db, "log_api_access", lambda ip, path, method: None)
+    monkeypatch.setattr(detector, "is_macro_pattern_suspicious", lambda ip: (True, 9, False))
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("임계값을 이미 넘긴 뒤인데 notify_macro_pattern이 또 호출되었다")
+
+    monkeypatch.setattr(soar, "notify_macro_pattern", _fail_if_called)
+
+    token = get_csrf_token(client, "/login")
+    response = client.post("/api/unlock", json={}, headers={"X-CSRFToken": token})
+
+    assert response.status_code == 401  # 로그인 없이 호출했으므로 401 — 훅 자체는 정상 통과했는지만 확인
+
+
+def test_api_access_ignores_polling_endpoint(client, monkeypatch):
+    # /api/status(대시보드 자동 폴링)는 track_page_access()와 마찬가지로
+    # track_api_access()에서도 관찰 대상에서 빠져야 한다.
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("자동 폴링 API인데 log_api_access가 호출되었다")
+
+    monkeypatch.setattr(db, "log_api_access", _fail_if_called)
+    monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1, False))
+
+    client.get("/api/status")
+
+
+def test_api_access_ignores_non_api_paths(client, monkeypatch):
+    # "/api/"로 시작하지 않는 일반 페이지는 이 훅의 관찰 대상이 아니다
+    # (그 대신 track_page_access()가 관찰한다).
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("/api/*가 아닌 경로인데 log_api_access가 호출되었다")
+
+    monkeypatch.setattr(db, "log_api_access", _fail_if_called)
+
+    client.get("/login")
+
+
+def test_api_access_ignores_nonexistent_api_paths(client, monkeypatch):
+    # 존재하지 않는 /api/* 경로(request.url_rule is None)는 not_found_attempts가
+    # 따로 기록하므로 중복으로 기록하면 안 된다.
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("존재하지 않는 경로인데 log_api_access가 호출되었다")
+
+    monkeypatch.setattr(db, "log_api_access", _fail_if_called)
+    monkeypatch.setattr(db, "log_not_found_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_web_scanning", lambda ip: (False, 1, False))
+
+    client.get("/api/no-such-endpoint")
+
+
 def test_api_unlock_requires_ip_in_body(client, monkeypatch):
     monkeypatch.setattr(soar, "try_release_expired_lockouts", lambda: None)
     monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")

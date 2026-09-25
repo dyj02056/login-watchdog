@@ -223,6 +223,30 @@ def test_manual_release_returns_false_when_ip_not_locked(monkeypatch):
 
 
 # ============================================================================
+# notify_macro_pattern — 매크로/봇 탐지 (Track C guide29)
+# ============================================================================
+
+def test_notify_macro_pattern_sends_alert_then_records_medium_event(monkeypatch):
+    calls = []
+    monkeypatch.setattr(correlate, "check_and_correlate", lambda *a, **k: None)
+    monkeypatch.setattr(alert, "send_macro_pattern_alert", lambda ip, count: calls.append(("alert", ip, count)))
+    monkeypatch.setattr(
+        db,
+        "insert_security_event",
+        lambda event_type, severity, ip, path, count, action: calls.append(
+            ("event", event_type, severity, ip, path, count, action)
+        ),
+    )
+
+    soar.notify_macro_pattern("9.9.9.9", 6)
+
+    assert calls == [
+        ("alert", "9.9.9.9", 6),
+        ("event", "API_MACRO_PATTERN", "MEDIUM", "9.9.9.9", None, 6, "ALERTED"),
+    ]
+
+
+# ============================================================================
 # notify_web_scanning / notify_unauthorized_access / notify_page_access —
 # MEDIUM 관찰 알림이 이제 security_events에도 함께 기록되는지 확인
 # ============================================================================

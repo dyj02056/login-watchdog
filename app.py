@@ -280,6 +280,34 @@ def track_page_access():
         soar.notify_page_access(ip, count, request.path)
 
 
+@app.before_request
+def track_api_access():
+    """같은 IP가 짧은 시간 안에 서로 다른 /api/* 경로를 여러 개 호출하는지
+    관찰하고, 매크로/봇 패턴으로 의심되면 알린다 (Track C guide29, 매크로/봇 탐지).
+
+    track_page_access()와 별도 훅으로 둔 이유: track_page_access()는 GET만,
+    "같은 경로 하나"의 반복만 본다 — 이 훅은 메서드를 가리지 않고(POST 포함),
+    "서로 다른 여러 경로"에 걸친 패턴을 본다. 서로 다른 종류의 수상함이라
+    하나로 합치지 않는다.
+
+    _PAGE_ACCESS_EXCLUDED_ENDPOINTS를 그대로 재사용해서 dashboard.js/board.js의
+    자동 폴링 API는 여기서도 제외한다 — 어차피 경로 하나만 반복 호출하므로
+    이 탐지(서로 다른 경로 개수)에는 원래 걸리지 않지만, 표를 불필요하게
+    불리지 않기 위해 애초에 기록하지 않는다.
+    """
+    if request.url_rule is None or not request.path.startswith("/api/"):
+        return
+    if request.endpoint in _PAGE_ACCESS_EXCLUDED_ENDPOINTS:
+        return
+
+    ip = get_request_ip()
+    db.log_api_access(ip, request.path, request.method)
+
+    suspicious, count, is_first_over_threshold = detector.is_macro_pattern_suspicious(ip)
+    if suspicious and is_first_over_threshold:
+        soar.notify_macro_pattern(ip, count)
+
+
 # ============================================================================
 # 루트 주소 (/) — 도메인만 입력해서 들어온 방문자를 위한 안내
 # ============================================================================

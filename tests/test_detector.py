@@ -216,6 +216,41 @@ def test_is_page_access_suspicious_true_but_not_first_over_threshold_when_alread
     assert is_first_over_threshold is False
 
 
+# ============================================================================
+# is_macro_pattern_suspicious — 매크로/봇 탐지 (Track C guide29)
+# ============================================================================
+
+def test_is_macro_pattern_suspicious_false_at_exact_threshold(monkeypatch):
+    # MACRO_DISTINCT_API_THRESHOLD 기본값은 5 — 정확히 5개는 아직 아니다.
+    monkeypatch.setattr(db, "count_recent_distinct_api_paths", lambda ip: 5)
+
+    suspicious, count, is_first_over_threshold = detector.is_macro_pattern_suspicious("1.2.3.4")
+
+    assert suspicious is False
+    assert count == 5
+    assert is_first_over_threshold is False
+
+
+def test_is_macro_pattern_suspicious_true_and_first_over_threshold_when_exactly_crossing(monkeypatch):
+    monkeypatch.setattr(db, "count_recent_distinct_api_paths", lambda ip: 6)
+
+    suspicious, count, is_first_over_threshold = detector.is_macro_pattern_suspicious("1.2.3.4")
+
+    assert suspicious is True
+    assert count == 6
+    assert is_first_over_threshold is True
+
+
+def test_is_macro_pattern_suspicious_true_but_not_first_over_threshold_when_already_past_it(monkeypatch):
+    monkeypatch.setattr(db, "count_recent_distinct_api_paths", lambda ip: 9)
+
+    suspicious, count, is_first_over_threshold = detector.is_macro_pattern_suspicious("1.2.3.4")
+
+    assert suspicious is True
+    assert count == 9
+    assert is_first_over_threshold is False
+
+
 def test_is_account_suspicious_false_at_exact_threshold(monkeypatch):
     # ACCOUNT_FAILURE_THRESHOLD 기본값은 8 — 정확히 8회는 아직 수상하지 않다
     # (is_suspicious와 동일하게 "초과"부터 수상함).

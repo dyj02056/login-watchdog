@@ -86,6 +86,13 @@ INCIDENT_CORRELATION_WINDOW_MINUTES = int(os.environ.get("INCIDENT_CORRELATION_W
 # 없고 정말 여러 단계에 걸친 공격(3종류 이상)일 때만 알림 피로 없이 강조한다.
 INCIDENT_ESCALATION_MIN_EVENT_TYPES = int(os.environ.get("INCIDENT_ESCALATION_MIN_EVENT_TYPES", 3))
 
+# 매크로/봇 탐지(Track C guide29) — 같은 IP가 DETECTION_WINDOW_SECONDS(60초) 안에
+# 서로 다른 /api/* 경로를 이 개수를 "초과"해서 호출하면 의심한다. is_suspicious()
+# 등과 같은 "초과" 기준을 쓰는 이유는 정상 사용자도 화면을 넘나들며 API 몇 개는
+# 우연히 부를 수 있어서, 로그인 실패 판정과 마찬가지로 약간의 여유를 준다 —
+# 사람이 몇 초 안에 6개 넘는 서로 다른 API를 손으로 누르긴 어렵지만, 스크립트는 쉽다.
+MACRO_DISTINCT_API_THRESHOLD = int(os.environ.get("MACRO_DISTINCT_API_THRESHOLD", 5))
+
 # 전역 HTTP 플러딩(대량 요청 도배) 방어 — 위의 *_RATE_LIMIT들은 로그인/가입/글쓰기
 # 등 "특정 폼 제출"에만 걸려있고, 일반 GET 페이지는 아무리 요청이 쏟아져도 다
 # 받아준다. 이 값은 같은 IP가 1분 안에 "전체 요청 종류를 합쳐서" 몇 번까지
