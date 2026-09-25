@@ -1,6 +1,6 @@
 # 26단계 — RBAC 기본 구조 (Track B 1/3)
 
-[◀ 25단계](guide25_scripts_merge_ai_report.md) · [전체 목차](beginner-guide.md)
+[◀ 25단계](guide25_scripts_merge_ai_report.md) · [전체 목차](beginner-guide.md) · [27단계 ▶](guide27_siem_correlation.md)
 
 > SKT aleph 교육과정 Week3(RBAC/예외승인/감사추적)을 반영하는 Track B의 첫 단계입니다. 지금까지 관리자는 `admin_users`에 로그인만 되면 잠금 해제부터 회원 삭제, 회원가입 On/Off까지 전부 같은 권한으로 할 수 있었습니다 — "누가 어떤 권한을 왜 가졌는지"가 전혀 기록되지 않는 이진(로그인/비로그인) 구조였습니다. 이번 단계에서 역할 3개(`security_viewer`/`security_admin`/`super_admin`)와 역할별로 할 수 있는 액션을 DB 표로 나누고, `routes/admin.py`의 쓰기 API 6개를 액션 단위로 다시 잠갔습니다.
 

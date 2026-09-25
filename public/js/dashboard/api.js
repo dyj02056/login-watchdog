@@ -13,6 +13,7 @@ import {
     renderLockoutCards,
     renderPostsTable,
     renderSecurityEventsTable,
+    renderSecurityIncidentsTable,
     renderSignupStatus,
     renderUsersTable,
 } from "./render.js";
@@ -35,6 +36,7 @@ export async function fetchStatus() {
         comments_page: pages.comments,
         admin_log_page: pages.adminLog,
         security_events_page: pages.securityEvents,
+        security_incidents_page: pages.securityIncidents,
     });
     const response = await fetch(`/api/status?${params}`);
 
@@ -58,6 +60,7 @@ export async function fetchStatus() {
     if (pages.comments > data.comments_total_pages) { pages.comments = data.comments_total_pages; needsRefetch = true; }
     if (pages.adminLog > data.admin_log_total_pages) { pages.adminLog = data.admin_log_total_pages; needsRefetch = true; }
     if (pages.securityEvents > data.security_events_total_pages) { pages.securityEvents = data.security_events_total_pages; needsRefetch = true; }
+    if (pages.securityIncidents > data.security_incidents_total_pages) { pages.securityIncidents = data.security_incidents_total_pages; needsRefetch = true; }
     if (needsRefetch) {
         fetchStatus();
         return;
@@ -77,6 +80,8 @@ export async function fetchStatus() {
     renderPagination("comments-pagination", pages.comments, data.comments_total_pages);
     renderSecurityEventsTable(data.security_events);
     renderPagination("security-events-pagination", pages.securityEvents, data.security_events_total_pages);
+    renderSecurityIncidentsTable(data.security_incidents);
+    renderPagination("security-incidents-pagination", pages.securityIncidents, data.security_incidents_total_pages);
     renderAdminUsersTable(data.admin_users);
 }
 

@@ -29,9 +29,9 @@ export const SEVERITY_LABELS = {
     MEDIUM: "🟡 MEDIUM",
 };
 
-// 표 6개(최근 로그인 시도/회원/게시글/댓글/관리자 로그인 기록/보안 이벤트)가
-// 지금 몇 페이지를 보고 있는지 기억해둔다. board_list.html의 URL 쿼리
-// 파라미터(?page=)와 같은 역할이지만, 이 화면은 서버 렌더링이 아니라 매번
+// 표 7개(최근 로그인 시도/회원/게시글/댓글/관리자 로그인 기록/보안 이벤트/
+// 연관 사건)가 지금 몇 페이지를 보고 있는지 기억해둔다. board_list.html의 URL
+// 쿼리 파라미터(?page=)와 같은 역할이지만, 이 화면은 서버 렌더링이 아니라 매번
 // fetch()로 다시 그리는 방식이라 URL 대신 이 객체로 상태를 들고 있는다.
 export const pages = {
     attempts: 1,
@@ -40,6 +40,7 @@ export const pages = {
     comments: 1,
     adminLog: 1,
     securityEvents: 1,
+    securityIncidents: 1,
 };
 
 // 회원가입 토글 버튼을 누르면 "지금 상태의 반대"로 바꿔야 하는데, 그러려면

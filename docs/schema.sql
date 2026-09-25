@@ -287,3 +287,31 @@ alter table admin_users add column role text not null references roles(role) def
 -- 아니라 기존 행의 role 값만 바꾸는 것 — login_watchdog_expansion_plan.md 논의 참고).
 -- 이 프로젝트의 실제 최종 책임자 계정 이름으로 바꿔서 한 번만 실행하면 된다.
 update admin_users set role = 'super_admin' where username = 'sktmaster123';
+
+-- ============================================================================
+-- SIEM 상관분석 (Track C guide27 — login_watchdog_expansion_plan.md 참고)
+-- ============================================================================
+
+-- security_events가 개별 신고서 한 장 한 장이라면, 이 표는 "같은 IP가 짧은
+-- 시간 안에 서로 다른 event_type을 2개 이상 남겼을 때" 그 신고들을 하나의
+-- 사건으로 묶어두는 사건철이다. correlate.py가 soar.py를 통해 새 이벤트가
+-- 기록될 때마다 이 표를 조회/갱신한다. 단발성 이벤트(신고 1장)는 여기 묶이지
+-- 않고 지금처럼 security_events에만 남는다.
+create table security_incidents (
+  id bigint generated always as identity primary key,
+  ip_address text not null,
+  event_types text[] not null,
+  severity_max text not null check (severity_max in ('MEDIUM', 'HIGH', 'CRITICAL')),
+  status text not null check (status in ('OPEN', 'CLOSED')) default 'OPEN',
+  first_event_at timestamptz not null,
+  last_event_at timestamptz not null
+);
+create index idx_security_incidents_last_event_at on security_incidents (last_event_at desc);
+
+-- 같은 IP는 OPEN 상태 사건이 항상 최대 1건만 존재하도록 DB가 직접 강제한다.
+-- idx_security_events_high_open_incident와 같은 이유(확인과 삽입 사이의 짧은
+-- 틈에 동시 요청이 겹치는 경쟁 조건 방지)로, db.record_incident()가 이 인덱스
+-- 충돌(23505)을 붙잡아 새로 여는 대신 기존 사건에 병합하는 안전망을 둔다.
+create unique index idx_security_incidents_open_ip
+  on security_incidents (ip_address)
+  where status = 'OPEN';

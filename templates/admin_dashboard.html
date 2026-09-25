@@ -80,6 +80,29 @@
         </section>
 
         <section>
+            <!-- SIEM 상관분석(Track C guide27) — 같은 IP가 짧은 시간 안에 서로
+                 다른 event_type을 2개 이상 남겼을 때만 correlate.py가 여기 묶는다.
+                 단발성 이벤트는 위 "보안 이벤트" 표에만 남고 여기 나타나지 않는다.
+                 사건은 IP 잠금이 풀릴 때 자동으로 "종료"되므로 읽기 전용이다
+                 (버튼이 없다 — soar.py의 close_open_incident_for_ip 참고). -->
+            <h2>연관 사건 (SIEM 상관분석)</h2>
+            <table id="security-incidents-table" class="data-table">
+                <thead>
+                    <tr>
+                        <th>시작</th>
+                        <th>마지막 활동</th>
+                        <th>등급</th>
+                        <th>관련 유형</th>
+                        <th>IP</th>
+                        <th>상태</th>
+                    </tr>
+                </thead>
+                <tbody id="security-incidents-table-body"></tbody>
+            </table>
+            <nav id="security-incidents-pagination" class="admin-pagination"></nav>
+        </section>
+
+        <section>
             <h2>현재 잠긴 IP</h2>
             <!-- id="lockout-list" : dashboard.js가 이 id를 찾아서 그 안에
                  잠금 카드(div)들을 자바스크립트로 하나씩 만들어 넣는다. -->

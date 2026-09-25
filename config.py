@@ -71,6 +71,13 @@ UNAUTHORIZED_ACCESS_ALERT_THRESHOLD = int(os.environ.get("UNAUTHORIZED_ACCESS_AL
 # (attack_response_state.md 구현 대상 #4).
 PAGE_ACCESS_ALERT_THRESHOLD = int(os.environ.get("PAGE_ACCESS_ALERT_THRESHOLD", 20))
 
+# SIEM 상관분석(Track C guide27) 시간 창 — 같은 IP가 이 시간(분) 안에 서로 다른
+# event_type을 2개 이상 남기면 security_incidents로 묶는다. DETECTION_WINDOW_SECONDS
+# (60초)보다 훨씬 넉넉하게 잡은 이유: 개별 임계값 판정은 "지금 이 순간의 폭주"를
+# 잡는 것이지만, 상관분석은 "정찰(웹 스캐닝) → 공격(브루트포스)"처럼 여러 단계에
+# 걸친 공격 흐름을 잡아야 해서 더 넓은 시간대를 봐야 한다.
+INCIDENT_CORRELATION_WINDOW_MINUTES = int(os.environ.get("INCIDENT_CORRELATION_WINDOW_MINUTES", 5))
+
 # 전역 HTTP 플러딩(대량 요청 도배) 방어 — 위의 *_RATE_LIMIT들은 로그인/가입/글쓰기
 # 등 "특정 폼 제출"에만 걸려있고, 일반 GET 페이지는 아무리 요청이 쏟아져도 다
 # 받아준다. 이 값은 같은 IP가 1분 안에 "전체 요청 종류를 합쳐서" 몇 번까지

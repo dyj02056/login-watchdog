@@ -13,7 +13,31 @@
 from datetime import datetime, timezone
 
 import alert
+import correlate
 import db
+
+
+def _record_event(
+    event_type: str,
+    severity: str,
+    ip: str,
+    path: str | None,
+    count: int,
+    action: str,
+    username: str | None = None,
+) -> None:
+    """security_events에 이벤트를 기록하고, 곧바로 상관분석 훅(correlate.py)을
+    호출한다 (Track C guide27).
+
+    soar.py 안에서 직접 db.insert_security_event()를 부르는 곳을 여기 하나로
+    모아둔 이유: correlate.check_and_correlate()를 매번 손으로 챙겨 부르게
+    하면, 새 조치 함수를 추가할 때 상관분석 훅을 빠뜨리기 쉽다.
+    """
+    if username is not None:
+        db.insert_security_event(event_type, severity, ip, path, count, action, username=username)
+    else:
+        db.insert_security_event(event_type, severity, ip, path, count, action)
+    correlate.check_and_correlate(ip, event_type, severity)
 
 
 def enforce_lockout(
@@ -51,7 +75,7 @@ def enforce_lockout(
         event_type = "PASSWORD_SPRAYING"
     else:
         event_type = "BRUTE_FORCE"
-    db.insert_security_event(event_type, "CRITICAL", ip, None, failure_count, "LOCKED")
+    _record_event(event_type, "CRITICAL", ip, None, failure_count, "LOCKED")
 
 
 def enforce_account_lockout(
@@ -72,7 +96,7 @@ def enforce_account_lockout(
     alert.send_account_lockout_alert(
         username, failure_count, datetime.now(timezone.utc), distinct_ip_count
     )
-    db.insert_security_event(
+    _record_event(
         "DISTRIBUTED_BRUTE_FORCE",
         "CRITICAL",
         triggering_ip,
@@ -102,7 +126,7 @@ def notify_bot_detected(ip: str, path: str) -> None:
     있다"는 관찰 정보이므로, notify_web_scanning() 등과 같은 급의 MEDIUM으로
     로그에만 남긴다 (L7 공격 보강 계획 Tier 3).
     """
-    db.insert_security_event("BOT_DETECTED", "MEDIUM", ip, path, 1, "REJECTED")
+    _record_event("BOT_DETECTED", "MEDIUM", ip, path, 1, "REJECTED")
 
 
 def notify_web_scanning(ip: str, count: int, path: str) -> None:
@@ -114,7 +138,7 @@ def notify_web_scanning(ip: str, count: int, path: str) -> None:
     과한 조치가 된다. 그래서 여기서는 관찰(알림 + 이벤트 기록)만 한다.
     """
     alert.send_web_scanning_alert(ip, count, path)
-    db.insert_security_event("WEB_SCANNING", "MEDIUM", ip, path, count, "ALERTED")
+    _record_event("WEB_SCANNING", "MEDIUM", ip, path, count, "ALERTED")
 
 
 def notify_unauthorized_access(ip: str, count: int, path: str) -> None:
@@ -129,7 +153,7 @@ def notify_unauthorized_access(ip: str, count: int, path: str) -> None:
     알림을 받은 관리자가 직접 판단하게 남겨둔다.
     """
     alert.send_unauthorized_access_alert(ip, count, path)
-    db.insert_security_event("UNAUTHORIZED_ACCESS", "MEDIUM", ip, path, count, "ALERTED")
+    _record_event("UNAUTHORIZED_ACCESS", "MEDIUM", ip, path, count, "ALERTED")
 
 
 def notify_page_access(ip: str, count: int, path: str) -> None:
@@ -141,7 +165,7 @@ def notify_page_access(ip: str, count: int, path: str) -> None:
     기록)까지만 자동화하고, 잠글지 여부는 알림을 받은 관리자가 직접 판단하게 남겨둔다.
     """
     alert.send_page_access_alert(ip, count, path)
-    db.insert_security_event("PAGE_ACCESS", "MEDIUM", ip, path, count, "ALERTED")
+    _record_event("PAGE_ACCESS", "MEDIUM", ip, path, count, "ALERTED")
 
 
 def record_rejection(event_type: str, ip: str, path: str, count: int) -> None:
@@ -171,8 +195,9 @@ def record_rejection(event_type: str, ip: str, path: str, count: int) -> None:
     existing = db.get_unresolved_security_event(ip, event_type)
     if existing:
         db.update_security_event_count(existing["id"], existing["count"] + 1)
-        return
-    db.insert_security_event_or_bump(event_type, "HIGH", ip, path, count, "REJECTED")
+    else:
+        db.insert_security_event_or_bump(event_type, "HIGH", ip, path, count, "REJECTED")
+    correlate.check_and_correlate(ip, event_type, "HIGH")
 
 
 def try_release_expired_lockouts() -> None:
@@ -188,6 +213,7 @@ def try_release_expired_lockouts() -> None:
     for lockout in db.list_expired_active_lockouts():
         db.release_lockout(lockout["ip_address"])
         db.resolve_security_events_for_ip(lockout["ip_address"])
+        db.close_open_incident_for_ip(lockout["ip_address"])
 
 
 def manual_release(ip: str) -> bool:
@@ -207,4 +233,5 @@ def manual_release(ip: str) -> bool:
         return False
     db.release_lockout(ip)
     db.resolve_security_events_for_ip(ip)
+    db.close_open_incident_for_ip(ip)
     return True

@@ -884,3 +884,154 @@ def test_get_latest_comment_info_with_no_comments(monkeypatch):
     result = db.get_latest_comment_info(1)
 
     assert result == {"count": 0, "latest_at": None}
+
+
+# ============================================================================
+# security_incidents 표 관련 함수 (Track C guide27, SIEM 상관분석)
+# ============================================================================
+
+def test_list_security_incidents_returns_rows_and_count_from_client(monkeypatch):
+    # list_security_events()와 동일한 페이지네이션 방식 — 관리자 대시보드의
+    # "연관 사건" 표에 쓰인다.
+    rows = [
+        {"id": 2, "ip_address": "9.9.9.9", "event_types": ["BRUTE_FORCE", "WEB_SCANNING"], "status": "OPEN"},
+        {"id": 1, "ip_address": "1.1.1.1", "event_types": ["UNAUTHORIZED_ACCESS", "WEB_SCANNING"], "status": "CLOSED"},
+    ]
+    fake_client = _FakeQuery(rows=rows, count=5)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result, total = db.list_security_incidents()
+
+    assert result == rows
+    assert total == 5
+
+
+def test_get_recent_distinct_event_types_returns_sorted_unique_types(monkeypatch):
+    rows = [{"event_type": "WEB_SCANNING"}, {"event_type": "BRUTE_FORCE"}, {"event_type": "WEB_SCANNING"}]
+    fake_client = _FakeQuery(rows=rows)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.get_recent_distinct_event_types("9.9.9.9", 5)
+
+    assert result == ["BRUTE_FORCE", "WEB_SCANNING"]
+
+
+def test_get_open_incident_returns_row_when_exists(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 1, "event_types": ["BRUTE_FORCE"], "severity_max": "CRITICAL"}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.get_open_incident("9.9.9.9")
+
+    assert result == {"id": 1, "event_types": ["BRUTE_FORCE"], "severity_max": "CRITICAL"}
+
+
+def test_get_open_incident_returns_none_when_no_open_incident(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.get_open_incident("9.9.9.9") is None
+
+
+def test_close_open_incident_for_ip_filters_by_ip_and_open_status(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 1}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.close_open_incident_for_ip("9.9.9.9")
+
+    assert ("eq", ("ip_address", "9.9.9.9"), {}) in fake_client.calls
+    assert ("eq", ("status", "OPEN"), {}) in fake_client.calls
+    assert ("update", ({"status": "CLOSED"},), {}) in fake_client.calls
+
+
+def test_record_incident_inserts_new_incident_when_none_open(monkeypatch):
+    from db import incidents as incidents_module
+
+    # record_incident()는 db/incidents.py 안에서 get_open_incident을 이름으로
+    # 직접 부르므로(같은 모듈 안), db.get_open_incident이 아니라
+    # incidents_module.get_open_incident을 바꿔치기해야 실제로 적용된다.
+    monkeypatch.setattr(incidents_module, "get_open_incident", lambda ip: None)
+    calls = []
+    monkeypatch.setattr(
+        incidents_module,
+        "_insert_incident",
+        lambda ip, event_types, severity_max: calls.append((ip, event_types, severity_max)),
+    )
+    monkeypatch.setattr(
+        incidents_module,
+        "_update_incident",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("열린 사건이 없는데 _update_incident가 호출되면 안 된다")
+        ),
+    )
+
+    db.record_incident("9.9.9.9", ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")
+
+    assert calls == [("9.9.9.9", ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")]
+
+
+def test_record_incident_merges_into_existing_open_incident(monkeypatch):
+    from db import incidents as incidents_module
+
+    existing = {"id": 5, "event_types": ["BRUTE_FORCE"], "severity_max": "MEDIUM"}
+    monkeypatch.setattr(incidents_module, "get_open_incident", lambda ip: existing)
+    monkeypatch.setattr(
+        incidents_module,
+        "_insert_incident",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("이미 열린 사건이 있는데 _insert_incident가 호출되면 안 된다")
+        ),
+    )
+    calls = []
+    monkeypatch.setattr(
+        incidents_module,
+        "_update_incident",
+        lambda incident_id, event_types, severity_max: calls.append((incident_id, event_types, severity_max)),
+    )
+
+    # 새로 들어온 이벤트는 WEB_SCANNING/CRITICAL — 기존 사건(BRUTE_FORCE만, MEDIUM)과
+    # 병합되면 event_types는 합집합, severity_max는 더 높은 쪽(CRITICAL)이어야 한다.
+    db.record_incident("9.9.9.9", ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")
+
+    assert calls == [(5, ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")]
+
+
+def test_record_incident_falls_back_to_merge_on_unique_violation(monkeypatch):
+    # get_open_incident()로 확인했을 땐 없었지만(None), 그 확인과 삽입 사이의
+    # 아주 짧은 틈에 동시 요청이 겹쳐 실제로는 이미 삽입돼 있던 경우(경쟁 조건)를
+    # 흉내낸다 — 두 번째 get_open_incident() 호출에서는 그 사건을 찾아야 한다.
+    from db import incidents as incidents_module
+
+    lookups = [None, {"id": 9, "event_types": ["WEB_SCANNING"], "severity_max": "MEDIUM"}]
+    monkeypatch.setattr(incidents_module, "get_open_incident", lambda ip: lookups.pop(0))
+
+    conflict = APIError({"code": "23505", "message": "duplicate key value violates unique constraint"})
+
+    def raising_insert(ip, event_types, severity_max):
+        raise conflict
+
+    monkeypatch.setattr(incidents_module, "_insert_incident", raising_insert)
+    calls = []
+    monkeypatch.setattr(
+        incidents_module,
+        "_update_incident",
+        lambda incident_id, event_types, severity_max: calls.append((incident_id, event_types, severity_max)),
+    )
+
+    db.record_incident("9.9.9.9", ["BRUTE_FORCE"], "CRITICAL")
+
+    assert calls == [(9, ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")]
+
+
+def test_record_incident_reraises_non_conflict_errors(monkeypatch):
+    from db import incidents as incidents_module
+
+    monkeypatch.setattr(incidents_module, "get_open_incident", lambda ip: None)
+    other_error = APIError({"code": "42501", "message": "permission denied"})
+
+    def raising_insert(ip, event_types, severity_max):
+        raise other_error
+
+    monkeypatch.setattr(incidents_module, "_insert_incident", raising_insert)
+
+    with pytest.raises(APIError):
+        db.record_incident("9.9.9.9", ["BRUTE_FORCE"], "CRITICAL")

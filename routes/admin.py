@@ -139,9 +139,10 @@ def api_status():
     데이터를 주고받을 때 가장 널리 쓰이는 표준 형식이다. jsonify()는 파이썬
     딕셔너리를 이 JSON 형식으로 자동 변환해서 브라우저에 보내주는 Flask 도구다.
 
-    관리자 대시보드의 표 6개(최근 로그인 시도/회원/게시글/댓글/관리자 로그인 기록/
-    보안 이벤트)는 각자 ?attempts_page=, ?users_page=, ?posts_page=, ?comments_page=,
-    ?admin_log_page=, ?security_events_page=로 현재 보고 있는 페이지 번호를 받는다 —
+    관리자 대시보드의 표 7개(최근 로그인 시도/회원/게시글/댓글/관리자 로그인 기록/
+    보안 이벤트/연관 사건)는 각자 ?attempts_page=, ?users_page=, ?posts_page=,
+    ?comments_page=, ?admin_log_page=, ?security_events_page=,
+    ?security_incidents_page=로 현재 보고 있는 페이지 번호를 받는다 —
     dashboard.js가 board_list()와 동일한 페이지 번호 방식으로 표를 그릴 수 있도록,
     각 표의 이번 페이지 데이터와 전체 페이지 수(*_total_pages)를 함께 내려준다
     (예전에는 최근 N개만 고정으로 가져와서, 그 이상 쌓이면 오래된 항목이 화면에서
@@ -151,11 +152,11 @@ def api_status():
     조회와 개수 조회를 별도 쿼리 두 번으로 나누지 않고 한 번의 왕복으로 끝내기
     위해서다(db.list_recent_attempts() 설명 참고).
 
-    그래도 여전히 서로 무관한 쿼리 8개(로그인 시도/잠긴 IP/관리자 로그인 기록/
-    회원/회원가입 설정/게시글/댓글/보안 이벤트)를 하나씩 순서대로 기다리면, Supabase까지의
-    왕복 시간(쿼리 하나당 대략 150~500ms)이 그대로 다 더해져서 요청 하나가
-    2~3초까지 걸렸다 — 특히 Vercel 서버리스 환경은 매 요청마다 커넥션을 새로
-    맺어야 해서 체감이 더 심했다. ThreadPoolExecutor로 이 8개를 동시에 보내면
+    그래도 여전히 서로 무관한 쿼리 9개(로그인 시도/잠긴 IP/관리자 로그인 기록/
+    회원/회원가입 설정/게시글/댓글/보안 이벤트/연관 사건)를 하나씩 순서대로
+    기다리면, Supabase까지의 왕복 시간(쿼리 하나당 대략 150~500ms)이 그대로 다
+    더해져서 요청 하나가 2~3초까지 걸렸다 — 특히 Vercel 서버리스 환경은 매
+    요청마다 커넥션을 새로 맺어야 해서 체감이 더 심했다. ThreadPoolExecutor로 이 9개를 동시에 보내면
     전체 소요 시간이 "가장 느린 쿼리 하나" 수준으로 줄어든다(실측 약 5배 개선).
     IP 위치 조회(_attach_locations)는 attempts 결과가 있어야 시작할 수 있는
     후속 작업이라 별도로 남겨뒀지만, 나머지 futures가 백그라운드에서 계속
@@ -169,8 +170,9 @@ def api_status():
     comments_page = _page_param("comments_page")
     admin_log_page = _page_param("admin_log_page")
     security_events_page = _page_param("security_events_page")
+    security_incidents_page = _page_param("security_incidents_page")
 
-    with ThreadPoolExecutor(max_workers=9) as executor:
+    with ThreadPoolExecutor(max_workers=10) as executor:
         attempts_future = executor.submit(db.list_recent_attempts, attempts_page, config.ADMIN_PAGE_SIZE)
         lockouts_future = executor.submit(db.list_active_lockouts)
         admin_log_future = executor.submit(db.list_admin_login_log, admin_log_page, config.ADMIN_PAGE_SIZE)
@@ -180,6 +182,11 @@ def api_status():
         comments_future = executor.submit(db.list_comments_admin, comments_page, config.ADMIN_PAGE_SIZE)
         security_events_future = executor.submit(
             db.list_security_events, security_events_page, config.ADMIN_PAGE_SIZE
+        )
+        # 연관 사건(SIEM 상관분석, Track C guide27) 표 — 위 보안 이벤트와 같은
+        # 페이지네이션 방식이다.
+        security_incidents_future = executor.submit(
+            db.list_security_incidents, security_incidents_page, config.ADMIN_PAGE_SIZE
         )
         # "관리자 계정 관리" 카드가 이 응답에 포함될지 결정하려면 지금 요청한
         # 관리자의 role을 알아야 한다 — 다른 8개 쿼리와 같은 배치에 묶어서
@@ -196,6 +203,7 @@ def api_status():
         posts, posts_count = posts_future.result()
         comments, comments_count = comments_future.result()
         security_events, security_events_count = security_events_future.result()
+        security_incidents, security_incidents_count = security_incidents_future.result()
         role = role_future.result()
 
     response_data = {
@@ -216,6 +224,9 @@ def api_status():
             # 보안 이벤트(위험등급 통합) 섹션 — security-risk-response-summary.md 5절.
             "security_events": security_events,
             "security_events_total_pages": max(1, math.ceil(security_events_count / config.ADMIN_PAGE_SIZE)),
+            # 연관 사건(SIEM 상관분석) 섹션 — Track C guide27.
+            "security_incidents": security_incidents,
+            "security_incidents_total_pages": max(1, math.ceil(security_incidents_count / config.ADMIN_PAGE_SIZE)),
         }
 
     # "관리자 계정 관리" 카드는 super_admin(manage_admin_users 권한 보유자)에게만

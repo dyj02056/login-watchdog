@@ -1190,9 +1190,9 @@ def test_api_board_posts_delete_returns_403_for_security_admin(client, monkeypat
 # ============================================================================
 
 def _mock_full_status(monkeypatch):
-    """/api/status가 도는 ThreadPoolExecutor 배치 8개 쿼리 + role 조회를 전부
+    """/api/status가 도는 ThreadPoolExecutor 배치 9개 쿼리 + role 조회를 전부
     빈 데이터로 막아둔다. admin_users 필드의 유무만 확인하고 싶은 테스트가
-    나머지 6개 표 렌더링 데이터까지 일일이 준비하지 않아도 되게 하기 위한 헬퍼.
+    나머지 7개 표 렌더링 데이터까지 일일이 준비하지 않아도 되게 하기 위한 헬퍼.
     """
     monkeypatch.setattr(soar, "try_release_expired_lockouts", lambda: None)
     monkeypatch.setattr(db, "list_recent_attempts", lambda page, size: ([], 0))
@@ -1203,6 +1203,7 @@ def _mock_full_status(monkeypatch):
     monkeypatch.setattr(db, "list_posts", lambda page, size: ([], 0))
     monkeypatch.setattr(db, "list_comments_admin", lambda page, size: ([], 0))
     monkeypatch.setattr(db, "list_security_events", lambda page, size: ([], 0))
+    monkeypatch.setattr(db, "list_security_incidents", lambda page, size: ([], 0))
 
 
 def test_api_status_includes_admin_users_for_super_admin(client, monkeypatch):

@@ -253,6 +253,45 @@ export function renderSecurityEventsTable(events) {
 }
 
 /**
+ * 연관 사건(SIEM 상관분석) 표를 채운다. 같은 IP가 짧은 시간 안에 서로 다른
+ * event_type을 2개 이상 남겼을 때만 여기 나타난다(correlate.py 참고) — 단발성
+ * 보안 이벤트는 위 "보안 이벤트" 표에만 남고 여기에는 묶이지 않는다.
+ * 이 표는 읽기 전용이다 — 사건은 IP 잠금이 풀릴 때 자동으로 CLOSED 처리되므로
+ * (soar.py의 close_open_incident_for_ip 참고), 보안 이벤트 표와 달리 "처리 완료"
+ * 버튼이 없다.
+ * @param {Array} incidents - [{id, ip_address, event_types, severity_max, status, first_event_at, last_event_at}, ...]
+ */
+export function renderSecurityIncidentsTable(incidents) {
+    const tbody = document.getElementById("security-incidents-table-body");
+
+    if (incidents.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">연관된 사건이 없습니다.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = incidents
+        .map((incident) => {
+            const severityClass = `severity-${incident.severity_max.toLowerCase()}`;
+            const severityLabel = SEVERITY_LABELS[incident.severity_max] || incident.severity_max;
+            const statusClass = incident.status === "OPEN" ? "success-false" : "success-true";
+            const statusLabel = incident.status === "OPEN" ? "진행 중" : "종료";
+            const eventTypes = incident.event_types.map((type) => escapeHtml(type)).join(", ");
+
+            return `
+                <tr>
+                    <td class="mono">${formatTime(incident.first_event_at)}</td>
+                    <td class="mono">${formatTime(incident.last_event_at)}</td>
+                    <td><span class="severity-badge ${severityClass}">${severityLabel}</span></td>
+                    <td>${eventTypes}</td>
+                    <td class="mono">${escapeHtml(incident.ip_address)}</td>
+                    <td class="${statusClass}">${statusLabel}</td>
+                </tr>
+            `;
+        })
+        .join("");
+}
+
+/**
  * 회원가입 On/Off 현재 상태를 문구와 버튼에 반영한다.
  * @param {boolean} enabled
  */

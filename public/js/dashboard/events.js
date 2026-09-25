@@ -113,3 +113,4 @@ bindPagination("posts-pagination", () => pages.posts, (page) => { pages.posts = 
 bindPagination("comments-pagination", () => pages.comments, (page) => { pages.comments = page; });
 bindPagination("admin-log-pagination", () => pages.adminLog, (page) => { pages.adminLog = page; });
 bindPagination("security-events-pagination", () => pages.securityEvents, (page) => { pages.securityEvents = page; });
+bindPagination("security-incidents-pagination", () => pages.securityIncidents, (page) => { pages.securityIncidents = page; });

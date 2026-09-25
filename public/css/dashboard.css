@@ -235,6 +235,15 @@ section h2 {
 #security-events-table th:nth-child(7), #security-events-table td:nth-child(7) { width: 10%; } /* 조치 */
 #security-events-table th:nth-child(8), #security-events-table td:nth-child(8) { width: 10%; } /* 상태 */
 
+/* 연관 사건 표(Track C guide27)도 "관련 유형" 칸에 여러 유형이 쉼표로
+   이어지므로, 보안 이벤트 표와 같은 이유로 비율을 따로 지정한다. */
+#security-incidents-table th:nth-child(1), #security-incidents-table td:nth-child(1) { width: 15%; } /* 시작 */
+#security-incidents-table th:nth-child(2), #security-incidents-table td:nth-child(2) { width: 15%; } /* 마지막 활동 */
+#security-incidents-table th:nth-child(3), #security-incidents-table td:nth-child(3) { width: 10%; } /* 등급 */
+#security-incidents-table th:nth-child(4), #security-incidents-table td:nth-child(4) { width: 35%; } /* 관련 유형 */
+#security-incidents-table th:nth-child(5), #security-incidents-table td:nth-child(5) { width: 15%; } /* IP */
+#security-incidents-table th:nth-child(6), #security-incidents-table td:nth-child(6) { width: 10%; } /* 상태 */
+
 .data-table th {
     color: var(--ink-faint);
     font-weight: 600;

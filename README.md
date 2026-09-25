@@ -18,6 +18,7 @@
 - **게시판·댓글** (`/board`) — 로그인한 회원 전용 게시판. 글 작성/수정/삭제(본인 글만), 댓글 작성/삭제(본인 댓글만), 페이지 번호 방식 목록, 새 댓글이 달리면 알림 배너 표시. 관리자 대시보드에서는 별도로 전체 게시글·댓글을 조회·삭제 가능. 자세한 설계 배경은 [docs/board-comment/](docs/board-comment) 참고
 - **L7 공격 방어 보강** — IP를 나눠 시도하는 분산/저속 브루트포스에 대한 계정 단위 잠금(CRITICAL), 클릭재킹/CSP 방어용 보안 응답 헤더와 전역 HTTP 플러딩 방어(HIGH), 로그인/가입/글쓰기/댓글 폼의 허니팟 봇 차단과 로그인 타이밍 사이드채널 제거·SSRF 입력 검증(MEDIUM), CSRF 에러 핸들러 오픈 리다이렉트 수정(LOW)까지 위험등급별로 대응. 자세한 내용은 [docs/beginner-guide/guide24_l7_attack_hardening.md](docs/beginner-guide/guide24_l7_attack_hardening.md) 참고
 - **관리자 역할 기반 접근 제어(RBAC)** — 관리자 계정이 `security_viewer`(조회만) / `security_admin`(IP 잠금 해제·보안 이벤트 처리) / `super_admin`(회원·게시글·댓글 삭제, 회원가입 On/Off, 관리자 계정 관리까지 전부)으로 나뉘어, 로그인만 되면 뭐든 할 수 있던 이진 구조를 액션 단위 권한으로 세분화. 요청마다 실시간으로 역할을 조회해 권한 회수가 재로그인 없이 즉시 반영됨. `super_admin`은 대시보드 안 "관리자 계정 관리" 카드에서 `security_viewer`/`security_admin` 계정을 직접 생성·삭제할 수 있음(터미널 스크립트 없이) — 단 `super_admin` 계정 자체는 이 화면의 생성·삭제 대상에서 화면과 서버 양쪽에서 제외되어 "1명만 둔다"는 정책이 코드로도 지켜짐. 자세한 내용은 [docs/beginner-guide/guide26_rbac_foundation.md](docs/beginner-guide/guide26_rbac_foundation.md) 참고
+- **SIEM 상관분석** — 같은 IP가 `security_events`에 짧은 시간(기본 5분) 안에 서로 다른 유형의 이벤트를 2개 이상 남기면(예: 웹 스캐닝 → 브루트포스), 단발성 이벤트로 각각 남기는 대신 `security_incidents`로 묶어 "하나의 공격 흐름"임을 표시. IP 잠금이 풀리면 사건도 함께 자동으로 닫힘(CLOSED). 관리자 대시보드 "보안 이벤트" 표 바로 아래 "연관 사건" 표에서 확인 가능. 자세한 내용은 [docs/beginner-guide/guide27_siem_correlation.md](docs/beginner-guide/guide27_siem_correlation.md) 참고
 
 ## 기술 스택
 
@@ -202,9 +203,11 @@ login-watchdog/
 │   ├── settings.py                 #   app_settings, signup_attempts (설정값, 가입 빈도 제한)
 │   ├── geoip_cache.py              #   ip_locations (IP 위치 조회 캐시)
 │   ├── board.py                    #   posts, comments, post_attempts, comment_attempts (게시판)
-│   └── security_events.py          #   not_found/unauthorized/page_access_attempts, security_events
+│   ├── security_events.py          #   not_found/unauthorized/page_access_attempts, security_events
+│   └── incidents.py                #   security_incidents (SIEM 상관분석)
 ├── detector.py                    # 브루트포스 판정 로직
 ├── soar.py                        # 판정 결과에 따른 조치(잠금/해제) 실행
+├── correlate.py                   # 상관분석 판정 로직 (같은 IP의 서로 다른 이벤트를 사건으로 묶을지)
 ├── alert.py                       # Slack 알림 전송
 ├── geoip.py                       # IP 위치(국가·도시) 조회, 캐싱
 ├── config.py                      # 임계값·윈도우·잠금시간 등 상수

@@ -18,6 +18,7 @@
 #   geoip_cache.py       — ip_locations (IP 위치 조회 캐시)
 #   board.py            — posts, comments, post_attempts, comment_attempts (게시판)
 #   security_events.py  — not_found/unauthorized/page_access_attempts, security_events
+#   incidents.py         — security_incidents (SIEM 상관분석, Track C guide27)
 #
 # 이 파일은 위 각 모듈의 함수를 그대로 다시 내보내기(re-export)만 한다 — 그래서
 # app.py/detector.py/soar.py/scripts/*.py나 테스트 코드는 예전처럼
@@ -78,6 +79,13 @@ from .board import (
     update_post,
 )
 from .geoip_cache import get_cached_ip_locations, save_ip_location
+from .incidents import (
+    close_open_incident_for_ip,
+    get_open_incident,
+    get_recent_distinct_event_types,
+    list_security_incidents,
+    record_incident,
+)
 from .roles import has_permission
 from .lockouts import (
     create_lockout,
@@ -205,4 +213,9 @@ __all__ = [
     "delete_security_event",
     "delete_resolved_security_events",
     "delete_all_security_events",
+    "get_recent_distinct_event_types",
+    "get_open_incident",
+    "record_incident",
+    "close_open_incident_for_ip",
+    "list_security_incidents",
 ]
