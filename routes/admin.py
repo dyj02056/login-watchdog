@@ -171,8 +171,9 @@ def api_status():
     admin_log_page = _page_param("admin_log_page")
     security_events_page = _page_param("security_events_page")
     security_incidents_page = _page_param("security_incidents_page")
+    access_requests_page = _page_param("access_requests_page")
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=11) as executor:
         attempts_future = executor.submit(db.list_recent_attempts, attempts_page, config.ADMIN_PAGE_SIZE)
         lockouts_future = executor.submit(db.list_active_lockouts)
         admin_log_future = executor.submit(db.list_admin_login_log, admin_log_page, config.ADMIN_PAGE_SIZE)
@@ -187,6 +188,10 @@ def api_status():
         # 페이지네이션 방식이다.
         security_incidents_future = executor.submit(
             db.list_security_incidents, security_incidents_page, config.ADMIN_PAGE_SIZE
+        )
+        # "AI 조기 경보" 표(Track A, guide31) — 위 표들과 같은 페이지네이션 방식이다.
+        access_requests_future = executor.submit(
+            db.list_pending_requests, access_requests_page, config.ADMIN_PAGE_SIZE
         )
         # "관리자 계정 관리" 카드가 이 응답에 포함될지 결정하려면 지금 요청한
         # 관리자의 role을 알아야 한다 — 다른 8개 쿼리와 같은 배치에 묶어서
@@ -204,6 +209,7 @@ def api_status():
         comments, comments_count = comments_future.result()
         security_events, security_events_count = security_events_future.result()
         security_incidents, security_incidents_count = security_incidents_future.result()
+        access_requests, access_requests_count = access_requests_future.result()
         role = role_future.result()
 
     response_data = {
@@ -227,6 +233,10 @@ def api_status():
             # 연관 사건(SIEM 상관분석) 섹션 — Track C guide27.
             "security_incidents": security_incidents,
             "security_incidents_total_pages": max(1, math.ceil(security_incidents_count / config.ADMIN_PAGE_SIZE)),
+            # AI 조기 경보(Track A guide31) 섹션 — 임계값을 아직 안 넘긴 코앞
+            # 구간에서 LLM이 위험하다고 판단해 등록한 PENDING 요청만 보여준다.
+            "access_requests": access_requests,
+            "access_requests_total_pages": max(1, math.ceil(access_requests_count / config.ADMIN_PAGE_SIZE)),
         }
 
     # "관리자 계정 관리" 카드는 super_admin(manage_admin_users 권한 보유자)에게만
@@ -254,6 +264,44 @@ def api_unlock():
 
     released = soar.manual_release(ip)
     return jsonify({"success": released})
+
+
+@admin_bp.route("/api/access-requests/approve", methods=["POST"])
+@require_permission("approve_pending_action")
+def api_access_requests_approve():
+    """대시보드 "AI 조기 경보" 표의 "승인" 버튼을 눌렀을 때 브라우저가 호출하는
+    API (Track A, guide31).
+
+    security_admin/super_admin 둘 다 가진다 — unlock_ip/resolve_security_event와
+    같은 급의 "IP·계정 관련 보안 조치" 권한이라, 그 두 액션과 동일한 두 역할에게
+    부여한다(login_watchdog_expansion_plan.md 논의 참고). session의
+    admin_username으로 admin_id를 찾아 "누가 승인했는지"를 access_requests에
+    함께 남긴다.
+    """
+    data = request.get_json(silent=True) or {}
+    request_id = data.get("request_id")
+    if not request_id:
+        return jsonify({"success": False, "error": "request_id 값이 필요합니다."}), 400
+
+    admin_id = db.get_admin_id_by_username(session["admin_username"])
+    executed = soar.execute_approved_request(request_id, admin_id)
+    return jsonify({"success": executed})
+
+
+@admin_bp.route("/api/access-requests/reject", methods=["POST"])
+@require_permission("approve_pending_action")
+def api_access_requests_reject():
+    """"AI 조기 경보" 표의 "반려" 버튼을 눌렀을 때 호출되는 API. 승인과 동일한
+    권한을 쓴다 — 승인/반려는 "같은 결정을 내릴 수 있는 권한"의 앞뒤 면일 뿐이다.
+    """
+    data = request.get_json(silent=True) or {}
+    request_id = data.get("request_id")
+    if not request_id:
+        return jsonify({"success": False, "error": "request_id 값이 필요합니다."}), 400
+
+    admin_id = db.get_admin_id_by_username(session["admin_username"])
+    rejected = soar.reject_pending_request(request_id, admin_id)
+    return jsonify({"success": rejected})
 
 
 @admin_bp.route("/api/security-events/resolve", methods=["POST"])

@@ -86,10 +86,18 @@ def signup_submit():
     # 요청 빈도 제한이 전혀 없어서, 스크립트로 계정을 무제한 찍어낼 수 있었다
     # (18단계 보안 점검에서 발견 및 보완). 성공/실패와 무관하게 시도 자체를 세므로,
     # 검증에서 계속 걸러지는 값을 반복 제출하는 남용도 함께 막는다.
-    if detector.is_signup_rate_limited(ip):
+    rate_limited, signup_count = detector.is_signup_rate_limited(ip)
+    if rate_limited:
         soar.record_rejection("SIGNUP_RATE_LIMIT", ip, request.path, config.SIGNUP_RATE_LIMIT)
         flash("너무 많은 가입 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.")
         return render_template("signup.html", signup_enabled=True)
+    # 아직 기준치(SIGNUP_RATE_LIMIT)는 안 넘었지만 코앞이면, LLM에게 조기 경보
+    # 여부를 물어본다 (Track A, guide31 — config.EARLY_WARNING_BAND 설명 참고).
+    if signup_count >= config.SIGNUP_RATE_LIMIT - config.EARLY_WARNING_BAND:
+        soar.consider_early_warning(
+            "SIGNUP_RATE_LIMIT", "ALERT_ONLY", "ip", ip, signup_count, config.SIGNUP_RATE_LIMIT,
+            path=request.path,
+        )
     db.log_signup_attempt(ip)
 
     username = request.form.get("username", "").strip()
@@ -203,6 +211,16 @@ def login_submit():
         soar.enforce_lockout(ip, failure_count, distinct_usernames)
         flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
     else:
+        # 아직 기준치(FAILURE_THRESHOLD)는 안 넘었지만 코앞이면, LLM에게 조기
+        # 경보 여부를 물어본다 (Track A, guide31). 공격자가 임계값을 살짝
+        # 피해 가려고 실패 횟수를 일부러 코앞에서 멈추는 패턴을 이 구간에서 잡는다.
+        if failure_count >= config.FAILURE_THRESHOLD - config.EARLY_WARNING_BAND:
+            distinct_usernames = detector.count_distinct_usernames(ip)
+            soar.consider_early_warning(
+                "BRUTE_FORCE", "LOCK_IP", "ip", ip, failure_count, config.FAILURE_THRESHOLD,
+                context_count=distinct_usernames,
+            )
+
         # IP 단위로는 아직 수상하지 않더라도, 이 계정이 여러 IP에 걸쳐 나뉘어서
         # 총합 기준으로 수상한 수준이 됐는지 확인한다 — 공격자가 IP를 돌려가며
         # (봇넷/프록시 로테이션) 한 계정만 노리는 분산 브루트포스를 잡아낸다.
@@ -212,6 +230,16 @@ def login_submit():
             soar.enforce_account_lockout(username, account_failure_count, distinct_ips, ip)
             flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
         else:
+            # 이 계정도 마찬가지로 임계값(ACCOUNT_FAILURE_THRESHOLD) 코앞이면
+            # 조기 경보 대상이다 — 여러 IP에 나눠 시도하되 각 IP·계정 총합
+            # 모두를 임계값 아래로 유지하려는 패턴을 잡아낸다.
+            if account_failure_count >= config.ACCOUNT_FAILURE_THRESHOLD - config.EARLY_WARNING_BAND:
+                distinct_ips = detector.count_distinct_ips_by_username(username)
+                soar.consider_early_warning(
+                    "DISTRIBUTED_BRUTE_FORCE", "LOCK_ACCOUNT", "account", username,
+                    account_failure_count, config.ACCOUNT_FAILURE_THRESHOLD,
+                    context_count=distinct_ips, context_ip=ip,
+                )
             # 사용자 존재 여부(아이디가 없는지, 비밀번호만 틀렸는지)를 구분해서
             # 알려주면 공격자에게 힌트를 주게 되므로, 항상 똑같은 문구로만 실패를 알린다.
             flash("아이디 또는 비밀번호가 올바르지 않습니다.")

@@ -81,14 +81,14 @@ def test_is_signup_rate_limited_false_below_limit(monkeypatch):
     # SIGNUP_RATE_LIMIT 기본값은 5 — 4번까지는 아직 제한하지 않는다.
     monkeypatch.setattr(db, "count_recent_signup_attempts", lambda ip: 4)
 
-    assert detector.is_signup_rate_limited("1.2.3.4") is False
+    assert detector.is_signup_rate_limited("1.2.3.4") == (False, 4)
 
 
 def test_is_signup_rate_limited_true_at_limit(monkeypatch):
     # 로그인 실패(초과부터 잠금)와 달리, 가입 시도는 "기준치 이상"이면 바로 막는다.
     monkeypatch.setattr(db, "count_recent_signup_attempts", lambda ip: 5)
 
-    assert detector.is_signup_rate_limited("1.2.3.4") is True
+    assert detector.is_signup_rate_limited("1.2.3.4") == (True, 5)
 
 
 def test_is_post_rate_limited_false_below_limit(monkeypatch):

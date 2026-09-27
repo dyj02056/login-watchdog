@@ -41,6 +41,7 @@ export const pages = {
     adminLog: 1,
     securityEvents: 1,
     securityIncidents: 1,
+    accessRequests: 1,
 };
 
 // 회원가입 토글 버튼을 누르면 "지금 상태의 반대"로 바꿔야 하는데, 그러려면

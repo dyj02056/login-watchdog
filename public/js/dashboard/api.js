@@ -6,6 +6,7 @@
 // ============================================================================
 
 import {
+    renderAccessRequestsTable,
     renderAdminLoginLog,
     renderAdminUsersTable,
     renderAttemptsTable,
@@ -37,6 +38,7 @@ export async function fetchStatus() {
         admin_log_page: pages.adminLog,
         security_events_page: pages.securityEvents,
         security_incidents_page: pages.securityIncidents,
+        access_requests_page: pages.accessRequests,
     });
     const response = await fetch(`/api/status?${params}`);
 
@@ -61,6 +63,7 @@ export async function fetchStatus() {
     if (pages.adminLog > data.admin_log_total_pages) { pages.adminLog = data.admin_log_total_pages; needsRefetch = true; }
     if (pages.securityEvents > data.security_events_total_pages) { pages.securityEvents = data.security_events_total_pages; needsRefetch = true; }
     if (pages.securityIncidents > data.security_incidents_total_pages) { pages.securityIncidents = data.security_incidents_total_pages; needsRefetch = true; }
+    if (pages.accessRequests > data.access_requests_total_pages) { pages.accessRequests = data.access_requests_total_pages; needsRefetch = true; }
     if (needsRefetch) {
         fetchStatus();
         return;
@@ -82,6 +85,8 @@ export async function fetchStatus() {
     renderPagination("security-events-pagination", pages.securityEvents, data.security_events_total_pages);
     renderSecurityIncidentsTable(data.security_incidents);
     renderPagination("security-incidents-pagination", pages.securityIncidents, data.security_incidents_total_pages);
+    renderAccessRequestsTable(data.access_requests);
+    renderPagination("access-requests-pagination", pages.accessRequests, data.access_requests_total_pages);
     renderAdminUsersTable(data.admin_users);
 }
 
@@ -220,6 +225,41 @@ export async function deleteAdminUser(adminId, username) {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
         body: JSON.stringify({ admin_id: Number(adminId) }),
+    });
+    fetchStatus();
+}
+
+/**
+ * 관리자가 "AI 조기 경보" 표의 "승인" 버튼을 눌렀을 때, 그 요청이 원래 하던
+ * 조치를 지금 실행해달라고 서버에 요청한다 (Track A, guide31). enforce_lockout
+ * 등 되돌리기 어려운 조치로 이어질 수 있으므로 unlockIp()와 달리 확인 팝업을 거친다.
+ * @param {string} requestId
+ */
+export async function approveAccessRequest(requestId) {
+    const confirmed = confirm("이 요청을 승인할까요? AI가 판단한 조치가 즉시 실행됩니다.");
+    if (!confirmed) {
+        return;
+    }
+
+    await fetch("/api/access-requests/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ request_id: Number(requestId) }),
+    });
+    fetchStatus();
+}
+
+/**
+ * "AI 조기 경보" 표의 "반려" 버튼을 눌렀을 때, 아무 조치 없이 요청을 기각해달라고
+ * 서버에 요청한다. 되돌릴 수 없는 조치가 아니므로(오히려 "아무것도 안 함"에
+ * 가깝다) 승인과 달리 확인 팝업 없이 바로 처리한다.
+ * @param {string} requestId
+ */
+export async function rejectAccessRequest(requestId) {
+    await fetch("/api/access-requests/reject", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ request_id: Number(requestId) }),
     });
     fetchStatus();
 }

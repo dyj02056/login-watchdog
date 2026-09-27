@@ -107,6 +107,13 @@ def login_required(view):
                 suspicious, count, is_first_over_threshold = detector.is_unauthorized_access_suspicious(ip)
                 if suspicious and is_first_over_threshold:
                     soar.notify_unauthorized_access(ip, count, request.path)
+                elif not suspicious and count >= config.UNAUTHORIZED_ACCESS_ALERT_THRESHOLD - config.EARLY_WARNING_BAND:
+                    # 아직 기준치는 안 넘었지만 코앞이면 LLM에게 조기 경보 여부를
+                    # 물어본다 (Track A, guide31).
+                    soar.consider_early_warning(
+                        "UNAUTHORIZED_ACCESS", "ALERT_ONLY", "ip", ip, count,
+                        config.UNAUTHORIZED_ACCESS_ALERT_THRESHOLD, path=request.path,
+                    )
                 return jsonify({"error": "로그인이 필요합니다."}), 401
             return redirect(url_for("admin.admin_login"))
         return view(*args, **kwargs)
@@ -138,6 +145,11 @@ def require_permission(action: str):
                     suspicious, count, is_first_over_threshold = detector.is_unauthorized_access_suspicious(ip)
                     if suspicious and is_first_over_threshold:
                         soar.notify_unauthorized_access(ip, count, request.path)
+                    elif not suspicious and count >= config.UNAUTHORIZED_ACCESS_ALERT_THRESHOLD - config.EARLY_WARNING_BAND:
+                        soar.consider_early_warning(
+                            "UNAUTHORIZED_ACCESS", "ALERT_ONLY", "ip", ip, count,
+                            config.UNAUTHORIZED_ACCESS_ALERT_THRESHOLD, path=request.path,
+                        )
                     return jsonify({"error": "로그인이 필요합니다."}), 401
                 return redirect(url_for("admin.admin_login"))
 

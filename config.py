@@ -93,6 +93,15 @@ INCIDENT_ESCALATION_MIN_EVENT_TYPES = int(os.environ.get("INCIDENT_ESCALATION_MI
 # 사람이 몇 초 안에 6개 넘는 서로 다른 API를 손으로 누르긴 어렵지만, 스크립트는 쉽다.
 MACRO_DISTINCT_API_THRESHOLD = int(os.environ.get("MACRO_DISTINCT_API_THRESHOLD", 5))
 
+# LLM 조기 경보(Track A, guide31) — 임계값을 "아직 못 넘었지만 코앞"인 구간
+# (threshold - EARLY_WARNING_BAND ~ threshold - 1)에서만 Groq에게 "지켜볼
+# 필요가 있는지" 판단을 맡긴다. 이미 임계값을 넘긴 경우는 규칙이 이미 확정
+# 판단을 내린 상태이므로 이 구간에 해당하지 않는다 — soar.py의
+# consider_early_warning() 호출부(routes/auth.py, app.py, helpers.py) 참고.
+# 폭을 너무 넓게 잡으면(예: 4) 정상 사용자의 사소한 실수까지 AI 호출 대상이 되어
+# 비용/지연이 늘고, 너무 좁게 잡으면(0) 규칙을 살짝 피해 가는 패턴을 놓친다.
+EARLY_WARNING_BAND = int(os.environ.get("EARLY_WARNING_BAND", 2))
+
 # 전역 HTTP 플러딩(대량 요청 도배) 방어 — 위의 *_RATE_LIMIT들은 로그인/가입/글쓰기
 # 등 "특정 폼 제출"에만 걸려있고, 일반 GET 페이지는 아무리 요청이 쏟아져도 다
 # 받아준다. 이 값은 같은 IP가 1분 안에 "전체 요청 종류를 합쳐서" 몇 번까지

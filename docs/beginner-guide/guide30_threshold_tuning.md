@@ -1,6 +1,6 @@
 # 30단계 — 임계값 튜닝 리포트 (Track C 4/4)
 
-[◀ 29단계](guide29_macro_bot_detection.md) · [전체 목차](beginner-guide.md)
+[◀ 29단계](guide29_macro_bot_detection.md) · [전체 목차](beginner-guide.md) · [31단계 ▶](guide31_llm_judgment_agent.md)
 
 > Track C의 마지막 단계입니다. 지금까지 만든 탐지 로직들(브루트포스, 웹 스캐닝, 매크로/봇 등)은 전부 "고정된 숫자"(`FAILURE_THRESHOLD`, `WEB_SCANNING_ALERT_THRESHOLD` 등)를 기준으로 삼습니다. 이 숫자가 너무 낮으면 정상 사용자까지 잠그고(오탐), 너무 높으면 진짜 공격을 놓칩니다. 이번 단계는 **"지금 기준이 너무 예민한 건 아닌지"를 스스로 점검하는 리포트**를 만들었습니다 — 새 탐지 로직이 아니라, 기존 탐지 로직이 남긴 기록을 되짚어보는 도구입니다.
 

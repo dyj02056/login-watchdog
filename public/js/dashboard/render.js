@@ -291,6 +291,59 @@ export function renderSecurityIncidentsTable(incidents) {
         .join("");
 }
 
+// 유형 코드(soar.py의 event_type과 동일한 문자열) → 화면에 보여줄 한글 라벨.
+// soar.py의 _EARLY_WARNING_LABELS와 같은 매핑을 자바스크립트 쪽에도 둔다 —
+// 서버가 라벨 문자열까지 내려주지 않고 event_type 코드만 보내므로(다른
+// 표들의 event_type 칸도 코드 그대로 보여주는 것과 같은 방식), 이 표만
+// 예외적으로 한글로 바꿔서 보여준다(AI 판단 근거와 나란히 놓였을 때 코드
+// 문자열보다 읽기 편하다).
+const EARLY_WARNING_LABELS = {
+    BRUTE_FORCE: "로그인 브루트포스(IP)",
+    DISTRIBUTED_BRUTE_FORCE: "계정 단위 분산 브루트포스",
+    SIGNUP_RATE_LIMIT: "회원가입 남용",
+    WEB_SCANNING: "Web Scanning",
+    UNAUTHORIZED_ACCESS: "Unauthorized Access",
+    PAGE_ACCESS: "반복 페이지 접근",
+    API_MACRO_PATTERN: "매크로/봇 패턴",
+};
+
+/**
+ * "AI 조기 경보" 표를 채운다 (Track A, guide31). 아직 임계값을 넘지 않은
+ * 상태에서 LLM이 위험하다고 판단해 등록한 PENDING 요청만 여기 나타난다 —
+ * 관리자가 승인하면 그 유형이 원래 임계값을 넘었을 때 하던 조치가 실행되고,
+ * 반려하면 아무 일도 일어나지 않는다(soar.py의 execute_approved_request()/
+ * reject_pending_request() 참고).
+ * @param {Array} requests - [{request_id, event_type, target_kind, target_value,
+ *   count, threshold, llm_reason, requested_at}, ...]
+ */
+export function renderAccessRequestsTable(requests) {
+    const tbody = document.getElementById("access-requests-table-body");
+
+    if (requests.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">대기 중인 AI 조기 경보가 없습니다.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = requests
+        .map((req) => {
+            const label = EARLY_WARNING_LABELS[req.event_type] || req.event_type;
+            return `
+                <tr>
+                    <td class="mono">${formatTime(req.requested_at)}</td>
+                    <td>${escapeHtml(label)}</td>
+                    <td class="mono">${escapeHtml(req.target_value)}</td>
+                    <td>${req.count} / ${req.threshold}</td>
+                    <td>${escapeHtml(req.llm_reason)}</td>
+                    <td>
+                        <button data-request-id="${req.request_id}" class="approve-request-btn">승인</button>
+                        <button data-request-id="${req.request_id}" class="reject-request-btn">반려</button>
+                    </td>
+                </tr>
+            `;
+        })
+        .join("");
+}
+
 /**
  * 회원가입 On/Off 현재 상태를 문구와 버튼에 반영한다.
  * @param {boolean} enabled

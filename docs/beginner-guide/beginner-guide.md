@@ -37,6 +37,7 @@
 28. [28단계 — SOAR 플레이북 고도화 (Track C 2/4)](guide28_soar_playbook.md)
 29. [29단계 — API 엔드포인트별 매크로/봇 탐지 (Track C 3/4)](guide29_macro_bot_detection.md)
 30. [30단계 — 임계값 튜닝 리포트 (Track C 4/4)](guide30_threshold_tuning.md)
+31. [31단계 — LLM 조기 경보 에이전트 (Track A)](guide31_llm_judgment_agent.md)
 
 ---
 

@@ -5,12 +5,14 @@
 // ============================================================================
 
 import {
+    approveAccessRequest,
     createAdminUser,
     deleteAdminUser,
     deleteComment,
     deletePost,
     deleteUser,
     fetchStatus,
+    rejectAccessRequest,
     resolveEvent,
     toggleSignup,
     unlockIp,
@@ -91,6 +93,17 @@ document.getElementById("security-events-table-body").addEventListener("click", 
     }
 });
 
+// "AI 조기 경보" 표의 "승인"/"반려" 버튼도 위와 동일한 이벤트 위임 방식을 쓴다
+// (Track A, guide31).
+document.getElementById("access-requests-table-body").addEventListener("click", (event) => {
+    const requestId = event.target.getAttribute("data-request-id");
+    if (event.target.classList.contains("approve-request-btn")) {
+        approveAccessRequest(requestId);
+    } else if (event.target.classList.contains("reject-request-btn")) {
+        rejectAccessRequest(requestId);
+    }
+});
+
 // 회원/게시글/댓글 페이지네이션 버튼도 renderLockoutCards()의 unlock-btn과 같은
 // 이벤트 위임 방식을 쓴다 — utils.js의 renderPagination()이 매번 버튼을 새로
 // 만들어내기 때문이다.
@@ -114,3 +127,4 @@ bindPagination("comments-pagination", () => pages.comments, (page) => { pages.co
 bindPagination("admin-log-pagination", () => pages.adminLog, (page) => { pages.adminLog = page; });
 bindPagination("security-events-pagination", () => pages.securityEvents, (page) => { pages.securityEvents = page; });
 bindPagination("security-incidents-pagination", () => pages.securityIncidents, (page) => { pages.securityIncidents = page; });
+bindPagination("access-requests-pagination", () => pages.accessRequests, (page) => { pages.accessRequests = page; });

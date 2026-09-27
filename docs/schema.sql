@@ -345,3 +345,75 @@ create table api_access_log (
   requested_at timestamptz not null default now()
 );
 create index idx_api_access_log_ip_requested_at on api_access_log (ip_address, requested_at desc);
+
+-- ============================================================================
+-- LLM 조기 경보 (Track A guide31 — login_watchdog_expansion_plan.md 참고)
+-- ============================================================================
+
+-- 위의 모든 탐지 유형(로그인 브루트포스/계정 단위 분산 브루트포스/회원가입
+-- 남용/Web Scanning/Unauthorized Access/반복 페이지 접근/매크로·봇)은 전부
+-- "임계값을 넘었을 때"만 반응한다. 이 표는 그 반대 — "아직 임계값을 못
+-- 넘었지만 코앞(config.EARLY_WARNING_BAND)인" 원래 아무 조치도 없던
+-- 사각지대에서, Groq(LLM)가 "지켜볼 필요가 있다"고 판단한 건을 관리자
+-- 승인 대기 목록으로 쌓아둔다 — soar.consider_early_warning()이 등록하고,
+-- soar.execute_approved_request()/reject_pending_request()가 상태를 바꾼다.
+create table access_requests (
+  request_id bigint generated always as identity primary key,
+  event_type text not null check (
+    event_type in (
+      'BRUTE_FORCE', 'DISTRIBUTED_BRUTE_FORCE', 'SIGNUP_RATE_LIMIT',
+      'WEB_SCANNING', 'UNAUTHORIZED_ACCESS', 'PAGE_ACCESS', 'API_MACRO_PATTERN'
+    )
+  ),
+  -- 승인됐을 때 실제로 실행할 조치. "그 유형이 원래 임계값을 넘었을 때 하던
+  -- 조치"와 정확히 같다 — 로그인/계정 브루트포스만 잠그고(LOCK_IP/LOCK_ACCOUNT),
+  -- 나머지 유형은 원래도 잠그지 않으므로 알림·기록만 한다(ALERT_ONLY).
+  pending_action text not null check (pending_action in ('LOCK_IP', 'LOCK_ACCOUNT', 'ALERT_ONLY')),
+  target_kind text not null check (target_kind in ('ip', 'account')),
+  target_value text not null,
+  -- Web Scanning/Unauthorized Access/반복 페이지 접근/회원가입 남용처럼 "어느
+  -- 경로에서 관찰됐는지"가 있는 유형만 채워진다. 로그인 브루트포스·매크로/봇처럼
+  -- 특정 경로 하나가 아니라 IP 전체의 패턴을 가리키는 유형은 null로 남긴다
+  -- (soar.py의 notify_macro_pattern이 path=None을 쓰는 것과 같은 이유).
+  path text,
+  count int not null,
+  threshold int not null,
+  -- LOCK_IP는 distinct_usernames(Brute Force/Password Spraying 구분),
+  -- LOCK_ACCOUNT는 distinct_ips(분산 정도)를 담는다. ALERT_ONLY 유형은 null.
+  context_count int,
+  -- LOCK_ACCOUNT(계정 잠금)를 승인 시 soar.enforce_account_lockout()에 넘길
+  -- "이번 시도의 triggering_ip"를 담는다. 그 외 유형은 null.
+  context_ip text,
+  llm_reason text not null,
+  status text not null check (status in ('PENDING', 'APPROVED', 'REJECTED')) default 'PENDING',
+  requested_at timestamptz not null default now(),
+  decided_by_admin_id bigint references admin_users(id),
+  decided_at timestamptz
+);
+create index idx_access_requests_status_requested_at on access_requests (status, requested_at desc);
+
+-- 같은 (event_type, target_kind, target_value)에는 PENDING 요청이 동시에
+-- 최대 1건만 존재하도록 DB가 직접 강제한다 — idx_security_incidents_open_ip와
+-- 같은 이유(확인과 삽입 사이의 짧은 틈에 동시 요청이 겹치는 경쟁 조건 방지)로,
+-- db.insert_pending_request()가 이 인덱스 충돌(23505)을 붙잡아 조용히 무시한다.
+create unique index idx_access_requests_open_target
+  on access_requests (event_type, target_kind, target_value)
+  where status = 'PENDING';
+
+-- 승인/반려를 실행할 권한 — unlock_ip/resolve_security_event와 같은 급의
+-- "IP·계정 관련 보안 조치"이므로 그 두 액션과 동일하게 security_admin/
+-- super_admin 둘 다에게 부여한다(security_viewer는 여전히 조회만 가능).
+-- permissions.action의 check 제약을 새 값 하나로 교체해야 한다(제약 자체를
+-- "추가"하는 SQL 문법은 없고, 기존 것을 지우고 새로 만들어야 한다) — 제약
+-- 이름은 Postgres가 자동으로 붙인 기본값(<표>_<칸>_check)을 그대로 쓴다.
+alter table permissions drop constraint permissions_action_check;
+alter table permissions add constraint permissions_action_check check (
+  action in (
+    'unlock_ip', 'resolve_security_event', 'toggle_signup',
+    'delete_user', 'delete_post', 'delete_comment', 'manage_admin_users',
+    'approve_pending_action'
+  )
+);
+insert into permissions (role, action) values
+  ('security_admin', 'approve_pending_action'),
+  ('super_admin', 'approve_pending_action');

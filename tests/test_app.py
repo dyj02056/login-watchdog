@@ -343,7 +343,7 @@ def test_signup_rejects_when_honeypot_field_is_filled(client, monkeypatch):
 
 def test_signup_rejects_username_with_html_special_characters(client, monkeypatch):
     monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
-    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: False)
+    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: (False, 0))
     monkeypatch.setattr(db, "log_signup_attempt", lambda ip: None)
 
     def _fail_if_called(*args, **kwargs):
@@ -368,7 +368,7 @@ def test_signup_rejects_username_with_html_special_characters(client, monkeypatc
 
 def test_signup_rejects_short_password(client, monkeypatch):
     monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
-    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: False)
+    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: (False, 0))
     monkeypatch.setattr(db, "log_signup_attempt", lambda ip: None)
 
     token = get_csrf_token(client, "/signup")
@@ -389,7 +389,7 @@ def test_signup_rejects_short_password(client, monkeypatch):
 def test_signup_accepts_valid_input(client, monkeypatch):
     created_with = []
     monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
-    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: False)
+    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: (False, 0))
     monkeypatch.setattr(db, "log_signup_attempt", lambda ip: None)
     monkeypatch.setattr(
         db,
@@ -415,7 +415,7 @@ def test_signup_accepts_valid_input(client, monkeypatch):
 
 def test_signup_rejects_when_rate_limited(client, monkeypatch):
     monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
-    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: True)
+    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: (True, 5))
     monkeypatch.setattr(soar, "record_rejection", lambda *args, **kwargs: None)
 
     def _fail_if_called(*args, **kwargs):
@@ -442,7 +442,7 @@ def test_signup_rate_limit_records_high_severity_rejection(client, monkeypatch):
     # HIGH 등급(Macro/Bot·Spam)은 지금까지 Slack 알림도 이벤트 기록도 전혀 없어 관리자가
     # 발생 여부를 알 수 없었다 — security-risk-response-summary.md 5절, REJECTED 이벤트 기록 추가.
     monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
-    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: True)
+    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: (True, 5))
     monkeypatch.setattr(db, "log_signup_attempt", lambda ip: None)
     rejection_calls = []
     monkeypatch.setattr(
@@ -1284,9 +1284,9 @@ def test_api_board_posts_delete_returns_403_for_security_admin(client, monkeypat
 # ============================================================================
 
 def _mock_full_status(monkeypatch):
-    """/api/status가 도는 ThreadPoolExecutor 배치 9개 쿼리 + role 조회를 전부
+    """/api/status가 도는 ThreadPoolExecutor 배치 10개 쿼리 + role 조회를 전부
     빈 데이터로 막아둔다. admin_users 필드의 유무만 확인하고 싶은 테스트가
-    나머지 7개 표 렌더링 데이터까지 일일이 준비하지 않아도 되게 하기 위한 헬퍼.
+    나머지 표 렌더링 데이터까지 일일이 준비하지 않아도 되게 하기 위한 헬퍼.
     """
     monkeypatch.setattr(soar, "try_release_expired_lockouts", lambda: None)
     monkeypatch.setattr(db, "list_recent_attempts", lambda page, size: ([], 0))
@@ -1298,6 +1298,7 @@ def _mock_full_status(monkeypatch):
     monkeypatch.setattr(db, "list_comments_admin", lambda page, size: ([], 0))
     monkeypatch.setattr(db, "list_security_events", lambda page, size: ([], 0))
     monkeypatch.setattr(db, "list_security_incidents", lambda page, size: ([], 0))
+    monkeypatch.setattr(db, "list_pending_requests", lambda page, size: ([], 0))
 
 
 def test_api_status_includes_admin_users_for_super_admin(client, monkeypatch):

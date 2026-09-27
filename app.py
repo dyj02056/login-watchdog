@@ -233,6 +233,13 @@ def handle_not_found(error):
     suspicious, count, is_first_over_threshold = detector.is_web_scanning(ip)
     if suspicious and is_first_over_threshold:
         soar.notify_web_scanning(ip, count, request.path)
+    elif not suspicious and count >= config.WEB_SCANNING_ALERT_THRESHOLD - config.EARLY_WARNING_BAND:
+        # 아직 기준치는 안 넘었지만 코앞이면 LLM에게 조기 경보 여부를 물어본다
+        # (Track A, guide31).
+        soar.consider_early_warning(
+            "WEB_SCANNING", "ALERT_ONLY", "ip", ip, count, config.WEB_SCANNING_ALERT_THRESHOLD,
+            path=request.path,
+        )
 
     return error.get_response()
 
@@ -278,6 +285,11 @@ def track_page_access():
     suspicious, count, is_first_over_threshold = detector.is_page_access_suspicious(ip, request.path)
     if suspicious and is_first_over_threshold:
         soar.notify_page_access(ip, count, request.path)
+    elif not suspicious and count >= config.PAGE_ACCESS_ALERT_THRESHOLD - config.EARLY_WARNING_BAND:
+        soar.consider_early_warning(
+            "PAGE_ACCESS", "ALERT_ONLY", "ip", ip, count, config.PAGE_ACCESS_ALERT_THRESHOLD,
+            path=request.path,
+        )
 
 
 @app.before_request
@@ -306,6 +318,10 @@ def track_api_access():
     suspicious, count, is_first_over_threshold = detector.is_macro_pattern_suspicious(ip)
     if suspicious and is_first_over_threshold:
         soar.notify_macro_pattern(ip, count)
+    elif not suspicious and count >= config.MACRO_DISTINCT_API_THRESHOLD - config.EARLY_WARNING_BAND:
+        soar.consider_early_warning(
+            "API_MACRO_PATTERN", "ALERT_ONLY", "ip", ip, count, config.MACRO_DISTINCT_API_THRESHOLD,
+        )
 
 
 # ============================================================================

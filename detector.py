@@ -91,15 +91,21 @@ def count_distinct_admin_usernames(ip: str) -> int:
     return db.count_recent_distinct_admin_usernames(ip)
 
 
-def is_signup_rate_limited(ip: str) -> bool:
+def is_signup_rate_limited(ip: str) -> tuple[bool, int]:
     """이 IP가 최근 회원가입을 너무 자주 시도해서 더 막아야 하는 상태인지 판단한다.
 
     is_suspicious()와 달리 "초과"가 아니라 "이상"을 기준으로 삼는다 — 로그인
     실패는 정상 사용자도 몇 번은 겪을 수 있는 일이라 여유(초과)를 주지만,
     회원가입 요청 자체는 정상 사용자가 짧은 시간에 여러 번 반복할 이유가
     거의 없으므로 더 엄격하게(기준치에 도달하면 즉시) 차단한다.
+
+    원래는 bool 하나만 돌려줬지만, is_suspicious()처럼 (판단, 실제 시도 횟수)
+    튜플로 바꿨다 — routes/auth.py가 "아직 기준치는 안 넘었지만 코앞인지"
+    (Track A 조기 경보, config.EARLY_WARNING_BAND)도 판단해야 해서 실제
+    횟수가 필요해졌다.
     """
-    return db.count_recent_signup_attempts(ip) >= SIGNUP_RATE_LIMIT
+    count = db.count_recent_signup_attempts(ip)
+    return count >= SIGNUP_RATE_LIMIT, count
 
 
 def is_post_rate_limited(ip: str) -> bool:

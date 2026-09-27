@@ -88,6 +88,18 @@ def get_admin_role(username: str) -> str | None:
     return res.data[0]["role"] if res.data else None
 
 
+def get_admin_id_by_username(username: str) -> int | None:
+    """이 관리자 아이디의 기본키(id)를 돌려준다.
+
+    get_admin_role()과 마찬가지로 세션에는 username만 들어있는데, access_requests의
+    decided_by_admin_id 칸(Track A, guide31)은 admin_users(id)를 참조하는
+    외래키라서 숫자 id가 필요하다 — routes/admin.py의 승인/반려 API가 이 함수로
+    session["admin_username"]을 id로 바꿔서 db.decide_request()에 넘긴다.
+    """
+    res = db.get_client().table("admin_users").select("id").eq("username", username).limit(1).execute()
+    return res.data[0]["id"] if res.data else None
+
+
 def list_admin_users() -> list[dict]:
     """전체 관리자 계정 목록을 id/username/role/created_at만 골라 돌려준다
     (Track B guide26 후속, 대시보드 "관리자 계정 관리" 카드용).

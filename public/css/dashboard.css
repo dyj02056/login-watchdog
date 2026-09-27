@@ -248,6 +248,15 @@ section h2 {
 #security-incidents-table th:nth-child(5), #security-incidents-table td:nth-child(5) { width: 15%; } /* IP */
 #security-incidents-table th:nth-child(6), #security-incidents-table td:nth-child(6) { width: 10%; } /* 상태 */
 
+/* "AI 조기 경보" 표(Track A guide31)도 "AI 판단 근거" 칸에 문장이 들어가므로,
+   보안 이벤트 표의 "경로" 칸과 같은 이유로 비율을 따로 지정한다. */
+#access-requests-table th:nth-child(1), #access-requests-table td:nth-child(1) { width: 12%; } /* 요청 시각 */
+#access-requests-table th:nth-child(2), #access-requests-table td:nth-child(2) { width: 16%; } /* 유형 */
+#access-requests-table th:nth-child(3), #access-requests-table td:nth-child(3) { width: 12%; } /* 대상 */
+#access-requests-table th:nth-child(4), #access-requests-table td:nth-child(4) { width: 8%; }  /* 현재/기준 */
+#access-requests-table th:nth-child(5), #access-requests-table td:nth-child(5) { width: 36%; } /* AI 판단 근거 */
+#access-requests-table th:nth-child(6), #access-requests-table td:nth-child(6) { width: 16%; } /* 조치 */
+
 /* 배지가 오른쪽 여백 없이 칸 끝에 바짝 붙는 것도 보기 불편하므로,
    너비 확보와 별개로 오른쪽에 약간의 여유 공간을 더 준다. */
 #security-events-table td:nth-child(2),
