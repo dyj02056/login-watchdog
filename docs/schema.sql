@@ -232,3 +232,188 @@ create index idx_security_events_ip_severity on security_events (ip_address, sev
 create unique index idx_security_events_high_open_incident
   on security_events (ip_address, event_type)
   where resolved_at is null and severity = 'HIGH';
+
+-- ============================================================================
+-- RBAC 기본 구조 (Track B guide26 — login_watchdog_expansion_plan.md 참고)
+-- ============================================================================
+
+-- 관리자 역할 3종. security_viewer < security_admin < super_admin 순으로
+-- 할 수 있는 일이 늘어나지만, 이 표 자체에는 "포함 관계"를 표현하지 않는다 —
+-- 아래 permissions 표에 역할별로 할 수 있는 액션을 전부 한 줄씩 나열한다.
+create table roles (
+  role text primary key check (role in ('security_viewer', 'security_admin', 'super_admin'))
+);
+insert into roles (role) values ('security_viewer'), ('security_admin'), ('super_admin');
+
+-- role이 할 수 있는 action 하나하나를 나열한 표. routes/admin.py의 쓰기 API
+-- 6개(unlock_ip / resolve_security_event / toggle_signup / delete_user /
+-- delete_post / delete_comment)에 1:1로 대응한다. require_permission()
+-- 데코레이터가 요청마다 이 표를 조회해서 "지금 이 관리자의 역할이 이 액션을
+-- 할 수 있는가"를 확인한다.
+create table permissions (
+  role text not null references roles(role),
+  action text not null check (
+    action in (
+      'unlock_ip', 'resolve_security_event', 'toggle_signup',
+      'delete_user', 'delete_post', 'delete_comment', 'manage_admin_users'
+    )
+  ),
+  primary key (role, action)
+);
+insert into permissions (role, action) values
+  ('security_admin', 'unlock_ip'),
+  ('security_admin', 'resolve_security_event'),
+  ('super_admin', 'unlock_ip'),
+  ('super_admin', 'resolve_security_event'),
+  ('super_admin', 'toggle_signup'),
+  ('super_admin', 'delete_user'),
+  ('super_admin', 'delete_post'),
+  ('super_admin', 'delete_comment'),
+  -- 대시보드 "관리자 계정 관리"(guide26 후속) — security_viewer/security_admin
+  -- 계정을 생성·삭제하는 액션. super_admin만 가지며, 이 액션 자체로는
+  -- super_admin 계정을 만들거나 지울 수 없다(routes/admin.py에서 role 검증).
+  ('super_admin', 'manage_admin_users');
+-- security_viewer는 어떤 액션도 없다 — 대시보드 조회(GET /admin/dashboard,
+-- /api/status)는 지금처럼 login_required만으로 충분해서 permissions에
+-- "view_dashboard" 같은 행을 따로 두지 않았다(세 역할 모두 어차피 볼 수 있으므로
+-- 권한 구분의 의미가 없다).
+
+-- 기존 admin_users 표에 역할 칸을 추가한다. 이미 있는 관리자 계정(예:
+-- sktmaster123)도 이 ALTER 한 번으로 전부 기본값 'security_admin'을 갖게 된다 —
+-- 그 중 최종 책임자 계정만 아래 UPDATE로 super_admin으로 올려준다.
+alter table admin_users add column role text not null references roles(role) default 'security_admin';
+
+-- 이미 있는 최종 책임자 계정을 super_admin으로 승격 (계정을 새로 만드는 게
+-- 아니라 기존 행의 role 값만 바꾸는 것 — login_watchdog_expansion_plan.md 논의 참고).
+-- 이 프로젝트의 실제 최종 책임자 계정 이름으로 바꿔서 한 번만 실행하면 된다.
+update admin_users set role = 'super_admin' where username = 'sktmaster123';
+
+-- ============================================================================
+-- SIEM 상관분석 (Track C guide27 — login_watchdog_expansion_plan.md 참고)
+-- ============================================================================
+
+-- security_events가 개별 신고서 한 장 한 장이라면, 이 표는 "같은 IP가 짧은
+-- 시간 안에 서로 다른 event_type을 2개 이상 남겼을 때" 그 신고들을 하나의
+-- 사건으로 묶어두는 사건철이다. correlate.py가 soar.py를 통해 새 이벤트가
+-- 기록될 때마다 이 표를 조회/갱신한다. 단발성 이벤트(신고 1장)는 여기 묶이지
+-- 않고 지금처럼 security_events에만 남는다.
+create table security_incidents (
+  id bigint generated always as identity primary key,
+  ip_address text not null,
+  event_types text[] not null,
+  severity_max text not null check (severity_max in ('MEDIUM', 'HIGH', 'CRITICAL')),
+  status text not null check (status in ('OPEN', 'CLOSED')) default 'OPEN',
+  first_event_at timestamptz not null,
+  last_event_at timestamptz not null
+);
+create index idx_security_incidents_last_event_at on security_incidents (last_event_at desc);
+
+-- 같은 IP는 OPEN 상태 사건이 항상 최대 1건만 존재하도록 DB가 직접 강제한다.
+-- idx_security_events_high_open_incident와 같은 이유(확인과 삽입 사이의 짧은
+-- 틈에 동시 요청이 겹치는 경쟁 조건 방지)로, db.record_incident()가 이 인덱스
+-- 충돌(23505)을 붙잡아 새로 여는 대신 기존 사건에 병합하는 안전망을 둔다.
+create unique index idx_security_incidents_open_ip
+  on security_incidents (ip_address)
+  where status = 'OPEN';
+
+-- ============================================================================
+-- SOAR 플레이북 고도화 (Track C guide28 — login_watchdog_expansion_plan.md 참고)
+-- ============================================================================
+
+-- 사건이 CRITICAL이면서 서로 다른 event_type이 config.INCIDENT_ESCALATION_MIN_EVENT_TYPES
+-- (기본 3) 개 이상 쌓이면, correlate.py가 관리자에게 별도의 "복합 공격" 에스컬레이션
+-- 알림을 보낸다. 이 컬럼은 그 알림을 이미 보낸 사건인지 표시해서, 사건이 갱신될
+-- 때마다 같은 알림이 반복 발송되는 걸 막는다(soar.enforce_lockout의 "잠그는 순간에
+-- 딱 한 번만" 알림 원칙과 동일). 사건이 닫혔다가(CLOSED) 새로 열리면 새 행이므로
+-- 자동으로 false에서 다시 시작한다.
+alter table security_incidents add column escalated boolean not null default false;
+
+-- ============================================================================
+-- API 엔드포인트별 매크로/봇 탐지 (Track C guide29 — login_watchdog_expansion_plan.md 참고)
+-- ============================================================================
+
+-- not_found_attempts/unauthorized_attempts/page_access_attempts와 같은 목적의
+-- 요청 로그다. 다만 이 표는 "/api/*" 요청 전체(POST 포함)를 메서드와 함께
+-- 기록해서, 같은 IP가 짧은 시간에 서로 다른 API 여러 개를 옮겨 다니는
+-- 패턴(매크로/봇 의심)을 잡는다 — track_page_access()는 GET만, "같은 경로
+-- 하나"의 반복만 보므로 이 패턴은 잡지 못한다.
+create table api_access_log (
+  id bigint generated always as identity primary key,
+  ip_address text not null,
+  path text not null,
+  method text not null,
+  requested_at timestamptz not null default now()
+);
+create index idx_api_access_log_ip_requested_at on api_access_log (ip_address, requested_at desc);
+
+-- ============================================================================
+-- LLM 조기 경보 (Track A guide31 — login_watchdog_expansion_plan.md 참고)
+-- ============================================================================
+
+-- 위의 모든 탐지 유형(로그인 브루트포스/계정 단위 분산 브루트포스/회원가입
+-- 남용/Web Scanning/Unauthorized Access/반복 페이지 접근/매크로·봇)은 전부
+-- "임계값을 넘었을 때"만 반응한다. 이 표는 그 반대 — "아직 임계값을 못
+-- 넘었지만 코앞(config.EARLY_WARNING_BAND)인" 원래 아무 조치도 없던
+-- 사각지대에서, Groq(LLM)가 "지켜볼 필요가 있다"고 판단한 건을 관리자
+-- 승인 대기 목록으로 쌓아둔다 — soar.consider_early_warning()이 등록하고,
+-- soar.execute_approved_request()/reject_pending_request()가 상태를 바꾼다.
+create table access_requests (
+  request_id bigint generated always as identity primary key,
+  event_type text not null check (
+    event_type in (
+      'BRUTE_FORCE', 'DISTRIBUTED_BRUTE_FORCE', 'SIGNUP_RATE_LIMIT',
+      'WEB_SCANNING', 'UNAUTHORIZED_ACCESS', 'PAGE_ACCESS', 'API_MACRO_PATTERN'
+    )
+  ),
+  -- 승인됐을 때 실제로 실행할 조치. "그 유형이 원래 임계값을 넘었을 때 하던
+  -- 조치"와 정확히 같다 — 로그인/계정 브루트포스만 잠그고(LOCK_IP/LOCK_ACCOUNT),
+  -- 나머지 유형은 원래도 잠그지 않으므로 알림·기록만 한다(ALERT_ONLY).
+  pending_action text not null check (pending_action in ('LOCK_IP', 'LOCK_ACCOUNT', 'ALERT_ONLY')),
+  target_kind text not null check (target_kind in ('ip', 'account')),
+  target_value text not null,
+  -- Web Scanning/Unauthorized Access/반복 페이지 접근/회원가입 남용처럼 "어느
+  -- 경로에서 관찰됐는지"가 있는 유형만 채워진다. 로그인 브루트포스·매크로/봇처럼
+  -- 특정 경로 하나가 아니라 IP 전체의 패턴을 가리키는 유형은 null로 남긴다
+  -- (soar.py의 notify_macro_pattern이 path=None을 쓰는 것과 같은 이유).
+  path text,
+  count int not null,
+  threshold int not null,
+  -- LOCK_IP는 distinct_usernames(Brute Force/Password Spraying 구분),
+  -- LOCK_ACCOUNT는 distinct_ips(분산 정도)를 담는다. ALERT_ONLY 유형은 null.
+  context_count int,
+  -- LOCK_ACCOUNT(계정 잠금)를 승인 시 soar.enforce_account_lockout()에 넘길
+  -- "이번 시도의 triggering_ip"를 담는다. 그 외 유형은 null.
+  context_ip text,
+  llm_reason text not null,
+  status text not null check (status in ('PENDING', 'APPROVED', 'REJECTED')) default 'PENDING',
+  requested_at timestamptz not null default now(),
+  decided_by_admin_id bigint references admin_users(id),
+  decided_at timestamptz
+);
+create index idx_access_requests_status_requested_at on access_requests (status, requested_at desc);
+
+-- 같은 (event_type, target_kind, target_value)에는 PENDING 요청이 동시에
+-- 최대 1건만 존재하도록 DB가 직접 강제한다 — idx_security_incidents_open_ip와
+-- 같은 이유(확인과 삽입 사이의 짧은 틈에 동시 요청이 겹치는 경쟁 조건 방지)로,
+-- db.insert_pending_request()가 이 인덱스 충돌(23505)을 붙잡아 조용히 무시한다.
+create unique index idx_access_requests_open_target
+  on access_requests (event_type, target_kind, target_value)
+  where status = 'PENDING';
+
+-- 승인/반려를 실행할 권한 — unlock_ip/resolve_security_event와 같은 급의
+-- "IP·계정 관련 보안 조치"이므로 그 두 액션과 동일하게 security_admin/
+-- super_admin 둘 다에게 부여한다(security_viewer는 여전히 조회만 가능).
+-- permissions.action의 check 제약을 새 값 하나로 교체해야 한다(제약 자체를
+-- "추가"하는 SQL 문법은 없고, 기존 것을 지우고 새로 만들어야 한다) — 제약
+-- 이름은 Postgres가 자동으로 붙인 기본값(<표>_<칸>_check)을 그대로 쓴다.
+alter table permissions drop constraint permissions_action_check;
+alter table permissions add constraint permissions_action_check check (
+  action in (
+    'unlock_ip', 'resolve_security_event', 'toggle_signup',
+    'delete_user', 'delete_post', 'delete_comment', 'manage_admin_users',
+    'approve_pending_action'
+  )
+);
+insert into permissions (role, action) values
+  ('security_admin', 'approve_pending_action'),
+  ('super_admin', 'approve_pending_action');

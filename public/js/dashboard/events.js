@@ -4,7 +4,19 @@
 // 배경 설명은 dashboard/main.js 상단 주석 참고.
 // ============================================================================
 
-import { deleteComment, deletePost, deleteUser, fetchStatus, resolveEvent, toggleSignup, unlockIp } from "./api.js";
+import {
+    approveAccessRequest,
+    createAdminUser,
+    deleteAdminUser,
+    deleteComment,
+    deletePost,
+    deleteUser,
+    fetchStatus,
+    rejectAccessRequest,
+    resolveEvent,
+    toggleSignup,
+    unlockIp,
+} from "./api.js";
 import { pages } from "./state.js";
 
 // "즉시 해제" 버튼은 render.js의 renderLockoutCards()가 매번 새로 만들어내므로,
@@ -45,11 +57,50 @@ document.getElementById("comments-table-body").addEventListener("click", (event)
     }
 });
 
+// "관리자 계정 관리" 표의 "삭제" 버튼도 회원 목록과 동일한 이벤트 위임 방식을 쓴다.
+// 이 <tbody>는 항상 DOM에 존재한다(카드 자체는 render.js가 hidden 속성으로만
+// 숨기고 제거하지는 않으므로) — viewer/security_admin 로그인 시에도 이 리스너를
+// 걸어도 안전하다.
+document.getElementById("admin-users-table-body").addEventListener("click", (event) => {
+    if (event.target.classList.contains("delete-admin-user-btn")) {
+        const adminId = event.target.getAttribute("data-admin-id");
+        const username = event.target.getAttribute("data-username");
+        deleteAdminUser(adminId, username);
+    }
+});
+
+// "관리자 계정 관리" 생성 폼 — 다른 버튼들과 달리 <form> submit 이벤트라 페이지
+// 새로고침을 막는 preventDefault()가 필요하다. 성공했을 때만 입력칸을 비운다
+// (실패하면 사용자가 방금 입력한 값을 다시 볼 수 있어야 고치기 편하다).
+document.getElementById("admin-user-create-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const usernameInput = document.getElementById("admin-user-username");
+    const passwordInput = document.getElementById("admin-user-password");
+    const roleSelect = document.getElementById("admin-user-role");
+
+    const succeeded = await createAdminUser(usernameInput.value, passwordInput.value, roleSelect.value);
+    if (succeeded) {
+        usernameInput.value = "";
+        passwordInput.value = "";
+    }
+});
+
 // 보안 이벤트 표의 "처리 완료" 버튼도 위와 동일한 이벤트 위임 방식을 쓴다.
 document.getElementById("security-events-table-body").addEventListener("click", (event) => {
     if (event.target.classList.contains("resolve-event-btn")) {
         const eventId = event.target.getAttribute("data-event-id");
         resolveEvent(eventId);
+    }
+});
+
+// "AI 조기 경보" 표의 "승인"/"반려" 버튼도 위와 동일한 이벤트 위임 방식을 쓴다
+// (Track A, guide31).
+document.getElementById("access-requests-table-body").addEventListener("click", (event) => {
+    const requestId = event.target.getAttribute("data-request-id");
+    if (event.target.classList.contains("approve-request-btn")) {
+        approveAccessRequest(requestId);
+    } else if (event.target.classList.contains("reject-request-btn")) {
+        rejectAccessRequest(requestId);
     }
 });
 
@@ -75,3 +126,5 @@ bindPagination("posts-pagination", () => pages.posts, (page) => { pages.posts = 
 bindPagination("comments-pagination", () => pages.comments, (page) => { pages.comments = page; });
 bindPagination("admin-log-pagination", () => pages.adminLog, (page) => { pages.adminLog = page; });
 bindPagination("security-events-pagination", () => pages.securityEvents, (page) => { pages.securityEvents = page; });
+bindPagination("security-incidents-pagination", () => pages.securityIncidents, (page) => { pages.securityIncidents = page; });
+bindPagination("access-requests-pagination", () => pages.accessRequests, (page) => { pages.accessRequests = page; });

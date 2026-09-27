@@ -343,7 +343,7 @@ def test_signup_rejects_when_honeypot_field_is_filled(client, monkeypatch):
 
 def test_signup_rejects_username_with_html_special_characters(client, monkeypatch):
     monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
-    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: False)
+    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: (False, 0))
     monkeypatch.setattr(db, "log_signup_attempt", lambda ip: None)
 
     def _fail_if_called(*args, **kwargs):
@@ -368,7 +368,7 @@ def test_signup_rejects_username_with_html_special_characters(client, monkeypatc
 
 def test_signup_rejects_short_password(client, monkeypatch):
     monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
-    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: False)
+    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: (False, 0))
     monkeypatch.setattr(db, "log_signup_attempt", lambda ip: None)
 
     token = get_csrf_token(client, "/signup")
@@ -389,7 +389,7 @@ def test_signup_rejects_short_password(client, monkeypatch):
 def test_signup_accepts_valid_input(client, monkeypatch):
     created_with = []
     monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
-    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: False)
+    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: (False, 0))
     monkeypatch.setattr(db, "log_signup_attempt", lambda ip: None)
     monkeypatch.setattr(
         db,
@@ -415,7 +415,7 @@ def test_signup_accepts_valid_input(client, monkeypatch):
 
 def test_signup_rejects_when_rate_limited(client, monkeypatch):
     monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
-    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: True)
+    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: (True, 5))
     monkeypatch.setattr(soar, "record_rejection", lambda *args, **kwargs: None)
 
     def _fail_if_called(*args, **kwargs):
@@ -442,7 +442,7 @@ def test_signup_rate_limit_records_high_severity_rejection(client, monkeypatch):
     # HIGH 등급(Macro/Bot·Spam)은 지금까지 Slack 알림도 이벤트 기록도 전혀 없어 관리자가
     # 발생 여부를 알 수 없었다 — security-risk-response-summary.md 5절, REJECTED 이벤트 기록 추가.
     monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
-    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: True)
+    monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: (True, 5))
     monkeypatch.setattr(db, "log_signup_attempt", lambda ip: None)
     rejection_calls = []
     monkeypatch.setattr(
@@ -632,8 +632,104 @@ def test_page_access_ignores_nonexistent_paths(client, monkeypatch):
     client.get("/no-such-page")
 
 
+# ============================================================================
+# track_api_access() — 매크로/봇 탐지 (Track C guide29)
+# ============================================================================
+
+def test_api_access_logs_request_to_api_path(client, monkeypatch):
+    # /api/status는 admin.api_status로, 자동 폴링 API라 track_api_access()
+    # 관찰 대상에서 제외된다 — 실제로 관찰되는 경로(/api/unlock)로 확인한다.
+    # 로그인 없이 부르면 login_required가 먼저 401을 돌려주면서 별도로
+    # unauthorized_attempts도 기록하는데(helpers.py 참고), 이 테스트가 확인하려는
+    # 건 그게 아니므로 조용히 통과하게 막아둔다. CSRF도 통과해야 이 훅까지
+    # 도달하므로 /login에서 진짜 토큰을 받아온다.
+    monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1, False))
+    logged = []
+    monkeypatch.setattr(db, "log_api_access", lambda ip, path, method: logged.append((ip, path, method)))
+    monkeypatch.setattr(detector, "is_macro_pattern_suspicious", lambda ip: (False, 1, False))
+
+    token = get_csrf_token(client, "/login")
+    response = client.post("/api/unlock", json={}, headers={"X-CSRFToken": token})
+
+    assert response.status_code == 401
+    assert logged == [("127.0.0.1", "/api/unlock", "POST")]
+
+
+def test_api_access_alerts_exactly_when_crossing_threshold(client, monkeypatch):
+    monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1, False))
+    monkeypatch.setattr(db, "log_api_access", lambda ip, path, method: None)
+    monkeypatch.setattr(detector, "is_macro_pattern_suspicious", lambda ip: (True, 6, True))  # threshold(5) + 1
+    notify_calls = []
+    monkeypatch.setattr(
+        soar, "notify_macro_pattern", lambda ip, count: notify_calls.append((ip, count))
+    )
+
+    token = get_csrf_token(client, "/login")
+    client.post("/api/unlock", json={}, headers={"X-CSRFToken": token})
+
+    assert notify_calls == [("127.0.0.1", 6)]
+
+
+def test_api_access_does_not_alert_again_after_threshold_crossing(client, monkeypatch):
+    monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1, False))
+    monkeypatch.setattr(db, "log_api_access", lambda ip, path, method: None)
+    monkeypatch.setattr(detector, "is_macro_pattern_suspicious", lambda ip: (True, 9, False))
+
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("임계값을 이미 넘긴 뒤인데 notify_macro_pattern이 또 호출되었다")
+
+    monkeypatch.setattr(soar, "notify_macro_pattern", _fail_if_called)
+
+    token = get_csrf_token(client, "/login")
+    response = client.post("/api/unlock", json={}, headers={"X-CSRFToken": token})
+
+    assert response.status_code == 401  # 로그인 없이 호출했으므로 401 — 훅 자체는 정상 통과했는지만 확인
+
+
+def test_api_access_ignores_polling_endpoint(client, monkeypatch):
+    # /api/status(대시보드 자동 폴링)는 track_page_access()와 마찬가지로
+    # track_api_access()에서도 관찰 대상에서 빠져야 한다.
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("자동 폴링 API인데 log_api_access가 호출되었다")
+
+    monkeypatch.setattr(db, "log_api_access", _fail_if_called)
+    monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1, False))
+
+    client.get("/api/status")
+
+
+def test_api_access_ignores_non_api_paths(client, monkeypatch):
+    # "/api/"로 시작하지 않는 일반 페이지는 이 훅의 관찰 대상이 아니다
+    # (그 대신 track_page_access()가 관찰한다).
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("/api/*가 아닌 경로인데 log_api_access가 호출되었다")
+
+    monkeypatch.setattr(db, "log_api_access", _fail_if_called)
+
+    client.get("/login")
+
+
+def test_api_access_ignores_nonexistent_api_paths(client, monkeypatch):
+    # 존재하지 않는 /api/* 경로(request.url_rule is None)는 not_found_attempts가
+    # 따로 기록하므로 중복으로 기록하면 안 된다.
+    def _fail_if_called(*args, **kwargs):
+        raise AssertionError("존재하지 않는 경로인데 log_api_access가 호출되었다")
+
+    monkeypatch.setattr(db, "log_api_access", _fail_if_called)
+    monkeypatch.setattr(db, "log_not_found_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_web_scanning", lambda ip: (False, 1, False))
+
+    client.get("/api/no-such-endpoint")
+
+
 def test_api_unlock_requires_ip_in_body(client, monkeypatch):
     monkeypatch.setattr(soar, "try_release_expired_lockouts", lambda: None)
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
 
     with client.session_transaction() as sess:
         sess["admin_username"] = "test-admin"
@@ -650,6 +746,8 @@ def test_api_unlock_requires_ip_in_body(client, monkeypatch):
 
 def test_api_unlock_releases_ip_when_authenticated(client, monkeypatch):
     monkeypatch.setattr(soar, "manual_release", lambda ip: ip == "1.2.3.4")
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
 
     with client.session_transaction() as sess:
         sess["admin_username"] = "test-admin"
@@ -665,6 +763,25 @@ def test_api_unlock_releases_ip_when_authenticated(client, monkeypatch):
     assert response.get_json() == {"success": True}
 
 
+def test_api_unlock_returns_403_when_role_lacks_permission(client, monkeypatch):
+    # security_viewer는 unlock_ip 권한이 없다(guide26 시드 데이터) — require_permission이
+    # login_required와 별개로 이 경우까지 막아주는지 확인한다.
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_viewer")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: False)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "test-viewer"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/unlock",
+        json={"ip": "1.2.3.4"},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 403
+
+
 def test_api_unlock_without_csrf_header_is_rejected(client, monkeypatch):
     with client.session_transaction() as sess:
         sess["admin_username"] = "test-admin"
@@ -675,6 +792,9 @@ def test_api_unlock_without_csrf_header_is_rejected(client, monkeypatch):
 
 
 def test_api_security_events_resolve_requires_event_id_in_body(client, monkeypatch):
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
+
     with client.session_transaction() as sess:
         sess["admin_username"] = "test-admin"
 
@@ -690,6 +810,8 @@ def test_api_security_events_resolve_requires_event_id_in_body(client, monkeypat
 
 def test_api_security_events_resolve_marks_event_resolved_when_authenticated(client, monkeypatch):
     monkeypatch.setattr(db, "resolve_security_event", lambda event_id: event_id == 42)
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
 
     with client.session_transaction() as sess:
         sess["admin_username"] = "test-admin"
@@ -1125,6 +1247,8 @@ def test_api_board_posts_delete_succeeds_for_admin(client, monkeypatch):
     with client.session_transaction() as sess:
         sess["admin_username"] = "test-admin"
     monkeypatch.setattr(db, "delete_post", lambda post_id: post_id == 1)
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
 
     token = get_csrf_token(client, "/admin/dashboard")
     response = client.post(
@@ -1134,6 +1258,191 @@ def test_api_board_posts_delete_succeeds_for_admin(client, monkeypatch):
     )
 
     assert response.status_code == 200
+
+
+def test_api_board_posts_delete_returns_403_for_security_admin(client, monkeypatch):
+    # delete_post는 super_admin 전용 액션이다(guide26 시드 데이터) — security_admin이
+    # unlock_ip/resolve_security_event는 할 수 있어도 삭제는 못 해야 한다.
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: False)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "test-admin"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/board/posts/delete",
+        json={"post_id": 1},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 403
+
+
+# ============================================================================
+# 관리자 계정 관리 — super_admin 전용 카드/API (Track B guide26 후속)
+# ============================================================================
+
+def _mock_full_status(monkeypatch):
+    """/api/status가 도는 ThreadPoolExecutor 배치 10개 쿼리 + role 조회를 전부
+    빈 데이터로 막아둔다. admin_users 필드의 유무만 확인하고 싶은 테스트가
+    나머지 표 렌더링 데이터까지 일일이 준비하지 않아도 되게 하기 위한 헬퍼.
+    """
+    monkeypatch.setattr(soar, "try_release_expired_lockouts", lambda: None)
+    monkeypatch.setattr(db, "list_recent_attempts", lambda page, size: ([], 0))
+    monkeypatch.setattr(db, "list_active_lockouts", lambda: [])
+    monkeypatch.setattr(db, "list_admin_login_log", lambda page, size: ([], 0))
+    monkeypatch.setattr(db, "list_users", lambda page, size: ([], 0))
+    monkeypatch.setattr(db, "get_signup_enabled", lambda: True)
+    monkeypatch.setattr(db, "list_posts", lambda page, size: ([], 0))
+    monkeypatch.setattr(db, "list_comments_admin", lambda page, size: ([], 0))
+    monkeypatch.setattr(db, "list_security_events", lambda page, size: ([], 0))
+    monkeypatch.setattr(db, "list_security_incidents", lambda page, size: ([], 0))
+    monkeypatch.setattr(db, "list_pending_requests", lambda page, size: ([], 0))
+
+
+def test_api_status_includes_admin_users_for_super_admin(client, monkeypatch):
+    _mock_full_status(monkeypatch)
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
+    monkeypatch.setattr(db, "list_admin_users", lambda: [{"id": 1, "username": "sktmaster123", "role": "super_admin", "created_at": "x"}])
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "sktmaster123"
+
+    response = client.get("/api/status")
+
+    assert response.status_code == 200
+    assert "admin_users" in response.get_json()
+
+
+def test_api_status_omits_admin_users_for_security_admin(client, monkeypatch):
+    _mock_full_status(monkeypatch)
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: False)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "test-admin"
+
+    response = client.get("/api/status")
+
+    assert response.status_code == 200
+    assert "admin_users" not in response.get_json()
+
+
+def test_api_admin_users_create_returns_403_when_role_lacks_permission(client, monkeypatch):
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: False)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "test-admin"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/admin-users/create",
+        json={"username": "sktviewer123", "password": "TestViewer2026!", "role": "security_viewer"},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 403
+
+
+def test_api_admin_users_create_rejects_super_admin_role(client, monkeypatch):
+    # 폼(select 옵션)에는 super_admin이 아예 없지만, 요청을 직접 조작해서
+    # role=super_admin을 보내는 경우까지 서버가 한 번 더 막아야 한다.
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "sktmaster123"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/admin-users/create",
+        json={"username": "sktnew123", "password": "TestPassword2026!", "role": "super_admin"},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 400
+
+
+def test_api_admin_users_create_rejects_short_password(client, monkeypatch):
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "sktmaster123"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/admin-users/create",
+        json={"username": "sktnew123", "password": "short", "role": "security_viewer"},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 400
+
+
+def test_api_admin_users_create_succeeds_for_super_admin(client, monkeypatch):
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
+    monkeypatch.setattr(db, "create_admin_user", lambda username, password, role: True)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "sktmaster123"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/admin-users/create",
+        json={"username": "sktviewer123", "password": "TestViewer2026!", "role": "security_viewer"},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"success": True}
+
+
+def test_api_admin_users_delete_rejects_super_admin_target(client, monkeypatch):
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
+    monkeypatch.setattr(db, "get_admin_role_by_id", lambda admin_id: "super_admin")
+
+    def _fail_if_called(admin_id):
+        raise AssertionError("super_admin 대상인데 delete_admin_user가 호출됐습니다")
+
+    monkeypatch.setattr(db, "delete_admin_user", _fail_if_called)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "sktmaster123"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/admin-users/delete",
+        json={"admin_id": 1},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 400
+
+
+def test_api_admin_users_delete_succeeds_for_non_super_admin_target(client, monkeypatch):
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
+    monkeypatch.setattr(db, "get_admin_role_by_id", lambda admin_id: "security_viewer")
+    monkeypatch.setattr(db, "delete_admin_user", lambda admin_id: admin_id == 2)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "sktmaster123"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/admin-users/delete",
+        json={"admin_id": 2},
+        headers={"X-CSRFToken": token},
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"success": True}
 
 
 # ============================================================================
