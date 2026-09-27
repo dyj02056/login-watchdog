@@ -308,13 +308,20 @@ def consider_early_warning(
     브루트포스)는 context_count에 distinct_usernames를, LOCK_ACCOUNT(분산
     브루트포스)는 context_count에 distinct_ips·context_ip에 이번 시도의 IP를,
     ALERT_ONLY 유형들은 path에 관련 경로를 담아 나중에 execute_approved_request()가
-    승인 시 실행할 조치에 그대로 넘겨준다.
+    승인 시 실행할 조치에 그대로 넘겨준다. path/context_count는 access_requests에
+    저장하는 용도와 별개로, llm_client.judge_early_warning()에게 판단 근거로도
+    그대로 전달한다 — 처음 버전은 이 값들을 계산해두고도 LLM에게는 안 보여주고
+    있었다(login_watchdog_expansion_plan.md 논의).
     """
     if db.get_pending_request(event_type, target_kind, target_value) is not None:
         return
 
     label = _EARLY_WARNING_LABELS.get(event_type, event_type)
-    judgment = llm_client.judge_early_warning(label, target_kind, target_value, count, threshold)
+    prior_occurrences = db.count_recent_requests_for_target(event_type, target_kind, target_value)
+    judgment = llm_client.judge_early_warning(
+        label, target_kind, target_value, count, threshold,
+        path=path, context_count=context_count, prior_occurrences=prior_occurrences,
+    )
     if judgment is None or not judgment.get("risky"):
         return
 

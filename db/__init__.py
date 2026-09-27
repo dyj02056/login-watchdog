@@ -32,6 +32,7 @@
 
 from ._client import _now_iso, get_client
 from .access_requests import (
+    count_recent_requests_for_target,
     decide_request,
     get_pending_request,
     get_request,
@@ -240,4 +241,5 @@ __all__ = [
     "list_pending_requests",
     "get_request",
     "decide_request",
+    "count_recent_requests_for_target",
 ]

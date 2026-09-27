@@ -11,9 +11,41 @@
 # db.get_client() 호출 이유는 db/attempts.py 상단 설명 참고.
 # ============================================================================
 
+from datetime import datetime, timedelta, timezone
+
 from postgrest.exceptions import APIError
 
 import db
+
+
+def count_recent_requests_for_target(
+    event_type: str, target_kind: str, target_value: str, hours: int = 24
+) -> int:
+    """이 대상이 최근 `hours`시간(기본 24시간) 동안 이미 몇 번이나 조기 경보
+    대상(PENDING/APPROVED/REJECTED 상태 전부 포함)이 됐는지 센다.
+
+    judge_early_warning()에게 "지금 이 순간의 숫자 하나"만 보여주면 "일부러
+    기준치를 피해 가려는 반복 패턴인지"를 판단할 근거가 없다는 문제
+    (login_watchdog_expansion_plan.md 논의)를 메우려고 추가했다.
+
+    다만 이 표는 LLM이 risky=True로 판단했을 때만 행이 생긴다
+    (soar.consider_early_warning 참고) — risky=False로 넘어간 근처 구간
+    진입은 어디에도 기록되지 않으므로, 이 값은 "완전한 이력"이 아니라
+    "과거에 이미 위험하다고 판단된 적이 있는 횟수"까지만 알려주는 부분적인
+    신호라는 한계가 있다.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    res = (
+        db.get_client()
+        .table("access_requests")
+        .select("request_id", count="exact")
+        .eq("event_type", event_type)
+        .eq("target_kind", target_kind)
+        .eq("target_value", target_value)
+        .gte("requested_at", cutoff)
+        .execute()
+    )
+    return res.count or 0
 
 
 def get_pending_request(event_type: str, target_kind: str, target_value: str) -> dict | None:
