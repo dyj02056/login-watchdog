@@ -233,6 +233,13 @@ def handle_not_found(error):
     suspicious, count, is_first_over_threshold = detector.is_web_scanning(ip)
     if suspicious and is_first_over_threshold:
         soar.notify_web_scanning(ip, count, request.path)
+    elif not suspicious and count >= config.WEB_SCANNING_ALERT_THRESHOLD - config.EARLY_WARNING_BAND:
+        # 아직 기준치는 안 넘었지만 코앞이면 LLM에게 조기 경보 여부를 물어본다
+        # (Track A, guide31).
+        soar.consider_early_warning(
+            "WEB_SCANNING", "ALERT_ONLY", "ip", ip, count, config.WEB_SCANNING_ALERT_THRESHOLD,
+            path=request.path,
+        )
 
     return error.get_response()
 
@@ -278,6 +285,43 @@ def track_page_access():
     suspicious, count, is_first_over_threshold = detector.is_page_access_suspicious(ip, request.path)
     if suspicious and is_first_over_threshold:
         soar.notify_page_access(ip, count, request.path)
+    elif not suspicious and count >= config.PAGE_ACCESS_ALERT_THRESHOLD - config.EARLY_WARNING_BAND:
+        soar.consider_early_warning(
+            "PAGE_ACCESS", "ALERT_ONLY", "ip", ip, count, config.PAGE_ACCESS_ALERT_THRESHOLD,
+            path=request.path,
+        )
+
+
+@app.before_request
+def track_api_access():
+    """같은 IP가 짧은 시간 안에 서로 다른 /api/* 경로를 여러 개 호출하는지
+    관찰하고, 매크로/봇 패턴으로 의심되면 알린다 (Track C guide29, 매크로/봇 탐지).
+
+    track_page_access()와 별도 훅으로 둔 이유: track_page_access()는 GET만,
+    "같은 경로 하나"의 반복만 본다 — 이 훅은 메서드를 가리지 않고(POST 포함),
+    "서로 다른 여러 경로"에 걸친 패턴을 본다. 서로 다른 종류의 수상함이라
+    하나로 합치지 않는다.
+
+    _PAGE_ACCESS_EXCLUDED_ENDPOINTS를 그대로 재사용해서 dashboard.js/board.js의
+    자동 폴링 API는 여기서도 제외한다 — 어차피 경로 하나만 반복 호출하므로
+    이 탐지(서로 다른 경로 개수)에는 원래 걸리지 않지만, 표를 불필요하게
+    불리지 않기 위해 애초에 기록하지 않는다.
+    """
+    if request.url_rule is None or not request.path.startswith("/api/"):
+        return
+    if request.endpoint in _PAGE_ACCESS_EXCLUDED_ENDPOINTS:
+        return
+
+    ip = get_request_ip()
+    db.log_api_access(ip, request.path, request.method)
+
+    suspicious, count, is_first_over_threshold = detector.is_macro_pattern_suspicious(ip)
+    if suspicious and is_first_over_threshold:
+        soar.notify_macro_pattern(ip, count)
+    elif not suspicious and count >= config.MACRO_DISTINCT_API_THRESHOLD - config.EARLY_WARNING_BAND:
+        soar.consider_early_warning(
+            "API_MACRO_PATTERN", "ALERT_ONLY", "ip", ip, count, config.MACRO_DISTINCT_API_THRESHOLD,
+        )
 
 
 # ============================================================================

@@ -151,6 +151,68 @@ def send_page_access_alert(ip: str, count: int, path: str) -> None:
     _send_slack_message(message)
 
 
+def send_incident_escalation_alert(ip: str, event_types: list[str], severity_max: str) -> None:
+    """한 IP에서 여러 종류의 공격이 겹쳐 사건(security_incidents)이 심각한
+    수준에 도달했을 때, 개별 이벤트 알림과 별도로 "복합 공격 발생"을 강조해서
+    알린다 (Track C guide28, SOAR 플레이북).
+
+    send_lockout_alert() 등 개별 이벤트 알림은 이미 각자 따로 나가고 있으므로,
+    이 알림은 "그 이벤트들이 사실 한 IP에서 겹치고 있다"는 상관관계 자체를
+    강조하는 것이 목적이다 — correlate.py가 이미 CRITICAL·서로 다른 유형
+    config.INCIDENT_ESCALATION_MIN_EVENT_TYPES개 이상일 때만, 그리고 사건당
+    한 번만(db.mark_incident_escalated) 호출한다.
+    """
+    message = (
+        ":bangbang: [CRITICAL] 로그인 워치독 SOAR 플레이북 알림\n"
+        f"IP: {ip}\n"
+        f"연관된 공격 유형 {len(event_types)}종: {', '.join(event_types)}\n"
+        f"최고 위험등급: {severity_max}\n"
+        "판단: 한 출처에서 여러 단계에 걸친 공격 흐름으로 의심됨 (SIEM 상관분석)\n"
+        "조치: 관리자 대시보드 '연관 사건' 표에서 상세 확인 요망"
+    )
+    _send_slack_message(message)
+
+
+def send_macro_pattern_alert(ip: str, count: int) -> None:
+    """매크로/봇 의심(짧은 시간 안에 서로 다른 API 여러 개 호출)이 감지됐다는
+    사실을 Slack에 알린다 (Track C guide29). send_web_scanning_alert()와
+    마찬가지로 잠그지 않는다 — 특정 경로 하나가 아니라 여러 경로에 걸친
+    패턴이라 "이 경로를 막는다" 같은 조치 자체가 성립하지 않고, 관찰(알림)까지만
+    자동화한다.
+    """
+    message = (
+        ":robot_face: [MEDIUM] 로그인 워치독 알림\n"
+        "공격 유형: 매크로/봇 의심 (짧은 시간 안에 서로 다른 API 다수 호출)\n"
+        f"시도 IP: {ip}\n"
+        f"최근 {config.DETECTION_WINDOW_SECONDS}초간 호출한 서로 다른 API 경로 수: {count}개\n"
+        "조치: 별도 잠금 없음 (관찰 목적)"
+    )
+    _send_slack_message(message)
+
+
+def send_pending_approval_alert(
+    label: str, target_kind: str, target_value: str, count: int, threshold: int, reason: str
+) -> None:
+    """LLM이 "임계값 코앞" 구간에서 위험하다고 판단해 access_requests에 새
+    PENDING 요청을 등록했을 때, 관리자에게 확인을 요청하는 알림을 보낸다
+    (Track A, guide31).
+
+    다른 알림들과 달리 이 알림은 "이미 조치가 실행됐다"는 통보가 아니라
+    "아직 아무 조치도 안 했으니 대시보드에서 승인/반려를 결정해달라"는
+    요청이다 — 그래서 메시지 끝의 "조치" 줄도 다른 함수들처럼 완료형이 아니라
+    요청형으로 적는다.
+    """
+    message = (
+        ":robot_face: [AI 조기 경보] 로그인 워치독 알림\n"
+        f"패턴: {label}\n"
+        f"대상({target_kind}): {target_value}\n"
+        f"현재 수치: {count}회 (자동 대응 기준치 {threshold}회에는 아직 도달하지 않음)\n"
+        f"AI 판단 근거: {reason}\n"
+        "조치: 아직 자동 실행 없음 — 관리자 대시보드 'AI 조기 경보' 표에서 승인/반려 요망"
+    )
+    _send_slack_message(message)
+
+
 def send_unauthorized_access_alert(ip: str, count: int, path: str) -> None:
     """Unauthorized Access(로그인 세션 없이 관리자 API 반복 호출)가 의심된다는
     사실을 Slack에 알린다. send_web_scanning_alert()와 마찬가지로 잠그지는

@@ -39,6 +39,13 @@ def flask_app(monkeypatch):
     monkeypatch.setattr(db, "log_page_access_attempt", lambda ip, path: None)
     monkeypatch.setattr(detector, "is_page_access_suspicious", lambda ip, path: (False, 1, False))
 
+    # track_api_access()(Track C guide29, 매크로/봇 탐지)도 /api/*로 가는 거의
+    # 모든 요청마다 실행되는 before_request 훅이라, 위 track_page_access()와
+    # 같은 이유로 기본값을 막아둔다 — 이걸 막아두지 않으면 /api/status 등을
+    # 호출하는 기존 테스트 수십 개가 전부 진짜 Supabase로 요청을 시도하게 된다.
+    monkeypatch.setattr(db, "log_api_access", lambda ip, path, method: None)
+    monkeypatch.setattr(detector, "is_macro_pattern_suspicious", lambda ip: (False, 1, False))
+
     # 이전 테스트가 이미 app을 import해둔 상태일 수 있으므로, sys.modules에서
     # 지워서 위의 monkeypatch가 적용된 새 환경으로 app.py가 다시 실행되게 한다.
     sys.modules.pop("app", None)

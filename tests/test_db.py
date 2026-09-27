@@ -65,6 +65,14 @@ class _FakeQuery:
         self.calls.append(("is_", args, kwargs))
         return self
 
+    @property
+    def not_(self):
+        # Supabase의 not_는 메서드가 아니라 속성이다 — .not_.is_(...)처럼 다음에
+        # 오는 조건을 부정한다("NOT resolved_at IS NULL" = "해결됨"). 이 가짜
+        # 객체도 체이닝만 이어가면 되므로 self를 그대로 돌려준다.
+        self.calls.append(("not_", (), {}))
+        return self
+
     def limit(self, *args, **kwargs):
         return self
 
@@ -159,6 +167,119 @@ def test_verify_admin_credentials_hashes_even_when_username_not_found(monkeypatc
 
     assert len(calls) == 1
     assert calls[0][0] == admin_module._DUMMY_PASSWORD_HASH
+
+
+def test_get_admin_role_returns_stored_role(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"role": "super_admin"}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.get_admin_role("sktmaster123")
+
+    assert result == "super_admin"
+
+
+def test_get_admin_role_none_when_username_not_found(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.get_admin_role("no_such_admin")
+
+    assert result is None
+
+
+def test_has_permission_true_when_row_exists(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"role": "security_admin"}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.has_permission("security_admin", "unlock_ip")
+
+    assert result is True
+
+
+def test_has_permission_false_when_no_matching_row(monkeypatch):
+    # security_viewer는 permissions 표에 아무 행도 없으므로(guide26 시드 데이터),
+    # 어떤 action을 물어봐도 항상 False여야 한다.
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.has_permission("security_viewer", "unlock_ip")
+
+    assert result is False
+
+
+def test_list_admin_users_returns_rows_from_client(monkeypatch):
+    rows = [
+        {"id": 1, "username": "sktmaster123", "role": "super_admin", "created_at": "2026-01-01T00:00:00Z"},
+        {"id": 2, "username": "sktviewer123", "role": "security_viewer", "created_at": "2026-01-02T00:00:00Z"},
+    ]
+    fake_client = _FakeQuery(rows=rows)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.list_admin_users()
+
+    assert result == rows
+
+
+def test_get_admin_role_by_id_returns_stored_role(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"role": "security_admin"}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.get_admin_role_by_id(2)
+
+    assert result == "security_admin"
+
+
+def test_get_admin_role_by_id_none_when_not_found(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.get_admin_role_by_id(999)
+
+    assert result is None
+
+
+def test_create_admin_user_true_when_username_available(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.create_admin_user("sktviewer123", "TestViewer2026!", "security_viewer")
+
+    assert result is True
+    insert_calls = [call for call in fake_client.calls if call[0] == "insert"]
+    assert len(insert_calls) == 1
+    inserted_row = insert_calls[0][1][0]
+    assert inserted_row["username"] == "sktviewer123"
+    assert inserted_row["role"] == "security_viewer"
+    assert inserted_row["password_hash"] != "TestViewer2026!"  # 평문이 아니라 해시로 저장됨
+
+
+def test_create_admin_user_false_when_username_taken(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 1}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.create_admin_user("sktviewer123", "TestViewer2026!", "security_viewer")
+
+    assert result is False
+    assert not any(call[0] == "insert" for call in fake_client.calls)
+
+
+def test_delete_admin_user_true_when_row_was_deleted(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 2}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.delete_admin_user(2)
+
+    assert result is True
+    assert ("delete", (), {}) in fake_client.calls
+
+
+def test_delete_admin_user_false_when_id_not_found(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.delete_admin_user(999)
+
+    assert result is False
 
 
 def test_count_recent_distinct_usernames_dedupes_rows(monkeypatch):
@@ -623,6 +744,23 @@ def test_list_security_events_returns_rows_and_count_from_client(monkeypatch):
     assert total == 9
 
 
+def test_list_resolved_critical_events_since_filters_by_severity_and_resolved(monkeypatch):
+    # list_attempts_since()와 동일한 패턴 — scripts/tune_thresholds.py(Track C
+    # guide30)가 이 함수로 조기 해제 비율을 계산한다.
+    rows = [
+        {"event_type": "BRUTE_FORCE", "detected_at": "2026-09-25T09:00:00+00:00", "resolved_at": "2026-09-25T09:01:00+00:00"},
+    ]
+    fake_client = _FakeQuery(rows=rows)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.list_resolved_critical_events_since(24)
+
+    assert result == rows
+    assert ("eq", ("severity", "CRITICAL"), {}) in fake_client.calls
+    assert ("not_", (), {}) in fake_client.calls
+    assert ("is_", ("resolved_at", "null"), {}) in fake_client.calls
+
+
 def test_resolve_security_event_true_when_row_was_updated(monkeypatch):
     # 아직 미해결(resolved_at이 비어있음)이었던 이벤트만 실제로 업데이트되므로,
     # Supabase가 업데이트된 행을 돌려주면 "진짜 처리됐다"는 뜻이다.
@@ -771,3 +909,229 @@ def test_get_latest_comment_info_with_no_comments(monkeypatch):
     result = db.get_latest_comment_info(1)
 
     assert result == {"count": 0, "latest_at": None}
+
+
+# ============================================================================
+# security_incidents 표 관련 함수 (Track C guide27, SIEM 상관분석)
+# ============================================================================
+
+def test_list_security_incidents_returns_rows_and_count_from_client(monkeypatch):
+    # list_security_events()와 동일한 페이지네이션 방식 — 관리자 대시보드의
+    # "연관 사건" 표에 쓰인다.
+    rows = [
+        {"id": 2, "ip_address": "9.9.9.9", "event_types": ["BRUTE_FORCE", "WEB_SCANNING"], "status": "OPEN"},
+        {"id": 1, "ip_address": "1.1.1.1", "event_types": ["UNAUTHORIZED_ACCESS", "WEB_SCANNING"], "status": "CLOSED"},
+    ]
+    fake_client = _FakeQuery(rows=rows, count=5)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result, total = db.list_security_incidents()
+
+    assert result == rows
+    assert total == 5
+
+
+def test_get_recent_distinct_event_types_returns_sorted_unique_types(monkeypatch):
+    rows = [{"event_type": "WEB_SCANNING"}, {"event_type": "BRUTE_FORCE"}, {"event_type": "WEB_SCANNING"}]
+    fake_client = _FakeQuery(rows=rows)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.get_recent_distinct_event_types("9.9.9.9", 5)
+
+    assert result == ["BRUTE_FORCE", "WEB_SCANNING"]
+
+
+def test_get_open_incident_returns_row_when_exists(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 1, "event_types": ["BRUTE_FORCE"], "severity_max": "CRITICAL"}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.get_open_incident("9.9.9.9")
+
+    assert result == {"id": 1, "event_types": ["BRUTE_FORCE"], "severity_max": "CRITICAL"}
+
+
+def test_get_open_incident_returns_none_when_no_open_incident(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.get_open_incident("9.9.9.9") is None
+
+
+def test_close_open_incident_for_ip_filters_by_ip_and_open_status(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 1}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.close_open_incident_for_ip("9.9.9.9")
+
+    assert ("eq", ("ip_address", "9.9.9.9"), {}) in fake_client.calls
+    assert ("eq", ("status", "OPEN"), {}) in fake_client.calls
+    assert ("update", ({"status": "CLOSED"},), {}) in fake_client.calls
+
+
+def test_record_incident_inserts_new_incident_when_none_open(monkeypatch):
+    from db import incidents as incidents_module
+
+    # record_incident()는 db/incidents.py 안에서 get_open_incident을 이름으로
+    # 직접 부르므로(같은 모듈 안), db.get_open_incident이 아니라
+    # incidents_module.get_open_incident을 바꿔치기해야 실제로 적용된다.
+    monkeypatch.setattr(incidents_module, "get_open_incident", lambda ip: None)
+    calls = []
+
+    def fake_insert_incident(ip, event_types, severity_max):
+        calls.append((ip, event_types, severity_max))
+        return 99
+
+    monkeypatch.setattr(incidents_module, "_insert_incident", fake_insert_incident)
+    monkeypatch.setattr(
+        incidents_module,
+        "_update_incident",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("열린 사건이 없는데 _update_incident가 호출되면 안 된다")
+        ),
+    )
+
+    result = db.record_incident("9.9.9.9", ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")
+
+    assert calls == [("9.9.9.9", ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")]
+    # 새로 연 사건이므로 escalated는 항상 False에서 시작해야 한다(Track C guide28).
+    assert result == {
+        "id": 99,
+        "event_types": ["BRUTE_FORCE", "WEB_SCANNING"],
+        "severity_max": "CRITICAL",
+        "escalated": False,
+    }
+
+
+def test_record_incident_merges_into_existing_open_incident(monkeypatch):
+    from db import incidents as incidents_module
+
+    existing = {"id": 5, "event_types": ["BRUTE_FORCE"], "severity_max": "MEDIUM", "escalated": False}
+    monkeypatch.setattr(incidents_module, "get_open_incident", lambda ip: existing)
+    monkeypatch.setattr(
+        incidents_module,
+        "_insert_incident",
+        lambda *a, **k: (_ for _ in ()).throw(
+            AssertionError("이미 열린 사건이 있는데 _insert_incident가 호출되면 안 된다")
+        ),
+    )
+    calls = []
+    monkeypatch.setattr(
+        incidents_module,
+        "_update_incident",
+        lambda incident_id, event_types, severity_max: calls.append((incident_id, event_types, severity_max)),
+    )
+
+    # 새로 들어온 이벤트는 WEB_SCANNING/CRITICAL — 기존 사건(BRUTE_FORCE만, MEDIUM)과
+    # 병합되면 event_types는 합집합, severity_max는 더 높은 쪽(CRITICAL)이어야 한다.
+    result = db.record_incident("9.9.9.9", ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")
+
+    assert calls == [(5, ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")]
+    assert result == {
+        "id": 5,
+        "event_types": ["BRUTE_FORCE", "WEB_SCANNING"],
+        "severity_max": "CRITICAL",
+        "escalated": False,
+    }
+
+
+def test_record_incident_falls_back_to_merge_on_unique_violation(monkeypatch):
+    # get_open_incident()로 확인했을 땐 없었지만(None), 그 확인과 삽입 사이의
+    # 아주 짧은 틈에 동시 요청이 겹쳐 실제로는 이미 삽입돼 있던 경우(경쟁 조건)를
+    # 흉내낸다 — 두 번째 get_open_incident() 호출에서는 그 사건을 찾아야 한다.
+    from db import incidents as incidents_module
+
+    lookups = [None, {"id": 9, "event_types": ["WEB_SCANNING"], "severity_max": "MEDIUM", "escalated": False}]
+    monkeypatch.setattr(incidents_module, "get_open_incident", lambda ip: lookups.pop(0))
+
+    conflict = APIError({"code": "23505", "message": "duplicate key value violates unique constraint"})
+
+    def raising_insert(ip, event_types, severity_max):
+        raise conflict
+
+    monkeypatch.setattr(incidents_module, "_insert_incident", raising_insert)
+    calls = []
+    monkeypatch.setattr(
+        incidents_module,
+        "_update_incident",
+        lambda incident_id, event_types, severity_max: calls.append((incident_id, event_types, severity_max)),
+    )
+
+    result = db.record_incident("9.9.9.9", ["BRUTE_FORCE"], "CRITICAL")
+
+    assert calls == [(9, ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")]
+    assert result == {
+        "id": 9,
+        "event_types": ["BRUTE_FORCE", "WEB_SCANNING"],
+        "severity_max": "CRITICAL",
+        "escalated": False,
+    }
+
+
+def test_record_incident_reraises_non_conflict_errors(monkeypatch):
+    from db import incidents as incidents_module
+
+    monkeypatch.setattr(incidents_module, "get_open_incident", lambda ip: None)
+    other_error = APIError({"code": "42501", "message": "permission denied"})
+
+    def raising_insert(ip, event_types, severity_max):
+        raise other_error
+
+    monkeypatch.setattr(incidents_module, "_insert_incident", raising_insert)
+
+    with pytest.raises(APIError):
+        db.record_incident("9.9.9.9", ["BRUTE_FORCE"], "CRITICAL")
+
+
+def test_insert_incident_returns_new_row_id_from_client(monkeypatch):
+    from db import incidents as incidents_module
+
+    fake_client = _FakeQuery(rows=[{"id": 17}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = incidents_module._insert_incident("9.9.9.9", ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")
+
+    assert result == 17
+    inserted = next(call for call in fake_client.calls if call[0] == "insert")
+    assert inserted[1][0]["escalated"] is False
+    assert inserted[1][0]["status"] == "OPEN"
+
+
+def test_mark_incident_escalated_updates_expected_row(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 42, "escalated": True}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.mark_incident_escalated(42)
+
+    assert ("update", ({"escalated": True},), {}) in fake_client.calls
+    assert ("eq", ("id", 42), {}) in fake_client.calls
+
+
+# ============================================================================
+# api_access_log 표 관련 함수 (Track C guide29, 매크로/봇 탐지)
+# ============================================================================
+
+def test_log_api_access_inserts_expected_row(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.log_api_access("9.9.9.9", "/api/unlock", "POST")
+
+    assert (
+        "insert",
+        ({"ip_address": "9.9.9.9", "path": "/api/unlock", "method": "POST"},),
+        {},
+    ) in fake_client.calls
+
+
+def test_count_recent_distinct_api_paths_returns_number_of_unique_paths(monkeypatch):
+    rows = [
+        {"path": "/api/unlock"},
+        {"path": "/api/security-events/resolve"},
+        {"path": "/api/unlock"},
+    ]
+    fake_client = _FakeQuery(rows=rows)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.count_recent_distinct_api_paths("9.9.9.9")
+
+    assert result == 2
