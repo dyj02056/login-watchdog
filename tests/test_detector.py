@@ -81,14 +81,14 @@ def test_is_signup_rate_limited_false_below_limit(monkeypatch):
     # SIGNUP_RATE_LIMIT 기본값은 5 — 4번까지는 아직 제한하지 않는다.
     monkeypatch.setattr(db, "count_recent_signup_attempts", lambda ip: 4)
 
-    assert detector.is_signup_rate_limited("1.2.3.4") is False
+    assert detector.is_signup_rate_limited("1.2.3.4") == (False, 4)
 
 
 def test_is_signup_rate_limited_true_at_limit(monkeypatch):
     # 로그인 실패(초과부터 잠금)와 달리, 가입 시도는 "기준치 이상"이면 바로 막는다.
     monkeypatch.setattr(db, "count_recent_signup_attempts", lambda ip: 5)
 
-    assert detector.is_signup_rate_limited("1.2.3.4") is True
+    assert detector.is_signup_rate_limited("1.2.3.4") == (True, 5)
 
 
 def test_is_post_rate_limited_false_below_limit(monkeypatch):
@@ -213,6 +213,41 @@ def test_is_page_access_suspicious_true_but_not_first_over_threshold_when_alread
 
     assert suspicious is True
     assert count == 25
+    assert is_first_over_threshold is False
+
+
+# ============================================================================
+# is_macro_pattern_suspicious — 매크로/봇 탐지 (Track C guide29)
+# ============================================================================
+
+def test_is_macro_pattern_suspicious_false_at_exact_threshold(monkeypatch):
+    # MACRO_DISTINCT_API_THRESHOLD 기본값은 5 — 정확히 5개는 아직 아니다.
+    monkeypatch.setattr(db, "count_recent_distinct_api_paths", lambda ip: 5)
+
+    suspicious, count, is_first_over_threshold = detector.is_macro_pattern_suspicious("1.2.3.4")
+
+    assert suspicious is False
+    assert count == 5
+    assert is_first_over_threshold is False
+
+
+def test_is_macro_pattern_suspicious_true_and_first_over_threshold_when_exactly_crossing(monkeypatch):
+    monkeypatch.setattr(db, "count_recent_distinct_api_paths", lambda ip: 6)
+
+    suspicious, count, is_first_over_threshold = detector.is_macro_pattern_suspicious("1.2.3.4")
+
+    assert suspicious is True
+    assert count == 6
+    assert is_first_over_threshold is True
+
+
+def test_is_macro_pattern_suspicious_true_but_not_first_over_threshold_when_already_past_it(monkeypatch):
+    monkeypatch.setattr(db, "count_recent_distinct_api_paths", lambda ip: 9)
+
+    suspicious, count, is_first_over_threshold = detector.is_macro_pattern_suspicious("1.2.3.4")
+
+    assert suspicious is True
+    assert count == 9
     assert is_first_over_threshold is False
 
 

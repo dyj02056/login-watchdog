@@ -113,6 +113,46 @@ export function renderUsersTable(users) {
 }
 
 /**
+ * "관리자 계정 관리" 카드를 채운다. renderUsersTable()과 같은 패턴이지만,
+ * 이 데이터는 super_admin에게만 응답에 실려온다(routes/admin.py 참고) —
+ * data가 undefined면(다른 role로 로그인) 카드 자체를 숨긴다.
+ * @param {Array|undefined} adminUsers - [{id, username, role, created_at}, ...] | undefined
+ */
+export function renderAdminUsersTable(adminUsers) {
+    const section = document.getElementById("admin-users-section");
+
+    if (adminUsers === undefined) {
+        section.hidden = true;
+        return;
+    }
+    section.hidden = false;
+
+    const tbody = document.getElementById("admin-users-table-body");
+
+    // super_admin 행은 삭제 버튼을 아예 그리지 않는다 — "super_admin은 1명만
+    // 둔다"는 정책을 이 화면에서부터 지키게 한다(서버도 routes/admin.py에서
+    // 한 번 더 막는다).
+    tbody.innerHTML = adminUsers
+        .map(
+            (adminUser) => `
+                <tr>
+                    <td class="mono">${formatTime(adminUser.created_at)}</td>
+                    <td>${escapeHtml(adminUser.username)}</td>
+                    <td>${escapeHtml(adminUser.role)}</td>
+                    <td>
+                        ${
+                            adminUser.role === "super_admin"
+                                ? ""
+                                : `<button data-admin-id="${adminUser.id}" data-username="${escapeHtml(adminUser.username)}" class="delete-admin-user-btn">삭제</button>`
+                        }
+                    </td>
+                </tr>
+            `
+        )
+        .join("");
+}
+
+/**
  * 게시판 관리 — 최근 게시글 표를 채운다. 각 줄에 "삭제" 버튼이 붙는다.
  * @param {Array} posts - [{id, title, author_username, created_at}, ...]
  */
@@ -206,6 +246,98 @@ export function renderSecurityEventsTable(events) {
                     <td>${event.count}</td>
                     <td>${escapeHtml(event.action)}</td>
                     <td>${statusCell}</td>
+                </tr>
+            `;
+        })
+        .join("");
+}
+
+/**
+ * 연관 사건(SIEM 상관분석) 표를 채운다. 같은 IP가 짧은 시간 안에 서로 다른
+ * event_type을 2개 이상 남겼을 때만 여기 나타난다(correlate.py 참고) — 단발성
+ * 보안 이벤트는 위 "보안 이벤트" 표에만 남고 여기에는 묶이지 않는다.
+ * 이 표는 읽기 전용이다 — 사건은 IP 잠금이 풀릴 때 자동으로 CLOSED 처리되므로
+ * (soar.py의 close_open_incident_for_ip 참고), 보안 이벤트 표와 달리 "처리 완료"
+ * 버튼이 없다.
+ * @param {Array} incidents - [{id, ip_address, event_types, severity_max, status, first_event_at, last_event_at}, ...]
+ */
+export function renderSecurityIncidentsTable(incidents) {
+    const tbody = document.getElementById("security-incidents-table-body");
+
+    if (incidents.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">연관된 사건이 없습니다.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = incidents
+        .map((incident) => {
+            const severityClass = `severity-${incident.severity_max.toLowerCase()}`;
+            const severityLabel = SEVERITY_LABELS[incident.severity_max] || incident.severity_max;
+            const statusClass = incident.status === "OPEN" ? "success-false" : "success-true";
+            const statusLabel = incident.status === "OPEN" ? "진행 중" : "종료";
+            const eventTypes = incident.event_types.map((type) => escapeHtml(type)).join(", ");
+
+            return `
+                <tr>
+                    <td class="mono">${formatTime(incident.first_event_at)}</td>
+                    <td class="mono">${formatTime(incident.last_event_at)}</td>
+                    <td><span class="severity-badge ${severityClass}">${severityLabel}</span></td>
+                    <td>${eventTypes}</td>
+                    <td class="mono">${escapeHtml(incident.ip_address)}</td>
+                    <td class="${statusClass}">${statusLabel}</td>
+                </tr>
+            `;
+        })
+        .join("");
+}
+
+// 유형 코드(soar.py의 event_type과 동일한 문자열) → 화면에 보여줄 한글 라벨.
+// soar.py의 _EARLY_WARNING_LABELS와 같은 매핑을 자바스크립트 쪽에도 둔다 —
+// 서버가 라벨 문자열까지 내려주지 않고 event_type 코드만 보내므로(다른
+// 표들의 event_type 칸도 코드 그대로 보여주는 것과 같은 방식), 이 표만
+// 예외적으로 한글로 바꿔서 보여준다(AI 판단 근거와 나란히 놓였을 때 코드
+// 문자열보다 읽기 편하다).
+const EARLY_WARNING_LABELS = {
+    BRUTE_FORCE: "로그인 브루트포스(IP)",
+    DISTRIBUTED_BRUTE_FORCE: "계정 단위 분산 브루트포스",
+    SIGNUP_RATE_LIMIT: "회원가입 남용",
+    WEB_SCANNING: "Web Scanning",
+    UNAUTHORIZED_ACCESS: "Unauthorized Access",
+    PAGE_ACCESS: "반복 페이지 접근",
+    API_MACRO_PATTERN: "매크로/봇 패턴",
+};
+
+/**
+ * "AI 조기 경보" 표를 채운다 (Track A, guide31). 아직 임계값을 넘지 않은
+ * 상태에서 LLM이 위험하다고 판단해 등록한 PENDING 요청만 여기 나타난다 —
+ * 관리자가 승인하면 그 유형이 원래 임계값을 넘었을 때 하던 조치가 실행되고,
+ * 반려하면 아무 일도 일어나지 않는다(soar.py의 execute_approved_request()/
+ * reject_pending_request() 참고).
+ * @param {Array} requests - [{request_id, event_type, target_kind, target_value,
+ *   count, threshold, llm_reason, requested_at}, ...]
+ */
+export function renderAccessRequestsTable(requests) {
+    const tbody = document.getElementById("access-requests-table-body");
+
+    if (requests.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">대기 중인 AI 조기 경보가 없습니다.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = requests
+        .map((req) => {
+            const label = EARLY_WARNING_LABELS[req.event_type] || req.event_type;
+            return `
+                <tr>
+                    <td class="mono">${formatTime(req.requested_at)}</td>
+                    <td>${escapeHtml(label)}</td>
+                    <td class="mono">${escapeHtml(req.target_value)}</td>
+                    <td>${req.count} / ${req.threshold}</td>
+                    <td>${escapeHtml(req.llm_reason)}</td>
+                    <td>
+                        <button data-request-id="${req.request_id}" class="approve-request-btn">승인</button>
+                        <button data-request-id="${req.request_id}" class="reject-request-btn">반려</button>
+                    </td>
                 </tr>
             `;
         })

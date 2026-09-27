@@ -1,4 +1,12 @@
 import os
+import re
+
+# 아이디/비밀번호 형식 규칙. 원래 routes/auth.py 안에만 있었는데, Track B
+# guide26 이후 관리자 계정 생성(scripts/create_admin.py, 대시보드 "관리자 계정
+# 관리")도 같은 규칙을 써야 해서 여러 곳에서 참조하는 값들과 같은 원칙으로
+# config.py 한 곳에 모았다.
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{3,20}$")
+MIN_PASSWORD_LENGTH = 8
 
 FAILURE_THRESHOLD = int(os.environ.get("FAILURE_THRESHOLD", 5))
 DETECTION_WINDOW_SECONDS = int(os.environ.get("DETECTION_WINDOW_SECONDS", 60))
@@ -62,6 +70,37 @@ UNAUTHORIZED_ACCESS_ALERT_THRESHOLD = int(os.environ.get("UNAUTHORIZED_ACCESS_AL
 # 대상으로 한다 — 정상적인 수동 새로고침보다는 넉넉하게 잡는다
 # (attack_response_state.md 구현 대상 #4).
 PAGE_ACCESS_ALERT_THRESHOLD = int(os.environ.get("PAGE_ACCESS_ALERT_THRESHOLD", 20))
+
+# SIEM 상관분석(Track C guide27) 시간 창 — 같은 IP가 이 시간(분) 안에 서로 다른
+# event_type을 2개 이상 남기면 security_incidents로 묶는다. DETECTION_WINDOW_SECONDS
+# (60초)보다 훨씬 넉넉하게 잡은 이유: 개별 임계값 판정은 "지금 이 순간의 폭주"를
+# 잡는 것이지만, 상관분석은 "정찰(웹 스캐닝) → 공격(브루트포스)"처럼 여러 단계에
+# 걸친 공격 흐름을 잡아야 해서 더 넓은 시간대를 봐야 한다.
+INCIDENT_CORRELATION_WINDOW_MINUTES = int(os.environ.get("INCIDENT_CORRELATION_WINDOW_MINUTES", 5))
+
+# SOAR 플레이북 고도화(Track C guide28) 에스컬레이션 기준 — 사건(security_incidents)에
+# 묶인 서로 다른 event_type이 이 개수 이상이면서 severity_max가 CRITICAL이면,
+# correlate.py가 "복합 공격 발생" 에스컬레이션 알림을 별도로 보낸다. 상관분석 자체의
+# 기준(2개 이상)보다 한 단계 더 높게 잡은 이유: 2종류만 겹쳐도 사건으로는 묶어서
+# 대시보드에 보여주지만, 그 정도로 관리자에게 "추가로" 긴급 알림까지 보낼 필요는
+# 없고 정말 여러 단계에 걸친 공격(3종류 이상)일 때만 알림 피로 없이 강조한다.
+INCIDENT_ESCALATION_MIN_EVENT_TYPES = int(os.environ.get("INCIDENT_ESCALATION_MIN_EVENT_TYPES", 3))
+
+# 매크로/봇 탐지(Track C guide29) — 같은 IP가 DETECTION_WINDOW_SECONDS(60초) 안에
+# 서로 다른 /api/* 경로를 이 개수를 "초과"해서 호출하면 의심한다. is_suspicious()
+# 등과 같은 "초과" 기준을 쓰는 이유는 정상 사용자도 화면을 넘나들며 API 몇 개는
+# 우연히 부를 수 있어서, 로그인 실패 판정과 마찬가지로 약간의 여유를 준다 —
+# 사람이 몇 초 안에 6개 넘는 서로 다른 API를 손으로 누르긴 어렵지만, 스크립트는 쉽다.
+MACRO_DISTINCT_API_THRESHOLD = int(os.environ.get("MACRO_DISTINCT_API_THRESHOLD", 5))
+
+# LLM 조기 경보(Track A, guide31) — 임계값을 "아직 못 넘었지만 코앞"인 구간
+# (threshold - EARLY_WARNING_BAND ~ threshold - 1)에서만 Groq에게 "지켜볼
+# 필요가 있는지" 판단을 맡긴다. 이미 임계값을 넘긴 경우는 규칙이 이미 확정
+# 판단을 내린 상태이므로 이 구간에 해당하지 않는다 — soar.py의
+# consider_early_warning() 호출부(routes/auth.py, app.py, helpers.py) 참고.
+# 폭을 너무 넓게 잡으면(예: 4) 정상 사용자의 사소한 실수까지 AI 호출 대상이 되어
+# 비용/지연이 늘고, 너무 좁게 잡으면(0) 규칙을 살짝 피해 가는 패턴을 놓친다.
+EARLY_WARNING_BAND = int(os.environ.get("EARLY_WARNING_BAND", 2))
 
 # 전역 HTTP 플러딩(대량 요청 도배) 방어 — 위의 *_RATE_LIMIT들은 로그인/가입/글쓰기
 # 등 "특정 폼 제출"에만 걸려있고, 일반 GET 페이지는 아무리 요청이 쏟아져도 다
