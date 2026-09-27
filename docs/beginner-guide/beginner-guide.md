@@ -32,6 +32,12 @@
 23. [23단계 — 보안 이벤트 코드 리뷰에서 발견된 4가지 문제 수정](guide23_security_events_fixes.md)
 24. [24단계 — L7 공격 유형 점검과 보강 (분산 브루트포스 / 보안 헤더 / 봇 차단 등)](guide24_l7_attack_hardening.md)
 25. [25단계 — 팀원 브랜치 병합 정리 및 `daily_report.py` AI 보안 총평(Gemini) 연동](guide25_scripts_merge_ai_report.md)
+26. [26단계 — RBAC 기본 구조 (Track B 1/3)](guide26_rbac_foundation.md)
+27. [27단계 — SIEM 상관분석 엔진 (Track C 1/4)](guide27_siem_correlation.md)
+28. [28단계 — SOAR 플레이북 고도화 (Track C 2/4)](guide28_soar_playbook.md)
+29. [29단계 — API 엔드포인트별 매크로/봇 탐지 (Track C 3/4)](guide29_macro_bot_detection.md)
+30. [30단계 — 임계값 튜닝 리포트 (Track C 4/4)](guide30_threshold_tuning.md)
+31. [31단계 — LLM 조기 경보 에이전트 (Track A)](guide31_llm_judgment_agent.md)
 
 ---
 

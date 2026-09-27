@@ -18,6 +18,8 @@
 #   geoip_cache.py       — ip_locations (IP 위치 조회 캐시)
 #   board.py            — posts, comments, post_attempts, comment_attempts (게시판)
 #   security_events.py  — not_found/unauthorized/page_access_attempts, security_events
+#   incidents.py         — security_incidents (SIEM 상관분석, Track C guide27)
+#   api_access_log.py    — api_access_log (매크로/봇 탐지, Track C guide29)
 #
 # 이 파일은 위 각 모듈의 함수를 그대로 다시 내보내기(re-export)만 한다 — 그래서
 # app.py/detector.py/soar.py/scripts/*.py나 테스트 코드는 예전처럼
@@ -29,6 +31,14 @@
 # ============================================================================
 
 from ._client import _now_iso, get_client
+from .access_requests import (
+    count_recent_requests_for_target,
+    decide_request,
+    get_pending_request,
+    get_request,
+    insert_pending_request,
+    list_pending_requests,
+)
 from .account_lockouts import (
     create_account_lockout,
     get_active_account_lockout,
@@ -39,11 +49,18 @@ from .account_lockouts import (
 from .admin import (
     count_recent_admin_failures,
     count_recent_distinct_admin_usernames,
+    create_admin_user,
+    delete_admin_user,
     ensure_bootstrap_admin,
+    get_admin_id_by_username,
+    get_admin_role,
+    get_admin_role_by_id,
     list_admin_login_log,
+    list_admin_users,
     log_admin_attempt,
     verify_admin_credentials,
 )
+from .api_access_log import count_recent_distinct_api_paths, log_api_access
 from .attempts import (
     count_recent_distinct_ips_by_username,
     count_recent_distinct_usernames,
@@ -73,6 +90,15 @@ from .board import (
     update_post,
 )
 from .geoip_cache import get_cached_ip_locations, save_ip_location
+from .incidents import (
+    close_open_incident_for_ip,
+    get_open_incident,
+    get_recent_distinct_event_types,
+    list_security_incidents,
+    mark_incident_escalated,
+    record_incident,
+)
+from .roles import has_permission
 from .lockouts import (
     create_lockout,
     get_active_lockout,
@@ -93,6 +119,7 @@ from .security_events import (
     get_unresolved_security_event,
     insert_security_event,
     insert_security_event_or_bump,
+    list_resolved_critical_events_since,
     list_security_events,
     log_not_found_attempt,
     log_page_access_attempt,
@@ -122,6 +149,13 @@ __all__ = [
     "get_client",
     "ensure_bootstrap_admin",
     "verify_admin_credentials",
+    "get_admin_id_by_username",
+    "get_admin_role",
+    "has_permission",
+    "list_admin_users",
+    "get_admin_role_by_id",
+    "create_admin_user",
+    "delete_admin_user",
     "count_recent_admin_failures",
     "count_recent_distinct_admin_usernames",
     "log_admin_attempt",
@@ -193,4 +227,19 @@ __all__ = [
     "delete_security_event",
     "delete_resolved_security_events",
     "delete_all_security_events",
+    "get_recent_distinct_event_types",
+    "get_open_incident",
+    "record_incident",
+    "close_open_incident_for_ip",
+    "list_security_incidents",
+    "mark_incident_escalated",
+    "log_api_access",
+    "count_recent_distinct_api_paths",
+    "list_resolved_critical_events_since",
+    "get_pending_request",
+    "insert_pending_request",
+    "list_pending_requests",
+    "get_request",
+    "decide_request",
+    "count_recent_requests_for_target",
 ]

@@ -118,7 +118,8 @@ section h2 {
    delete-comment-btn 클래스가 전부 이 규칙을 공유). */
 .delete-user-btn,
 .delete-post-btn,
-.delete-comment-btn {
+.delete-comment-btn,
+.delete-admin-user-btn {
     background: var(--danger);
     color: white;
     border: none;
@@ -127,6 +128,38 @@ section h2 {
     cursor: pointer;
     font-family: var(--font-body);
     font-size: 12px;
+}
+
+/* "관리자 계정 관리" 카드의 생성 폼 — 아이디/비밀번호/역할 선택/버튼을 한 줄에
+   나란히 배치한다. 입력창 스타일은 auth.css의 로그인/회원가입 폼과 같은 토큰
+   (--input-border)을 쓰되, 이 화면은 카드 폭이 넓어서 줄바꿈되게 wrap만 켜둔다. */
+.admin-user-create-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.admin-user-create-form input,
+.admin-user-create-form select {
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-s);
+    padding: 6px 10px;
+    background: var(--surface);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 13px;
+}
+
+.admin-user-create-form button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: var(--radius-s);
+    padding: 6px 14px;
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-size: 13px;
 }
 
 .empty-state {
@@ -192,15 +225,44 @@ section h2 {
 
 /* 보안 이벤트 표는 8개 열이 전부 같은 너비로 나뉘면 "경로" 칸이 URL을 담기엔
    너무 좁아서 계속 여러 줄로 빽빽하게 끊긴다. 다른 열(등급/횟수처럼 짧은 값만
-   들어가는 칸)은 좁혀주고, 그만큼을 "경로" 칸에 몰아준다. 비율 합은 100%. */
-#security-events-table th:nth-child(1), #security-events-table td:nth-child(1) { width: 11%; } /* 시각 */
-#security-events-table th:nth-child(2), #security-events-table td:nth-child(2) { width: 8%; }  /* 등급 */
-#security-events-table th:nth-child(3), #security-events-table td:nth-child(3) { width: 11%; } /* 유형 */
-#security-events-table th:nth-child(4), #security-events-table td:nth-child(4) { width: 10%; } /* IP */
-#security-events-table th:nth-child(5), #security-events-table td:nth-child(5) { width: 34%; } /* 경로 */
-#security-events-table th:nth-child(6), #security-events-table td:nth-child(6) { width: 6%; }  /* 횟수 */
-#security-events-table th:nth-child(7), #security-events-table td:nth-child(7) { width: 10%; } /* 조치 */
-#security-events-table th:nth-child(8), #security-events-table td:nth-child(8) { width: 10%; } /* 상태 */
+   들어가는 칸)은 좁혀주고, 그만큼을 "경로" 칸에 몰아준다. 비율 합은 100%.
+   단, "등급" 칸은 너무 좁히면 배지("CRITICAL" 등)가 칸 너비보다 넓어져
+   overflow로 옆 "유형" 칸 글자 위에 겹쳐 보이므로, 배지가 한 줄로 들어갈
+   만큼의 최소 너비를 확보해둔다. */
+#security-events-table th:nth-child(1), #security-events-table td:nth-child(1) { width: 10%; } /* 시각 */
+#security-events-table th:nth-child(2), #security-events-table td:nth-child(2) { width: 13%; } /* 등급 */
+#security-events-table th:nth-child(3), #security-events-table td:nth-child(3) { width: 14%; } /* 유형 */
+#security-events-table th:nth-child(4), #security-events-table td:nth-child(4) { width: 9%; }  /* IP */
+#security-events-table th:nth-child(5), #security-events-table td:nth-child(5) { width: 31%; } /* 경로 */
+#security-events-table th:nth-child(6), #security-events-table td:nth-child(6) { width: 5%; }  /* 횟수 */
+#security-events-table th:nth-child(7), #security-events-table td:nth-child(7) { width: 9%; }  /* 조치 */
+#security-events-table th:nth-child(8), #security-events-table td:nth-child(8) { width: 9%; }  /* 상태 */
+
+/* 연관 사건 표(Track C guide27)도 "관련 유형" 칸에 여러 유형이 쉼표로
+   이어지므로, 보안 이벤트 표와 같은 이유로 비율을 따로 지정한다. "등급" 칸도
+   위와 같은 이유로 배지가 겹치지 않을 만큼 넓혀둔다. */
+#security-incidents-table th:nth-child(1), #security-incidents-table td:nth-child(1) { width: 15%; } /* 시작 */
+#security-incidents-table th:nth-child(2), #security-incidents-table td:nth-child(2) { width: 15%; } /* 마지막 활동 */
+#security-incidents-table th:nth-child(3), #security-incidents-table td:nth-child(3) { width: 12%; } /* 등급 */
+#security-incidents-table th:nth-child(4), #security-incidents-table td:nth-child(4) { width: 33%; } /* 관련 유형 */
+#security-incidents-table th:nth-child(5), #security-incidents-table td:nth-child(5) { width: 15%; } /* IP */
+#security-incidents-table th:nth-child(6), #security-incidents-table td:nth-child(6) { width: 10%; } /* 상태 */
+
+/* "AI 조기 경보" 표(Track A guide31)도 "AI 판단 근거" 칸에 문장이 들어가므로,
+   보안 이벤트 표의 "경로" 칸과 같은 이유로 비율을 따로 지정한다. */
+#access-requests-table th:nth-child(1), #access-requests-table td:nth-child(1) { width: 12%; } /* 요청 시각 */
+#access-requests-table th:nth-child(2), #access-requests-table td:nth-child(2) { width: 16%; } /* 유형 */
+#access-requests-table th:nth-child(3), #access-requests-table td:nth-child(3) { width: 12%; } /* 대상 */
+#access-requests-table th:nth-child(4), #access-requests-table td:nth-child(4) { width: 8%; }  /* 현재/기준 */
+#access-requests-table th:nth-child(5), #access-requests-table td:nth-child(5) { width: 36%; } /* AI 판단 근거 */
+#access-requests-table th:nth-child(6), #access-requests-table td:nth-child(6) { width: 16%; } /* 조치 */
+
+/* 배지가 오른쪽 여백 없이 칸 끝에 바짝 붙는 것도 보기 불편하므로,
+   너비 확보와 별개로 오른쪽에 약간의 여유 공간을 더 준다. */
+#security-events-table td:nth-child(2),
+#security-incidents-table td:nth-child(3) {
+    padding-right: 14px;
+}
 
 .data-table th {
     color: var(--ink-faint);

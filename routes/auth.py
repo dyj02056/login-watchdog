@@ -33,19 +33,14 @@ auth_bp = Blueprint("auth", __name__)
 # db.create_user()를 아예 호출하지 않고 바로 안내 메시지를 보여준다.
 # ============================================================================
 
-# 아이디: 영문자/숫자/밑줄(_)만 허용, 3~20자. `<`, `"`, 공백 같은 HTML/스크립트에
-# 쓰이는 특수문자는 애초에 통과하지 못한다.
-USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{3,20}$")
+# 아이디/비밀번호 규칙은 config.USERNAME_PATTERN / config.MIN_PASSWORD_LENGTH로
+# 옮겨졌다 — scripts/create_admin.py, 대시보드 "관리자 계정 관리"(Track B guide26)도
+# 같은 규칙을 써야 해서 공용 상수가 됐다(config.py 상단 주석 참고).
 
 # 이메일: "글자@글자.글자" 형태의 아주 기본적인 모양만 확인한다. 완벽한 RFC 5322
 # 검증은 아니지만(그런 정규식은 매우 복잡하다), "이메일처럼 안 생긴 값"을 걸러내는
 # 데는 충분하고, 실제 도달 가능 여부는 어차피 별도의 인증 메일 없이는 확인할 수 없다.
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-
-# 비밀번호 최소 길이. 복잡도(대소문자/특수문자 조합 강제)까지는 요구하지 않는다 —
-# 최근 보안 가이드라인(NIST 등)은 억지로 복잡한 조합을 강제하는 것보다 "충분히
-# 긴 비밀번호"를 권장하는 추세다.
-MIN_PASSWORD_LENGTH = 8
 
 
 # ============================================================================
@@ -91,10 +86,18 @@ def signup_submit():
     # 요청 빈도 제한이 전혀 없어서, 스크립트로 계정을 무제한 찍어낼 수 있었다
     # (18단계 보안 점검에서 발견 및 보완). 성공/실패와 무관하게 시도 자체를 세므로,
     # 검증에서 계속 걸러지는 값을 반복 제출하는 남용도 함께 막는다.
-    if detector.is_signup_rate_limited(ip):
+    rate_limited, signup_count = detector.is_signup_rate_limited(ip)
+    if rate_limited:
         soar.record_rejection("SIGNUP_RATE_LIMIT", ip, request.path, config.SIGNUP_RATE_LIMIT)
         flash("너무 많은 가입 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.")
         return render_template("signup.html", signup_enabled=True)
+    # 아직 기준치(SIGNUP_RATE_LIMIT)는 안 넘었지만 코앞이면, LLM에게 조기 경보
+    # 여부를 물어본다 (Track A, guide31 — config.EARLY_WARNING_BAND 설명 참고).
+    if signup_count >= config.SIGNUP_RATE_LIMIT - config.EARLY_WARNING_BAND:
+        soar.consider_early_warning(
+            "SIGNUP_RATE_LIMIT", "ALERT_ONLY", "ip", ip, signup_count, config.SIGNUP_RATE_LIMIT,
+            path=request.path,
+        )
     db.log_signup_attempt(ip)
 
     username = request.form.get("username", "").strip()
@@ -106,7 +109,7 @@ def signup_submit():
         flash("아이디, 이메일, 비밀번호를 모두 입력해주세요.")
         return render_template("signup.html", signup_enabled=True)
 
-    if not USERNAME_PATTERN.match(username):
+    if not config.USERNAME_PATTERN.match(username):
         flash("아이디는 영문자, 숫자, 밑줄(_)만 사용해 3~20자로 입력해주세요.")
         return render_template("signup.html", signup_enabled=True)
 
@@ -114,8 +117,8 @@ def signup_submit():
         flash("올바른 이메일 형식이 아닙니다.")
         return render_template("signup.html", signup_enabled=True)
 
-    if len(password) < MIN_PASSWORD_LENGTH:
-        flash(f"비밀번호는 최소 {MIN_PASSWORD_LENGTH}자 이상이어야 합니다.")
+    if len(password) < config.MIN_PASSWORD_LENGTH:
+        flash(f"비밀번호는 최소 {config.MIN_PASSWORD_LENGTH}자 이상이어야 합니다.")
         return render_template("signup.html", signup_enabled=True)
 
     if password != password_confirm:
@@ -208,6 +211,16 @@ def login_submit():
         soar.enforce_lockout(ip, failure_count, distinct_usernames)
         flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
     else:
+        # 아직 기준치(FAILURE_THRESHOLD)는 안 넘었지만 코앞이면, LLM에게 조기
+        # 경보 여부를 물어본다 (Track A, guide31). 공격자가 임계값을 살짝
+        # 피해 가려고 실패 횟수를 일부러 코앞에서 멈추는 패턴을 이 구간에서 잡는다.
+        if failure_count >= config.FAILURE_THRESHOLD - config.EARLY_WARNING_BAND:
+            distinct_usernames = detector.count_distinct_usernames(ip)
+            soar.consider_early_warning(
+                "BRUTE_FORCE", "LOCK_IP", "ip", ip, failure_count, config.FAILURE_THRESHOLD,
+                context_count=distinct_usernames,
+            )
+
         # IP 단위로는 아직 수상하지 않더라도, 이 계정이 여러 IP에 걸쳐 나뉘어서
         # 총합 기준으로 수상한 수준이 됐는지 확인한다 — 공격자가 IP를 돌려가며
         # (봇넷/프록시 로테이션) 한 계정만 노리는 분산 브루트포스를 잡아낸다.
@@ -217,6 +230,16 @@ def login_submit():
             soar.enforce_account_lockout(username, account_failure_count, distinct_ips, ip)
             flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
         else:
+            # 이 계정도 마찬가지로 임계값(ACCOUNT_FAILURE_THRESHOLD) 코앞이면
+            # 조기 경보 대상이다 — 여러 IP에 나눠 시도하되 각 IP·계정 총합
+            # 모두를 임계값 아래로 유지하려는 패턴을 잡아낸다.
+            if account_failure_count >= config.ACCOUNT_FAILURE_THRESHOLD - config.EARLY_WARNING_BAND:
+                distinct_ips = detector.count_distinct_ips_by_username(username)
+                soar.consider_early_warning(
+                    "DISTRIBUTED_BRUTE_FORCE", "LOCK_ACCOUNT", "account", username,
+                    account_failure_count, config.ACCOUNT_FAILURE_THRESHOLD,
+                    context_count=distinct_ips, context_ip=ip,
+                )
             # 사용자 존재 여부(아이디가 없는지, 비밀번호만 틀렸는지)를 구분해서
             # 알려주면 공격자에게 힌트를 주게 되므로, 항상 똑같은 문구로만 실패를 알린다.
             flash("아이디 또는 비밀번호가 올바르지 않습니다.")
