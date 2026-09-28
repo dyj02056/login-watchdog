@@ -14,7 +14,7 @@ import config
 import db
 import detector
 import soar
-from helpers import _attach_locations, get_request_ip, is_bot_submission, login_required
+from helpers import _attach_locations, get_request_ip, is_bot_submission, login_required, require_permission
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -139,9 +139,10 @@ def api_status():
     데이터를 주고받을 때 가장 널리 쓰이는 표준 형식이다. jsonify()는 파이썬
     딕셔너리를 이 JSON 형식으로 자동 변환해서 브라우저에 보내주는 Flask 도구다.
 
-    관리자 대시보드의 표 6개(최근 로그인 시도/회원/게시글/댓글/관리자 로그인 기록/
-    보안 이벤트)는 각자 ?attempts_page=, ?users_page=, ?posts_page=, ?comments_page=,
-    ?admin_log_page=, ?security_events_page=로 현재 보고 있는 페이지 번호를 받는다 —
+    관리자 대시보드의 표 7개(최근 로그인 시도/회원/게시글/댓글/관리자 로그인 기록/
+    보안 이벤트/연관 사건)는 각자 ?attempts_page=, ?users_page=, ?posts_page=,
+    ?comments_page=, ?admin_log_page=, ?security_events_page=,
+    ?security_incidents_page=로 현재 보고 있는 페이지 번호를 받는다 —
     dashboard.js가 board_list()와 동일한 페이지 번호 방식으로 표를 그릴 수 있도록,
     각 표의 이번 페이지 데이터와 전체 페이지 수(*_total_pages)를 함께 내려준다
     (예전에는 최근 N개만 고정으로 가져와서, 그 이상 쌓이면 오래된 항목이 화면에서
@@ -151,11 +152,11 @@ def api_status():
     조회와 개수 조회를 별도 쿼리 두 번으로 나누지 않고 한 번의 왕복으로 끝내기
     위해서다(db.list_recent_attempts() 설명 참고).
 
-    그래도 여전히 서로 무관한 쿼리 8개(로그인 시도/잠긴 IP/관리자 로그인 기록/
-    회원/회원가입 설정/게시글/댓글/보안 이벤트)를 하나씩 순서대로 기다리면, Supabase까지의
-    왕복 시간(쿼리 하나당 대략 150~500ms)이 그대로 다 더해져서 요청 하나가
-    2~3초까지 걸렸다 — 특히 Vercel 서버리스 환경은 매 요청마다 커넥션을 새로
-    맺어야 해서 체감이 더 심했다. ThreadPoolExecutor로 이 8개를 동시에 보내면
+    그래도 여전히 서로 무관한 쿼리 9개(로그인 시도/잠긴 IP/관리자 로그인 기록/
+    회원/회원가입 설정/게시글/댓글/보안 이벤트/연관 사건)를 하나씩 순서대로
+    기다리면, Supabase까지의 왕복 시간(쿼리 하나당 대략 150~500ms)이 그대로 다
+    더해져서 요청 하나가 2~3초까지 걸렸다 — 특히 Vercel 서버리스 환경은 매
+    요청마다 커넥션을 새로 맺어야 해서 체감이 더 심했다. ThreadPoolExecutor로 이 9개를 동시에 보내면
     전체 소요 시간이 "가장 느린 쿼리 하나" 수준으로 줄어든다(실측 약 5배 개선).
     IP 위치 조회(_attach_locations)는 attempts 결과가 있어야 시작할 수 있는
     후속 작업이라 별도로 남겨뒀지만, 나머지 futures가 백그라운드에서 계속
@@ -169,8 +170,10 @@ def api_status():
     comments_page = _page_param("comments_page")
     admin_log_page = _page_param("admin_log_page")
     security_events_page = _page_param("security_events_page")
+    security_incidents_page = _page_param("security_incidents_page")
+    access_requests_page = _page_param("access_requests_page")
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=11) as executor:
         attempts_future = executor.submit(db.list_recent_attempts, attempts_page, config.ADMIN_PAGE_SIZE)
         lockouts_future = executor.submit(db.list_active_lockouts)
         admin_log_future = executor.submit(db.list_admin_login_log, admin_log_page, config.ADMIN_PAGE_SIZE)
@@ -181,6 +184,20 @@ def api_status():
         security_events_future = executor.submit(
             db.list_security_events, security_events_page, config.ADMIN_PAGE_SIZE
         )
+        # 연관 사건(SIEM 상관분석, Track C guide27) 표 — 위 보안 이벤트와 같은
+        # 페이지네이션 방식이다.
+        security_incidents_future = executor.submit(
+            db.list_security_incidents, security_incidents_page, config.ADMIN_PAGE_SIZE
+        )
+        # "AI 조기 경보" 표(Track A, guide31) — 위 표들과 같은 페이지네이션 방식이다.
+        access_requests_future = executor.submit(
+            db.list_pending_requests, access_requests_page, config.ADMIN_PAGE_SIZE
+        )
+        # "관리자 계정 관리" 카드가 이 응답에 포함될지 결정하려면 지금 요청한
+        # 관리자의 role을 알아야 한다 — 다른 8개 쿼리와 같은 배치에 묶어서
+        # 병렬로 조회하면(순서상 9번째지만 동시에 실행됨) 이 role 조회 때문에
+        # 폴링 응답이 느려지지 않는다.
+        role_future = executor.submit(db.get_admin_role, session["admin_username"])
 
         attempts, attempts_count = attempts_future.result()
         recent_attempts = _attach_locations(attempts)  # 다른 future들이 도는 동안 함께 실행됨
@@ -191,9 +208,11 @@ def api_status():
         posts, posts_count = posts_future.result()
         comments, comments_count = comments_future.result()
         security_events, security_events_count = security_events_future.result()
+        security_incidents, security_incidents_count = security_incidents_future.result()
+        access_requests, access_requests_count = access_requests_future.result()
+        role = role_future.result()
 
-    return jsonify(
-        {
+    response_data = {
             "recent_attempts": recent_attempts,
             "attempts_total_pages": max(1, math.ceil(attempts_count / config.ADMIN_PAGE_SIZE)),
             "active_lockouts": active_lockouts,
@@ -211,12 +230,26 @@ def api_status():
             # 보안 이벤트(위험등급 통합) 섹션 — security-risk-response-summary.md 5절.
             "security_events": security_events,
             "security_events_total_pages": max(1, math.ceil(security_events_count / config.ADMIN_PAGE_SIZE)),
+            # 연관 사건(SIEM 상관분석) 섹션 — Track C guide27.
+            "security_incidents": security_incidents,
+            "security_incidents_total_pages": max(1, math.ceil(security_incidents_count / config.ADMIN_PAGE_SIZE)),
+            # AI 조기 경보(Track A guide31) 섹션 — 임계값을 아직 안 넘긴 코앞
+            # 구간에서 LLM이 위험하다고 판단해 등록한 PENDING 요청만 보여준다.
+            "access_requests": access_requests,
+            "access_requests_total_pages": max(1, math.ceil(access_requests_count / config.ADMIN_PAGE_SIZE)),
         }
-    )
+
+    # "관리자 계정 관리" 카드는 super_admin(manage_admin_users 권한 보유자)에게만
+    # 응답에 실어 보낸다 — viewer/security_admin의 화면에는 이 키 자체가 없어서
+    # dashboard.js가 카드를 숨긴다(다른 관리자 계정 목록이 노출되지 않음).
+    if role is not None and db.has_permission(role, "manage_admin_users"):
+        response_data["admin_users"] = db.list_admin_users()
+
+    return jsonify(response_data)
 
 
 @admin_bp.route("/api/unlock", methods=["POST"])
-@login_required
+@require_permission("unlock_ip")
 def api_unlock():
     """대시보드의 "즉시 해제" 버튼을 눌렀을 때 브라우저가 호출하는 API.
 
@@ -233,8 +266,46 @@ def api_unlock():
     return jsonify({"success": released})
 
 
+@admin_bp.route("/api/access-requests/approve", methods=["POST"])
+@require_permission("approve_pending_action")
+def api_access_requests_approve():
+    """대시보드 "AI 조기 경보" 표의 "승인" 버튼을 눌렀을 때 브라우저가 호출하는
+    API (Track A, guide31).
+
+    security_admin/super_admin 둘 다 가진다 — unlock_ip/resolve_security_event와
+    같은 급의 "IP·계정 관련 보안 조치" 권한이라, 그 두 액션과 동일한 두 역할에게
+    부여한다(login_watchdog_expansion_plan.md 논의 참고). session의
+    admin_username으로 admin_id를 찾아 "누가 승인했는지"를 access_requests에
+    함께 남긴다.
+    """
+    data = request.get_json(silent=True) or {}
+    request_id = data.get("request_id")
+    if not request_id:
+        return jsonify({"success": False, "error": "request_id 값이 필요합니다."}), 400
+
+    admin_id = db.get_admin_id_by_username(session["admin_username"])
+    executed = soar.execute_approved_request(request_id, admin_id)
+    return jsonify({"success": executed})
+
+
+@admin_bp.route("/api/access-requests/reject", methods=["POST"])
+@require_permission("approve_pending_action")
+def api_access_requests_reject():
+    """"AI 조기 경보" 표의 "반려" 버튼을 눌렀을 때 호출되는 API. 승인과 동일한
+    권한을 쓴다 — 승인/반려는 "같은 결정을 내릴 수 있는 권한"의 앞뒤 면일 뿐이다.
+    """
+    data = request.get_json(silent=True) or {}
+    request_id = data.get("request_id")
+    if not request_id:
+        return jsonify({"success": False, "error": "request_id 값이 필요합니다."}), 400
+
+    admin_id = db.get_admin_id_by_username(session["admin_username"])
+    rejected = soar.reject_pending_request(request_id, admin_id)
+    return jsonify({"success": rejected})
+
+
 @admin_bp.route("/api/security-events/resolve", methods=["POST"])
-@login_required
+@require_permission("resolve_security_event")
 def api_security_events_resolve():
     """대시보드의 "처리 완료" 버튼을 눌렀을 때 브라우저가 호출하는 API.
 
@@ -253,7 +324,7 @@ def api_security_events_resolve():
 
 
 @admin_bp.route("/api/users/delete", methods=["POST"])
-@login_required
+@require_permission("delete_user")
 def api_users_delete():
     """대시보드의 회원 목록에서 "삭제" 버튼을 눌렀을 때 호출되는 API.
 
@@ -270,7 +341,7 @@ def api_users_delete():
 
 
 @admin_bp.route("/api/settings/signup", methods=["POST"])
-@login_required
+@require_permission("toggle_signup")
 def api_settings_signup():
     """대시보드의 "회원가입 켜기/끄기" 토글을 눌렀을 때 호출되는 API.
 
@@ -289,7 +360,7 @@ def api_settings_signup():
 
 
 @admin_bp.route("/api/board/posts/delete", methods=["POST"])
-@login_required
+@require_permission("delete_post")
 def api_board_posts_delete():
     """관리자 대시보드의 "게시글 관리" 섹션에서 임의 게시글을 삭제할 때 호출되는 API.
 
@@ -307,7 +378,7 @@ def api_board_posts_delete():
 
 
 @admin_bp.route("/api/board/comments/delete", methods=["POST"])
-@login_required
+@require_permission("delete_comment")
 def api_board_comments_delete():
     """관리자 대시보드에서 임의 댓글을 삭제할 때 호출되는 API. 위 함수와 동일한 패턴."""
     data = request.get_json(silent=True) or {}
@@ -316,4 +387,62 @@ def api_board_comments_delete():
         return jsonify({"success": False, "error": "comment_id 값이 필요합니다."}), 400
 
     deleted = db.delete_comment(comment_id)
+    return jsonify({"success": deleted})
+
+
+# super_admin만 만들 수 있는 역할. 여기 super_admin을 넣지 않은 게 핵심 안전장치다 —
+# 이 화면(그리고 아래 삭제 API)으로는 super_admin 계정을 만들거나 지울 수 없게
+# 만들어서, "super_admin은 1명만 둔다"는 운영 정책(login_watchdog_expansion_plan.md
+# 논의)을 코드 수준에서도 지키게 한다.
+_CREATABLE_ADMIN_ROLES = ("security_viewer", "security_admin")
+
+
+@admin_bp.route("/api/admin-users/create", methods=["POST"])
+@require_permission("manage_admin_users")
+def api_admin_users_create():
+    """대시보드 "관리자 계정 관리" 카드의 생성 폼이 호출하는 API.
+
+    scripts/create_admin.py와 동일한 검증 규칙(아이디 형식, 비밀번호 길이)을
+    쓰고, db.create_admin_user()도 그대로 재사용한다 — 다만 역할은
+    _CREATABLE_ADMIN_ROLES 두 가지로만 제한한다. 화면(select 옵션)에서도
+    super_admin을 아예 안 보여주지만, fetch()를 직접 조작해 super_admin을
+    보내는 요청도 여기서 한 번 더 막아야 실질적인 방어가 된다.
+    """
+    data = request.get_json(silent=True) or {}
+    username = data.get("username", "")
+    password = data.get("password", "")
+    role = data.get("role", "")
+
+    if not config.USERNAME_PATTERN.match(username):
+        return jsonify({"success": False, "error": "아이디는 영문/숫자/밑줄 3~20자여야 합니다."}), 400
+    if len(password) < config.MIN_PASSWORD_LENGTH:
+        return jsonify({"success": False, "error": f"비밀번호는 최소 {config.MIN_PASSWORD_LENGTH}자 이상이어야 합니다."}), 400
+    if role not in _CREATABLE_ADMIN_ROLES:
+        return jsonify({"success": False, "error": "role은 security_viewer 또는 security_admin만 가능합니다."}), 400
+
+    created = db.create_admin_user(username, password, role)
+    if not created:
+        return jsonify({"success": False, "error": "이미 존재하는 아이디입니다."}), 400
+    return jsonify({"success": True})
+
+
+@admin_bp.route("/api/admin-users/delete", methods=["POST"])
+@require_permission("manage_admin_users")
+def api_admin_users_delete():
+    """대시보드 "관리자 계정 관리" 카드의 "삭제" 버튼이 호출하는 API.
+
+    삭제 전에 대상의 role을 먼저 조회해서 super_admin이면 거부한다 —
+    db.delete_admin_user() 자체는 그 구분을 하지 않으므로(db/admin.py 설명 참고),
+    여기서 막지 않으면 마지막 super_admin 계정까지 지워질 수 있다.
+    """
+    data = request.get_json(silent=True) or {}
+    admin_id = data.get("admin_id")
+    if not admin_id:
+        return jsonify({"success": False, "error": "admin_id 값이 필요합니다."}), 400
+
+    target_role = db.get_admin_role_by_id(admin_id)
+    if target_role == "super_admin":
+        return jsonify({"success": False, "error": "super_admin 계정은 이 화면에서 삭제할 수 없습니다."}), 400
+
+    deleted = db.delete_admin_user(admin_id)
     return jsonify({"success": deleted})

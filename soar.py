@@ -13,7 +13,32 @@
 from datetime import datetime, timezone
 
 import alert
+import correlate
 import db
+import llm_client
+
+
+def _record_event(
+    event_type: str,
+    severity: str,
+    ip: str,
+    path: str | None,
+    count: int,
+    action: str,
+    username: str | None = None,
+) -> None:
+    """security_events에 이벤트를 기록하고, 곧바로 상관분석 훅(correlate.py)을
+    호출한다 (Track C guide27).
+
+    soar.py 안에서 직접 db.insert_security_event()를 부르는 곳을 여기 하나로
+    모아둔 이유: correlate.check_and_correlate()를 매번 손으로 챙겨 부르게
+    하면, 새 조치 함수를 추가할 때 상관분석 훅을 빠뜨리기 쉽다.
+    """
+    if username is not None:
+        db.insert_security_event(event_type, severity, ip, path, count, action, username=username)
+    else:
+        db.insert_security_event(event_type, severity, ip, path, count, action)
+    correlate.check_and_correlate(ip, event_type, severity)
 
 
 def enforce_lockout(
@@ -51,7 +76,7 @@ def enforce_lockout(
         event_type = "PASSWORD_SPRAYING"
     else:
         event_type = "BRUTE_FORCE"
-    db.insert_security_event(event_type, "CRITICAL", ip, None, failure_count, "LOCKED")
+    _record_event(event_type, "CRITICAL", ip, None, failure_count, "LOCKED")
 
 
 def enforce_account_lockout(
@@ -72,7 +97,7 @@ def enforce_account_lockout(
     alert.send_account_lockout_alert(
         username, failure_count, datetime.now(timezone.utc), distinct_ip_count
     )
-    db.insert_security_event(
+    _record_event(
         "DISTRIBUTED_BRUTE_FORCE",
         "CRITICAL",
         triggering_ip,
@@ -102,7 +127,19 @@ def notify_bot_detected(ip: str, path: str) -> None:
     있다"는 관찰 정보이므로, notify_web_scanning() 등과 같은 급의 MEDIUM으로
     로그에만 남긴다 (L7 공격 보강 계획 Tier 3).
     """
-    db.insert_security_event("BOT_DETECTED", "MEDIUM", ip, path, 1, "REJECTED")
+    _record_event("BOT_DETECTED", "MEDIUM", ip, path, 1, "REJECTED")
+
+
+def notify_macro_pattern(ip: str, count: int) -> None:
+    """매크로/봇 의심 알림을 Slack으로 보내고, MEDIUM 이벤트로 기록한다
+    (Track C guide29). notify_web_scanning() 등과 마찬가지로 db.create_lockout()을
+    호출하지 않는다 — 경로 하나가 아니라 여러 경로에 걸친 패턴이라 잠글 단일
+    대상이 없고, 관찰(알림 + 이벤트 기록)까지만 자동화한다. path는 이 이벤트가
+    특정 경로 하나가 아니라 IP 전체의 패턴을 가리키므로 None으로 남겨둔다
+    (enforce_lockout이 IP 단위 CRITICAL 이벤트에 path=None을 쓰는 것과 같은 이유).
+    """
+    alert.send_macro_pattern_alert(ip, count)
+    _record_event("API_MACRO_PATTERN", "MEDIUM", ip, None, count, "ALERTED")
 
 
 def notify_web_scanning(ip: str, count: int, path: str) -> None:
@@ -114,7 +151,7 @@ def notify_web_scanning(ip: str, count: int, path: str) -> None:
     과한 조치가 된다. 그래서 여기서는 관찰(알림 + 이벤트 기록)만 한다.
     """
     alert.send_web_scanning_alert(ip, count, path)
-    db.insert_security_event("WEB_SCANNING", "MEDIUM", ip, path, count, "ALERTED")
+    _record_event("WEB_SCANNING", "MEDIUM", ip, path, count, "ALERTED")
 
 
 def notify_unauthorized_access(ip: str, count: int, path: str) -> None:
@@ -129,7 +166,7 @@ def notify_unauthorized_access(ip: str, count: int, path: str) -> None:
     알림을 받은 관리자가 직접 판단하게 남겨둔다.
     """
     alert.send_unauthorized_access_alert(ip, count, path)
-    db.insert_security_event("UNAUTHORIZED_ACCESS", "MEDIUM", ip, path, count, "ALERTED")
+    _record_event("UNAUTHORIZED_ACCESS", "MEDIUM", ip, path, count, "ALERTED")
 
 
 def notify_page_access(ip: str, count: int, path: str) -> None:
@@ -141,7 +178,7 @@ def notify_page_access(ip: str, count: int, path: str) -> None:
     기록)까지만 자동화하고, 잠글지 여부는 알림을 받은 관리자가 직접 판단하게 남겨둔다.
     """
     alert.send_page_access_alert(ip, count, path)
-    db.insert_security_event("PAGE_ACCESS", "MEDIUM", ip, path, count, "ALERTED")
+    _record_event("PAGE_ACCESS", "MEDIUM", ip, path, count, "ALERTED")
 
 
 def record_rejection(event_type: str, ip: str, path: str, count: int) -> None:
@@ -171,8 +208,9 @@ def record_rejection(event_type: str, ip: str, path: str, count: int) -> None:
     existing = db.get_unresolved_security_event(ip, event_type)
     if existing:
         db.update_security_event_count(existing["id"], existing["count"] + 1)
-        return
-    db.insert_security_event_or_bump(event_type, "HIGH", ip, path, count, "REJECTED")
+    else:
+        db.insert_security_event_or_bump(event_type, "HIGH", ip, path, count, "REJECTED")
+    correlate.check_and_correlate(ip, event_type, "HIGH")
 
 
 def try_release_expired_lockouts() -> None:
@@ -188,6 +226,7 @@ def try_release_expired_lockouts() -> None:
     for lockout in db.list_expired_active_lockouts():
         db.release_lockout(lockout["ip_address"])
         db.resolve_security_events_for_ip(lockout["ip_address"])
+        db.close_open_incident_for_ip(lockout["ip_address"])
 
 
 def manual_release(ip: str) -> bool:
@@ -207,4 +246,163 @@ def manual_release(ip: str) -> bool:
         return False
     db.release_lockout(ip)
     db.resolve_security_events_for_ip(ip)
+    db.close_open_incident_for_ip(ip)
     return True
+
+
+# ============================================================================
+# LLM 조기 경보 (Track A, guide31)
+#
+# 위의 enforce_lockout()/notify_*() 함수들은 전부 "규칙이 임계값을 넘었다고
+# 이미 확정 판단을 내린 뒤"에만 호출된다. 이 구간의 함수들은 그 반대 —
+# "아직 임계값을 못 넘었지만 코앞(config.EARLY_WARNING_BAND)인" 원래 아무
+# 조치도 없던 사각지대에서, LLM에게 "지켜볼 필요가 있는지" 한 번 더 물어보고
+# 위험하면 access_requests에 관리자 승인 대기 요청을 남긴다.
+#
+# 임계값을 이미 넘은 경우는 이 구간을 거치지 않는다 — 규칙이 이미 검증을
+# 끝낸 확정 판단이므로 LLM이 다시 판단할 이유도, 응답을 기다리며 대응을
+# 늦출 이유도 없다(login_watchdog_expansion_plan.md 논의 참고).
+# ============================================================================
+
+_EARLY_WARNING_LABELS = {
+    "BRUTE_FORCE": "로그인 브루트포스(IP)",
+    "DISTRIBUTED_BRUTE_FORCE": "계정 단위 분산 브루트포스",
+    "SIGNUP_RATE_LIMIT": "회원가입 남용",
+    "WEB_SCANNING": "Web Scanning",
+    "UNAUTHORIZED_ACCESS": "Unauthorized Access",
+    "PAGE_ACCESS": "반복 페이지 접근",
+    "API_MACRO_PATTERN": "매크로/봇 패턴",
+}
+
+
+def consider_early_warning(
+    event_type: str,
+    pending_action: str,
+    target_kind: str,
+    target_value: str,
+    count: int,
+    threshold: int,
+    path: str | None = None,
+    context_count: int | None = None,
+    context_ip: str | None = None,
+) -> None:
+    """임계값 코앞 구간에 진입한 대상 하나를 LLM에게 보여주고, 위험하다고
+    판단되면 access_requests에 PENDING 요청을 등록한다.
+
+    호출부(routes/auth.py, app.py, helpers.py)는 전부 "아직 suspicious가
+    False인" 분기에서만 이 함수를 부른다 — 이미 규칙이 조치를 실행하는
+    경우와 절대 겹치지 않는다.
+
+    이 함수는 절대 예외를 밖으로 던지지 않는다: LLM 호출이 실패하거나
+    GROQ_API_KEY가 없으면(llm_client.judge_early_warning이 None을 돌려줌)
+    그냥 조용히 넘어간다. 이 구간은 원래 Track A 이전에는 아무 조치도 없던
+    사각지대였으므로, "덤으로 추가한 조기 경보 기능"이 실패한다고 해서
+    로그인 흐름 자체가 막히거나 원래 있던 임계값 기반 방어가 약해지면
+    안 되기 때문이다.
+
+    같은 (event_type, target_kind, target_value)에 이미 PENDING 요청이 있으면
+    새로 LLM을 호출하지 않는다 — 관리자가 하나를 처리하기 전까지 매 요청마다
+    Groq를 부르고 Slack을 또 보내는 건 낭비이자 알림 피로다.
+
+    path/context_count/context_ip는 유형마다 의미가 다르다 — LOCK_IP(로그인
+    브루트포스)는 context_count에 distinct_usernames를, LOCK_ACCOUNT(분산
+    브루트포스)는 context_count에 distinct_ips·context_ip에 이번 시도의 IP를,
+    ALERT_ONLY 유형들은 path에 관련 경로를 담아 나중에 execute_approved_request()가
+    승인 시 실행할 조치에 그대로 넘겨준다. path/context_count는 access_requests에
+    저장하는 용도와 별개로, llm_client.judge_early_warning()에게 판단 근거로도
+    그대로 전달한다 — 처음 버전은 이 값들을 계산해두고도 LLM에게는 안 보여주고
+    있었다(login_watchdog_expansion_plan.md 논의).
+    """
+    if db.get_pending_request(event_type, target_kind, target_value) is not None:
+        return
+
+    label = _EARLY_WARNING_LABELS.get(event_type, event_type)
+    prior_occurrences = db.count_recent_requests_for_target(event_type, target_kind, target_value)
+    judgment = llm_client.judge_early_warning(
+        label, target_kind, target_value, count, threshold,
+        path=path, context_count=context_count, prior_occurrences=prior_occurrences,
+    )
+    if judgment is None or not judgment.get("risky"):
+        return
+
+    reason = judgment.get("reason", "")
+    db.insert_pending_request(
+        event_type,
+        pending_action,
+        target_kind,
+        target_value,
+        count,
+        threshold,
+        reason,
+        path=path,
+        context_count=context_count,
+        context_ip=context_ip,
+    )
+    alert.send_pending_approval_alert(label, target_kind, target_value, count, threshold, reason)
+
+
+# ALERT_ONLY 요청이 승인됐을 때 실행할 조치 — 이 유형들이 실제로 임계값을
+# 넘었을 때 이미 호출하는 notify_*()/record_rejection()을 그대로 재사용한다
+# (soar.py 상단 설계 원칙: "그 유형이 원래 하던 조치를 조금 더 일찍 실행"할
+# 뿐, 새로운 조치를 만들지 않는다). correlate.py의 PLAYBOOKS와 같은 이유로
+# 함수를 이름으로 감싸(람다) 호출 시점에 찾게 해서, 테스트에서
+# monkeypatch.setattr(soar, "notify_web_scanning", ...)로 바꿔치기한 게
+# 그대로 반영되게 한다.
+_ALERT_ONLY_DISPATCH = {
+    "SIGNUP_RATE_LIMIT": lambda r: record_rejection(
+        "SIGNUP_RATE_LIMIT", r["target_value"], r["path"] or "/signup", r["count"]
+    ),
+    "WEB_SCANNING": lambda r: notify_web_scanning(r["target_value"], r["count"], r["path"] or "-"),
+    "UNAUTHORIZED_ACCESS": lambda r: notify_unauthorized_access(
+        r["target_value"], r["count"], r["path"] or "-"
+    ),
+    "PAGE_ACCESS": lambda r: notify_page_access(r["target_value"], r["count"], r["path"] or "-"),
+    "API_MACRO_PATTERN": lambda r: notify_macro_pattern(r["target_value"], r["count"]),
+}
+
+
+def _run_pending_action(request: dict) -> None:
+    """승인이 확정되기 직전에, 이 요청의 pending_action에 맞는 실제 조치를 실행한다."""
+    pending_action = request["pending_action"]
+    if pending_action == "LOCK_IP":
+        enforce_lockout(request["target_value"], request["count"], request["context_count"] or 1)
+    elif pending_action == "LOCK_ACCOUNT":
+        enforce_account_lockout(
+            request["target_value"],
+            request["count"],
+            request["context_count"] or 1,
+            request["context_ip"] or "-",
+        )
+    elif pending_action == "ALERT_ONLY":
+        _ALERT_ONLY_DISPATCH[request["event_type"]](request)
+
+
+def execute_approved_request(request_id: int, admin_id: int) -> bool:
+    """관리자가 대시보드 "AI 조기 경보" 표에서 "승인" 버튼을 눌렀을 때 실행된다.
+
+    순서: 1) 요청이 아직 PENDING인지 확인 2) 그 유형이 원래 하던 조치를
+    지금 실행 3) db.decide_request()로 APPROVED 확정.
+
+    조치 실행과 상태 확정 사이가 완전한 원자적 트랜잭션은 아니다(db/_client.py
+    설명 참고 — 이 프로젝트는 Supabase REST API를 통하므로 파이썬에서 진짜
+    트랜잭션을 걸 수 없다). 다만 두 관리자가 "거의 동시에" 같은 요청을 두 번
+    승인하는 극히 드문 경쟁 조건이 이 함수의 마지막 db.decide_request() 단계
+    에서는 걸러지므로(두 번째 호출은 status가 이미 바뀌어 있어 False를 받음),
+    실제 조치가 중복 실행될 위험은 "완전히 동시에 눌렀을 때"로 한정된다.
+    """
+    request = db.get_request(request_id)
+    if request is None or request["status"] != "PENDING":
+        return False
+
+    _run_pending_action(request)
+    return db.decide_request(request_id, "APPROVED", admin_id)
+
+
+def reject_pending_request(request_id: int, admin_id: int) -> bool:
+    """관리자가 "반려" 버튼을 눌렀을 때 실행된다.
+
+    아무 조치도 실행하지 않고 상태만 REJECTED로 바꾼다 — 이 구간은 원래
+    규칙이 아무 것도 하지 않던 사각지대였으므로, 반려는 "AI의 조기 경보를
+    기각하고 원래 상태(관찰만 계속)로 되돌린다"는 뜻이다.
+    """
+    return db.decide_request(request_id, "REJECTED", admin_id)
