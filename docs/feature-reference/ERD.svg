@@ -1,0 +1,479 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2890 1262" width="2890" height="1262" font-family="Consolas, 'SFMono-Regular', Menlo, monospace">
+<rect x="0" y="0" width="2890" height="1262" fill="#f8fafc"/>
+<text x="60" y="46" font-size="26" font-weight="700" fill="#0f172a">login-watchdog &#8212; Supabase DB ERD</text>
+<text x="60" y="70" font-size="13.5" fill="#475569">테이블 22개 · 실선 = 실제 FK 제약 · 점선 = 컬럼 값으로만 연결되는 논리적 관계(FK 없음)</text>
+<rect x="0" y="74" width="2890" height="40" fill="#eef2f7"/>
+<g font-size="12" fill="#334155">
+<rect x="60" y="98" width="14" height="14" rx="3" fill="#2563eb"/>
+<text x="80" y="109.5">자산 / 콘텐츠</text>
+<rect x="207.12" y="98" width="14" height="14" rx="3" fill="#b45309"/>
+<text x="227.12" y="109.5">로그 (append-only)</text>
+<rect x="400.79999999999995" y="98" width="14" height="14" rx="3" fill="#047857"/>
+<text x="420.79999999999995" y="109.5">현재 상태 / 판정 결과</text>
+<line x1="598.0799999999999" y1="105" x2="628.0799999999999" y2="105" stroke="#0f172a" stroke-width="2"/>
+<text x="634.0799999999999" y="109.5">FK 제약</text>
+<line x1="725.92" y1="105" x2="755.92" y2="105" stroke="#64748b" stroke-width="2" stroke-dasharray="5,4"/>
+<text x="761.92" y="109.5">논리적 연결(비FK, 컬럼 값 매칭)</text>
+</g>
+<g>
+<line x1="310.0" y1="244.5" x2="480.0" y2="236.0" stroke="#64748b" stroke-width="2" stroke-dasharray="5,4"/>
+<circle cx="310.0" cy="244.5" r="3" fill="#64748b"/>
+<circle cx="480.0" cy="236.0" r="3" fill="#64748b"/>
+<rect x="362.7" y="216.2" width="64.6" height="18.0" rx="4" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="395.0" y="227.2" font-size="11" text-anchor="middle" fill="#334155">username</text>
+<line x1="730.0" y1="236.0" x2="900.0" y2="236.0" stroke="#64748b" stroke-width="2" stroke-dasharray="5,4"/>
+<circle cx="730.0" cy="236.0" r="3" fill="#64748b"/>
+<circle cx="900.0" cy="236.0" r="3" fill="#64748b"/>
+<rect x="775.9" y="212.0" width="78.2" height="18.0" rx="4" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="815.0" y="223.0" font-size="11" text-anchor="middle" fill="#334155">ip_address</text>
+<line x1="605.0" y1="302.0" x2="605.0" y2="393.0" stroke="#64748b" stroke-width="2" stroke-dasharray="5,4"/>
+<circle cx="605.0" cy="302.0" r="3" fill="#64748b"/>
+<circle cx="605.0" cy="393.0" r="3" fill="#64748b"/>
+<rect x="614.0" y="339.0" width="64.6" height="18.0" rx="4" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="619.0" y="351.0" font-size="11" text-anchor="start" fill="#334155">username</text>
+<line x1="185.0" y1="319.0" x2="185.0" y2="393.0" stroke="#64748b" stroke-width="2" stroke-dasharray="5,4"/>
+<circle cx="185.0" cy="319.0" r="3" fill="#64748b"/>
+<circle cx="185.0" cy="393.0" r="3" fill="#64748b"/>
+<rect x="194.0" y="347.5" width="112.3" height="18.0" rx="4" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="199.0" y="359.5" font-size="11" text-anchor="start" fill="#334155">author_username</text>
+<line x1="185.0" y1="542.0" x2="185.0" y2="769.0" stroke="#0f172a" stroke-width="2"/>
+<circle cx="185.0" cy="542.0" r="3" fill="#0f172a"/>
+<circle cx="185.0" cy="769.0" r="3" fill="#0f172a"/>
+<rect x="194.0" y="647.0" width="57.7" height="18.0" rx="4" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="199.0" y="659.0" font-size="11" text-anchor="start" fill="#334155">post_id</text>
+<line x1="1570.0" y1="236.0" x2="1740.0" y2="236.0" stroke="#64748b" stroke-width="2" stroke-dasharray="5,4"/>
+<circle cx="1570.0" cy="236.0" r="3" fill="#64748b"/>
+<circle cx="1740.0" cy="236.0" r="3" fill="#64748b"/>
+<rect x="1622.7" y="212.0" width="64.6" height="18.0" rx="4" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="1655.0" y="223.0" font-size="11" text-anchor="middle" fill="#334155">username</text>
+<line x1="1990.0" y1="236.0" x2="2160.0" y2="202.0" stroke="#0f172a" stroke-width="2"/>
+<circle cx="1990.0" cy="236.0" r="3" fill="#0f172a"/>
+<circle cx="2160.0" cy="202.0" r="3" fill="#0f172a"/>
+<rect x="2056.4" y="195.0" width="37.3" height="18.0" rx="4" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="2075.0" y="206.0" font-size="11" text-anchor="middle" fill="#334155">role</text>
+<line x1="2410.0" y1="202.0" x2="2580.0" y2="210.5" stroke="#0f172a" stroke-width="2"/>
+<circle cx="2410.0" cy="202.0" r="3" fill="#0f172a"/>
+<circle cx="2580.0" cy="210.5" r="3" fill="#0f172a"/>
+<rect x="2476.4" y="182.2" width="37.3" height="18.0" rx="4" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="2495.0" y="193.2" font-size="11" text-anchor="middle" fill="#334155">role</text>
+<line x1="1865.0" y1="302.0" x2="1865.0" y2="393.0" stroke="#0f172a" stroke-width="2"/>
+<circle cx="1865.0" cy="302.0" r="3" fill="#0f172a"/>
+<circle cx="1865.0" cy="393.0" r="3" fill="#0f172a"/>
+<rect x="1874.0" y="339.0" width="64.6" height="18.0" rx="4" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="1879.0" y="351.0" font-size="11" text-anchor="start" fill="#334155">admin_id</text>
+<line x1="1570.0" y1="1083.5" x2="1740.0" y2="1066.5" stroke="#64748b" stroke-width="2" stroke-dasharray="5,4"/>
+<circle cx="1570.0" cy="1083.5" r="3" fill="#64748b"/>
+<circle cx="1740.0" cy="1066.5" r="3" fill="#64748b"/>
+<rect x="1615.9" y="1051.0" width="78.2" height="18.0" rx="4" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="1655.0" y="1062.0" font-size="11" text-anchor="middle" fill="#334155">ip_address</text>
+</g>
+<g>
+<rect x="60" y="170" width="250" height="149" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="60" y="170" width="250" height="30" rx="7" fill="#2563eb"/>
+<rect x="60" y="193" width="250" height="7" fill="#2563eb"/>
+<text x="72" y="190" font-size="13.5" font-weight="700" fill="#ffffff">users</text>
+<rect x="70" y="209" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="82.0" y="220" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="102" y="220" font-size="10.5" font-weight="700" fill="#0f172a">id</text>
+<text x="300" y="220" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+<text x="102" y="237" font-size="10.5" font-weight="400" fill="#0f172a">username</text>
+<text x="300" y="237" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="102" y="254" font-size="10.5" font-weight="400" fill="#0f172a">email</text>
+<text x="300" y="254" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="102" y="271" font-size="10.5" font-weight="400" fill="#0f172a">name</text>
+<text x="300" y="271" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="102" y="288" font-size="10.5" font-weight="400" fill="#0f172a">password_hash</text>
+<text x="300" y="288" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="102" y="305" font-size="10.5" font-weight="400" fill="#0f172a">created_at</text>
+<text x="300" y="305" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+</g>
+<g>
+<rect x="480" y="170" width="250" height="132" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="480" y="170" width="250" height="30" rx="7" fill="#b45309"/>
+<rect x="480" y="193" width="250" height="7" fill="#b45309"/>
+<text x="492" y="190" font-size="13.5" font-weight="700" fill="#ffffff">login_attempts</text>
+<rect x="490" y="209" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="502.0" y="220" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="522" y="220" font-size="10.5" font-weight="700" fill="#0f172a">id</text>
+<text x="720" y="220" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+<text x="522" y="237" font-size="10.5" font-weight="400" fill="#0f172a">ip_address</text>
+<text x="720" y="237" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="522" y="254" font-size="10.5" font-weight="400" fill="#0f172a">username</text>
+<text x="720" y="254" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="522" y="271" font-size="10.5" font-weight="400" fill="#0f172a">success</text>
+<text x="720" y="271" font-size="9.5" text-anchor="end" fill="#94a3b8">bool</text>
+<text x="522" y="288" font-size="10.5" font-weight="400" fill="#0f172a">attempted_at</text>
+<text x="720" y="288" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+</g>
+<g>
+<rect x="900" y="170" width="250" height="132" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="900" y="170" width="250" height="30" rx="7" fill="#047857"/>
+<rect x="900" y="193" width="250" height="7" fill="#047857"/>
+<text x="912" y="190" font-size="13.5" font-weight="700" fill="#ffffff">lockouts</text>
+<rect x="910" y="209" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="922.0" y="220" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="942" y="220" font-size="10.5" font-weight="700" fill="#0f172a">ip_address</text>
+<text x="1140" y="220" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="942" y="237" font-size="10.5" font-weight="400" fill="#0f172a">locked_at</text>
+<text x="1140" y="237" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+<text x="942" y="254" font-size="10.5" font-weight="400" fill="#0f172a">unlock_at</text>
+<text x="1140" y="254" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+<text x="942" y="271" font-size="10.5" font-weight="400" fill="#0f172a">failure_count</text>
+<text x="1140" y="271" font-size="9.5" text-anchor="end" fill="#94a3b8">int</text>
+<text x="942" y="288" font-size="10.5" font-weight="400" fill="#0f172a">active</text>
+<text x="1140" y="288" font-size="9.5" text-anchor="end" fill="#94a3b8">bool</text>
+</g>
+<g>
+<rect x="1320" y="170" width="250" height="132" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="1320" y="170" width="250" height="30" rx="7" fill="#b45309"/>
+<rect x="1320" y="193" width="250" height="7" fill="#b45309"/>
+<text x="1332" y="190" font-size="13.5" font-weight="700" fill="#ffffff">admin_login_log</text>
+<rect x="1330" y="209" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="1342.0" y="220" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="1362" y="220" font-size="10.5" font-weight="700" fill="#0f172a">id</text>
+<text x="1560" y="220" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+<text x="1362" y="237" font-size="10.5" font-weight="400" fill="#0f172a">username</text>
+<text x="1560" y="237" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1362" y="254" font-size="10.5" font-weight="400" fill="#0f172a">success</text>
+<text x="1560" y="254" font-size="9.5" text-anchor="end" fill="#94a3b8">bool</text>
+<text x="1362" y="271" font-size="10.5" font-weight="400" fill="#0f172a">ip_address</text>
+<text x="1560" y="271" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1362" y="288" font-size="10.5" font-weight="400" fill="#0f172a">attempted_at</text>
+<text x="1560" y="288" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+</g>
+<g>
+<rect x="1740" y="170" width="250" height="132" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="1740" y="170" width="250" height="30" rx="7" fill="#2563eb"/>
+<rect x="1740" y="193" width="250" height="7" fill="#2563eb"/>
+<text x="1752" y="190" font-size="13.5" font-weight="700" fill="#ffffff">admin_users</text>
+<rect x="1750" y="209" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="1762.0" y="220" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="1782" y="220" font-size="10.5" font-weight="700" fill="#0f172a">id</text>
+<text x="1980" y="220" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+<text x="1782" y="237" font-size="10.5" font-weight="400" fill="#0f172a">username</text>
+<text x="1980" y="237" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1782" y="254" font-size="10.5" font-weight="400" fill="#0f172a">password_hash</text>
+<text x="1980" y="254" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1782" y="271" font-size="10.5" font-weight="400" fill="#0f172a">created_at</text>
+<text x="1980" y="271" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+<rect x="1750" y="277" width="24" height="14" rx="3" fill="#dbeafe" stroke="#3b82f6" stroke-width="0.8"/>
+<text x="1762.0" y="288" font-size="9" text-anchor="middle" fill="#1d4ed8" font-weight="700">FK</text>
+<text x="1782" y="288" font-size="10.5" font-weight="400" fill="#0f172a">role</text>
+<text x="1980" y="288" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+</g>
+<g>
+<rect x="2160" y="170" width="250" height="64" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="2160" y="170" width="250" height="30" rx="7" fill="#2563eb"/>
+<rect x="2160" y="193" width="250" height="7" fill="#2563eb"/>
+<text x="2172" y="190" font-size="13.5" font-weight="700" fill="#ffffff">roles</text>
+<rect x="2170" y="209" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="2182.0" y="220" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="2202" y="220" font-size="10.5" font-weight="700" fill="#0f172a">role</text>
+<text x="2400" y="220" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+</g>
+<g>
+<rect x="2580" y="170" width="250" height="81" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="2580" y="170" width="250" height="30" rx="7" fill="#2563eb"/>
+<rect x="2580" y="193" width="250" height="7" fill="#2563eb"/>
+<text x="2592" y="190" font-size="13.5" font-weight="700" fill="#ffffff">permissions</text>
+<rect x="2590" y="209" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="2602.0" y="220" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="2622" y="220" font-size="10.5" font-weight="700" fill="#0f172a">role</text>
+<text x="2820" y="220" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<rect x="2590" y="226" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="2602.0" y="237" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="2622" y="237" font-size="10.5" font-weight="700" fill="#0f172a">action</text>
+<text x="2820" y="237" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+</g>
+<g>
+<rect x="60" y="393" width="250" height="149" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="60" y="393" width="250" height="30" rx="7" fill="#2563eb"/>
+<rect x="60" y="416" width="250" height="7" fill="#2563eb"/>
+<text x="72" y="413" font-size="13.5" font-weight="700" fill="#ffffff">posts</text>
+<rect x="70" y="432" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="82.0" y="443" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="102" y="443" font-size="10.5" font-weight="700" fill="#0f172a">id</text>
+<text x="300" y="443" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+<text x="102" y="460" font-size="10.5" font-weight="400" fill="#0f172a">author_username</text>
+<text x="300" y="460" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="102" y="477" font-size="10.5" font-weight="400" fill="#0f172a">title</text>
+<text x="300" y="477" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="102" y="494" font-size="10.5" font-weight="400" fill="#0f172a">body</text>
+<text x="300" y="494" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="102" y="511" font-size="10.5" font-weight="400" fill="#0f172a">created_at</text>
+<text x="300" y="511" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+<text x="102" y="528" font-size="10.5" font-weight="400" fill="#0f172a">updated_at</text>
+<text x="300" y="528" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+</g>
+<g>
+<rect x="480" y="393" width="250" height="132" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="480" y="393" width="250" height="30" rx="7" fill="#047857"/>
+<rect x="480" y="416" width="250" height="7" fill="#047857"/>
+<text x="492" y="413" font-size="13.5" font-weight="700" fill="#ffffff">account_lockouts</text>
+<rect x="490" y="432" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="502.0" y="443" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="522" y="443" font-size="10.5" font-weight="700" fill="#0f172a">username</text>
+<text x="720" y="443" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="522" y="460" font-size="10.5" font-weight="400" fill="#0f172a">locked_at</text>
+<text x="720" y="460" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+<text x="522" y="477" font-size="10.5" font-weight="400" fill="#0f172a">unlock_at</text>
+<text x="720" y="477" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+<text x="522" y="494" font-size="10.5" font-weight="400" fill="#0f172a">failure_count</text>
+<text x="720" y="494" font-size="9.5" text-anchor="end" fill="#94a3b8">int</text>
+<text x="522" y="511" font-size="10.5" font-weight="400" fill="#0f172a">active</text>
+<text x="720" y="511" font-size="9.5" text-anchor="end" fill="#94a3b8">bool</text>
+</g>
+<g>
+<rect x="1740" y="393" width="250" height="302" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="1740" y="393" width="250" height="30" rx="7" fill="#047857"/>
+<rect x="1740" y="416" width="250" height="7" fill="#047857"/>
+<text x="1752" y="413" font-size="13.5" font-weight="700" fill="#ffffff">access_requests</text>
+<rect x="1750" y="432" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="1762.0" y="443" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="1782" y="443" font-size="10.5" font-weight="700" fill="#0f172a">request_id</text>
+<text x="1980" y="443" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+<text x="1782" y="460" font-size="10.5" font-weight="400" fill="#0f172a">event_type</text>
+<text x="1980" y="460" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1782" y="477" font-size="10.5" font-weight="400" fill="#0f172a">pending_action</text>
+<text x="1980" y="477" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1782" y="494" font-size="10.5" font-weight="400" fill="#0f172a">target_kind</text>
+<text x="1980" y="494" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1782" y="511" font-size="10.5" font-weight="400" fill="#0f172a">target_value</text>
+<text x="1980" y="511" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1782" y="528" font-size="10.5" font-weight="400" fill="#0f172a">path</text>
+<text x="1980" y="528" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1782" y="545" font-size="10.5" font-weight="400" fill="#0f172a">count</text>
+<text x="1980" y="545" font-size="9.5" text-anchor="end" fill="#94a3b8">int</text>
+<text x="1782" y="562" font-size="10.5" font-weight="400" fill="#0f172a">threshold</text>
+<text x="1980" y="562" font-size="9.5" text-anchor="end" fill="#94a3b8">int</text>
+<text x="1782" y="579" font-size="10.5" font-weight="400" fill="#0f172a">context_count</text>
+<text x="1980" y="579" font-size="9.5" text-anchor="end" fill="#94a3b8">int</text>
+<text x="1782" y="596" font-size="10.5" font-weight="400" fill="#0f172a">context_ip</text>
+<text x="1980" y="596" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1782" y="613" font-size="10.5" font-weight="400" fill="#0f172a">llm_reason</text>
+<text x="1980" y="613" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1782" y="630" font-size="10.5" font-weight="400" fill="#0f172a">status</text>
+<text x="1980" y="630" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1782" y="647" font-size="10.5" font-weight="400" fill="#0f172a">requested_at</text>
+<text x="1980" y="647" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+<rect x="1750" y="653" width="24" height="14" rx="3" fill="#dbeafe" stroke="#3b82f6" stroke-width="0.8"/>
+<text x="1762.0" y="664" font-size="9" text-anchor="middle" fill="#1d4ed8" font-weight="700">FK</text>
+<text x="1782" y="664" font-size="10.5" font-weight="400" fill="#0f172a">decided_by_admin_id</text>
+<text x="1980" y="664" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+<text x="1782" y="681" font-size="10.5" font-weight="400" fill="#0f172a">decided_at</text>
+<text x="1980" y="681" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+</g>
+<g>
+<rect x="2160" y="393" width="250" height="81" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="2160" y="393" width="250" height="30" rx="7" fill="#2563eb"/>
+<rect x="2160" y="416" width="250" height="7" fill="#2563eb"/>
+<text x="2172" y="413" font-size="13.5" font-weight="700" fill="#ffffff">app_settings</text>
+<rect x="2170" y="432" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="2182.0" y="443" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="2202" y="443" font-size="10.5" font-weight="700" fill="#0f172a">id</text>
+<text x="2400" y="443" font-size="9.5" text-anchor="end" fill="#94a3b8">int</text>
+<text x="2202" y="460" font-size="10.5" font-weight="400" fill="#0f172a">signup_enabled</text>
+<text x="2400" y="460" font-size="9.5" text-anchor="end" fill="#94a3b8">bool</text>
+</g>
+<g>
+<rect x="2580" y="393" width="250" height="149" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="2580" y="393" width="250" height="30" rx="7" fill="#047857"/>
+<rect x="2580" y="416" width="250" height="7" fill="#047857"/>
+<text x="2592" y="413" font-size="13.5" font-weight="700" fill="#ffffff">ip_locations</text>
+<rect x="2590" y="432" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="2602.0" y="443" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="2622" y="443" font-size="10.5" font-weight="700" fill="#0f172a">ip_address</text>
+<text x="2820" y="443" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="2622" y="460" font-size="10.5" font-weight="400" fill="#0f172a">country</text>
+<text x="2820" y="460" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="2622" y="477" font-size="10.5" font-weight="400" fill="#0f172a">region_name</text>
+<text x="2820" y="477" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="2622" y="494" font-size="10.5" font-weight="400" fill="#0f172a">city</text>
+<text x="2820" y="494" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="2622" y="511" font-size="10.5" font-weight="400" fill="#0f172a">lookup_failed</text>
+<text x="2820" y="511" font-size="9.5" text-anchor="end" fill="#94a3b8">bool</text>
+<text x="2622" y="528" font-size="10.5" font-weight="400" fill="#0f172a">looked_up_at</text>
+<text x="2820" y="528" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+</g>
+<g>
+<rect x="60" y="769" width="250" height="132" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="60" y="769" width="250" height="30" rx="7" fill="#2563eb"/>
+<rect x="60" y="792" width="250" height="7" fill="#2563eb"/>
+<text x="72" y="789" font-size="13.5" font-weight="700" fill="#ffffff">comments</text>
+<rect x="70" y="808" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="82.0" y="819" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="102" y="819" font-size="10.5" font-weight="700" fill="#0f172a">id</text>
+<text x="300" y="819" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+<rect x="70" y="825" width="24" height="14" rx="3" fill="#dbeafe" stroke="#3b82f6" stroke-width="0.8"/>
+<text x="82.0" y="836" font-size="9" text-anchor="middle" fill="#1d4ed8" font-weight="700">FK</text>
+<text x="102" y="836" font-size="10.5" font-weight="400" fill="#0f172a">post_id</text>
+<text x="300" y="836" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+<text x="102" y="853" font-size="10.5" font-weight="400" fill="#0f172a">author_username</text>
+<text x="300" y="853" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="102" y="870" font-size="10.5" font-weight="400" fill="#0f172a">body</text>
+<text x="300" y="870" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="102" y="887" font-size="10.5" font-weight="400" fill="#0f172a">created_at</text>
+<text x="300" y="887" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+</g>
+<g>
+<rect x="480" y="769" width="250" height="98" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="480" y="769" width="250" height="30" rx="7" fill="#b45309"/>
+<rect x="480" y="792" width="250" height="7" fill="#b45309"/>
+<text x="492" y="789" font-size="13.5" font-weight="700" fill="#ffffff">post_attempts</text>
+<rect x="490" y="808" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="502.0" y="819" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="522" y="819" font-size="10.5" font-weight="700" fill="#0f172a">id</text>
+<text x="720" y="819" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+<text x="522" y="836" font-size="10.5" font-weight="400" fill="#0f172a">ip_address</text>
+<text x="720" y="836" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="522" y="853" font-size="10.5" font-weight="400" fill="#0f172a">attempted_at</text>
+<text x="720" y="853" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+</g>
+<g>
+<rect x="900" y="769" width="250" height="98" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="900" y="769" width="250" height="30" rx="7" fill="#b45309"/>
+<rect x="900" y="792" width="250" height="7" fill="#b45309"/>
+<text x="912" y="789" font-size="13.5" font-weight="700" fill="#ffffff">comment_attempts</text>
+<rect x="910" y="808" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="922.0" y="819" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="942" y="819" font-size="10.5" font-weight="700" fill="#0f172a">id</text>
+<text x="1140" y="819" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+<text x="942" y="836" font-size="10.5" font-weight="400" fill="#0f172a">ip_address</text>
+<text x="1140" y="836" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="942" y="853" font-size="10.5" font-weight="400" fill="#0f172a">attempted_at</text>
+<text x="1140" y="853" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+</g>
+<g>
+<rect x="1320" y="769" width="250" height="98" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="1320" y="769" width="250" height="30" rx="7" fill="#b45309"/>
+<rect x="1320" y="792" width="250" height="7" fill="#b45309"/>
+<text x="1332" y="789" font-size="13.5" font-weight="700" fill="#ffffff">signup_attempts</text>
+<rect x="1330" y="808" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="1342.0" y="819" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="1362" y="819" font-size="10.5" font-weight="700" fill="#0f172a">id</text>
+<text x="1560" y="819" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+<text x="1362" y="836" font-size="10.5" font-weight="400" fill="#0f172a">ip_address</text>
+<text x="1560" y="836" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1362" y="853" font-size="10.5" font-weight="400" fill="#0f172a">attempted_at</text>
+<text x="1560" y="853" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+</g>
+<g>
+<rect x="1740" y="769" width="250" height="115" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="1740" y="769" width="250" height="30" rx="7" fill="#b45309"/>
+<rect x="1740" y="792" width="250" height="7" fill="#b45309"/>
+<text x="1752" y="789" font-size="13.5" font-weight="700" fill="#ffffff">not_found_attempts</text>
+<rect x="1750" y="808" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="1762.0" y="819" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="1782" y="819" font-size="10.5" font-weight="700" fill="#0f172a">id</text>
+<text x="1980" y="819" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+<text x="1782" y="836" font-size="10.5" font-weight="400" fill="#0f172a">ip_address</text>
+<text x="1980" y="836" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1782" y="853" font-size="10.5" font-weight="400" fill="#0f172a">path</text>
+<text x="1980" y="853" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1782" y="870" font-size="10.5" font-weight="400" fill="#0f172a">attempted_at</text>
+<text x="1980" y="870" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+</g>
+<g>
+<rect x="2160" y="769" width="250" height="115" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="2160" y="769" width="250" height="30" rx="7" fill="#b45309"/>
+<rect x="2160" y="792" width="250" height="7" fill="#b45309"/>
+<text x="2172" y="789" font-size="13.5" font-weight="700" fill="#ffffff">unauthorized_attempts</text>
+<rect x="2170" y="808" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="2182.0" y="819" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="2202" y="819" font-size="10.5" font-weight="700" fill="#0f172a">id</text>
+<text x="2400" y="819" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+<text x="2202" y="836" font-size="10.5" font-weight="400" fill="#0f172a">ip_address</text>
+<text x="2400" y="836" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="2202" y="853" font-size="10.5" font-weight="400" fill="#0f172a">path</text>
+<text x="2400" y="853" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="2202" y="870" font-size="10.5" font-weight="400" fill="#0f172a">attempted_at</text>
+<text x="2400" y="870" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+</g>
+<g>
+<rect x="2580" y="769" width="250" height="115" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="2580" y="769" width="250" height="30" rx="7" fill="#b45309"/>
+<rect x="2580" y="792" width="250" height="7" fill="#b45309"/>
+<text x="2592" y="789" font-size="13.5" font-weight="700" fill="#ffffff">page_access_attempts</text>
+<rect x="2590" y="808" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="2602.0" y="819" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="2622" y="819" font-size="10.5" font-weight="700" fill="#0f172a">id</text>
+<text x="2820" y="819" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+<text x="2622" y="836" font-size="10.5" font-weight="400" fill="#0f172a">ip_address</text>
+<text x="2820" y="836" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="2622" y="853" font-size="10.5" font-weight="400" fill="#0f172a">path</text>
+<text x="2820" y="853" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="2622" y="870" font-size="10.5" font-weight="400" fill="#0f172a">attempted_at</text>
+<text x="2820" y="870" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+</g>
+<g>
+<rect x="900" y="975" width="250" height="132" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="900" y="975" width="250" height="30" rx="7" fill="#b45309"/>
+<rect x="900" y="998" width="250" height="7" fill="#b45309"/>
+<text x="912" y="995" font-size="13.5" font-weight="700" fill="#ffffff">api_access_log</text>
+<rect x="910" y="1014" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="922.0" y="1025" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="942" y="1025" font-size="10.5" font-weight="700" fill="#0f172a">id</text>
+<text x="1140" y="1025" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+<text x="942" y="1042" font-size="10.5" font-weight="400" fill="#0f172a">ip_address</text>
+<text x="1140" y="1042" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="942" y="1059" font-size="10.5" font-weight="400" fill="#0f172a">path</text>
+<text x="1140" y="1059" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="942" y="1076" font-size="10.5" font-weight="400" fill="#0f172a">method</text>
+<text x="1140" y="1076" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="942" y="1093" font-size="10.5" font-weight="400" fill="#0f172a">requested_at</text>
+<text x="1140" y="1093" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+</g>
+<g>
+<rect x="1320" y="975" width="250" height="217" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="1320" y="975" width="250" height="30" rx="7" fill="#047857"/>
+<rect x="1320" y="998" width="250" height="7" fill="#047857"/>
+<text x="1332" y="995" font-size="13.5" font-weight="700" fill="#ffffff">security_events</text>
+<rect x="1330" y="1014" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="1342.0" y="1025" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="1362" y="1025" font-size="10.5" font-weight="700" fill="#0f172a">id</text>
+<text x="1560" y="1025" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+<text x="1362" y="1042" font-size="10.5" font-weight="400" fill="#0f172a">event_type</text>
+<text x="1560" y="1042" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1362" y="1059" font-size="10.5" font-weight="400" fill="#0f172a">severity</text>
+<text x="1560" y="1059" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1362" y="1076" font-size="10.5" font-weight="400" fill="#0f172a">ip_address</text>
+<text x="1560" y="1076" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1362" y="1093" font-size="10.5" font-weight="400" fill="#0f172a">path</text>
+<text x="1560" y="1093" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1362" y="1110" font-size="10.5" font-weight="400" fill="#0f172a">count</text>
+<text x="1560" y="1110" font-size="9.5" text-anchor="end" fill="#94a3b8">int</text>
+<text x="1362" y="1127" font-size="10.5" font-weight="400" fill="#0f172a">action</text>
+<text x="1560" y="1127" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1362" y="1144" font-size="10.5" font-weight="400" fill="#0f172a">username</text>
+<text x="1560" y="1144" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1362" y="1161" font-size="10.5" font-weight="400" fill="#0f172a">detected_at</text>
+<text x="1560" y="1161" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+<text x="1362" y="1178" font-size="10.5" font-weight="400" fill="#0f172a">resolved_at</text>
+<text x="1560" y="1178" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+</g>
+<g>
+<rect x="1740" y="975" width="250" height="183" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="1740" y="975" width="250" height="30" rx="7" fill="#047857"/>
+<rect x="1740" y="998" width="250" height="7" fill="#047857"/>
+<text x="1752" y="995" font-size="13.5" font-weight="700" fill="#ffffff">security_incidents</text>
+<rect x="1750" y="1014" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="1762.0" y="1025" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="1782" y="1025" font-size="10.5" font-weight="700" fill="#0f172a">id</text>
+<text x="1980" y="1025" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+<text x="1782" y="1042" font-size="10.5" font-weight="400" fill="#0f172a">ip_address</text>
+<text x="1980" y="1042" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1782" y="1059" font-size="10.5" font-weight="400" fill="#0f172a">event_types</text>
+<text x="1980" y="1059" font-size="9.5" text-anchor="end" fill="#94a3b8">text[]</text>
+<text x="1782" y="1076" font-size="10.5" font-weight="400" fill="#0f172a">severity_max</text>
+<text x="1980" y="1076" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1782" y="1093" font-size="10.5" font-weight="400" fill="#0f172a">status</text>
+<text x="1980" y="1093" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1782" y="1110" font-size="10.5" font-weight="400" fill="#0f172a">first_event_at</text>
+<text x="1980" y="1110" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+<text x="1782" y="1127" font-size="10.5" font-weight="400" fill="#0f172a">last_event_at</text>
+<text x="1980" y="1127" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+<text x="1782" y="1144" font-size="10.5" font-weight="400" fill="#0f172a">escalated</text>
+<text x="1980" y="1144" font-size="9.5" text-anchor="end" fill="#94a3b8">bool</text>
+</g>
+<text x="60" y="1246" font-size="11" fill="#94a3b8">ts = timestamptz · PK 배지 2개(role/action)가 있는 permissions 는 (role, action) 복합 기본키 · 실선 4개 = comments.post_id, admin_users.role, permissions.role, access_requests.decided_by_admin_id</text>
+</svg>
