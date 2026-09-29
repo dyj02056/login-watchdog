@@ -69,7 +69,7 @@ export async function fetchStatus() {
         return;
     }
 
-    renderLockoutCards(data.active_lockouts);
+    renderLockoutCards(data.active_lockouts, data.active_account_lockouts);
     renderAttemptsTable(data.recent_attempts);
     renderPagination("attempts-pagination", pages.attempts, data.attempts_total_pages);
     renderAdminLoginLog(data.admin_login_log);
@@ -111,6 +111,20 @@ export async function unlockIp(ip) {
 }
 
 /**
+ * 관리자가 잠긴 계정 카드의 "즉시 해제" 버튼을 눌렀을 때, 그 계정을 서버에 풀어달라고
+ * 요청한다. unlockIp()와 동일한 fetch + CSRF 패턴을 쓴다.
+ * @param {string} username
+ */
+export async function unlockAccount(username) {
+    await fetch("/api/unlock-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ username: username }),
+    });
+    fetchStatus();
+}
+
+/**
  * 관리자가 보안 이벤트 표의 "처리 완료" 버튼을 눌렀을 때, 그 이벤트를 해결됨으로
  * 표시해달라고 서버에 요청한다. unlockIp()와 동일한 fetch + CSRF 패턴을 쓴다.
  * @param {string} eventId
@@ -120,6 +134,24 @@ export async function resolveEvent(eventId) {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
         body: JSON.stringify({ event_id: Number(eventId) }),
+    });
+    fetchStatus();
+}
+
+/**
+ * 관리자가 연관 사건 표의 "해결" 버튼을 눌렀을 때, 확인을 한 번 거친 뒤 그 사건을
+ * 해결됨(CLOSED)으로 표시해달라고 서버에 요청한다. 해결한 사건은 다시 열 수 없어서
+ * (IP 잠금 해제와는 별개의 "검토 끝" 판단이므로) confirm()으로 실수를 막는다.
+ * @param {string} incidentId
+ */
+export async function resolveIncident(incidentId) {
+    if (!confirm("이 사건을 해결됨으로 표시할까요? 해결한 사건은 되돌릴 수 없습니다.")) {
+        return;
+    }
+    await fetch("/api/security-incidents/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ incident_id: Number(incidentId) }),
     });
     fetchStatus();
 }

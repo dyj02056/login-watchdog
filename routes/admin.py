@@ -163,6 +163,7 @@ def api_status():
     돌고 있는 동안 같이 실행되므로 추가 대기 시간은 거의 없다.
     """
     soar.try_release_expired_lockouts()
+    soar.try_release_expired_account_lockouts()
 
     attempts_page = _page_param("attempts_page")
     users_page = _page_param("users_page")
@@ -173,9 +174,11 @@ def api_status():
     security_incidents_page = _page_param("security_incidents_page")
     access_requests_page = _page_param("access_requests_page")
 
-    with ThreadPoolExecutor(max_workers=11) as executor:
+    with ThreadPoolExecutor(max_workers=12) as executor:
         attempts_future = executor.submit(db.list_recent_attempts, attempts_page, config.ADMIN_PAGE_SIZE)
         lockouts_future = executor.submit(db.list_active_lockouts)
+        # "현재 잠긴 IP / 계정" 카드의 계정 잠금 목록 — IP 잠금 목록과 같은 배치로 병렬 조회.
+        account_lockouts_future = executor.submit(db.list_active_account_lockouts)
         admin_log_future = executor.submit(db.list_admin_login_log, admin_log_page, config.ADMIN_PAGE_SIZE)
         users_future = executor.submit(db.list_users, users_page, config.ADMIN_PAGE_SIZE)
         signup_future = executor.submit(db.get_signup_enabled)
@@ -202,6 +205,7 @@ def api_status():
         attempts, attempts_count = attempts_future.result()
         recent_attempts = _attach_locations(attempts)  # 다른 future들이 도는 동안 함께 실행됨
         active_lockouts = lockouts_future.result()
+        active_account_lockouts = account_lockouts_future.result()
         admin_log, admin_log_count = admin_log_future.result()
         users, users_count = users_future.result()
         signup_enabled = signup_future.result()
@@ -216,6 +220,7 @@ def api_status():
             "recent_attempts": recent_attempts,
             "attempts_total_pages": max(1, math.ceil(attempts_count / config.ADMIN_PAGE_SIZE)),
             "active_lockouts": active_lockouts,
+            "active_account_lockouts": active_account_lockouts,
             "admin_login_log": admin_log,
             "admin_log_total_pages": max(1, math.ceil(admin_log_count / config.ADMIN_PAGE_SIZE)),
             "users": users,
@@ -263,6 +268,22 @@ def api_unlock():
         return jsonify({"success": False, "error": "ip 값이 필요합니다."}), 400
 
     released = soar.manual_release(ip)
+    return jsonify({"success": released})
+
+
+@admin_bp.route("/api/unlock-account", methods=["POST"])
+@require_permission("unlock_ip")
+def api_unlock_account():
+    """대시보드 "현재 잠긴 IP / 계정" 카드에서 계정 잠금의 "즉시 해제" 버튼을
+    눌렀을 때 호출되는 API. /api/unlock의 계정 버전이며, 별도 권한을 새로 만들지
+    않고 같은 "잠금 해제" 권한(unlock_ip)을 그대로 쓴다.
+    """
+    data = request.get_json(silent=True) or {}
+    username = data.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "username 값이 필요합니다."}), 400
+
+    released = soar.manual_release_account(username)
     return jsonify({"success": released})
 
 
@@ -320,6 +341,25 @@ def api_security_events_resolve():
         return jsonify({"success": False, "error": "event_id 값이 필요합니다."}), 400
 
     resolved = db.resolve_security_event(event_id)
+    return jsonify({"success": resolved})
+
+
+@admin_bp.route("/api/security-incidents/resolve", methods=["POST"])
+@require_permission("resolve_incident")
+def api_security_incidents_resolve():
+    """대시보드 "연관 사건" 표의 "해결" 버튼을 눌렀을 때 브라우저가 호출하는 API.
+
+    IP 잠금 해제(/api/unlock)와는 별개다 — 잠금을 푸는 것은 접속 차단을 거두는
+    조치이고, 사건 해결은 "관리자가 내용을 확인하고 조사가 끝났다"는 판단이라
+    오직 이 API로만 사건이 CLOSED가 된다. 누가 해결했는지는 요청 본문이 아니라
+    로그인 세션(admin_username)에서 가져온다 — 본문 값은 위조할 수 있기 때문이다.
+    """
+    data = request.get_json(silent=True) or {}
+    incident_id = data.get("incident_id")
+    if isinstance(incident_id, bool) or not isinstance(incident_id, int):
+        return jsonify({"success": False, "error": "incident_id 값이 필요합니다."}), 400
+
+    resolved = db.resolve_incident(incident_id, session["admin_username"])
     return jsonify({"success": resolved})
 
 

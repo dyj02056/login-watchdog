@@ -83,6 +83,13 @@ section h2 {
     color: var(--ink);
 }
 
+.lockout-card .lockout-type {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--danger);
+    margin-bottom: 2px;
+}
+
 .lockout-card .ip {
     font-family: var(--font-mono);
     font-weight: 600;
@@ -241,12 +248,13 @@ section h2 {
 /* 연관 사건 표(Track C guide27)도 "관련 유형" 칸에 여러 유형이 쉼표로
    이어지므로, 보안 이벤트 표와 같은 이유로 비율을 따로 지정한다. "등급" 칸도
    위와 같은 이유로 배지가 겹치지 않을 만큼 넓혀둔다. */
-#security-incidents-table th:nth-child(1), #security-incidents-table td:nth-child(1) { width: 15%; } /* 시작 */
-#security-incidents-table th:nth-child(2), #security-incidents-table td:nth-child(2) { width: 15%; } /* 마지막 활동 */
+#security-incidents-table th:nth-child(1), #security-incidents-table td:nth-child(1) { width: 14%; } /* 시작 */
+#security-incidents-table th:nth-child(2), #security-incidents-table td:nth-child(2) { width: 14%; } /* 마지막 활동 */
 #security-incidents-table th:nth-child(3), #security-incidents-table td:nth-child(3) { width: 12%; } /* 등급 */
-#security-incidents-table th:nth-child(4), #security-incidents-table td:nth-child(4) { width: 33%; } /* 관련 유형 */
-#security-incidents-table th:nth-child(5), #security-incidents-table td:nth-child(5) { width: 15%; } /* IP */
-#security-incidents-table th:nth-child(6), #security-incidents-table td:nth-child(6) { width: 10%; } /* 상태 */
+#security-incidents-table th:nth-child(4), #security-incidents-table td:nth-child(4) { width: 18%; } /* 관련 유형 */
+#security-incidents-table th:nth-child(5), #security-incidents-table td:nth-child(5) { width: 14%; } /* IP */
+#security-incidents-table th:nth-child(6), #security-incidents-table td:nth-child(6) { width: 9%; }  /* 상태 */
+#security-incidents-table th:nth-child(7), #security-incidents-table td:nth-child(7) { width: 19%; } /* 처리(해결 버튼 / 해결자·시각) */
 
 /* "AI 조기 경보" 표(Track A guide31)도 "AI 판단 근거" 칸에 문장이 들어가므로,
    보안 이벤트 표의 "경로" 칸과 같은 이유로 비율을 따로 지정한다. */
@@ -313,7 +321,8 @@ section h2 {
     background: var(--accent-soft);
 }
 
-.resolve-event-btn {
+.resolve-event-btn,
+.resolve-incident-btn {
     background: transparent;
     border: 1px solid var(--line);
     color: var(--ink-soft);
@@ -324,7 +333,15 @@ section h2 {
     cursor: pointer;
 }
 
-.resolve-event-btn:hover {
+.resolve-event-btn:hover,
+.resolve-incident-btn:hover {
     border-color: var(--accent);
     color: var(--accent-ink);
+}
+
+/* 연관 사건 표의 "활동 없음(IDLE)" 상태 — 아직 관리자가 해결하지 않았지만 지금은
+   새 이벤트가 붙지 않는 사건이라, 진행 중(빨강)과 해결됨(초록) 사이의 경고색을 쓴다. */
+.status-idle {
+    color: var(--warning);
+    font-weight: 600;
 }

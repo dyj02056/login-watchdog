@@ -7,32 +7,44 @@ import { SEVERITY_LABELS, signupState } from "./state.js";
 import { escapeHtml, formatTime } from "./utils.js";
 
 /**
- * 지금 잠긴 IP들을 카드 형태로 그린다. 각 카드에는 "즉시 해제" 버튼이 붙는다.
+ * 지금 잠긴 IP와 계정들을 카드 형태로 그린다. 각 카드에는 "즉시 해제" 버튼이 붙는다.
  * @param {Array} lockouts - [{ip_address, locked_at, unlock_at, failure_count}, ...]
+ * @param {Array} accountLockouts - [{username, locked_at, unlock_at, failure_count}, ...]
  */
-export function renderLockoutCards(lockouts) {
+export function renderLockoutCards(lockouts, accountLockouts = []) {
     const container = document.getElementById("lockout-list");
 
-    if (lockouts.length === 0) {
-        container.innerHTML = '<p class="empty-state">현재 잠긴 IP가 없습니다.</p>';
+    if (lockouts.length === 0 && accountLockouts.length === 0) {
+        container.innerHTML = '<p class="empty-state">현재 잠긴 IP/계정이 없습니다.</p>';
         return;
     }
 
     // map()으로 각 잠금 데이터를 카드 HTML 문자열로 바꾼 뒤, join("")으로 전부 이어붙인다.
-    // data-ip 속성에 IP를 심어두면, events.js의 이벤트 처리에서 "어느 카드의 버튼이
-    // 눌렸는지" 알 수 있다.
-    container.innerHTML = lockouts
-        .map(
-            (lockout) => `
-                <div class="lockout-card">
-                    <div class="ip">${escapeHtml(lockout.ip_address)}</div>
-                    <div>실패 ${lockout.failure_count}회</div>
-                    <div>해제 예정: ${formatTime(lockout.unlock_at)}</div>
-                    <button data-ip="${escapeHtml(lockout.ip_address)}" class="unlock-btn">즉시 해제</button>
-                </div>
-            `
-        )
-        .join("");
+    // data-ip / data-username 속성에 대상을 심어두면, events.js의 이벤트 처리에서
+    // "어느 카드의 버튼이 눌렸는지" 알 수 있다.
+    const ipCards = lockouts.map(
+        (lockout) => `
+            <div class="lockout-card">
+                <div class="lockout-type">IP 잠금</div>
+                <div class="ip">${escapeHtml(lockout.ip_address)}</div>
+                <div>실패 ${lockout.failure_count}회</div>
+                <div>해제 예정: ${formatTime(lockout.unlock_at)}</div>
+                <button data-ip="${escapeHtml(lockout.ip_address)}" class="unlock-btn">즉시 해제</button>
+            </div>
+        `
+    );
+    const accountCards = accountLockouts.map(
+        (lockout) => `
+            <div class="lockout-card">
+                <div class="lockout-type">계정 잠금</div>
+                <div class="ip">${escapeHtml(lockout.username)}</div>
+                <div>실패 ${lockout.failure_count}회</div>
+                <div>해제 예정: ${formatTime(lockout.unlock_at)}</div>
+                <button data-username="${escapeHtml(lockout.username)}" class="unlock-account-btn">즉시 해제</button>
+            </div>
+        `
+    );
+    container.innerHTML = [...ipCards, ...accountCards].join("");
 }
 
 /**
@@ -256,16 +268,17 @@ export function renderSecurityEventsTable(events) {
  * 연관 사건(SIEM 상관분석) 표를 채운다. 같은 IP가 짧은 시간 안에 서로 다른
  * event_type을 2개 이상 남겼을 때만 여기 나타난다(correlate.py 참고) — 단발성
  * 보안 이벤트는 위 "보안 이벤트" 표에만 남고 여기에는 묶이지 않는다.
- * 이 표는 읽기 전용이다 — 사건은 IP 잠금이 풀릴 때 자동으로 CLOSED 처리되므로
- * (soar.py의 close_open_incident_for_ip 참고), 보안 이벤트 표와 달리 "처리 완료"
- * 버튼이 없다.
- * @param {Array} incidents - [{id, ip_address, event_types, severity_max, status, first_event_at, last_event_at}, ...]
+ * 사건은 IP 잠금 해제와 별개로, 관리자가 "해결" 버튼을 눌러야만 CLOSED(해결됨)가
+ * 된다(db/incidents.py의 resolve_incident 참고). 상태는 세 가지다 — OPEN(진행 중),
+ * IDLE(마지막 이벤트로부터 오래 조용해서 새 사건이 따로 열렸지만 아직 미해결),
+ * CLOSED(해결됨, 누가 언제 해결했는지 함께 표시).
+ * @param {Array} incidents - [{id, ip_address, event_types, severity_max, status, first_event_at, last_event_at, resolved_at, resolved_by}, ...]
  */
 export function renderSecurityIncidentsTable(incidents) {
     const tbody = document.getElementById("security-incidents-table-body");
 
     if (incidents.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">연관된 사건이 없습니다.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="empty-state">연관된 사건이 없습니다.</td></tr>';
         return;
     }
 
@@ -273,9 +286,23 @@ export function renderSecurityIncidentsTable(incidents) {
         .map((incident) => {
             const severityClass = `severity-${incident.severity_max.toLowerCase()}`;
             const severityLabel = SEVERITY_LABELS[incident.severity_max] || incident.severity_max;
-            const statusClass = incident.status === "OPEN" ? "success-false" : "success-true";
-            const statusLabel = incident.status === "OPEN" ? "진행 중" : "종료";
             const eventTypes = incident.event_types.map((type) => escapeHtml(type)).join(", ");
+
+            let statusClass;
+            let statusLabel;
+            let actionCell;
+            if (incident.status === "CLOSED") {
+                statusClass = "success-true";
+                statusLabel = "해결됨";
+                // 예전에 잠금 해제로 자동 종료된 사건은 해결자/시각 기록이 없다.
+                actionCell = incident.resolved_by
+                    ? `<span class="mono">${escapeHtml(incident.resolved_by)} · ${formatTime(incident.resolved_at)}</span>`
+                    : "-";
+            } else {
+                statusClass = incident.status === "IDLE" ? "status-idle" : "success-false";
+                statusLabel = incident.status === "IDLE" ? "활동 없음" : "진행 중";
+                actionCell = `<button data-incident-id="${incident.id}" class="resolve-incident-btn">해결</button>`;
+            }
 
             return `
                 <tr>
@@ -285,6 +312,7 @@ export function renderSecurityIncidentsTable(incidents) {
                     <td>${eventTypes}</td>
                     <td class="mono">${escapeHtml(incident.ip_address)}</td>
                     <td class="${statusClass}">${statusLabel}</td>
+                    <td>${actionCell}</td>
                 </tr>
             `;
         })
