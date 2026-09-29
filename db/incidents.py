@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 
 from postgrest.exceptions import APIError
 
+import config
 import db
 
 _SEVERITY_RANK = {"MEDIUM": 1, "HIGH": 2, "CRITICAL": 3}
@@ -59,11 +60,13 @@ def get_open_incident(ip: str) -> dict | None:
 
     escalated도 함께 가져온다 — record_incident()가 병합할 때 "이미 에스컬레이션
     알림을 보낸 사건인지"를 판단해야 하기 때문이다(Track C guide28, SOAR 플레이북).
+    last_event_at도 가져온다 — 마지막 이벤트로부터 너무 오래 지난 사건은 병합하지
+    않고 IDLE로 옮겨야 하는지(_is_idle) 판단하는 데 쓰인다.
     """
     res = (
         db.get_client()
         .table("security_incidents")
-        .select("id, event_types, severity_max, escalated")
+        .select("id, event_types, severity_max, escalated, last_event_at")
         .eq("ip_address", ip)
         .eq("status", "OPEN")
         .limit(1)
@@ -124,6 +127,15 @@ def record_incident(ip: str, event_types: list[str], severity: str) -> dict:
     대신 이미 삽입된 사건에 병합하는 것으로 대체한다.
     """
     existing = get_open_incident(ip)
+    if existing and _is_idle(existing):
+        # 마지막 이벤트로부터 config.INCIDENT_MERGE_IDLE_MINUTES 넘게 조용했던 옛
+        # 사건 — 새 이벤트를 억지로 합치지 않고 IDLE(활동 없음, 아직 관리자
+        # 미해결)로 옮긴 뒤 새 사건을 연다. idx_security_incidents_open_ip는
+        # status='OPEN'에만 걸려 있으므로 옛 사건이 IDLE로 빠져야 새 OPEN 사건을
+        # 만들 수 있다. 새 사건은 escalated=False로 시작하므로, 이미 escalated
+        # 된 옛 사건이 새 공격의 에스컬레이션 알림을 삼키는 일이 없어진다.
+        mark_incident_idle(existing["id"])
+        existing = None
     if existing:
         return _merge_into_existing(existing, event_types, severity)
     try:
@@ -146,17 +158,51 @@ def mark_incident_escalated(incident_id: int) -> None:
     db.get_client().table("security_incidents").update({"escalated": True}).eq("id", incident_id).execute()
 
 
-def close_open_incident_for_ip(ip: str) -> None:
-    """이 IP의 열린 사건을 닫힘으로 표시한다.
+def mark_incident_idle(incident_id: int) -> None:
+    """이 사건을 IDLE(활동 없음, 아직 관리자 미해결)로 옮긴다.
 
-    resolve_security_events_for_ip()와 짝을 이룬다 — 잠금이 풀리는 순간(자동
-    만료든 수동 해제든) 그 IP를 둘러싼 사건도 함께 끝난 것으로 본다. 사건이
-    닫힌 뒤 같은 IP에서 새 사건이 열리면 escalated는 새 행이므로 자동으로
-    False에서 다시 시작한다.
+    record_incident()가 "마지막 이벤트로부터 너무 오래 지난 사건"을 만났을 때만
+    부른다. OPEN인 행에만 적용되므로 이미 CLOSED/IDLE인 사건은 건드리지 않는다.
     """
-    db.get_client().table("security_incidents").update({"status": "CLOSED"}).eq(
-        "ip_address", ip
+    db.get_client().table("security_incidents").update({"status": "IDLE"}).eq(
+        "id", incident_id
     ).eq("status", "OPEN").execute()
+
+
+def resolve_incident(incident_id: int, admin_username: str) -> bool:
+    """관리자가 대시보드에서 "해결"을 눌렀을 때, 이 사건을 CLOSED로 바꾸고 누가
+    언제 해결했는지 기록한다.
+
+    IP 잠금 해제와는 완전히 별개다 — 잠금을 푸는 것은 접속 차단을 거두는 조치이고,
+    사건 해결은 "관리자가 내용을 확인하고 조사가 끝났다"는 판단이므로 오직 이
+    함수(관리자 버튼)로만 사건이 CLOSED가 된다. OPEN 또는 IDLE인 사건에만 적용돼서,
+    이미 해결된 사건을 다시 눌러도 안전하다(res.data가 비어있으면 False를 돌려줌
+    — resolve_security_event()와 같은 방식).
+    """
+    res = (
+        db.get_client()
+        .table("security_incidents")
+        .update({"status": "CLOSED", "resolved_at": db._now_iso(), "resolved_by": admin_username})
+        .eq("id", incident_id)
+        .in_("status", ["OPEN", "IDLE"])
+        .execute()
+    )
+    return bool(res.data)
+
+
+def _is_idle(incident: dict) -> bool:
+    """마지막 이벤트(last_event_at)로부터 config.INCIDENT_MERGE_IDLE_MINUTES가 지났는지.
+
+    last_event_at이 없으면(조회 결과에 빠진 경우) 오래됐다고 단정할 근거가 없으므로
+    False로 본다 — 기존처럼 병합하는 쪽이 안전하다.
+    """
+    last_event_at = incident.get("last_event_at")
+    if not last_event_at:
+        return False
+    last = datetime.fromisoformat(last_event_at)
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - last > timedelta(minutes=config.INCIDENT_MERGE_IDLE_MINUTES)
 
 
 def _higher_severity(a: str, b: str) -> str:

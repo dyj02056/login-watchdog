@@ -4,6 +4,8 @@
 
 > SKT aleph 교육과정 keyword.md 4과목(이상탐지/SIEM 상관분석)을 반영하는 Track C의 첫 단계입니다. 지금까지 `security_events`는 이벤트 하나하나를 독립적으로만 기록했습니다 — 같은 IP가 짧은 시간 안에 브루트포스도 시도하고, 존재하지 않는 페이지도 스캔하고, 관리자 API도 두드렸다면 신고서 세 장이 각각 따로 쌓일 뿐, "이게 한 출처가 벌인 하나의 사건"이라는 건 아무도 연결해주지 않았습니다. 이번 단계에서 그 흩어진 신고를 "사건철"로 묶는 상관분석 엔진(`correlate.py`, `security_incidents`)을 추가했습니다.
 
+> **후속 변경 안내**: 이 문서 본문의 "IP 잠금이 풀리면 사건이 자동으로 닫힌다"(`close_open_incident_for_ip`) 설명은 당시 기록입니다. 현재는 사건 해결이 잠금 해제와 분리되어 관리자의 "해결" 버튼으로만 닫힙니다. 자세한 내용은 문서 맨 아래 "후속 변경" 절을 참고하세요.
+
 ## 왜 필요한가
 
 `security_events`는 파출소에 접수되는 낱장 신고서와 같습니다. 신고서 한 장 한 장은 잘 쌓이지만 서로 연결 짓는 사람이 없습니다. 실제 공격은 종종 "정찰(웹 스캐닝) → 공격(브루트포스)"처럼 여러 단계를 거치는데, 지금 구조로는 관리자가 대시보드에서 그 흐름을 알아채려면 여러 신고를 수동으로 대조해봐야 했습니다.
@@ -110,3 +112,14 @@ Track B(RBAC, guide26)는 guide26에서 1/3 단계(기본 구조)까지만 완�
 - [README.md](../../README.md)
 - [scripts/unlock_ip.py](../../scripts/unlock_ip.py) — 라이브 검증 중 발견한 버그 수정, `close_open_incident_for_ip()` 연결
 - [tests/test_db.py](../../tests/test_db.py), [tests/test_soar.py](../../tests/test_soar.py), [tests/test_app.py](../../tests/test_app.py), [tests/test_unlock_ip.py](../../tests/test_unlock_ip.py), [tests/test_correlate.py](../../tests/test_correlate.py)(신규)
+
+---
+
+## 후속 변경: 사건 해결을 잠금 해제와 분리
+
+위 설명 중 "IP 잠금이 풀리면 `close_open_incident_for_ip()`가 사건을 자동으로 닫는다"는 부분은 더 이상 사실이 아닙니다(이 단계 당시의 기록으로 남겨둡니다).
+
+- **왜 바꿨나**: 잠금 해제는 "접속 차단을 거두는 조치"이고, 사건 해결은 "관리자가 내용을 확인하고 조사가 끝났다는 판단"입니다. 둘을 묶어두면 5분 뒤 자동 해제만으로 사건이 "종료"로 보여, 관리자가 검토하기 전에 사건이 사라진 것처럼 보였습니다. 또 잠금 없이 MEDIUM/HIGH 이벤트만으로 열린 사건이나 계정 잠금 사건은 닫을 방법이 없어 영원히 열려 있었습니다.
+- **지금 동작**: `close_open_incident_for_ip()`는 삭제됐고, 잠금 해제(`manual_release`, `try_release_expired_lockouts`, `scripts/unlock_ip.py`)는 사건을 건드리지 않습니다. 사건은 대시보드 "연관 사건" 표의 "해결" 버튼(`POST /api/security-incidents/resolve`, 권한 `resolve_incident`)으로만 `CLOSED`가 되고, 해결자(`resolved_by`)와 시각(`resolved_at`)이 기록됩니다.
+- **IDLE 상태**: 열린 사건의 마지막 이벤트로부터 `INCIDENT_MERGE_IDLE_MINUTES`(기본 30분)가 지난 뒤 같은 IP에서 새 이벤트가 오면, 옛 사건은 `IDLE`("활동 없음", 아직 미해결)로 옮기고 새 사건을 엽니다. 이렇게 하지 않으면 이미 `escalated`된 옛 사건에 새 공격이 병합되어 에스컬레이션 알림이 조용히 사라질 수 있습니다. `idx_security_incidents_open_ip`는 `OPEN`에만 걸려 있어서, 옛 사건이 `IDLE`로 빠져야 새 `OPEN` 사건을 만들 수 있습니다.
+- **DB 변경**: `docs/schema.sql` 맨 아래의 "사건 해결을 잠금 해제와 분리" 블록(상태 제약에 `IDLE` 추가, `resolved_at`/`resolved_by` 컬럼, `resolve_incident` 권한)을 Supabase에서 먼저 실행해야 합니다.

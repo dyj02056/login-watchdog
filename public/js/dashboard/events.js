@@ -14,7 +14,9 @@ import {
     fetchStatus,
     rejectAccessRequest,
     resolveEvent,
+    resolveIncident,
     toggleSignup,
+    unlockAccount,
     unlockIp,
 } from "./api.js";
 import { pages } from "./state.js";
@@ -27,6 +29,9 @@ document.getElementById("lockout-list").addEventListener("click", (event) => {
     if (event.target.classList.contains("unlock-btn")) {
         const ip = event.target.getAttribute("data-ip");
         unlockIp(ip);
+    } else if (event.target.classList.contains("unlock-account-btn")) {
+        const username = event.target.getAttribute("data-username");
+        unlockAccount(username);
     }
 });
 
@@ -90,6 +95,14 @@ document.getElementById("security-events-table-body").addEventListener("click", 
     if (event.target.classList.contains("resolve-event-btn")) {
         const eventId = event.target.getAttribute("data-event-id");
         resolveEvent(eventId);
+    }
+});
+
+// 연관 사건 표의 "해결" 버튼도 위와 동일한 이벤트 위임 방식을 쓴다.
+document.getElementById("security-incidents-table-body").addEventListener("click", (event) => {
+    if (event.target.classList.contains("resolve-incident-btn")) {
+        const incidentId = event.target.getAttribute("data-incident-id");
+        resolveIncident(incidentId);
     }
 });
 
