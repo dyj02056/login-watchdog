@@ -91,12 +91,13 @@ from .board import (
 )
 from .geoip_cache import get_cached_ip_locations, save_ip_location
 from .incidents import (
-    close_open_incident_for_ip,
     get_open_incident,
     get_recent_distinct_event_types,
     list_security_incidents,
     mark_incident_escalated,
+    mark_incident_idle,
     record_incident,
+    resolve_incident,
 )
 from .roles import has_permission
 from .lockouts import (
@@ -230,7 +231,8 @@ __all__ = [
     "get_recent_distinct_event_types",
     "get_open_incident",
     "record_incident",
-    "close_open_incident_for_ip",
+    "resolve_incident",
+    "mark_incident_idle",
     "list_security_incidents",
     "mark_incident_escalated",
     "log_api_access",

@@ -1,6 +1,6 @@
 # 31단계 — LLM 조기 경보 에이전트 (Track A)
 
-[◀ 30단계](guide30_threshold_tuning.md) · [전체 목차](beginner-guide.md)
+[◀ 30단계](guide30_threshold_tuning.md) · [전체 목차](beginner-guide.md) · [32단계 ▶](guide32_incident_resolution.md)
 
 > Week1 Day6(LLM Agent, 승인 게이트) 커리큘럼과 `login_watchdog_expansion_plan.md`의 Track A를 구현했습니다. 지금까지의 모든 탐지 로직(브루트포스, Web Scanning, 매크로/봇 등)은 "임계값을 넘었을 때"만 반응합니다. 이 단계는 그 반대 — **아직 임계값을 못 넘었지만 코앞인 구간**에서 Groq(LLM)에게 "지켜볼 필요가 있는지" 한 번 더 물어보고, 위험하다고 판단되면 관리자 승인 대기 목록에 올립니다.
 

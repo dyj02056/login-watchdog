@@ -401,14 +401,13 @@ with ThreadPoolExecutor(max_workers=11) as executor:
     attempts, attempts_count = attempts_future.result()
 ```
 
-**즉시 해제 버튼의 실제 동작** — [soar.py:232-250](../../soar.py#L232)
+**즉시 해제 버튼의 실제 동작** — [soar.py:234-252](../../soar.py#L234)
 ```python
 active_ips = {row["ip_address"] for row in db.list_active_lockouts()}
 if ip not in active_ips:
     return False
 db.release_lockout(ip)
-db.resolve_security_events_for_ip(ip)
-db.close_open_incident_for_ip(ip)
+db.resolve_security_events_for_ip(ip)   # 사건(security_incidents)은 닫지 않음 — 관리자가 "해결" 버튼으로 따로 판단
 return True
 ```
 이 함수는 "요청한 사람이 진짜 관리자인지"는 확인하지 않습니다 — 그 확인은 [helpers.py:123-162](../../helpers.py#L123)의 `require_permission("unlock_ip")`가 라우트 단계에서 이미 끝낸 뒤에만 이 함수가 호출되기 때문입니다.
@@ -891,11 +890,11 @@ if target_role == "super_admin":
 
 ### 3. 예시 데이터
 
-| 역할 | unlock_ip | resolve_security_event | delete_user | manage_admin_users |
-|---|---|---|---|---|
-| security_viewer | ❌ | ❌ | ❌ | ❌ |
-| security_admin | ✅ | ✅ | ❌ | ❌ |
-| super_admin | ✅ | ✅ | ✅ | ✅ |
+| 역할 | unlock_ip | resolve_security_event | resolve_incident | delete_user | manage_admin_users |
+|---|---|---|---|---|---|
+| security_viewer | ❌ | ❌ | ❌ | ❌ | ❌ |
+| security_admin | ✅ | ✅ | ✅ | ❌ | ❌ |
+| super_admin | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 (실제 매핑은 `docs/schema.sql`의 `permissions` 표에 저장됨)
 
@@ -922,7 +921,8 @@ if target_role == "super_admin":
 
 ### 1. 기능
 - 같은 IP가 5분(기본값) 안에 서로 다른 유형의 이벤트를 2개 이상 남기면 `security_incidents`로 묶어 "하나의 공격 흐름"임을 표시
-- IP 잠금이 풀리면 사건도 함께 자동으로 닫힘(CLOSED)
+- 사건은 IP 잠금 해제와 별개로, 관리자가 "해결" 버튼을 눌러야만 닫힘(CLOSED) — 누가(`resolved_by`) 언제(`resolved_at`) 해결했는지 기록
+- 마지막 이벤트로부터 30분(`INCIDENT_MERGE_IDLE_MINUTES`) 넘게 조용했던 사건은 "활동 없음"(IDLE)으로 옮기고 새 이벤트는 새 사건으로 연다
 
 ### 2. 실행 흐름
 ```
@@ -960,13 +960,32 @@ def _merge_into_existing(existing, event_types, severity):
     _update_incident(existing["id"], merged_types, merged_severity)
 ```
 
-**잠금 해제 시 사건도 자동 종료** — [soar.py:226-229](../../soar.py#L226)
+**오래 조용했던 사건은 병합하지 않고 IDLE로 옮긴 뒤 새로 연다** — [db/incidents.py:117](../../db/incidents.py#L117)
 ```python
-for lockout in db.list_expired_active_lockouts():
-    db.release_lockout(lockout["ip_address"])
-    db.resolve_security_events_for_ip(lockout["ip_address"])
-    db.close_open_incident_for_ip(lockout["ip_address"])   # ← 사건도 함께 닫음
+existing = get_open_incident(ip)
+if existing and _is_idle(existing):     # 마지막 이벤트로부터 30분 초과
+    mark_incident_idle(existing["id"])  # 옛 사건: OPEN → IDLE (아직 관리자 미해결)
+    existing = None                     # → 아래에서 새 사건(escalated=False)을 연다
 ```
+옛 사건이 이미 `escalated`(알림 발송 완료) 상태로 남아 있으면, 그 IP의 새 공격이 옛 사건에 병합되면서
+에스컬레이션 알림이 조용히 사라질 수 있습니다. IDLE로 옮기고 새 사건을 열면 새 공격에 대해 알림이 다시 나갑니다.
+
+**사건 해결은 잠금 해제와 별개 — 관리자 버튼으로만** — [db/incidents.py:172](../../db/incidents.py#L172)
+```python
+def resolve_incident(incident_id, admin_username) -> bool:
+    res = (
+        db.get_client().table("security_incidents")
+        .update({"status": "CLOSED", "resolved_at": db._now_iso(), "resolved_by": admin_username})
+        .eq("id", incident_id)
+        .in_("status", ["OPEN", "IDLE"])
+        .execute()
+    )
+    return bool(res.data)
+```
+`POST /api/security-incidents/resolve`([routes/admin.py:347](../../routes/admin.py#L347), 권한 `resolve_incident`)가
+이 함수를 부릅니다. 해결자 이름은 요청 본문이 아니라 로그인 세션에서 가져옵니다. 잠금 해제
+([soar.py:216](../../soar.py#L216)의 `try_release_expired_lockouts`, [soar.py:234](../../soar.py#L234)의 `manual_release`)는
+접속 차단만 풀고 사건은 건드리지 않습니다.
 
 ### 3. 예시 데이터
 IP `1.2.3.4`가 5분 안에 404를 11번 유발(WEB_SCANNING 기록) 후, 곧이어 같은 IP로 로그인 실패
@@ -976,7 +995,8 @@ IP `1.2.3.4`가 5분 안에 404를 11번 유발(WEB_SCANNING 기록) 후, 곧이
 ### 4. 시현 방법
 1. 위 3번의 순서(웹 스캐닝 먼저, 브루트포스 나중)를 5분 이내에 재현
 2. 관리자 대시보드 "연관 사건" 표에서 두 유형이 함께 묶인 사건 1건 확인
-3. IP 잠금 해제 후 사건 상태가 `CLOSED`로 바뀌는지 확인
+3. IP 잠금을 해제해도 사건 상태가 `진행 중` 그대로인지 확인
+4. "처리" 열의 "해결" 버튼을 눌러 `해결됨`으로 바뀌고 해결자·시각이 표시되는지 확인
 
 ### 5. 결과 화면
 "연관 사건" 표 캡처.
@@ -984,6 +1004,7 @@ IP `1.2.3.4`가 5분 안에 404를 11번 유발(WEB_SCANNING 기록) 후, 곧이
 ### 6. 용어 풀이 / 한계
 - **SIEM(Security Information and Event Management)**: 여러 곳의 보안 이벤트를 모아 상관관계를 분석하는 보안 업계 표준 개념.
 - **한계**: 5분이라는 창은 고정 상수(`config.INCIDENT_CORRELATION_WINDOW_MINUTES`)라, 5분보다 느리게 진행되는(예: 하루에 걸친) 저속 공격 흐름은 하나의 사건으로 묶이지 않습니다.
+- **한계**: 사건이 `OPEN`에서 `IDLE`(활동 없음)로 바뀌는 시점은 새 이벤트가 들어올 때뿐입니다(별도 타이머 없음). 새 이벤트가 없는 사건은 30분(`config.INCIDENT_MERGE_IDLE_MINUTES`)이 지나도 화면에 "진행 중"으로 남습니다. 또 관리자가 "해결"을 누르지 않은 사건은 계속 남으므로, 주기적으로 확인해서 닫아야 합니다.
 
 ---
 
