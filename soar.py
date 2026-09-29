@@ -226,7 +226,9 @@ def try_release_expired_lockouts() -> None:
     for lockout in db.list_expired_active_lockouts():
         db.release_lockout(lockout["ip_address"])
         db.resolve_security_events_for_ip(lockout["ip_address"])
-        db.close_open_incident_for_ip(lockout["ip_address"])
+        # 연관 사건(security_incidents)은 여기서 닫지 않는다 — 접속 차단을 거두는
+        # 것과 "관리자가 검토를 마쳤다"는 판단은 별개이므로, 사건은 관리자가
+        # 대시보드의 "해결" 버튼(db.resolve_incident)을 눌러야만 CLOSED가 된다.
 
 
 def manual_release(ip: str) -> bool:
@@ -246,7 +248,21 @@ def manual_release(ip: str) -> bool:
         return False
     db.release_lockout(ip)
     db.resolve_security_events_for_ip(ip)
-    db.close_open_incident_for_ip(ip)
+    # 연관 사건은 닫지 않는다 — try_release_expired_lockouts()의 같은 자리 주석 참고.
+    return True
+
+
+def manual_release_account(username: str) -> bool:
+    """관리자가 대시보드에서 잠긴 "계정"의 "즉시 해제" 버튼을 눌렀을 때 호출된다.
+
+    manual_release()의 계정 버전이다. 지금 잠긴 계정이 아니면 아무것도 하지 않고
+    False를, 풀었다면 관련 보안 이벤트까지 정리하고 True를 돌려준다 —
+    try_release_expired_account_lockouts()의 자동 해제와 같은 후속 처리다.
+    """
+    if db.get_active_account_lockout(username) is None:
+        return False
+    db.release_account_lockout(username)
+    db.resolve_security_events_for_username(username)
     return True
 
 

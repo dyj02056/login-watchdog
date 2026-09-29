@@ -78,6 +78,18 @@ PAGE_ACCESS_ALERT_THRESHOLD = int(os.environ.get("PAGE_ACCESS_ALERT_THRESHOLD", 
 # 걸친 공격 흐름을 잡아야 해서 더 넓은 시간대를 봐야 한다.
 INCIDENT_CORRELATION_WINDOW_MINUTES = int(os.environ.get("INCIDENT_CORRELATION_WINDOW_MINUTES", 5))
 
+# 열린 사건에 새 이벤트를 "병합"할 수 있는 최대 공백 시간(분) — 마지막 이벤트로부터
+# 이 시간이 지나면 옛 사건은 IDLE(활동 없음)로 옮기고 새 사건을 연다. 30분으로 잡은
+# 이유: 상관 창(5분)·IP 잠금 시간(5분)보다 충분히 길어야 잠금이 풀린 뒤 공격자가
+# 재시도하는 정도의 공백에서 한 공격이 사건 여러 개(+에스컬레이션 알림 반복)로
+# 쪼개지지 않고, 반대로 너무 길면 무관한 활동(공유 IP 등)이 한 사건에 섞이고 이미
+# escalated 된 옛 사건이 새 공격의 알림을 삼켜버린다. 상관 창보다 작게 설정되면
+# 의미가 없으므로 상관 창 값으로 끌어올린다.
+INCIDENT_MERGE_IDLE_MINUTES = max(
+    int(os.environ.get("INCIDENT_MERGE_IDLE_MINUTES", 30)),
+    INCIDENT_CORRELATION_WINDOW_MINUTES,
+)
+
 # SOAR 플레이북 고도화(Track C guide28) 에스컬레이션 기준 — 사건(security_incidents)에
 # 묶인 서로 다른 event_type이 이 개수 이상이면서 severity_max가 CRITICAL이면,
 # correlate.py가 "복합 공격 발생" 에스컬레이션 알림을 별도로 보낸다. 상관분석 자체의

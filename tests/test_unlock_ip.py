@@ -66,18 +66,18 @@ def test_unlock_one_releases_and_returns_true_when_locked(monkeypatch):
     monkeypatch.setattr(db, "release_lockout", lambda ip: released.append(ip))
     resolved = []
     monkeypatch.setattr(db, "resolve_security_events_for_ip", lambda ip: resolved.append(ip))
-    closed = []
-    monkeypatch.setattr(db, "close_open_incident_for_ip", lambda ip: closed.append(ip))
+    monkeypatch.setattr(db, "resolve_incident", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("잠금 해제만으로 사건이 해결되면 안 된다")
+    ))
 
     result = unlock_ip.unlock_one("127.0.0.1")
 
     assert result is True
     assert released == ["127.0.0.1"]
     # /admin/dashboard의 "즉시 해제" 버튼과 동일하게, 이 스크립트로 풀 때도
-    # 그 IP의 미해결 CRITICAL 보안 이벤트와 열린 연관 사건(Track C guide27)이
-    # 함께 정리돼야 한다.
+    # 그 IP의 미해결 CRITICAL 보안 이벤트가 함께 정리돼야 한다. 연관 사건은
+    # 관리자가 대시보드에서 따로 해결하므로 여기서는 닫지 않는다.
     assert resolved == ["127.0.0.1"]
-    assert closed == ["127.0.0.1"]
 
 
 def test_unlock_all_releases_every_ip_in_order(monkeypatch):
@@ -86,14 +86,14 @@ def test_unlock_all_releases_every_ip_in_order(monkeypatch):
     monkeypatch.setattr(db, "release_lockout", lambda ip: released.append(ip))
     resolved = []
     monkeypatch.setattr(db, "resolve_security_events_for_ip", lambda ip: resolved.append(ip))
-    closed = []
-    monkeypatch.setattr(db, "close_open_incident_for_ip", lambda ip: closed.append(ip))
+    monkeypatch.setattr(db, "resolve_incident", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("잠금 해제만으로 사건이 해결되면 안 된다")
+    ))
 
     unlock_ip.unlock_all(lockouts)
 
     assert released == ["1.1.1.1", "2.2.2.2"]
     assert resolved == ["1.1.1.1", "2.2.2.2"]
-    assert closed == ["1.1.1.1", "2.2.2.2"]
 
 
 def test_main_rejects_ip_and_all_together(monkeypatch):
