@@ -163,20 +163,22 @@ def test_try_release_expired_lockouts_releases_each_expired_ip(monkeypatch):
     expired = [{"ip_address": "1.1.1.1"}, {"ip_address": "2.2.2.2"}]
     released = []
     resolved = []
-    closed = []
 
     monkeypatch.setattr(db, "list_expired_active_lockouts", lambda: expired)
     monkeypatch.setattr(db, "release_lockout", lambda ip: released.append(ip))
     monkeypatch.setattr(db, "resolve_security_events_for_ip", lambda ip: resolved.append(ip))
-    monkeypatch.setattr(db, "close_open_incident_for_ip", lambda ip: closed.append(ip))
+    # 잠금이 풀려도 연관 사건(security_incidents)은 닫히면 안 된다 — 사건 해결은
+    # 관리자가 "해결" 버튼(db.resolve_incident)으로 따로 판단한다.
+    monkeypatch.setattr(db, "resolve_incident", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("잠금 해제만으로 사건이 해결되면 안 된다")
+    ))
 
     soar.try_release_expired_lockouts()
 
     # 만료된 IP 두 개가 각각 한 번씩, 빠짐없이 풀렸는지, 그리고 각 IP의 CRITICAL
-    # 이벤트와 열린 사건(security_incidents, Track C guide27)도 함께 정리됐는지 확인.
+    # 이벤트도 함께 정리됐는지 확인.
     assert released == ["1.1.1.1", "2.2.2.2"]
     assert resolved == ["1.1.1.1", "2.2.2.2"]
-    assert closed == ["1.1.1.1", "2.2.2.2"]
 
 
 def test_try_release_expired_lockouts_does_nothing_when_none_expired(monkeypatch):
@@ -186,9 +188,6 @@ def test_try_release_expired_lockouts_does_nothing_when_none_expired(monkeypatch
     ))
     monkeypatch.setattr(db, "resolve_security_events_for_ip", lambda ip: (_ for _ in ()).throw(
         AssertionError("풀어줄 게 없는데 resolve_security_events_for_ip가 호출되면 안 된다")
-    ))
-    monkeypatch.setattr(db, "close_open_incident_for_ip", lambda ip: (_ for _ in ()).throw(
-        AssertionError("풀어줄 게 없는데 close_open_incident_for_ip가 호출되면 안 된다")
     ))
 
     soar.try_release_expired_lockouts()  # 예외가 안 나면 통과
@@ -200,15 +199,16 @@ def test_manual_release_returns_true_when_ip_is_locked(monkeypatch):
     monkeypatch.setattr(db, "release_lockout", lambda ip: released_ip.setdefault("ip", ip))
     resolved_ip = {}
     monkeypatch.setattr(db, "resolve_security_events_for_ip", lambda ip: resolved_ip.setdefault("ip", ip))
-    closed_ip = {}
-    monkeypatch.setattr(db, "close_open_incident_for_ip", lambda ip: closed_ip.setdefault("ip", ip))
+    # 수동 해제도 마찬가지 — 접속 차단만 풀 뿐 사건을 닫지 않는다.
+    monkeypatch.setattr(db, "resolve_incident", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("잠금 해제만으로 사건이 해결되면 안 된다")
+    ))
 
     result = soar.manual_release("5.5.5.5")
 
     assert result is True
     assert released_ip["ip"] == "5.5.5.5"
     assert resolved_ip["ip"] == "5.5.5.5"
-    assert closed_ip["ip"] == "5.5.5.5"
 
 
 def test_manual_release_returns_false_when_ip_not_locked(monkeypatch):
@@ -220,6 +220,26 @@ def test_manual_release_returns_false_when_ip_not_locked(monkeypatch):
     result = soar.manual_release("6.6.6.6")  # 잠긴 목록(5.5.5.5)에 없는 IP
 
     assert result is False
+
+
+def test_manual_release_account_releases_and_resolves_when_locked(monkeypatch):
+    monkeypatch.setattr(db, "get_active_account_lockout", lambda u: {"username": u})
+    released, resolved = [], []
+    monkeypatch.setattr(db, "release_account_lockout", lambda u: released.append(u))
+    monkeypatch.setattr(db, "resolve_security_events_for_username", lambda u: resolved.append(u))
+
+    assert soar.manual_release_account("alice") is True
+    assert released == ["alice"]
+    assert resolved == ["alice"]
+
+
+def test_manual_release_account_returns_false_when_not_locked(monkeypatch):
+    monkeypatch.setattr(db, "get_active_account_lockout", lambda u: None)
+    monkeypatch.setattr(db, "release_account_lockout", lambda u: (_ for _ in ()).throw(
+        AssertionError("잠긴 적 없는 계정인데 release_account_lockout이 호출되면 안 된다")
+    ))
+
+    assert soar.manual_release_account("bob") is False
 
 
 # ============================================================================

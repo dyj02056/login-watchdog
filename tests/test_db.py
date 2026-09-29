@@ -957,15 +957,152 @@ def test_get_open_incident_returns_none_when_no_open_incident(monkeypatch):
     assert db.get_open_incident("9.9.9.9") is None
 
 
-def test_close_open_incident_for_ip_filters_by_ip_and_open_status(monkeypatch):
-    fake_client = _FakeQuery(rows=[{"id": 1}])
+def test_get_open_incident_selects_last_event_at_for_idle_check(monkeypatch):
+    fake_client = _FakeQuery(rows=[])
     monkeypatch.setattr(db, "get_client", lambda: fake_client)
 
-    db.close_open_incident_for_ip("9.9.9.9")
+    db.get_open_incident("9.9.9.9")
 
-    assert ("eq", ("ip_address", "9.9.9.9"), {}) in fake_client.calls
+    select_call = next(call for call in fake_client.calls if call[0] == "select")
+    assert "last_event_at" in select_call[1][0]
+
+
+def test_resolve_incident_records_resolver_and_only_targets_unresolved(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 7}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+    monkeypatch.setattr(db, "_now_iso", lambda: "2026-09-29T10:00:00+00:00")
+
+    result = db.resolve_incident(7, "alice")
+
+    assert result is True
+    assert (
+        "update",
+        ({"status": "CLOSED", "resolved_at": "2026-09-29T10:00:00+00:00", "resolved_by": "alice"},),
+        {},
+    ) in fake_client.calls
+    assert ("eq", ("id", 7), {}) in fake_client.calls
+    # 이미 CLOSED인 사건을 다시 덮어쓰지 않도록 OPEN/IDLE만 대상으로 한다.
+    assert ("in_", ("status", ["OPEN", "IDLE"]), {}) in fake_client.calls
+
+
+def test_resolve_incident_returns_false_when_nothing_updated(monkeypatch):
+    # 이미 해결됐거나 존재하지 않는 사건 — update가 아무 행도 바꾸지 못하면 False.
+    fake_client = _FakeQuery(rows=[])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.resolve_incident(7, "alice") is False
+
+
+def test_mark_incident_idle_only_touches_open_row(monkeypatch):
+    fake_client = _FakeQuery(rows=[{"id": 3}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    db.mark_incident_idle(3)
+
+    assert ("update", ({"status": "IDLE"},), {}) in fake_client.calls
+    assert ("eq", ("id", 3), {}) in fake_client.calls
     assert ("eq", ("status", "OPEN"), {}) in fake_client.calls
-    assert ("update", ({"status": "CLOSED"},), {}) in fake_client.calls
+
+
+def _iso_minutes_ago(minutes):
+    from datetime import datetime, timedelta, timezone
+
+    return (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+
+
+def test_is_idle_false_within_merge_window_and_true_beyond_it():
+    import config
+    from db import incidents as incidents_module
+
+    within = {"last_event_at": _iso_minutes_ago(config.INCIDENT_MERGE_IDLE_MINUTES - 1)}
+    beyond = {"last_event_at": _iso_minutes_ago(config.INCIDENT_MERGE_IDLE_MINUTES + 1)}
+
+    assert incidents_module._is_idle(within) is False
+    assert incidents_module._is_idle(beyond) is True
+
+
+def test_is_idle_false_when_last_event_at_missing():
+    from db import incidents as incidents_module
+
+    assert incidents_module._is_idle({"id": 1}) is False
+
+
+def test_is_idle_treats_naive_timestamp_as_utc():
+    import config
+    from db import incidents as incidents_module
+
+    naive = _iso_minutes_ago(config.INCIDENT_MERGE_IDLE_MINUTES + 1).replace("+00:00", "")
+
+    assert incidents_module._is_idle({"last_event_at": naive}) is True
+
+
+def test_record_incident_marks_stale_incident_idle_and_opens_new_one(monkeypatch):
+    import config
+    from db import incidents as incidents_module
+
+    stale = {
+        "id": 5,
+        "event_types": ["BRUTE_FORCE", "WEB_SCANNING"],
+        "severity_max": "CRITICAL",
+        "escalated": True,
+        "last_event_at": _iso_minutes_ago(config.INCIDENT_MERGE_IDLE_MINUTES + 10),
+    }
+    monkeypatch.setattr(incidents_module, "get_open_incident", lambda ip: stale)
+    idled = []
+    monkeypatch.setattr(incidents_module, "mark_incident_idle", lambda incident_id: idled.append(incident_id))
+    monkeypatch.setattr(incidents_module, "_insert_incident", lambda ip, event_types, severity_max: 50)
+    monkeypatch.setattr(
+        incidents_module,
+        "_update_incident",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("오래된 사건에 병합하면 안 된다")),
+    )
+
+    result = db.record_incident("9.9.9.9", ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")
+
+    assert idled == [5]
+    # 새 사건은 escalated=False로 시작한다 — 옛 사건의 escalated=True가 새 공격의
+    # 에스컬레이션 알림을 삼키지 않는다는 것이 이 분리의 핵심이다.
+    assert result == {
+        "id": 50,
+        "event_types": ["BRUTE_FORCE", "WEB_SCANNING"],
+        "severity_max": "CRITICAL",
+        "escalated": False,
+    }
+
+
+def test_record_incident_still_merges_when_within_idle_window(monkeypatch):
+    import config
+    from db import incidents as incidents_module
+
+    recent = {
+        "id": 5,
+        "event_types": ["BRUTE_FORCE"],
+        "severity_max": "MEDIUM",
+        "escalated": True,
+        "last_event_at": _iso_minutes_ago(config.INCIDENT_MERGE_IDLE_MINUTES - 5),
+    }
+    monkeypatch.setattr(incidents_module, "get_open_incident", lambda ip: recent)
+    monkeypatch.setattr(
+        incidents_module,
+        "mark_incident_idle",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("최근 사건을 IDLE로 옮기면 안 된다")),
+    )
+    monkeypatch.setattr(
+        incidents_module,
+        "_insert_incident",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("최근 사건이 있는데 새로 열면 안 된다")),
+    )
+    calls = []
+    monkeypatch.setattr(
+        incidents_module,
+        "_update_incident",
+        lambda incident_id, event_types, severity_max: calls.append((incident_id, event_types, severity_max)),
+    )
+
+    result = db.record_incident("9.9.9.9", ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")
+
+    assert calls == [(5, ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")]
+    assert result["escalated"] is True
 
 
 def test_record_incident_inserts_new_incident_when_none_open(monkeypatch):

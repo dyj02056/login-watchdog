@@ -791,6 +791,66 @@ def test_api_unlock_without_csrf_header_is_rejected(client, monkeypatch):
     assert response.status_code == 400
 
 
+def test_api_unlock_account_requires_username_in_body(client, monkeypatch):
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "test-admin"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post("/api/unlock-account", json={}, headers={"X-CSRFToken": token})
+
+    assert response.status_code == 400
+
+
+def test_api_unlock_account_releases_account_when_authenticated(client, monkeypatch):
+    monkeypatch.setattr(soar, "manual_release_account", lambda username: username == "alice")
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: True)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "test-admin"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/unlock-account", json={"username": "alice"}, headers={"X-CSRFToken": token}
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"success": True}
+
+
+def test_api_unlock_account_returns_403_when_role_lacks_permission(client, monkeypatch):
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_viewer")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: False)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "test-viewer"
+
+    token = get_csrf_token(client, "/admin/dashboard")
+    response = client.post(
+        "/api/unlock-account", json={"username": "alice"}, headers={"X-CSRFToken": token}
+    )
+
+    assert response.status_code == 403
+
+
+def test_api_status_includes_active_account_lockouts(client, monkeypatch):
+    _mock_full_status(monkeypatch)
+    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: False)
+    lockouts = [{"username": "alice", "failure_count": 12, "locked_at": "x", "unlock_at": "y"}]
+    monkeypatch.setattr(db, "list_active_account_lockouts", lambda: lockouts)
+
+    with client.session_transaction() as sess:
+        sess["admin_username"] = "test-admin"
+
+    response = client.get("/api/status")
+
+    assert response.get_json()["active_account_lockouts"] == lockouts
+
+
 def test_api_security_events_resolve_requires_event_id_in_body(client, monkeypatch):
     monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: True)
@@ -834,6 +894,78 @@ def test_api_security_events_resolve_without_csrf_header_is_rejected(client, mon
     response = client.post("/api/security-events/resolve", json={"event_id": 42})
 
     assert response.status_code == 400
+
+
+# ============================================================================
+# /api/security-incidents/resolve — 사건 해결 (잠금 해제와 별개)
+# ============================================================================
+
+def _post_incident_resolve(client, monkeypatch, body, permitted=True, username="test-admin"):
+    monkeypatch.setattr(db, "get_admin_role", lambda u: "security_admin")
+    monkeypatch.setattr(db, "has_permission", lambda role, action: permitted)
+    with client.session_transaction() as sess:
+        sess["admin_username"] = username
+    token = get_csrf_token(client, "/admin/dashboard")
+    return client.post(
+        "/api/security-incidents/resolve", json=body, headers={"X-CSRFToken": token}
+    )
+
+
+def test_api_security_incidents_resolve_marks_incident_resolved_by_session_admin(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(db, "resolve_incident", lambda incident_id, admin: calls.append((incident_id, admin)) or True)
+
+    response = _post_incident_resolve(client, monkeypatch, {"incident_id": 42})
+
+    assert response.status_code == 200
+    assert response.get_json() == {"success": True}
+    # 해결자는 요청 본문이 아니라 로그인 세션에서 가져온다.
+    assert calls == [(42, "test-admin")]
+
+
+def test_api_security_incidents_resolve_ignores_resolver_spoofed_in_body(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(db, "resolve_incident", lambda incident_id, admin: calls.append((incident_id, admin)) or True)
+
+    _post_incident_resolve(client, monkeypatch, {"incident_id": 1, "resolved_by": "someone-else"})
+
+    assert calls == [(1, "test-admin")]
+
+
+def test_api_security_incidents_resolve_returns_false_when_nothing_resolved(client, monkeypatch):
+    monkeypatch.setattr(db, "resolve_incident", lambda incident_id, admin: False)
+
+    response = _post_incident_resolve(client, monkeypatch, {"incident_id": 42})
+
+    assert response.status_code == 200
+    assert response.get_json() == {"success": False}
+
+
+def test_api_security_incidents_resolve_requires_integer_incident_id(client, monkeypatch):
+    monkeypatch.setattr(db, "resolve_incident", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("잘못된 입력으로 resolve_incident가 호출되면 안 된다")
+    ))
+
+    for body in ({}, {"incident_id": None}, {"incident_id": "42"}, {"incident_id": True}, {"incident_id": 4.5}):
+        response = _post_incident_resolve(client, monkeypatch, body)
+        assert response.status_code == 400, body
+
+
+def test_api_security_incidents_resolve_forbidden_without_permission(client, monkeypatch):
+    monkeypatch.setattr(db, "resolve_incident", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("권한이 없는데 resolve_incident가 호출되면 안 된다")
+    ))
+
+    response = _post_incident_resolve(client, monkeypatch, {"incident_id": 42}, permitted=False)
+
+    assert response.status_code == 403
+
+
+def test_api_security_incidents_resolve_requires_login(client):
+    response = client.post("/api/security-incidents/resolve", json={"incident_id": 42})
+
+    # CSRF 검사가 먼저 걸리든 로그인 검사가 먼저 걸리든 성공(200)해서는 안 된다.
+    assert response.status_code in (400, 401)
 
 
 # ============================================================================
@@ -1289,8 +1421,10 @@ def _mock_full_status(monkeypatch):
     나머지 표 렌더링 데이터까지 일일이 준비하지 않아도 되게 하기 위한 헬퍼.
     """
     monkeypatch.setattr(soar, "try_release_expired_lockouts", lambda: None)
+    monkeypatch.setattr(soar, "try_release_expired_account_lockouts", lambda: None)
     monkeypatch.setattr(db, "list_recent_attempts", lambda page, size: ([], 0))
     monkeypatch.setattr(db, "list_active_lockouts", lambda: [])
+    monkeypatch.setattr(db, "list_active_account_lockouts", lambda: [])
     monkeypatch.setattr(db, "list_admin_login_log", lambda page, size: ([], 0))
     monkeypatch.setattr(db, "list_users", lambda page, size: ([], 0))
     monkeypatch.setattr(db, "get_signup_enabled", lambda: True)

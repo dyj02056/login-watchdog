@@ -254,10 +254,12 @@ IP로 국가/도시를 알아내주는 외부 서비스(`ip-api.com`)는 분당 
 | `ip_address` | 글자 | 관련 IP |
 | `event_types` | 글자 목록 | 이 사건에 묶인 이벤트 종류들 (예: `["WEB_SCANNING", "BRUTE_FORCE"]`) |
 | `severity_max` | 글자 | 묶인 이벤트 중 가장 위험한 등급 |
-| `status` | 글자 | `OPEN`(진행 중) / `CLOSED`(종료) |
+| `status` | 글자 | `OPEN`(진행 중) / `IDLE`(활동 없음 — 마지막 이벤트로부터 30분 넘게 조용해 새 사건이 따로 열렸지만 아직 관리자 미해결) / `CLOSED`(관리자가 해결) |
 | `first_event_at` | 날짜/시각 | 사건에 묶인 첫 이벤트 시각 |
 | `last_event_at` | 날짜/시각 | 가장 최근 이벤트 시각 |
 | `escalated` | 참/거짓 | "복합 공격 발생" 알림을 이미 한 번 보냈는지 (중복 알림 방지용 표시) |
+| `resolved_at` | 날짜/시각 (없을 수 있음) | 관리자가 "해결"을 누른 시각. 예전에 잠금 해제로 자동 종료된 사건은 비어 있음 |
+| `resolved_by` | 글자 (없을 수 있음) | "해결"을 누른 관리자 아이디 (로그인 세션 기준) |
 
 ---
 
@@ -278,7 +280,7 @@ IP로 국가/도시를 알아내주는 외부 서비스(`ip-api.com`)는 분당 
 | 컬럼 | 값 종류 | 설명 |
 |---|---|---|
 | `role` | 글자 | 조치를 할 수 있는 역할 (`roles` 표와 연결) |
-| `action` | 글자 | 허용된 조치 (예: `unlock_ip`, `delete_user`, `manage_admin_users`, `approve_pending_action` 등) |
+| `action` | 글자 | 허용된 조치 (예: `unlock_ip`, `delete_user`, `manage_admin_users`, `approve_pending_action`, `resolve_incident` 등) |
 
 ---
 
