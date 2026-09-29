@@ -46,7 +46,7 @@ def _maybe_escalate(ip: str, incident: dict) -> None:
 
 ## 4. 재알림 방지 — `escalated` 플래그
 
-사건은 새 이벤트가 들어올 때마다 계속 갱신됩니다(27단계). `escalated` 컬럼이 없으면, 이미 조건을 넘은 사건에 4번째, 5번째 이벤트가 또 붙을 때마다 매번 에스컬레이션 알림이 반복 발송됩니다 — `soar.enforce_lockout()`이 "잠그는 순간에 딱 한 번만" 알리는 것과 같은 원칙으로, 알림을 보낸 사건은 `db.mark_incident_escalated()`로 표시해서 다시 알리지 않습니다. 사건이 닫혔다가(CLOSED) 같은 IP에서 새로 열리면 새 행이므로 `escalated`는 자동으로 `False`부터 다시 시작합니다.
+사건은 새 이벤트가 들어올 때마다 계속 갱신됩니다(27단계). `escalated` 컬럼이 없으면, 이미 조건을 넘은 사건에 4번째, 5번째 이벤트가 또 붙을 때마다 매번 에스컬레이션 알림이 반복 발송됩니다 — `soar.enforce_lockout()`이 "잠그는 순간에 딱 한 번만" 알리는 것과 같은 원칙으로, 알림을 보낸 사건은 `db.mark_incident_escalated()`로 표시해서 다시 알리지 않습니다. 사건이 닫혔거나(CLOSED) 마지막 이벤트로부터 30분 넘게 조용해 `IDLE`로 옮겨진 뒤 같은 IP에서 새로 열리면 새 행이므로 `escalated`는 자동으로 `False`부터 다시 시작합니다(사건 해결 분리 후속 변경 — guide27 맨 아래 참고).
 
 ```sql
 -- docs/schema.sql

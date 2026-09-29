@@ -324,8 +324,8 @@ create unique index idx_security_incidents_open_ip
 -- (기본 3) 개 이상 쌓이면, correlate.py가 관리자에게 별도의 "복합 공격" 에스컬레이션
 -- 알림을 보낸다. 이 컬럼은 그 알림을 이미 보낸 사건인지 표시해서, 사건이 갱신될
 -- 때마다 같은 알림이 반복 발송되는 걸 막는다(soar.enforce_lockout의 "잠그는 순간에
--- 딱 한 번만" 알림 원칙과 동일). 사건이 닫혔다가(CLOSED) 새로 열리면 새 행이므로
--- 자동으로 false에서 다시 시작한다.
+-- 딱 한 번만" 알림 원칙과 동일). 사건이 닫혔거나(CLOSED) 오래 조용해 IDLE로 옮겨진 뒤 새로 열리면
+-- 새 행이므로 자동으로 false에서 다시 시작한다.
 alter table security_incidents add column escalated boolean not null default false;
 
 -- ============================================================================
@@ -417,3 +417,50 @@ alter table permissions add constraint permissions_action_check check (
 insert into permissions (role, action) values
   ('security_admin', 'approve_pending_action'),
   ('super_admin', 'approve_pending_action');
+
+-- ============================================================================
+-- 사건 해결을 잠금 해제와 분리 (관리자가 직접 "해결" — incident_resolution)
+-- ============================================================================
+-- 지금까지는 IP 잠금이 풀리면 그 IP의 사건이 자동으로 CLOSED 됐다. "접속 차단을
+-- 푸는 조치"와 "관리자가 검토를 마쳤다는 판단"은 다른 일이므로, 이제 사건은
+-- 관리자가 대시보드의 "해결" 버튼을 눌러야만 CLOSED 가 된다.
+--
+-- IDLE = 마지막 이벤트로부터 config.INCIDENT_MERGE_IDLE_MINUTES(기본 30분) 넘게
+-- 조용했는데 같은 IP에서 새 이벤트가 와서, 새 사건을 열기 위해 옛 사건을 "활동
+-- 없음"으로 옮긴 상태다(아직 관리자 미해결). idx_security_incidents_open_ip 는
+-- status='OPEN' 에만 걸려 있으므로, 옛 사건이 IDLE 로 빠져야 새 OPEN 사건을 만들 수 있다.
+
+-- status 체크 제약 교체: 제약 이름은 Postgres 자동 이름이라 실제 이름을 찾아서 지운다.
+do $$
+declare c text;
+begin
+  select conname into c
+  from pg_constraint
+  where conrelid = 'public.security_incidents'::regclass
+    and contype = 'c'
+    and pg_get_constraintdef(oid) ilike '%status%';
+  if c is not null then
+    execute format('alter table public.security_incidents drop constraint %I', c);
+  end if;
+end $$;
+
+alter table security_incidents add constraint security_incidents_status_check
+  check (status in ('OPEN', 'IDLE', 'CLOSED'));
+
+-- 누가/언제 해결했는지 남긴다. 예전에 잠금 해제로 자동 종료된 행은 NULL 로 남는다.
+alter table security_incidents add column if not exists resolved_at timestamptz;
+alter table security_incidents add column if not exists resolved_by text;
+
+-- 사건 해결 API 전용 권한 — 쓰기 API 하나당 권한 하나(1:1) 관례를 따른다.
+alter table permissions drop constraint permissions_action_check;
+alter table permissions add constraint permissions_action_check check (
+  action in (
+    'unlock_ip', 'resolve_security_event', 'toggle_signup',
+    'delete_user', 'delete_post', 'delete_comment', 'manage_admin_users',
+    'approve_pending_action', 'resolve_incident'
+  )
+);
+insert into permissions (role, action) values
+  ('security_admin', 'resolve_incident'),
+  ('super_admin', 'resolve_incident')
+on conflict do nothing;
