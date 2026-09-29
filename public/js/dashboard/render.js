@@ -224,13 +224,17 @@ export function renderCommentsTable(comments) {
  * 보안 이벤트(위험등급 통합) 표를 채운다. 각 줄에 등급 배지와, 미해결 HIGH/MEDIUM
  * 이벤트에는 "처리 완료" 버튼이 붙는다. CRITICAL(IP 잠금)은 잠금이 풀리면 자동으로
  * 처리되므로 버튼 대신 안내 문구만 보여준다(soar.py의 resolve_security_events_for_ip 참고).
- * @param {Array} events - [{id, event_type, severity, ip_address, path, count, action, detected_at, resolved_at}, ...]
+ * "계정" 칸은 계정 단위 이벤트(분산 브루트포스로 인한 계정 잠금 등)에만 값이 있다 —
+ * 그 외 IP 단위 이벤트는 username이 비어 있어 "-"로 표시한다. 계정 잠금은 5분 뒤
+ * 풀리면 "현재 잠긴 IP / 계정" 카드에서 사라지므로, 잠금이 풀린 뒤에도 어느 계정이
+ * 공격받았는지 남아 있는 곳은 이 칸뿐이다.
+ * @param {Array} events - [{id, event_type, severity, ip_address, username, path, count, action, detected_at, resolved_at}, ...]
  */
 export function renderSecurityEventsTable(events) {
     const tbody = document.getElementById("security-events-table-body");
 
     if (events.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">보안 이벤트가 없습니다.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="empty-state">보안 이벤트가 없습니다.</td></tr>';
         return;
     }
 
@@ -254,6 +258,7 @@ export function renderSecurityEventsTable(events) {
                     <td><span class="severity-badge ${severityClass}">${severityLabel}</span></td>
                     <td>${escapeHtml(event.event_type)}</td>
                     <td class="mono">${escapeHtml(event.ip_address)}</td>
+                    <td>${escapeHtml(event.username || "-")}</td>
                     <td>${escapeHtml(event.path || "-")}</td>
                     <td>${event.count}</td>
                     <td>${escapeHtml(event.action)}</td>

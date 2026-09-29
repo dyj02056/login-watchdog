@@ -43,9 +43,12 @@ body {
     font-family: var(--font-body);
 }
 
+/* 본문 너비 — 예전 900px에서는 보안 이벤트 표(9열)의 IP 칸 실제 글자 영역이 64px뿐이라
+   일반적인 IPv4(11~15자)가 주소 중간에서 줄바꿈됐다. 1200px로 넓히고 아래 표들의
+   열 비율도 함께 조정했다. 화면이 이보다 좁으면 max-width만 걸리므로 그대로 줄어든다. */
 main {
     padding: 24px;
-    max-width: 900px;
+    max-width: 1200px;
     margin: 0 auto;
 }
 
@@ -230,20 +233,25 @@ section h2 {
     word-break: break-word;
 }
 
-/* 보안 이벤트 표는 8개 열이 전부 같은 너비로 나뉘면 "경로" 칸이 URL을 담기엔
+/* 보안 이벤트 표는 9개 열이 전부 같은 너비로 나뉘면 "경로" 칸이 URL을 담기엔
    너무 좁아서 계속 여러 줄로 빽빽하게 끊긴다. 다른 열(등급/횟수처럼 짧은 값만
    들어가는 칸)은 좁혀주고, 그만큼을 "경로" 칸에 몰아준다. 비율 합은 100%.
+   본문이 1200px로 넓어지면서 IP/계정 칸을 넓혔다(IP 최대 15자, 계정 최대 20자가
+   한 줄에 들어가도록 — 계정 20자만 두 줄로 나뉜다). "유형" 칸은 가장 긴 유형 코드
+   DISTRIBUTED_BRUTE_FORCE(23자)가, "조치" 칸은 ACCOUNT_LOCKED(14자)가 단어 중간에서
+   끊기지 않을 만큼 확보했다.
    단, "등급" 칸은 너무 좁히면 배지("CRITICAL" 등)가 칸 너비보다 넓어져
    overflow로 옆 "유형" 칸 글자 위에 겹쳐 보이므로, 배지가 한 줄로 들어갈
    만큼의 최소 너비를 확보해둔다. */
-#security-events-table th:nth-child(1), #security-events-table td:nth-child(1) { width: 10%; } /* 시각 */
-#security-events-table th:nth-child(2), #security-events-table td:nth-child(2) { width: 13%; } /* 등급 */
-#security-events-table th:nth-child(3), #security-events-table td:nth-child(3) { width: 14%; } /* 유형 */
-#security-events-table th:nth-child(4), #security-events-table td:nth-child(4) { width: 9%; }  /* IP */
-#security-events-table th:nth-child(5), #security-events-table td:nth-child(5) { width: 31%; } /* 경로 */
-#security-events-table th:nth-child(6), #security-events-table td:nth-child(6) { width: 5%; }  /* 횟수 */
-#security-events-table th:nth-child(7), #security-events-table td:nth-child(7) { width: 9%; }  /* 조치 */
-#security-events-table th:nth-child(8), #security-events-table td:nth-child(8) { width: 9%; }  /* 상태 */
+#security-events-table th:nth-child(1), #security-events-table td:nth-child(1) { width: 9%; } /* 시각 */
+#security-events-table th:nth-child(2), #security-events-table td:nth-child(2) { width: 11%; } /* 등급 */
+#security-events-table th:nth-child(3), #security-events-table td:nth-child(3) { width: 18%; } /* 유형 */
+#security-events-table th:nth-child(4), #security-events-table td:nth-child(4) { width: 12%; } /* IP */
+#security-events-table th:nth-child(5), #security-events-table td:nth-child(5) { width: 12%; } /* 계정 */
+#security-events-table th:nth-child(6), #security-events-table td:nth-child(6) { width: 12%; } /* 경로 */
+#security-events-table th:nth-child(7), #security-events-table td:nth-child(7) { width: 5%; } /* 횟수 */
+#security-events-table th:nth-child(8), #security-events-table td:nth-child(8) { width: 12%; } /* 조치 */
+#security-events-table th:nth-child(9), #security-events-table td:nth-child(9) { width: 9%; } /* 상태 */
 
 /* 연관 사건 표(Track C guide27)도 "관련 유형" 칸에 여러 유형이 쉼표로
    이어지므로, 보안 이벤트 표와 같은 이유로 비율을 따로 지정한다. "등급" 칸도
