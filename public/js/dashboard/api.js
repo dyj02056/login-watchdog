@@ -11,15 +11,18 @@ import {
     renderAdminUsersTable,
     renderAttemptsTable,
     renderCommentsTable,
+    renderIpExemptions,
     renderLockoutCards,
+    renderPermanentLocks,
     renderPostsTable,
+    renderRecoveryRequests,
     renderSecurityEventsTable,
     renderSecurityIncidentsTable,
     renderSignupStatus,
     renderUsersTable,
 } from "./render.js";
-import { csrfToken, pages, signupState } from "./state.js";
-import { renderPagination } from "./utils.js";
+import { csrfToken, pages, permissionState, signupState } from "./state.js";
+import { askNote, renderPagination } from "./utils.js";
 
 /**
  * 서버에게 "지금 최신 상태가 어때?"라고 물어보고, 그 답으로 화면을 새로 그린다.
@@ -69,7 +72,12 @@ export async function fetchStatus() {
         return;
     }
 
+    // 현재 관리자의 권한을 먼저 기억해둬야 아래 render 함수들이 버튼 노출을 정할 수 있다.
+    permissionState.actions = data.permissions || [];
     renderLockoutCards(data.active_lockouts, data.active_account_lockouts);
+    renderPermanentLocks(data.permanent_locks || []);
+    renderRecoveryRequests(data.recovery_requests || []);
+    renderIpExemptions(data.ip_exemptions || []);
     renderAttemptsTable(data.recent_attempts);
     renderPagination("attempts-pagination", pages.attempts, data.attempts_total_pages);
     renderAdminLoginLog(data.admin_login_log);
@@ -305,5 +313,88 @@ export async function toggleSignup() {
         headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
         body: JSON.stringify({ enabled: !signupState.enabled }),
     });
+    fetchStatus();
+}
+
+
+/**
+ * 영구 잠금 카드의 "영구 해제" 버튼 — 사유 입력 모달을 거친 뒤 서버에 해제를 요청한다
+ * (super_admin 전용, release_permanent_lock). 사유 없이는 요청 자체를 보내지 않는다.
+ * 실패(권한 없음/대상 없음)는 서버가 보낸 오류 문구를 alert로 보여준다.
+ * @param {string} kind - "ip" 또는 "account"
+ * @param {string} target - IP 주소 또는 아이디
+ */
+export async function releasePermanentLock(kind, target) {
+    const kindLabel = kind === "ip" ? "IP" : "계정";
+    const note = await askNote(`${kindLabel} "${target}"의 영구 잠금을 해제합니다. 해제 사유를 입력하세요.`);
+    if (note === null) {
+        return;
+    }
+    const response = await fetch("/api/permanent-locks/release", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ target_kind: kind, target_value: target, note: note }),
+    });
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        alert(data.error || "영구 해제에 실패했습니다.");
+    }
+    fetchStatus();
+}
+
+/**
+ * "영구 잠금 걸기" 폼 제출 — 관리자가 IP/계정을 직접 영구 잠금한다(promote_permanent_lock).
+ * @returns {Promise<boolean>} 성공 여부 — events.js가 성공했을 때만 폼을 비운다.
+ */
+export async function promotePermanentLock(kind, target, reason) {
+    const confirmed = confirm(`${kind === "ip" ? "IP" : "계정"} "${target}"을(를) 영구 잠금할까요? 관리자만 풀 수 있게 됩니다.`);
+    if (!confirmed) {
+        return false;
+    }
+    const response = await fetch("/api/permanent-locks/promote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ target_kind: kind, target_value: target, reason: reason }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        alert(data.error || "영구 잠금에 실패했습니다.");
+        return false;
+    }
+    fetchStatus();
+    return true;
+}
+
+/** IP 예외의 "회수" 버튼 — 확인 후 그 예외를 즉시 무효로 만든다. */
+export async function revokeIpExemption(exemptionId) {
+    if (!confirm("이 IP 예외를 회수할까요? 해당 사용자는 다시 이메일 인증을 해야 합니다.")) {
+        return;
+    }
+    const response = await fetch("/api/ip-exemptions/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ id: Number(exemptionId) }),
+    });
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        alert(data.error || "예외 회수에 실패했습니다.");
+    }
+    fetchStatus();
+}
+
+/** 복구 요청의 "취소" 버튼 — 진행 중인 복구 링크/코드를 즉시 무효로 만든다. */
+export async function revokeRecoveryRequest(requestId) {
+    if (!confirm("이 복구 요청을 취소할까요? 이미 발송된 메일의 링크와 코드는 더 이상 쓸 수 없게 됩니다.")) {
+        return;
+    }
+    const response = await fetch("/api/recovery-requests/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ id: Number(requestId) }),
+    });
+    if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        alert(data.error || "복구 요청 취소에 실패했습니다.");
+    }
     fetchStatus();
 }

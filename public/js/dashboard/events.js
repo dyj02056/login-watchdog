@@ -12,9 +12,13 @@ import {
     deletePost,
     deleteUser,
     fetchStatus,
+    promotePermanentLock,
     rejectAccessRequest,
+    releasePermanentLock,
     resolveEvent,
     resolveIncident,
+    revokeIpExemption,
+    revokeRecoveryRequest,
     toggleSignup,
     unlockAccount,
     unlockIp,
@@ -114,6 +118,42 @@ document.getElementById("access-requests-table-body").addEventListener("click", 
         approveAccessRequest(requestId);
     } else if (event.target.classList.contains("reject-request-btn")) {
         rejectAccessRequest(requestId);
+    }
+});
+
+// 영구 잠금 + 이메일 복구 카드(guide33/34-a)의 버튼들도 위와 같은 이벤트 위임 방식을 쓴다.
+document.getElementById("permanent-locks-table-body").addEventListener("click", (event) => {
+    if (event.target.classList.contains("release-permanent-btn")) {
+        releasePermanentLock(
+            event.target.getAttribute("data-kind"),
+            event.target.getAttribute("data-target")
+        );
+    }
+});
+
+document.getElementById("ip-exemptions-table-body").addEventListener("click", (event) => {
+    if (event.target.classList.contains("revoke-exemption-btn")) {
+        revokeIpExemption(event.target.getAttribute("data-id"));
+    }
+});
+
+document.getElementById("recovery-requests-table-body").addEventListener("click", (event) => {
+    if (event.target.classList.contains("revoke-recovery-btn")) {
+        revokeRecoveryRequest(event.target.getAttribute("data-id"));
+    }
+});
+
+// 수동 영구 승격 폼 — 성공했을 때만 입력칸을 비운다(실패하면 입력값을 고쳐 다시 보낼 수 있게).
+document.getElementById("permanent-lock-promote-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const kindSelect = document.getElementById("permanent-lock-kind");
+    const targetInput = document.getElementById("permanent-lock-target");
+    const reasonInput = document.getElementById("permanent-lock-reason");
+
+    const succeeded = await promotePermanentLock(kindSelect.value, targetInput.value.trim(), reasonInput.value.trim());
+    if (succeeded) {
+        targetInput.value = "";
+        reasonInput.value = "";
     }
 });
 

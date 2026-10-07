@@ -16,6 +16,7 @@ import alert
 import correlate
 import db
 import llm_client
+import lockdown
 
 
 def _record_event(
@@ -78,6 +79,11 @@ def enforce_lockout(
         event_type = "BRUTE_FORCE"
     _record_event(event_type, "CRITICAL", ip, None, failure_count, "LOCKED")
 
+    # 잠금 이력을 남기고, 최근 기간 안에 N번째 잠금이면 영구 잠금으로 승격한다
+    # (guide33, T1/T5). 임시 잠금 알림·이벤트 기록이 모두 끝난 뒤에 실행해서, 영구
+    # 잠금 이벤트(PERMANENT_LOCK)가 같은 사건의 "그 다음 단계"로 기록되게 한다.
+    lockdown.after_temporary_lock("ip", ip, event_type, failure_count)
+
 
 def enforce_account_lockout(
     username: str, failure_count: int, distinct_ip_count: int, triggering_ip: str
@@ -105,6 +111,10 @@ def enforce_account_lockout(
         failure_count,
         "ACCOUNT_LOCKED",
         username=username,
+    )
+    # 계정 잠금 이력 + 영구 승격 판단(guide33, T2). enforce_lockout()의 같은 자리 주석 참고.
+    lockdown.after_temporary_lock(
+        "account", username, "DISTRIBUTED_BRUTE_FORCE", failure_count, triggering_ip=triggering_ip
     )
 
 
@@ -243,8 +253,12 @@ def manual_release(ip: str) -> bool:
     그 권한 확인은 app.py의 login_required 장치가 미리 걸러주고, 이 함수는
     "이미 권한이 확인된 사람"의 요청만 받는다고 가정하고 동작한다.
     """
-    active_ips = {row["ip_address"] for row in db.list_active_lockouts()}
-    if ip not in active_ips:
+    active = {row["ip_address"]: row for row in db.list_active_lockouts()}
+    if ip not in active:
+        return False
+    # 영구 잠금은 이 "즉시 해제"로 풀지 않는다 — 사유 기록과 권한 분리(release_permanent_lock,
+    # super_admin 전용)가 필요한 별도 경로(lockdown.release)로만 풀 수 있다(guide33).
+    if active[ip].get("lock_type") == "PERMANENT":
         return False
     db.release_lockout(ip)
     db.resolve_security_events_for_ip(ip)
@@ -259,7 +273,11 @@ def manual_release_account(username: str) -> bool:
     False를, 풀었다면 관련 보안 이벤트까지 정리하고 True를 돌려준다 —
     try_release_expired_account_lockouts()의 자동 해제와 같은 후속 처리다.
     """
-    if db.get_active_account_lockout(username) is None:
+    lockout = db.get_active_account_lockout(username)
+    if lockout is None:
+        return False
+    # 영구 계정 잠금은 lockdown.release()로만 푼다(manual_release()의 같은 자리 주석 참고).
+    if lockout.get("lock_type") == "PERMANENT":
         return False
     db.release_account_lockout(username)
     db.resolve_security_events_for_username(username)
@@ -288,6 +306,7 @@ _EARLY_WARNING_LABELS = {
     "UNAUTHORIZED_ACCESS": "Unauthorized Access",
     "PAGE_ACCESS": "반복 페이지 접근",
     "API_MACRO_PATTERN": "매크로/봇 패턴",
+    "SIEM_HIGH_INCIDENT": "SIEM HIGH 사건 → 영구 잠금",
 }
 
 
@@ -391,6 +410,9 @@ def _run_pending_action(request: dict) -> None:
         )
     elif pending_action == "ALERT_ONLY":
         _ALERT_ONLY_DISPATCH[request["event_type"]](request)
+    elif pending_action == "PERMANENT_LOCK_IP":
+        # SIEM HIGH 사건을 관리자가 승인했다(PERMANENT_LOCK_AUTO_ON_HIGH=false 경로, guide33 T4).
+        lockdown.promote_ip(request["target_value"], "SIEM_HIGH", "EXEMPTION")
 
 
 def execute_approved_request(request_id: int, admin_id: int) -> bool:

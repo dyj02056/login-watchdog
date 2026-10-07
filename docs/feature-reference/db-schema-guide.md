@@ -1,6 +1,6 @@
 # Supabase DB 스키마 가이드 (비전공자용)
 
-이 문서는 [docs/schema.sql](schema.sql)에 정의된 Supabase 테이블 22개를 "이게 왜 있고, 어떤 값이 들어가는지" 비전공자도 알 수 있게 정리한 문서입니다.
+이 문서는 [docs/schema.sql](schema.sql)에 정의된 Supabase 테이블 25개를 "이게 왜 있고, 어떤 값이 들어가는지" 비전공자도 알 수 있게 정리한 문서입니다.
 
 > 실제 스키마 정의(SQL)는 [docs/schema.sql](schema.sql)이 원본입니다. 이 문서는 그걸 읽기 쉽게 풀어 쓴 참고 자료이며, 스키마가 바뀌면 이 문서도 함께 업데이트해야 합니다.
 
@@ -11,8 +11,8 @@
 | 분류 | 의미 | 해당 테이블 |
 |---|---|---|
 | **자산 / 콘텐츠** | 앱이 다루는 "진짜 데이터" (사람이 직접 만든 것) | `users`, `admin_users`, `posts`, `comments`, `roles`, `permissions`, `app_settings` |
-| **과거 기록 (로그)** | "언제 무슨 일이 있었는지" 계속 쌓이기만 하는 표 | `login_attempts`, `admin_login_log`, `signup_attempts`, `post_attempts`, `comment_attempts`, `not_found_attempts`, `unauthorized_attempts`, `page_access_attempts`, `api_access_log` |
-| **현재 상태 / 판정 결과** | "지금 이 순간 어떤 상태인지"를 나타내는 표 | `lockouts`, `account_lockouts`, `security_events`, `security_incidents`, `access_requests`, `ip_locations`(캐시) |
+| **과거 기록 (로그)** | "언제 무슨 일이 있었는지" 계속 쌓이기만 하는 표 | `login_attempts`, `admin_login_log`, `signup_attempts`, `post_attempts`, `comment_attempts`, `not_found_attempts`, `unauthorized_attempts`, `page_access_attempts`, `api_access_log`, `lock_history` |
+| **현재 상태 / 판정 결과** | "지금 이 순간 어떤 상태인지"를 나타내는 표 | `lockouts`, `account_lockouts`, `security_events`, `security_incidents`, `access_requests`, `recovery_requests`, `ip_lock_exemptions`, `ip_locations`(캐시) |
 
 **로그와 상태 표의 차이가 헷갈릴 수 있는데**, 예를 들어 `login_attempts`(로그)는 "10시에 실패, 10시 1분에 실패, 10시 2분에 성공"처럼 있었던 일을 전부 쌓아두는 표이고, `lockouts`(상태)는 "지금 이 IP가 잠겨있다/아니다"라는 딱 하나의 결론만 담아두는 표입니다.
 
@@ -55,9 +55,13 @@
 |---|---|---|
 | `ip_address` | 글자 (기본키) | 잠긴 IP 주소 |
 | `locked_at` | 날짜/시각 | 잠긴 시각 |
-| `unlock_at` | 날짜/시각 | 자동으로 풀릴 예정 시각 |
+| `unlock_at` | 날짜/시각 (영구 잠금은 없음) | 자동으로 풀릴 예정 시각. 영구 잠금이면 비어 있다 |
 | `failure_count` | 숫자 | 잠기게 된 원인이 된 실패 횟수 |
 | `active` | 참/거짓 | 지금도 잠겨있는 상태인지 |
+| `lock_type` | 글자 | `TEMPORARY`(5분 후 자동 해제) / `PERMANENT`(영구 — 이메일 인증이나 관리자 해제로만 풀림) |
+| `recoverable` | 글자 | 영구 잠금을 어떻게 풀 수 있는지: `SELF`(이메일로 완전 해제) / `EXEMPTION`(이메일로 "본인+본인 기기 예외"만 발급) / `ADMIN_ONLY`(관리자만) |
+| `permanent_reason` | 글자 (없을 수 있음) | 영구로 올라간 이유 (`REPEAT_OFFENDER`, `SIEM_CRITICAL`, `SIEM_HIGH`, `ADMIN_MANUAL` 등) |
+| `promoted_at` | 날짜/시각 (없을 수 있음) | 영구 잠금으로 올라간 시각 |
 
 ---
 
@@ -319,6 +323,62 @@ IP로 국가/도시를 알아내주는 외부 서비스(`ip-api.com`)는 분당 
 | `requested_at` | 날짜/시각 | 경보가 생성된 시각 |
 | `decided_by_admin_id` | 숫자 (없을 수 있음) | 승인/반려를 처리한 관리자 |
 | `decided_at` | 날짜/시각 (없을 수 있음) | 승인/반려 처리 시각 |
+
+---
+
+## 23. `lock_history` — 잠금이 걸린 이력 (영구 잠금 판단의 근거)
+
+`lockouts`/`account_lockouts`는 같은 IP·계정이 다시 잠기면 같은 줄을 덮어쓰기 때문에 "최근 30일 안에 몇 번 잠겼나"를 셀 수 없습니다. 이 표는 잠금이 걸릴 때마다 **한 줄씩 추가만** 해서 그 횟수를 셉니다. (줄을 고치거나 지우지 않는 "append-only" 표입니다.)
+
+| 컬럼 | 값 종류 | 설명 |
+|---|---|---|
+| `id` | 숫자 | 이력 번호 |
+| `target_kind` / `target_value` | 글자 | 대상이 IP인지 계정인지(`ip`/`account`)와 그 값 |
+| `lock_type` | 글자 | `TEMPORARY` / `PERMANENT` |
+| `trigger_reason` | 글자 | `THRESHOLD`(임계값 초과) / `REPEAT_OFFENDER`(반복 위반) / `SIEM_CRITICAL` / `SIEM_HIGH` / `NETWORK_IDS` / `ADMIN_MANUAL` |
+| `source_event_type` | 글자 (없을 수 있음) | 어떤 공격 유형 때문에 잠겼는지 (`BRUTE_FORCE`, `ADMIN_BRUTE_FORCE` 등) |
+| `incident_id` | 숫자 (없을 수 있음) | 연결된 연관 사건 |
+| `trigger_note` | 글자 (없을 수 있음) | 관리자 수동 승격 사유 |
+| `locked_at` | 날짜/시각 | 잠긴 시각 |
+| `released_at` / `released_by` / `release_note` | (없을 수 있음) | 풀린 시각, 푼 주체(`EMAIL_RECOVERY`, `admin:<아이디>`, `script:<이름>`), 해제 사유 |
+
+---
+
+## 24. `recovery_requests` — 이메일로 보낸 1회용 복구 링크/코드
+
+영구 잠금된 사용자가 `/recovery`에서 본인 인증을 요청하면 한 줄이 생깁니다. 토큰(링크)과 6자리 코드는 **원문이 아니라 해시(지문)만** 저장해서, DB가 유출돼도 진짜 링크는 알 수 없습니다.
+
+| 컬럼 | 값 종류 | 설명 |
+|---|---|---|
+| `id` | 숫자 | 요청 번호 |
+| `user_id` | 숫자 | 복구를 요청한 회원 (회원이 삭제되면 함께 삭제) |
+| `target_kind` / `target_value` | 글자 | 풀려는 대상 — 계정(`account`) 또는 요청한 IP(`ip`) |
+| `token_hash` | 글자 | 메일 링크 토큰의 SHA-256 해시 (중복 불가) |
+| `code_hash` | 글자 | 6자리 코드의 SHA-256 해시 |
+| `device_hash` | 글자 (없을 수 있음) | 요청한 기기 쿠키(`lw_dev`)의 해시 — IP 복구는 이 기기에서만 완료 가능 |
+| `requested_ip` | 글자 | 요청한 IP |
+| `status` | 글자 | `PENDING`(대기) → `VERIFIED`(완료) / `EXPIRED`(만료) / `REVOKED`(취소·코드 5회 실패) |
+| `code_attempts` | 숫자 | 6자리 코드를 틀린 횟수 |
+| `expires_at` / `created_at` / `verified_at` | 날짜/시각 | 만료·요청·완료 시각 (유효시간 15분) |
+
+같은 (회원, 대상)에 `PENDING`은 동시에 1건만 존재할 수 있습니다(부분 유니크 인덱스).
+
+---
+
+## 25. `ip_lock_exemptions` — IP 영구 잠금의 "본인 + 본인 기기" 출입증
+
+IP가 영구 잠금되어도, 이메일 인증을 마친 **그 회원이 그 기기로** 접속하는 경우만 통과시키는 표입니다. 같은 와이파이(NAT)를 쓰는 공격자가 피해자의 아이디를 알아도, 기기 쿠키가 없으면 계속 막힙니다.
+
+| 컬럼 | 값 종류 | 설명 |
+|---|---|---|
+| `id` | 숫자 | 예외 번호 |
+| `ip_address` | 글자 | 예외가 적용되는 IP |
+| `user_id` | 숫자 | 예외를 받은 회원 |
+| `device_hash` | 글자 | 예외를 받은 기기 쿠키의 해시 |
+| `granted_via` | 글자 | `EMAIL_RECOVERY` / `ADMIN` |
+| `status` | 글자 | `ACTIVE` → `REVOKED`(관리자 회수·연속 로그인 실패) / `EXPIRED` |
+| `granted_at` / `expires_at` | 날짜/시각 | 발급·만료 시각 (기본 30일) |
+| `revoked_reason` | 글자 (없을 수 있음) | 회수 사유 |
 
 ---
 

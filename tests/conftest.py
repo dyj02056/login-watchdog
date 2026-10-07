@@ -61,3 +61,46 @@ def flask_app(monkeypatch):
 def client(flask_app):
     """flask_app의 테스트 클라이언트. 실제 서버를 띄우지 않고도 라우트에 요청을 보내볼 수 있다."""
     return flask_app.test_client()
+
+
+# ============================================================================
+# 영구 잠금(guide33)이 기존 코드 경로에 새로 끼워 넣은 DB 호출을 막아두는 공용 준비물
+#
+# soar.enforce_lockout() 등이 이제 잠금 이력(lock_history)을 남기고, 로그인/가입/관리자
+# API가 영구 잠금 상태를 한 번 더 확인한다. 영구 잠금과 무관한 기존 테스트가 이 새 호출
+# 때문에 진짜 Supabase로 네트워크 요청을 시도하지 않도록, 기본값(영구 잠금 없음)으로
+# 막아둔다. 영구 잠금/복구 자체를 테스트하는 파일은 모듈 맨 위에
+# `pytestmark = pytest.mark.real_lockdown`을 달아서 이 기본값을 끄고 자기가 필요한 것만
+# monkeypatch한다.
+# ============================================================================
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "real_lockdown: 영구 잠금 기본 stub(autouse)을 끄고 실제 함수를 테스트한다"
+    )
+
+
+@pytest.fixture(autouse=True)
+def _stub_permanent_lock_defaults(request, monkeypatch):
+    if request.node.get_closest_marker("real_lockdown"):
+        return
+
+    import db
+    import detector
+    import lockdown
+
+    monkeypatch.setattr(db, "insert_lock_history", lambda *a, **k: None)
+    monkeypatch.setattr(db, "count_lock_history", lambda *a, **k: 0)
+    monkeypatch.setattr(db, "get_account_lockout_row", lambda username: None)
+    # is_locked()를 True로 흉내낸 기존 테스트가 "임시 잠금"으로 취급되게 한다.
+    monkeypatch.setattr(detector, "get_ip_lock_state", lambda ip: detector.LOCK_STATE_TEMPORARY)
+    monkeypatch.setattr(detector, "get_account_lock_state", lambda username: detector.LOCK_STATE_TEMPORARY)
+    monkeypatch.setattr(lockdown, "consider_incident_promotion", lambda ip, incident: None)
+    monkeypatch.setattr(lockdown, "close_incident_if_configured", lambda incident: None)
+    monkeypatch.setattr(lockdown, "is_permanent_ip", lambda ip: False)
+    monkeypatch.setattr(lockdown, "is_permanent_account", lambda username: False)
+    # /api/status가 새로 조회하는 영구 잠금·복구 카드용 데이터
+    monkeypatch.setattr(db, "list_recent_recovery_requests", lambda limit=20: [])
+    monkeypatch.setattr(db, "list_active_ip_exemptions", lambda limit=20: [])
+    monkeypatch.setattr(db, "list_role_permissions", lambda role: [])
+    monkeypatch.setattr(db, "get_email_statuses", lambda usernames: {})

@@ -64,6 +64,11 @@
 
         <div class="auth-links">
             <a href="{{ url_for('auth.signup') }}">회원가입</a>
+            <!-- recovery_link : 영구 잠금 안내가 나갔을 때만 routes/auth.py가 True로 넘긴다
+                 (guide33). 이메일 인증으로 잠금을 풀거나 본인 기기 접속을 허용받는 화면이다. -->
+            {% if recovery_link %}
+                <a href="{{ url_for('recovery.recovery_request_form') }}">본인 인증으로 잠금 해제</a>
+            {% endif %}
         </div>
     </div>
 </body>

@@ -20,6 +20,8 @@
 #   security_events.py  — not_found/unauthorized/page_access_attempts, security_events
 #   incidents.py         — security_incidents (SIEM 상관분석, Track C guide27)
 #   api_access_log.py    — api_access_log (매크로/봇 탐지, Track C guide29)
+#   lock_history.py      — lock_history (잠금 이력 append-only, guide33 영구 잠금)
+#   recovery.py          — recovery_requests / ip_lock_exemptions (이메일 복구, guide34-a)
 #
 # 이 파일은 위 각 모듈의 함수를 그대로 다시 내보내기(re-export)만 한다 — 그래서
 # app.py/detector.py/soar.py/scripts/*.py나 테스트 코드는 예전처럼
@@ -41,10 +43,15 @@ from .access_requests import (
 )
 from .account_lockouts import (
     create_account_lockout,
+    get_account_lockout_row,
     get_active_account_lockout,
     list_active_account_lockouts,
     list_expired_active_account_lockouts,
+    promote_account_lockout_permanent,
     release_account_lockout,
+    release_permanent_account_lockout,
+    set_account_lockout_recoverable,
+    set_account_probation,
 )
 from .admin import (
     count_recent_admin_failures,
@@ -91,6 +98,7 @@ from .board import (
 )
 from .geoip_cache import get_cached_ip_locations, save_ip_location
 from .incidents import (
+    close_incident_system,
     get_open_incident,
     get_recent_distinct_event_types,
     list_security_incidents,
@@ -99,16 +107,40 @@ from .incidents import (
     record_incident,
     resolve_incident,
 )
-from .roles import has_permission
+from .lock_history import count_lock_history, insert_lock_history, mark_lock_released
 from .lockouts import (
     create_lockout,
     get_active_lockout,
+    get_lockout_row,
     list_active_lockouts,
     list_expired_active_lockouts,
     list_lockouts_between,
     list_lockouts_since,
+    promote_lockout_permanent,
     release_lockout,
+    release_permanent_lockout,
 )
+from .recovery import (
+    consume_recovery_request,
+    count_recovery_requests_by_ip,
+    count_recovery_requests_by_user,
+    create_recovery_request,
+    expire_old_recovery_requests,
+    get_active_ip_exemption,
+    get_email_statuses,
+    get_latest_pending_recovery_for_user,
+    get_latest_recovery_request_time,
+    get_pending_recovery_by_token_hash,
+    get_recovery_activity,
+    increment_recovery_code_attempts,
+    insert_ip_exemption,
+    list_active_ip_exemptions,
+    list_recent_recovery_requests,
+    revoke_ip_exemption,
+    revoke_recovery_request,
+    set_user_email_status,
+)
+from .roles import has_permission, list_role_permissions
 from .security_events import (
     count_recent_not_found_attempts,
     count_recent_page_access_attempts,
@@ -244,4 +276,36 @@ __all__ = [
     "get_request",
     "decide_request",
     "count_recent_requests_for_target",
+    # 영구 잠금 + 이메일 복구 (guide33 / guide34-a)
+    "get_lockout_row",
+    "promote_lockout_permanent",
+    "release_permanent_lockout",
+    "get_account_lockout_row",
+    "promote_account_lockout_permanent",
+    "release_permanent_account_lockout",
+    "set_account_lockout_recoverable",
+    "set_account_probation",
+    "insert_lock_history",
+    "count_lock_history",
+    "mark_lock_released",
+    "close_incident_system",
+    "list_role_permissions",
+    "create_recovery_request",
+    "get_pending_recovery_by_token_hash",
+    "get_latest_pending_recovery_for_user",
+    "consume_recovery_request",
+    "increment_recovery_code_attempts",
+    "revoke_recovery_request",
+    "expire_old_recovery_requests",
+    "count_recovery_requests_by_ip",
+    "count_recovery_requests_by_user",
+    "get_latest_recovery_request_time",
+    "get_recovery_activity",
+    "list_recent_recovery_requests",
+    "insert_ip_exemption",
+    "get_active_ip_exemption",
+    "revoke_ip_exemption",
+    "list_active_ip_exemptions",
+    "set_user_email_status",
+    "get_email_statuses",
 ]

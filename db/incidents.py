@@ -190,6 +190,23 @@ def resolve_incident(incident_id: int, admin_username: str) -> bool:
     return bool(res.data)
 
 
+def close_incident_system(incident_id: int, actor: str) -> bool:
+    """사건을 시스템이 자동으로 CLOSED 처리한다(PERMANENT_LOCK_AUTO_CLOSE_INCIDENT=true일 때만 쓰인다).
+
+    resolve_incident()와 같은 조건(OPEN/IDLE만 대상)이지만, 사람이 눌렀을 때와
+    구분되도록 resolved_by에 "system:permanent_lock" 같은 시스템 표식을 기록한다.
+    """
+    res = (
+        db.get_client()
+        .table("security_incidents")
+        .update({"status": "CLOSED", "resolved_at": db._now_iso(), "resolved_by": actor})
+        .eq("id", incident_id)
+        .in_("status", ["OPEN", "IDLE"])
+        .execute()
+    )
+    return bool(res.data)
+
+
 def _is_idle(incident: dict) -> bool:
     """마지막 이벤트(last_event_at)로부터 config.INCIDENT_MERGE_IDLE_MINUTES가 지났는지.
 

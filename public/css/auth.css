@@ -108,3 +108,29 @@ body {
     font-size: 13px;
     text-align: center;
 }
+
+/* 영구 잠금 이메일 복구 화면(guide34-a) — 확인 화면의 요청 정보 박스와 보조 링크 */
+.recovery-detail {
+    background: var(--surface-2);
+    color: var(--ink-soft);
+    padding: 12px;
+    border-radius: var(--radius-s);
+    font-size: 13px;
+    line-height: 1.6;
+    margin-bottom: 12px;
+}
+
+.recovery-detail strong {
+    color: var(--ink);
+}
+
+.auth-card .recovery-note {
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin: 0 0 12px 0;
+    line-height: 1.5;
+}
+
+.auth-links a + a {
+    margin-left: 12px;
+}

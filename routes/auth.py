@@ -13,7 +13,7 @@ import config
 import db
 import detector
 import soar
-from helpers import get_request_ip, is_bot_submission
+from helpers import get_device_hash, get_request_ip, is_bot_submission
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -82,6 +82,12 @@ def signup_submit():
         flash("일시적인 오류가 발생했습니다. 다시 시도해주세요.")
         return render_template("signup.html", signup_enabled=True)
 
+    # 영구 잠금된 IP는 가입도 막는다 — 공격자가 새 계정을 만들어 자기 IP의 예외를
+    # 받아내는 경로를 차단한다(guide33). 일반 임시 잠금(5분)은 가입을 막지 않는다.
+    if detector.get_ip_lock_state(ip) == detector.LOCK_STATE_PERMANENT:
+        flash("현재 이 네트워크에서는 회원가입을 할 수 없습니다. 관리자에게 문의해주세요.")
+        return render_template("signup.html", signup_enabled=True)
+
     # 같은 IP가 짧은 시간에 너무 많이 가입을 시도하면 거부한다 — 이전에는 이 주소에
     # 요청 빈도 제한이 전혀 없어서, 스크립트로 계정을 무제한 찍어낼 수 있었다
     # (18단계 보안 점검에서 발견 및 보완). 성공/실패와 무관하게 시도 자체를 세므로,
@@ -138,6 +144,28 @@ def signup_submit():
 # 감시 대상 로그인 (/login) — 이 프로젝트가 실제로 감시하는 화면
 # ============================================================================
 
+def _login_form(recovery_link: bool = False):
+    """로그인 폼을 다시 보여준다. recovery_link=True면 영구 잠금 안내 아래에 이메일
+    복구(/recovery) 링크를 함께 보여준다(templates/login_form.html 참고)."""
+    return render_template(
+        "login_form.html",
+        form_action=url_for("auth.login_submit"),
+        recovery_link=recovery_link,
+    )
+
+
+def _find_ip_exemption(ip: str, username: str) -> dict | None:
+    """이 IP에서 이 사용자가 "이 기기"로 유효한 영구 잠금 예외를 가졌는지 찾는다.
+    사용자가 없거나 기기 쿠키가 없으면 항상 None이다(공격자는 둘 다 갖지 못한다)."""
+    device_hash = get_device_hash()
+    if not device_hash:
+        return None
+    user = db.get_user_by_username(username)
+    if user is None:
+        return None
+    return db.get_active_ip_exemption(ip, user["id"], device_hash)
+
+
 @auth_bp.route("/login", methods=["GET"])
 def login():
     """감시 대상 로그인 화면을 보여준다. 이미 로그인된 상태라면 회원 대시보드로 바로 보낸다.
@@ -184,9 +212,24 @@ def login_submit():
         return render_template("login_form.html", form_action=url_for("auth.login_submit"))
 
     # 2) 이미 잠긴 IP이거나, 이미 잠긴 계정이라면 검증 자체를 건너뛰고 즉시 거부
-    if detector.is_locked(ip) or detector.is_account_locked(username):
+    #    — 단, 영구 잠금된 IP는 "이메일 복구로 예외를 받은 본인+본인 기기"만 통과시킨다(guide33).
+    exemption = None
+    if detector.is_locked(ip):
+        if detector.get_ip_lock_state(ip) != detector.LOCK_STATE_PERMANENT:
+            flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
+            return _login_form()
+        exemption = _find_ip_exemption(ip, username)
+        if exemption is None:
+            flash("이 네트워크는 차단되어 있습니다. 본인이라면 아래 '본인 인증으로 접속 허용'을 이용해주세요.")
+            return _login_form(recovery_link=True)
+        # 예외가 있으면 IP 잠금 안내 없이 아래 계정 잠금 확인과 정상적인 비밀번호 확인으로 계속 진행한다.
+
+    if detector.is_account_locked(username):
+        if detector.get_account_lock_state(username) == detector.LOCK_STATE_PERMANENT:
+            flash("영구 잠금된 계정입니다. 아래 '본인 인증으로 잠금 해제'를 이용해보세요. 이메일 인증이 안 되는 경우 관리자에게 문의해주세요.")
+            return _login_form(recovery_link=True)
         flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
-        return render_template("login_form.html", form_action=url_for("auth.login_submit"))
+        return _login_form()
 
     success = db.verify_user_credentials(username, password)
     db.log_attempt(ip, username, success)
@@ -200,6 +243,16 @@ def login_submit():
         session["username"] = username
         session["user_id"] = user["id"]
         return redirect(url_for("member.member_dashboard"))
+
+    # 영구 잠금 예외로 통과한 사용자가 연달아 실패하면 그 예외를 회수한다 — 예외는 "본인이
+    # 비밀번호를 아는 상황"을 전제로 한 출입증이라, 계속 틀리는 건 도용 신호로 본다.
+    # (예외 통과자의 실패는 IP 임계값 판정으로 넘기지 않는다 — 이 IP는 이미 영구 잠금 중이라
+    # enforce_lockout()이 5분 잠금 알림을 또 보내는 일이 없도록 하기 위해서다.)
+    if exemption is not None:
+        if db.count_recent_failures(ip) >= config.IP_EXEMPTION_MAX_FAILURES:
+            db.revoke_ip_exemption(exemption["id"], "예외 통과 후 연속 로그인 실패")
+        flash("아이디 또는 비밀번호가 올바르지 않습니다.")
+        return _login_form()
 
     # 실패했다면, 먼저 이 IP가 방금 임계값을 넘었는지 확인한다.
     suspicious, failure_count = detector.is_suspicious(ip)

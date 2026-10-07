@@ -58,3 +58,51 @@ export function renderPagination(containerId, page, totalPages) {
         : `<span class="admin-pagination-disabled">다음 →</span>`;
     container.innerHTML = `${prev}<span class="admin-pagination-current">${page} / ${totalPages}</span>${next}`;
 }
+
+/**
+ * 사유 입력 모달(#note-dialog)을 열고, 사용자가 입력한 사유를 돌려준다. 취소하면 null.
+ * 사유가 비어 있으면(공백만 있어도) 닫히지 않고 오류 문구를 보여준다 — "영구 해제"처럼
+ * 누가 언제 왜 했는지가 반드시 남아야 하는 조치에서 쓴다(서버도 note 누락을 400으로 막는다).
+ * @param {string} message - 모달 상단에 보여줄 안내 문구
+ * @returns {Promise<string|null>}
+ */
+export function askNote(message) {
+    const dialog = document.getElementById("note-dialog");
+    const form = document.getElementById("note-dialog-form");
+    const input = document.getElementById("note-dialog-input");
+    const error = document.getElementById("note-dialog-error");
+    const cancelButton = document.getElementById("note-dialog-cancel");
+
+    document.getElementById("note-dialog-message").textContent = message;
+    input.value = "";
+    error.hidden = true;
+
+    return new Promise((resolve) => {
+        function cleanup(result) {
+            form.removeEventListener("submit", onSubmit);
+            cancelButton.removeEventListener("click", onCancel);
+            dialog.removeEventListener("cancel", onCancel);
+            dialog.close();
+            resolve(result);
+        }
+        function onSubmit(event) {
+            event.preventDefault();
+            const note = input.value.trim();
+            if (!note) {
+                error.hidden = false;
+                input.focus();
+                return;
+            }
+            cleanup(note);
+        }
+        function onCancel(event) {
+            event.preventDefault();
+            cleanup(null);
+        }
+        form.addEventListener("submit", onSubmit);
+        cancelButton.addEventListener("click", onCancel);
+        dialog.addEventListener("cancel", onCancel); // Esc 키
+        dialog.showModal();
+        input.focus();
+    });
+}

@@ -200,3 +200,32 @@ def is_locked(ip: str) -> bool:
     여기서는 그 결과가 있는지(None이 아닌지)만 확인한다.
     """
     return db.get_active_lockout(ip) is not None
+
+
+# ============================================================================
+# 잠금 종류 판정 (guide33, 영구 잠금)
+#
+# is_locked()/is_account_locked()는 "잠겨있는가"만 답한다. 영구 잠금이 생기면 "임시냐
+# 영구냐"에 따라 안내 문구와 풀 수 있는 방법(이메일 복구/예외)이 달라지므로, 같은
+# db.get_active_*() 결과의 lock_type까지 보는 판정을 따로 둔다.
+# ============================================================================
+
+LOCK_STATE_NONE = "NONE"
+LOCK_STATE_TEMPORARY = "TEMPORARY"
+LOCK_STATE_PERMANENT = "PERMANENT"
+
+
+def _state_from_row(row: dict | None) -> str:
+    if row is None:
+        return LOCK_STATE_NONE
+    return LOCK_STATE_PERMANENT if row.get("lock_type") == "PERMANENT" else LOCK_STATE_TEMPORARY
+
+
+def get_ip_lock_state(ip: str) -> str:
+    """이 IP의 잠금 상태를 NONE / TEMPORARY / PERMANENT 중 하나로 알려준다."""
+    return _state_from_row(db.get_active_lockout(ip))
+
+
+def get_account_lock_state(username: str) -> str:
+    """이 계정의 잠금 상태를 NONE / TEMPORARY / PERMANENT 중 하나로 알려준다."""
+    return _state_from_row(db.get_active_account_lockout(username))

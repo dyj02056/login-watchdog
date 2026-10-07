@@ -27,3 +27,14 @@ def has_permission(role: str, action: str) -> bool:
         .execute()
     )
     return bool(res.data)
+
+
+def list_role_permissions(role: str) -> list[str]:
+    """이 role이 가진 action 목록 전체를 한 번의 조회로 가져온다.
+
+    대시보드가 "이 관리자에게 어떤 버튼을 보여줄지" 정하려고 /api/status 응답에 싣는
+    값이다(예: release_permanent_lock이 없으면 "영구 해제" 버튼을 숨긴다). 화면 표시용일
+    뿐이고, 실제 권한 검사는 서버의 require_permission()이 요청마다 따로 한다.
+    """
+    res = db.get_client().table("permissions").select("action").eq("role", role).execute()
+    return [row["action"] for row in res.data]

@@ -1,0 +1,55 @@
+<!--
+  recovery_request.html — 영구 잠금 복구 요청 화면 (guide34-a)
+
+  아이디를 입력하면 routes/recovery.py의 recovery_request_submit()이 복구 메일을 보낸다.
+  계정이 있든 없든, 복구 대상이든 아니든 응답 문구는 항상 같다(계정 존재 여부 노출 방지) —
+  그래서 이 화면은 "메일을 보냈을 수 있다"는 안내만 보여준다.
+-->
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <title>로그인 워치독 — 본인 인증으로 잠금 해제</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+</head>
+<body>
+    <button id="theme-toggle" type="button" class="theme-toggle theme-toggle--floating">다크 모드</button>
+
+    <div class="auth-card">
+        <h1>본인 인증으로 잠금 해제</h1>
+
+        <p class="recovery-note">
+            영구 잠금된 계정의 아이디를 입력하면 가입한 이메일로 인증 링크와 6자리 코드를 보내드립니다.
+            메일은 복구가 필요한 경우에만 발송됩니다.
+        </p>
+
+        {% if message %}
+            <ul class="flash-list">
+                <li>{{ message }}</li>
+            </ul>
+        {% endif %}
+
+        <form method="post" action="{{ url_for('recovery.recovery_request_submit') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <!-- 허니팟(봇 탐지)용 숨김 필드 — helpers.is_bot_submission() 참고. -->
+            <div class="hp-field" aria-hidden="true">
+                <label for="website">웹사이트</label>
+                <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+            </div>
+
+            <label for="username">아이디</label>
+            <input type="text" id="username" name="username" required>
+
+            <button type="submit">인증 메일 보내기</button>
+        </form>
+
+        <div class="auth-links">
+            <a href="{{ url_for('recovery.recovery_verify_form') }}">코드로 인증하기</a>
+            <a href="{{ url_for('auth.login') }}">로그인으로 돌아가기</a>
+        </div>
+    </div>
+</body>
+</html>

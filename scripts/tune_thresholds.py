@@ -45,6 +45,9 @@ DEFAULT_EARLY_RELEASE_RATIO = 0.5
 # 숫자만 보여준다.
 REVIEW_RECOMMENDATION_RATIO = 0.3
 
+# 임계값 튜닝과 무관한 이벤트 유형(영구 잠금 승격 기록) — build_report()에서 집계 대상에서 뺀다.
+EXCLUDED_EVENT_TYPES = {"PERMANENT_LOCK"}
+
 
 def elapsed_seconds(detected_at: str, resolved_at: str) -> float:
     """두 ISO 시각 문자열(예: "2026-09-25T09:08:50+00:00") 사이의 초 단위 간격을 계산한다."""
@@ -62,6 +65,10 @@ def build_report(days: int, early_release_ratio: float) -> str:
 
     by_type = defaultdict(lambda: {"total": 0, "early": 0})
     for event in events:
+        # 영구 잠금 이벤트는 "자동 만료를 기다리지 않고 풀었는가"라는 이 리포트의 기준 자체가
+        # 성립하지 않는다(자동 만료가 없어서 관리자가 풀 때까지 계속 남는다, guide33) — 제외한다.
+        if event["event_type"] in EXCLUDED_EVENT_TYPES:
+            continue
         elapsed = elapsed_seconds(event["detected_at"], event["resolved_at"])
         stats = by_type[event["event_type"]]
         stats["total"] += 1

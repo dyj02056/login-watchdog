@@ -41,12 +41,14 @@ load_dotenv()
 import config
 import db
 import detector
+import mailer
 import soar
 from helpers import get_request_ip
 from routes.admin import admin_bp
 from routes.auth import auth_bp
 from routes.board import board_bp
 from routes.member import member_bp
+from routes.recovery import recovery_bp
 
 # static_folder="public", static_url_path="": 기본값이면 Flask가 "static/" 폴더를
 # "/static/파일명" 주소로 서빙하는데, Vercel은 CSS/JS 같은 정적 파일을 "public/" 폴더에서
@@ -95,6 +97,10 @@ app.register_blueprint(auth_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(board_bp)
 app.register_blueprint(member_bp)
+app.register_blueprint(recovery_bp)
+
+# 운영(production)에서 복구 메일 설정이 비어 있으면 서버 시작 로그에 경고를 남긴다(guide34-a).
+mailer.print_configuration_warnings()
 
 
 # ============================================================================

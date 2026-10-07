@@ -32,6 +32,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv()
 
 import db  # noqa: E402  (load_dotenv()가 SUPABASE_URL 등을 먼저 읽어들인 뒤에 import 해야 함)
+import lockdown  # noqa: E402
+
+
+# --permanent로 영구 잠금을 풀 때 lock_history에 남길 기본 사유 — 터미널에서 풀어도
+# "누가 언제 왜 풀었는지"가 비어 있지 않게 한다(--note로 바꿀 수 있다).
+DEFAULT_NOTE = "scripts/unlock_ip.py --permanent 로 긴급 해제"
 
 
 def show_active_lockouts() -> list[dict]:
@@ -47,6 +53,14 @@ def show_active_lockouts() -> list[dict]:
 
     print(f"[*] 현재 활성 잠금 {len(lockouts)}건:")
     for lockout in lockouts:
+        if lockout.get("lock_type") == "PERMANENT":
+            # 영구 잠금은 unlock_at이 없다 — 자동 해제 예정 시각 대신 [영구]로 표시하고,
+            # 풀려면 --permanent 옵션이 필요하다는 것을 알려준다(guide33).
+            print(
+                f"    - {lockout['ip_address']} [영구] "
+                f"({lockout['locked_at']} 잠금, 해제하려면 --permanent 옵션 필요)"
+            )
+            continue
         print(
             f"    - {lockout['ip_address']} "
             f"(실패 {lockout['failure_count']}회, "
@@ -55,8 +69,12 @@ def show_active_lockouts() -> list[dict]:
     return lockouts
 
 
-def unlock_one(ip: str) -> bool:
+def unlock_one(ip: str, permanent: bool = False, note: str = DEFAULT_NOTE) -> bool:
     """특정 IP 하나만 골라서 잠금을 해제한다.
+
+    영구 잠금(guide33)은 permanent=True(--permanent 옵션)일 때만 푼다 — 실수로 영구 잠금을
+    풀지 않도록 옵션을 명시해야 하고, 풀 때는 대시보드 "영구 해제"와 같은 경로
+    (lockdown.release)를 거쳐서 해제 이력(lock_history)과 Slack 알림이 남는다.
 
     아무 확인 없이 바로 release_lockout을 부르지 않고, 먼저 get_active_lockout으로
     "정말 지금 잠겨있는지"부터 확인한다 — 이미 안 잠긴 IP에 실행해도 결과적으로는
@@ -67,6 +85,14 @@ def unlock_one(ip: str) -> bool:
     if lockout is None:
         print(f"[*] {ip}는 이미 잠겨있지 않습니다. 할 일이 없습니다.")
         return False
+
+    if lockout.get("lock_type") == "PERMANENT":
+        if not permanent:
+            print(f"[!] {ip}는 영구 잠금입니다. 풀려면 --permanent 옵션을 함께 지정하세요.")
+            return False
+        released = lockdown.release("ip", ip, "script:unlock_ip", note)
+        print(f"[OK] {ip} 영구 잠금을 해제했습니다." if released else f"[*] {ip}는 이미 영구 잠금이 아닙니다.")
+        return released
 
     print(
         f"[*] {ip} 잠금 해제 중... "
@@ -83,9 +109,16 @@ def unlock_one(ip: str) -> bool:
     return True
 
 
-def unlock_all(lockouts: list[dict]) -> None:
-    """조회된 모든 활성 잠금을 순서대로 해제한다."""
+def unlock_all(lockouts: list[dict], permanent: bool = False, note: str = DEFAULT_NOTE) -> None:
+    """조회된 모든 활성 잠금을 순서대로 해제한다. 영구 잠금은 permanent=True일 때만 푼다."""
     for lockout in lockouts:
+        if lockout.get("lock_type") == "PERMANENT":
+            if permanent:
+                lockdown.release("ip", lockout["ip_address"], "script:unlock_ip", note)
+                print(f"[OK] {lockout['ip_address']} 영구 잠금을 해제했습니다.")
+            else:
+                print(f"[!] {lockout['ip_address']}는 영구 잠금이라 건너뜁니다 (--permanent 필요).")
+            continue
         db.release_lockout(lockout["ip_address"])
         db.resolve_security_events_for_ip(lockout["ip_address"])
         print(f"[OK] {lockout['ip_address']} 잠금을 해제했습니다.")
@@ -104,6 +137,16 @@ def main() -> None:
         action="store_true",
         help="현재 활성 상태인 잠금을 전부 해제한다. --ip와 함께 쓸 수 없다.",
     )
+    parser.add_argument(
+        "--permanent",
+        action="store_true",
+        help="영구 잠금(자동 만료 없음)도 함께 해제한다. 지정하지 않으면 영구 잠금은 건너뛴다.",
+    )
+    parser.add_argument(
+        "--note",
+        default=DEFAULT_NOTE,
+        help="영구 잠금을 풀 때 해제 이력(lock_history)에 남길 사유.",
+    )
     args = parser.parse_args()
 
     if args.ip and args.all:
@@ -112,11 +155,11 @@ def main() -> None:
     if args.all:
         lockouts = show_active_lockouts()
         if lockouts:
-            unlock_all(lockouts)
+            unlock_all(lockouts, args.permanent, args.note)
         return
 
     if args.ip:
-        unlock_one(args.ip)
+        unlock_one(args.ip, args.permanent, args.note)
         return
 
     # 아무 옵션도 주지 않으면 "조회만" 하고 끝낸다 — 실수로 뭔가를 풀어버리는

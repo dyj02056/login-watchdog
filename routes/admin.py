@@ -5,6 +5,7 @@
 # 두 섹션을 그대로 옮겨왔다. 배경은 docs/refactor/2026-09-15-file-split.md 참고.
 # ============================================================================
 
+import ipaddress
 import math
 from concurrent.futures import ThreadPoolExecutor
 
@@ -13,6 +14,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 import config
 import db
 import detector
+import lockdown
 import soar
 from helpers import _attach_locations, get_request_ip, is_bot_submission, login_required, require_permission
 
@@ -60,8 +62,13 @@ def admin_login_submit():
         return render_template("login_form.html", form_action=url_for("admin.admin_login_submit"))
 
     # 2) 이미 잠긴 IP라면 자격 증명 확인 자체를 건너뛰고 즉시 거부
+    #    영구 잠금(T5)된 관리자 IP에는 이메일 복구·예외가 없다 — 관리자 로그인은 위험도가
+    #    가장 높아서 오직 관리자 해제(대시보드/scripts/unlock_ip.py --permanent)로만 풀린다.
     if detector.is_locked(ip):
-        flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
+        if detector.get_ip_lock_state(ip) == detector.LOCK_STATE_PERMANENT:
+            flash("이 네트워크는 차단되어 있습니다. 관리자에게 문의해주세요.")
+        else:
+            flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
         return render_template("login_form.html", form_action=url_for("admin.admin_login_submit"))
 
     username = request.form.get("username", "")
@@ -128,6 +135,50 @@ def _page_param(name: str) -> int:
     """
     page = request.args.get(name, 1, type=int)
     return page if page and page > 0 else 1
+
+
+def _permissions_for(admin_username: str) -> list[str]:
+    """이 관리자의 role이 가진 action 목록(role을 먼저 알아야 해서 한 함수로 묶었다)."""
+    role = db.get_admin_role(admin_username)
+    return db.list_role_permissions(role) if role else []
+
+
+def _build_permanent_locks(ip_lockouts: list[dict], account_lockouts: list[dict]) -> list[dict]:
+    """active인 잠금 중 영구(PERMANENT)인 것만 골라 대시보드 "영구 잠금" 카드용 한 목록으로 만든다.
+
+    이미 위에서 조회한 active_lockouts/active_account_lockouts를 걸러내기만 하므로 추가 조회가
+    없다(계정의 "이메일 확인 불가" 배지용 email_status만 영구 계정이 있을 때 한 번 조회한다).
+    """
+    locks = [
+        {
+            "kind": "ip",
+            "target": row["ip_address"],
+            "locked_at": row.get("locked_at"),
+            "promoted_at": row.get("promoted_at"),
+            "permanent_reason": row.get("permanent_reason"),
+            "recoverable": row.get("recoverable"),
+            "failure_count": row.get("failure_count"),
+            "email_status": None,
+        }
+        for row in ip_lockouts
+        if row.get("lock_type") == "PERMANENT"
+    ]
+    accounts = [row for row in account_lockouts if row.get("lock_type") == "PERMANENT"]
+    statuses = db.get_email_statuses([row["username"] for row in accounts]) if accounts else {}
+    locks += [
+        {
+            "kind": "account",
+            "target": row["username"],
+            "locked_at": row.get("locked_at"),
+            "promoted_at": row.get("promoted_at"),
+            "permanent_reason": row.get("permanent_reason"),
+            "recoverable": row.get("recoverable"),
+            "failure_count": row.get("failure_count"),
+            "email_status": statuses.get(row["username"]),
+        }
+        for row in accounts
+    ]
+    return locks
 
 
 @admin_bp.route("/api/status", methods=["GET"])
@@ -201,6 +252,11 @@ def api_status():
         # 병렬로 조회하면(순서상 9번째지만 동시에 실행됨) 이 role 조회 때문에
         # 폴링 응답이 느려지지 않는다.
         role_future = executor.submit(db.get_admin_role, session["admin_username"])
+        # 영구 잠금 + 이메일 복구(guide33/34-a) 카드용 데이터와, 화면이 어떤 버튼을 보여줄지
+        # 정하는 데 쓰는 "현재 관리자의 권한 목록" — 위 쿼리들과 같은 배치로 병렬 조회한다.
+        recovery_future = executor.submit(db.list_recent_recovery_requests, 20)
+        exemptions_future = executor.submit(db.list_active_ip_exemptions, 20)
+        permissions_future = executor.submit(_permissions_for, session["admin_username"])
 
         attempts, attempts_count = attempts_future.result()
         recent_attempts = _attach_locations(attempts)  # 다른 future들이 도는 동안 함께 실행됨
@@ -215,6 +271,9 @@ def api_status():
         security_incidents, security_incidents_count = security_incidents_future.result()
         access_requests, access_requests_count = access_requests_future.result()
         role = role_future.result()
+        recovery_requests = recovery_future.result()
+        ip_exemptions = exemptions_future.result()
+        permissions = permissions_future.result()
 
     response_data = {
             "recent_attempts": recent_attempts,
@@ -242,6 +301,12 @@ def api_status():
             # 구간에서 LLM이 위험하다고 판단해 등록한 PENDING 요청만 보여준다.
             "access_requests": access_requests,
             "access_requests_total_pages": max(1, math.ceil(access_requests_count / config.ADMIN_PAGE_SIZE)),
+            # 영구 잠금 + 이메일 복구(guide33/34-a): 영구 잠금 카드·복구 요청 카드·IP 예외
+            # 카드와, 현재 관리자가 가진 권한(버튼 노출용 — 실제 검사는 서버가 따로 한다).
+            "permanent_locks": _build_permanent_locks(active_lockouts, active_account_lockouts),
+            "recovery_requests": recovery_requests,
+            "ip_exemptions": ip_exemptions,
+            "permissions": permissions,
         }
 
     # "관리자 계정 관리" 카드는 super_admin(manage_admin_users 권한 보유자)에게만
@@ -268,6 +333,8 @@ def api_unlock():
         return jsonify({"success": False, "error": "ip 값이 필요합니다."}), 400
 
     released = soar.manual_release(ip)
+    if not released and lockdown.is_permanent_ip(ip):
+        return jsonify({"success": False, "error": "영구 잠금은 '영구 해제'로만 풀 수 있습니다."}), 409
     return jsonify({"success": released})
 
 
@@ -284,6 +351,8 @@ def api_unlock_account():
         return jsonify({"success": False, "error": "username 값이 필요합니다."}), 400
 
     released = soar.manual_release_account(username)
+    if not released and lockdown.is_permanent_account(username):
+        return jsonify({"success": False, "error": "영구 잠금은 '영구 해제'로만 풀 수 있습니다."}), 409
     return jsonify({"success": released})
 
 
@@ -361,6 +430,113 @@ def api_security_incidents_resolve():
 
     resolved = db.resolve_incident(incident_id, session["admin_username"])
     return jsonify({"success": resolved})
+
+
+# ============================================================================
+# 영구 잠금 + 이메일 복구 관리 API (guide33) — 쓰기 API 하나당 권한 하나(1:1)
+#
+#   promote_permanent_lock   : security_admin, super_admin  (수동 영구 승격)
+#   release_permanent_lock   : super_admin만               (영구 잠금 완전 해제 — 가장 신중해야 하는 조치)
+#   revoke_ip_exemption      : security_admin, super_admin  (IP 예외 회수)
+#   revoke_recovery_request  : security_admin, super_admin  (진행 중인 복구 요청 취소)
+# ============================================================================
+
+_PERMANENT_LOCK_KINDS = ("ip", "account")
+
+
+def _int_field(data: dict, key: str) -> int | None:
+    """JSON 본문에서 정수 id 하나를 꺼낸다. bool(True/False)은 파이썬에서 int의 하위 타입이라
+    따로 걸러야 한다(api_security_incidents_resolve와 같은 이유)."""
+    value = data.get(key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+@admin_bp.route("/api/permanent-locks/promote", methods=["POST"])
+@require_permission("promote_permanent_lock")
+def api_permanent_locks_promote():
+    """대시보드 "영구 잠금 수동 승격" 폼이 호출하는 API — IP나 계정을 관리자가 직접 영구 잠금한다.
+
+    수동 승격은 이메일 복구 대상이 아니라 관리자만 풀 수 있게(ADMIN_ONLY) 건다.
+    허용 목록 IP(관리자 PC 등)와 가입되지 않은 아이디는 거부한다.
+    """
+    data = request.get_json(silent=True) or {}
+    kind = data.get("target_kind")
+    value = (data.get("target_value") or "").strip()
+    reason = (data.get("reason") or "").strip()
+    if kind not in _PERMANENT_LOCK_KINDS or not value or not reason:
+        return jsonify({"success": False, "error": "target_kind(ip/account), target_value, reason이 필요합니다."}), 400
+
+    note = f"{session['admin_username']}: {reason}"
+    if kind == "ip":
+        try:
+            ipaddress.ip_address(value)
+        except ValueError:
+            return jsonify({"success": False, "error": "올바른 IP 주소가 아닙니다."}), 400
+        if lockdown.is_ip_allowlisted(value):
+            return jsonify({"success": False, "error": "허용 목록의 IP는 영구 잠금할 수 없습니다."}), 400
+        promoted = lockdown.promote_ip(value, "ADMIN_MANUAL", "ADMIN_ONLY", note=note)
+    else:
+        if db.get_user_by_username(value) is None:
+            return jsonify({"success": False, "error": "가입되지 않은 아이디입니다."}), 404
+        promoted = lockdown.promote_account(value, "ADMIN_MANUAL", "ADMIN_ONLY", note=note)
+
+    if not promoted:
+        return jsonify({"success": False, "error": "이미 영구 잠금 상태입니다."}), 409
+    return jsonify({"success": True})
+
+
+@admin_bp.route("/api/permanent-locks/release", methods=["POST"])
+@require_permission("release_permanent_lock")
+def api_permanent_locks_release():
+    """대시보드 영구 잠금 카드의 "영구 해제" 버튼이 호출하는 API(super_admin 전용).
+
+    사유(note)가 비어 있으면 거부한다 — "누가 언제 왜 풀었는지"가 lock_history에 남아야 하기
+    때문이다. 해제한 관리자는 요청 본문이 아니라 로그인 세션에서 가져온다(본문은 위조 가능).
+    """
+    data = request.get_json(silent=True) or {}
+    kind = data.get("target_kind")
+    value = (data.get("target_value") or "").strip()
+    note = (data.get("note") or "").strip()
+    if kind not in _PERMANENT_LOCK_KINDS or not value:
+        return jsonify({"success": False, "error": "target_kind(ip/account)와 target_value가 필요합니다."}), 400
+    if not note:
+        return jsonify({"success": False, "error": "해제 사유(note)를 입력해야 합니다."}), 400
+
+    released = lockdown.release(kind, value, f"admin:{session['admin_username']}", note)
+    if not released:
+        return jsonify({"success": False, "error": "영구 잠금 상태가 아닌 대상입니다."}), 404
+    return jsonify({"success": True})
+
+
+@admin_bp.route("/api/ip-exemptions/revoke", methods=["POST"])
+@require_permission("revoke_ip_exemption")
+def api_ip_exemptions_revoke():
+    """IP 영구 잠금 예외(본인+본인 기기 출입증)를 관리자가 회수하는 API."""
+    data = request.get_json(silent=True) or {}
+    exemption_id = _int_field(data, "id")
+    if exemption_id is None:
+        return jsonify({"success": False, "error": "id 값이 필요합니다."}), 400
+    reason = (data.get("reason") or "").strip() or f"관리자 회수 ({session['admin_username']})"
+
+    if not db.revoke_ip_exemption(exemption_id, reason):
+        return jsonify({"success": False, "error": "유효한 예외가 아닙니다."}), 404
+    return jsonify({"success": True})
+
+
+@admin_bp.route("/api/recovery-requests/revoke", methods=["POST"])
+@require_permission("revoke_recovery_request")
+def api_recovery_requests_revoke():
+    """진행 중(PENDING)인 이메일 복구 요청을 관리자가 취소하는 API."""
+    data = request.get_json(silent=True) or {}
+    request_id = _int_field(data, "id")
+    if request_id is None:
+        return jsonify({"success": False, "error": "id 값이 필요합니다."}), 400
+
+    if not db.revoke_recovery_request(request_id):
+        return jsonify({"success": False, "error": "진행 중인 복구 요청이 아닙니다."}), 404
+    return jsonify({"success": True})
 
 
 @admin_bp.route("/api/users/delete", methods=["POST"])

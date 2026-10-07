@@ -135,6 +135,73 @@
         </section>
 
         <section>
+            <!-- 영구 잠금(guide33) — 자동 만료가 없고 이메일 인증(계정/IP 예외) 또는 관리자 해제로만
+                 풀리는 잠금이다. "영구 해제" 버튼은 super_admin(release_permanent_lock 권한)만
+                 보이고, 누르면 사유 입력창(#note-dialog)이 떠서 사유를 써야 해제된다. 권한이 없는
+                 역할에게는 버튼 대신 "super_admin 전용" 문구가 보인다(서버도 별도로 403으로 막는다). -->
+            <h2>영구 잠금</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>구분</th>
+                        <th>대상</th>
+                        <th>승격 사유</th>
+                        <th>복구 방식</th>
+                        <th>승격 시각</th>
+                        <th>처리</th>
+                    </tr>
+                </thead>
+                <tbody id="permanent-locks-table-body"></tbody>
+            </table>
+            <!-- 수동 영구 승격 폼 — promote_permanent_lock 권한이 있는 관리자에게만 보인다. -->
+            <form id="permanent-lock-promote-form" class="admin-user-create-form" hidden>
+                <select id="permanent-lock-kind">
+                    <option value="ip">IP</option>
+                    <option value="account">계정</option>
+                </select>
+                <input type="text" id="permanent-lock-target" placeholder="IP 주소 또는 아이디" required>
+                <input type="text" id="permanent-lock-reason" placeholder="승격 사유" required>
+                <button type="submit">영구 잠금 걸기</button>
+            </form>
+        </section>
+
+        <section>
+            <!-- 이메일 복구 요청(guide34-a) — 사용자가 /recovery에서 요청한 최근 20건. 토큰·코드는
+                 해시로만 저장되므로 여기서는 상태와 요청 정보만 보인다. -->
+            <h2>복구 요청</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>요청 시각</th>
+                        <th>계정</th>
+                        <th>대상</th>
+                        <th>요청 IP</th>
+                        <th>상태</th>
+                        <th>처리</th>
+                    </tr>
+                </thead>
+                <tbody id="recovery-requests-table-body"></tbody>
+            </table>
+        </section>
+
+        <section>
+            <!-- IP 영구 잠금 예외(guide34-a) — 이메일 인증을 마친 "본인 + 본인 기기"만 통과시키는 출입증. -->
+            <h2>IP 예외</h2>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>발급 시각</th>
+                        <th>IP</th>
+                        <th>계정</th>
+                        <th>만료</th>
+                        <th>처리</th>
+                    </tr>
+                </thead>
+                <tbody id="ip-exemptions-table-body"></tbody>
+            </table>
+        </section>
+
+        <section>
             <h2>최근 로그인 시도</h2>
             <table class="data-table">
                 <thead>
@@ -254,6 +321,20 @@
             <nav id="admin-log-pagination" class="admin-pagination"></nav>
         </section>
     </main>
+
+    <!-- 사유 입력 모달(guide33) — "영구 해제"처럼 사유가 꼭 필요한 조치에서 dashboard/utils.js의
+         askNote()가 연다. 사유가 비어 있으면 [확인]이 눌려도 닫히지 않는다. -->
+    <dialog id="note-dialog" class="note-dialog">
+        <form id="note-dialog-form" method="dialog">
+            <p id="note-dialog-message"></p>
+            <textarea id="note-dialog-input" rows="3" maxlength="200" placeholder="사유를 입력하세요"></textarea>
+            <p id="note-dialog-error" class="note-dialog-error" hidden>사유를 입력해야 합니다.</p>
+            <div class="note-dialog-actions">
+                <button type="button" id="note-dialog-cancel">취소</button>
+                <button type="submit" id="note-dialog-confirm">확인</button>
+            </div>
+        </form>
+    </dialog>
 
     <!-- 이 화면의 동작(5초마다 새로고침, 해제 버튼 클릭 처리 등)은 public/js/dashboard/
          디렉터리 아래 파일 6개(state/utils/render/api/events/main.js)로 나뉘어 있다 —

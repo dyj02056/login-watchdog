@@ -18,6 +18,7 @@
 import alert
 import config
 import db
+import lockdown
 
 # "사건이 이 정도로 심각해지면 → 이런 대응을 한다"는 매뉴얼을 선언적으로
 # 나열한다. 지금은 항목이 하나뿐이지만(에스컬레이션 알림), 나중에 대응이
@@ -52,6 +53,14 @@ def check_and_correlate(ip: str, event_type: str, severity: str) -> None:
         return
     incident = db.record_incident(ip, distinct_types, severity)
     _maybe_escalate(ip, incident)
+
+    # 영구 잠금(guide33). 영구 잠금 이벤트 자체는 사건의 "결과"이므로 다시 승격을 시도하지
+    # 않는다(승격이 승격을 부르는 재귀 방지) — 대신 설정이 켜져 있으면 사건을 자동으로 닫는다.
+    # 그 외 이벤트는 사건 위험등급(T3 CRITICAL / T4 HIGH)에 따라 승격을 판단한다.
+    if event_type == lockdown.PERMANENT_LOCK_EVENT_TYPE:
+        lockdown.close_incident_if_configured(incident)
+    else:
+        lockdown.consider_incident_promotion(ip, incident)
 
 
 def _maybe_escalate(ip: str, incident: dict) -> None:

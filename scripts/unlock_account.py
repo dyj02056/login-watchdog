@@ -30,6 +30,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv()
 
 import db  # noqa: E402  (load_dotenv()가 SUPABASE_URL 등을 먼저 읽어들인 뒤에 import 해야 함)
+import lockdown  # noqa: E402
+
+
+# --permanent로 영구 잠금을 풀 때 lock_history에 남길 기본 사유(--note로 바꿀 수 있다).
+DEFAULT_NOTE = "scripts/unlock_account.py --permanent 로 긴급 해제"
 
 
 def show_active_lockouts() -> list[dict]:
@@ -45,6 +50,12 @@ def show_active_lockouts() -> list[dict]:
 
     print(f"[*] 현재 활성 계정 잠금 {len(lockouts)}건:")
     for lockout in lockouts:
+        if lockout.get("lock_type") == "PERMANENT":
+            print(
+                f"    - {lockout['username']} [영구] "
+                f"({lockout['locked_at']} 잠금, 해제하려면 --permanent 옵션 필요)"
+            )
+            continue
         print(
             f"    - {lockout['username']} "
             f"(실패 {lockout['failure_count']}회, "
@@ -53,8 +64,9 @@ def show_active_lockouts() -> list[dict]:
     return lockouts
 
 
-def unlock_one(username: str) -> bool:
-    """특정 계정 하나만 골라서 잠금을 해제한다.
+def unlock_one(username: str, permanent: bool = False, note: str = DEFAULT_NOTE) -> bool:
+    """특정 계정 하나만 골라서 잠금을 해제한다. 영구 잠금(guide33)은 permanent=True일
+    때만 lockdown.release()로 푼다(unlock_ip.py의 unlock_one()과 같은 방식).
 
     unlock_ip.py의 unlock_one()과 동일하게, 먼저 get_active_account_lockout으로
     "정말 지금 잠겨있는지"부터 확인한다 — 이미 안 잠긴 계정에 실행해도 결과적으로는
@@ -65,6 +77,18 @@ def unlock_one(username: str) -> bool:
     if lockout is None:
         print(f"[*] {username}은(는) 이미 잠겨있지 않습니다. 할 일이 없습니다.")
         return False
+
+    if lockout.get("lock_type") == "PERMANENT":
+        if not permanent:
+            print(f"[!] {username}은(는) 영구 잠금입니다. 풀려면 --permanent 옵션을 함께 지정하세요.")
+            return False
+        released = lockdown.release("account", username, "script:unlock_account", note)
+        print(
+            f"[OK] {username} 영구 잠금을 해제했습니다."
+            if released
+            else f"[*] {username}은(는) 이미 영구 잠금이 아닙니다."
+        )
+        return released
 
     print(
         f"[*] {username} 잠금 해제 중... "
@@ -81,9 +105,16 @@ def unlock_one(username: str) -> bool:
     return True
 
 
-def unlock_all(lockouts: list[dict]) -> None:
-    """조회된 모든 활성 계정 잠금을 순서대로 해제한다."""
+def unlock_all(lockouts: list[dict], permanent: bool = False, note: str = DEFAULT_NOTE) -> None:
+    """조회된 모든 활성 계정 잠금을 순서대로 해제한다. 영구 잠금은 permanent=True일 때만 푼다."""
     for lockout in lockouts:
+        if lockout.get("lock_type") == "PERMANENT":
+            if permanent:
+                lockdown.release("account", lockout["username"], "script:unlock_account", note)
+                print(f"[OK] {lockout['username']} 영구 잠금을 해제했습니다.")
+            else:
+                print(f"[!] {lockout['username']}은(는) 영구 잠금이라 건너뜁니다 (--permanent 필요).")
+            continue
         db.release_account_lockout(lockout["username"])
         db.resolve_security_events_for_username(lockout["username"])
         print(f"[OK] {lockout['username']} 잠금을 해제했습니다.")
@@ -102,6 +133,16 @@ def main() -> None:
         action="store_true",
         help="현재 활성 상태인 계정 잠금을 전부 해제한다. --username과 함께 쓸 수 없다.",
     )
+    parser.add_argument(
+        "--permanent",
+        action="store_true",
+        help="영구 잠금(자동 만료 없음)도 함께 해제한다. 지정하지 않으면 영구 잠금은 건너뛴다.",
+    )
+    parser.add_argument(
+        "--note",
+        default=DEFAULT_NOTE,
+        help="영구 잠금을 풀 때 해제 이력(lock_history)에 남길 사유.",
+    )
     args = parser.parse_args()
 
     if args.username and args.all:
@@ -110,11 +151,11 @@ def main() -> None:
     if args.all:
         lockouts = show_active_lockouts()
         if lockouts:
-            unlock_all(lockouts)
+            unlock_all(lockouts, args.permanent, args.note)
         return
 
     if args.username:
-        unlock_one(args.username)
+        unlock_one(args.username, args.permanent, args.note)
         return
 
     # 아무 옵션도 주지 않으면 "조회만" 하고 끝낸다 — 실수로 뭔가를 풀어버리는

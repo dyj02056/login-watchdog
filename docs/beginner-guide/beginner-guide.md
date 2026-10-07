@@ -39,6 +39,8 @@
 30. [30단계 — 임계값 튜닝 리포트 (Track C 4/4)](guide30_threshold_tuning.md)
 31. [31단계 — LLM 조기 경보 에이전트 (Track A)](guide31_llm_judgment_agent.md)
 32. [32단계 — 사건 해결을 잠금 해제와 분리](guide32_incident_resolution.md)
+33. [33단계 — 영구 잠금 (자동 만료 없는 잠금 + 관리자 해제)](guide33_permanent_lock.md)
+34. [34단계 — 이메일 인증으로 영구 잠금 해제](guide34a_email_recovery.md)
 
 ---
 

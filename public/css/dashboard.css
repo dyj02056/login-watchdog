@@ -353,3 +353,107 @@ section h2 {
     color: var(--warning);
     font-weight: 600;
 }
+
+
+/* ============================================================================
+   영구 잠금 + 이메일 복구 카드(guide33/34-a)
+   ============================================================================ */
+
+/* "영구" / "이메일 확인 불가" 같은 상태 배지 */
+.lock-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: var(--radius-s);
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--danger-soft);
+    color: var(--danger);
+    margin-right: 4px;
+}
+
+.lock-badge--warn {
+    background: var(--surface-2);
+    color: var(--ink-soft);
+}
+
+/* 영구 해제 / 예외 회수 / 복구 요청 취소 버튼 — 되돌리기 어려운 조치라 위험 색을 쓴다 */
+.release-permanent-btn,
+.revoke-exemption-btn,
+.revoke-recovery-btn {
+    background: var(--danger);
+    color: white;
+    border: none;
+    border-radius: var(--radius-s);
+    padding: 6px 10px;
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-size: 12px;
+}
+
+.permission-note {
+    font-size: 12px;
+    color: var(--ink-soft);
+}
+
+/* 사유 입력 모달 */
+.note-dialog {
+    background: var(--surface);
+    color: var(--ink);
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-l);
+    padding: 20px;
+    width: min(420px, 90vw);
+    box-shadow: var(--shadow-card);
+}
+
+.note-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.note-dialog p {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.note-dialog textarea {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-s);
+    background: var(--surface);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 13px;
+    resize: vertical;
+}
+
+.note-dialog .note-dialog-error {
+    color: var(--danger);
+    font-size: 12px;
+    margin: 6px 0 0 0;
+}
+
+.note-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.note-dialog-actions button {
+    border: none;
+    border-radius: var(--radius-s);
+    padding: 7px 14px;
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-size: 13px;
+    background: var(--surface-2);
+    color: var(--ink);
+}
+
+.note-dialog-actions #note-dialog-confirm {
+    background: var(--danger);
+    color: white;
+}

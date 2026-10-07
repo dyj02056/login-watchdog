@@ -50,3 +50,15 @@ export const pages = {
 export const signupState = {
     enabled: true,
 };
+
+// 지금 로그인한 관리자의 역할이 가진 권한(action) 목록. renderXxx 함수들이 "이 버튼을 이
+// 관리자에게 보여줄지"를 정할 때 쓴다 — /api/status 응답의 permissions를 api.js가 매번
+// 최신으로 갱신해둔다. 화면에서 버튼을 숨기는 건 편의일 뿐이고, 실제 권한 검사는 서버의
+// require_permission()이 요청마다 따로 한다(숨긴 버튼을 개발자 도구로 되살려도 403이다).
+export const permissionState = {
+    actions: [],
+};
+
+export function hasPermission(action) {
+    return permissionState.actions.includes(action);
+}

@@ -7,11 +7,22 @@
 # ============================================================================
 
 import os
+import sys
 from datetime import datetime
 
 import requests
 
 import config
+
+
+def _safe_print(text: str) -> None:
+    """콘솔 출력이 인코딩 문제(예: 한국어 Windows 터미널의 cp949가 못 찍는 글자)로 실패해도
+    알림 한 건 때문에 로그인 요청 전체가 500으로 죽지 않게, 못 찍는 글자는 ?로 바꿔 출력한다."""
+    try:
+        print(text, flush=True)
+    except UnicodeEncodeError:
+        encoding = getattr(sys.stdout, "encoding", None) or "ascii"
+        print(text.encode(encoding, errors="replace").decode(encoding), flush=True)
 
 
 def _send_slack_message(message: str) -> None:
@@ -28,7 +39,7 @@ def _send_slack_message(message: str) -> None:
         # flush=True: 파이썬은 기본적으로 출력을 잠깐 모아뒀다가 한꺼번에 내보내는
         # "버퍼링"을 하는데, 그러면 서버 로그를 실시간으로 볼 때 메시지가 늦게 나타나거나
         # 안 보일 수 있다. flush=True는 "모아두지 말고 지금 즉시 내보내라"는 뜻이다.
-        print(f"[alert] SLACK_WEBHOOK_URL 미설정 - 콘솔 로그로 대체 전송:\n{message}", flush=True)
+        _safe_print(f"[alert] SLACK_WEBHOOK_URL 미설정 - 콘솔 로그로 대체 전송:\n{message}")
         return
 
     try:
@@ -228,5 +239,89 @@ def send_unauthorized_access_alert(ip: str, count: int, path: str) -> None:
         f"최근 {config.DETECTION_WINDOW_SECONDS}초간 요청 횟수: {count}회\n"
         f"최근 요청 경로: {path}\n"
         "조치: 별도 잠금 없음 (관찰 목적)"
+    )
+    _send_slack_message(message)
+
+
+# ============================================================================
+# 영구 잠금 + 이메일 복구 (guide33 / guide34-a)
+# ============================================================================
+
+_PERMANENT_REASON_LABELS = {
+    "REPEAT_OFFENDER": "반복 위반(최근 기간 내 잠금 횟수 초과)",
+    "SIEM_CRITICAL": "SIEM 상관분석 — CRITICAL 사건",
+    "SIEM_HIGH": "SIEM 상관분석 — HIGH 사건(관리자 승인 또는 자동 승격)",
+    "NETWORK_IDS": "네트워크 침입 탐지",
+    "ADMIN_MANUAL": "관리자 수동 승격",
+}
+
+_RECOVERABLE_LABELS = {
+    "SELF": "본인 이메일 인증으로 해제 가능",
+    "EXEMPTION": "본인 이메일 인증 시 '본인+본인 기기' 예외만 발급 가능",
+    "ADMIN_ONLY": "관리자만 해제 가능",
+}
+
+
+def send_permanent_lock_alert(
+    target_kind: str, target_value: str, reason: str, recoverable: str, strikes: int | None = None
+) -> None:
+    """영구 잠금이 새로 걸렸을 때 Slack에 알린다. 승격은 조건부 UPDATE로 "실제로 바뀐
+    순간"에만 일어나므로(db.promote_lockout_permanent), 이 알림도 딱 한 번만 나간다."""
+    kind_label = "IP" if target_kind == "ip" else "계정"
+    strikes_line = f"\n최근 잠금 횟수: {strikes}회" if strikes else ""
+    message = (
+        ":no_entry: [CRITICAL] 로그인 워치독 영구 잠금 알림\n"
+        f"대상({kind_label}): {target_value}\n"
+        f"승격 사유: {_PERMANENT_REASON_LABELS.get(reason, reason)}"
+        f"{strikes_line}\n"
+        f"복구 방식: {_RECOVERABLE_LABELS.get(recoverable, recoverable)}\n"
+        "조치: 자동 만료 없는 영구 잠금, 관리자 대시보드 '현재 잠긴 IP / 계정' 카드에서 확인"
+    )
+    _send_slack_message(message)
+
+
+def send_permanent_release_alert(target_kind: str, target_value: str, actor: str, note: str) -> None:
+    """관리자(또는 운영 스크립트)가 영구 잠금을 해제했다는 사실을 Slack에 알린다."""
+    kind_label = "IP" if target_kind == "ip" else "계정"
+    message = (
+        ":unlock: [INFO] 로그인 워치독 영구 잠금 해제 알림\n"
+        f"대상({kind_label}): {target_value}\n"
+        f"해제자: {actor}\n"
+        f"사유: {note}"
+    )
+    _send_slack_message(message)
+
+
+def send_recovery_completed_alert(target_kind: str, target_value: str, username: str) -> None:
+    """사용자가 이메일 인증으로 영구 잠금 복구를 완료했다는 사실을 Slack에 알린다."""
+    if target_kind == "account":
+        result_line = f"결과: 계정 '{target_value}' 영구 잠금 해제 (보호관찰 시작)"
+    else:
+        result_line = f"결과: IP {target_value}에 대해 '{username}' 계정+요청 기기 예외 발급"
+    message = (
+        ":email: [INFO] 로그인 워치독 이메일 복구 완료 알림\n"
+        f"{result_line}"
+    )
+    _send_slack_message(message)
+
+
+_MAIL_FAILURE_HINTS = {
+    "CONFIG": "환경변수(MAIL_BACKEND=smtp, SMTP_HOST, PUBLIC_BASE_URL 등)를 확인하세요.",
+    "AUTH": "SMTP_USER와 SMTP_PASSWORD(Gmail은 일반 비밀번호가 아니라 '앱 비밀번호')를 확인하세요.",
+    "CONNECT": "SMTP_HOST/SMTP_PORT와 SMTP_STARTTLS/SMTP_USE_SSL 조합을 확인하세요(587=STARTTLS, 465=SSL).",
+    "OTHER": "발신자(MAIL_FROM)가 SMTP 계정과 같은지, 서버 일시 장애는 아닌지 확인하세요.",
+}
+
+
+def send_mail_failure_alert(category: str, detail: str) -> None:
+    """복구 메일을 보내지 못했다는 사실(설정 문제 가능성)을 Slack에 알린다. 사용자 화면에는
+    계정 존재 여부가 드러나지 않게 항상 같은 안내가 나가므로, 이 알림이 없으면 메일 설정이
+    틀려도 아무도 모른다. detail에는 비밀번호·토큰·메일 본문이 들어가지 않는다."""
+    message = (
+        ":warning: [HIGH] 로그인 워치독 복구 메일 발송 실패\n"
+        f"원인 분류: {category}\n"
+        f"상세: {detail}\n"
+        f"조치: {_MAIL_FAILURE_HINTS.get(category, _MAIL_FAILURE_HINTS['OTHER'])}\n"
+        "영향: 영구 잠금된 사용자가 이메일 인증으로 복구할 수 없습니다(관리자 해제는 가능)."
     )
     _send_slack_message(message)

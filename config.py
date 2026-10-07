@@ -121,3 +121,89 @@ EARLY_WARNING_BAND = int(os.environ.get("EARLY_WARNING_BAND", 2))
 # 폴링 API(_PAGE_ACCESS_EXCLUDED_ENDPOINTS)는 정상적으로도 이 한도를 넘길 만큼
 # 자주 호출되므로 이 제한에서 제외한다.
 GLOBAL_RATE_LIMIT_PER_MINUTE = int(os.environ.get("GLOBAL_RATE_LIMIT_PER_MINUTE", 120))
+
+# ============================================================================
+# 영구 잠금 + 이메일 인증 복구 (guide33 / guide34-a)
+# 배경: docs/beginner-guide/guide33_permanent_lock.md, guide34a_email_recovery.md
+# ============================================================================
+
+# FLASK_ENV=production(Vercel 배포)일 때만 운영 모드로 본다 — 로컬에서는 보통 이 값이
+# 비어 있으므로 "production이 아니면 개발 환경"으로 취급한다. 운영 모드에서는
+# 메일 console 백엔드(토큰을 터미널에 그대로 출력)를 막는다(mailer.py 참고).
+IS_PRODUCTION = os.environ.get("FLASK_ENV") == "production"
+
+
+def _csv_set(raw: str) -> frozenset[str]:
+    return frozenset(item.strip() for item in raw.split(",") if item.strip())
+
+
+# IP 영구 잠금 승격 기준 — "최근 PERMANENT_LOCK_STRIKE_WINDOW_DAYS일 안에 N번째 잠금"이면
+# 같은 행을 TEMPORARY에서 PERMANENT로 올린다. 창(window)이 없으면 1년 전 잠금 한 번이
+# 평생 누적되어 정상 사용자가 다음 실수 한 번에 영구 잠금되므로 기간을 반드시 둔다.
+PERMANENT_LOCK_STRIKE_COUNT = int(os.environ.get("PERMANENT_LOCK_STRIKE_COUNT", 2))
+# 계정(아이디) 영구 잠금 기준 횟수 — 공격자가 피해자 계정을 노려 일부러 영구 잠금을 일으킬
+# 수 있어서 IP와 따로 조절할 수 있게 분리했다(필요하면 3 이상으로 올린다).
+PERMANENT_LOCK_ACCOUNT_STRIKE_COUNT = int(os.environ.get("PERMANENT_LOCK_ACCOUNT_STRIKE_COUNT", 2))
+PERMANENT_LOCK_STRIKE_WINDOW_DAYS = int(os.environ.get("PERMANENT_LOCK_STRIKE_WINDOW_DAYS", 30))
+
+# HIGH 사건(security_incidents.severity_max == HIGH)을 자동으로 영구 잠금할지, 관리자
+# 승인 대기(access_requests, PERMANENT_LOCK_IP)로 돌릴지. HIGH에는 가입·글·댓글 도배
+# 같은 비교적 가벼운 사건도 섞여 있어 기본은 승인 대기(false)다.
+PERMANENT_LOCK_AUTO_ON_HIGH = os.environ.get("PERMANENT_LOCK_AUTO_ON_HIGH", "false").lower() == "true"
+
+# 영구 잠금 이벤트(PERMANENT_LOCK)가 사건에 병합된 직후 그 사건을 자동으로 CLOSED 처리할지.
+# 기본 false — guide32의 원칙("접속 차단을 거두는 것과 관리자가 검토를 마쳤다는 판단은
+# 별개")대로 사건은 관리자가 직접 "해결"을 눌러야 닫힌다. true면 resolved_by에
+# "system:permanent_lock"이 기록된다.
+PERMANENT_LOCK_AUTO_CLOSE_INCIDENT = (
+    os.environ.get("PERMANENT_LOCK_AUTO_CLOSE_INCIDENT", "false").lower() == "true"
+)
+
+# 절대 영구 잠그지 않을 IP(관리자 PC, Docker 게이트웨이 등). 자기 자신을 잠그는 "자충수"
+# 방지용이다(soar.notify_unauthorized_access 주석과 같은 이유).
+PERMANENT_LOCK_IP_ALLOWLIST = _csv_set(os.environ.get("PERMANENT_LOCK_IP_ALLOWLIST", "127.0.0.1,::1"))
+
+# 이메일 복구 정책
+RECOVERY_TOKEN_TTL_MINUTES = int(os.environ.get("RECOVERY_TOKEN_TTL_MINUTES", 15))
+RECOVERY_MAX_PER_USER_PER_DAY = int(os.environ.get("RECOVERY_MAX_PER_USER_PER_DAY", 3))
+RECOVERY_MAX_PER_IP_PER_HOUR = int(os.environ.get("RECOVERY_MAX_PER_IP_PER_HOUR", 5))
+RECOVERY_COOLDOWN_SECONDS = int(os.environ.get("RECOVERY_COOLDOWN_SECONDS", 60))
+RECOVERY_MAX_CODE_ATTEMPTS = int(os.environ.get("RECOVERY_MAX_CODE_ATTEMPTS", 5))
+RECOVERY_PROBATION_HOURS = int(os.environ.get("RECOVERY_PROBATION_HOURS", 24))
+# 복구 요청 응답에 걸리는 "고정" 시간(초) — 메일을 실제로 보낸 경우(DB 조회 여러 번 + SMTP)와
+# 아무것도 안 한 경우(없는 아이디 등)의 응답 시간 차이로 계정 존재 여부가 새지 않게, 처리가
+# 끝나도 이 시간이 될 때까지 기다렸다가 항상 같은 시점에 응답한다. 원격 Supabase는 쿼리
+# 하나에 수백 ms가 걸려서 실제 처리가 4~5초까지 걸리므로 넉넉히(8초) 잡았다. 처리가 이 시간을
+# 넘기면 그만큼 응답이 늦어져 시간 차이가 드러날 수 있으니, 배포에서 실측해서 조정한다.
+# 0이면 기다림 없이 그 자리에서 처리한다(테스트용).
+RECOVERY_MIN_RESPONSE_SECONDS = float(os.environ.get("RECOVERY_MIN_RESPONSE_SECONDS", 8.0))
+# 복구 처리를 응답과 별개의 백그라운드 스레드로 돌릴지. 기본 false — Vercel 같은 서버리스는
+# 응답을 보내는 순간 함수를 멈춰서 백그라운드 스레드의 메일 발송이 끝나기 전에 끊길 수 있으므로,
+# 기본은 "요청 안에서 메일 발송까지 끝낸 뒤 응답"한다. 상시 실행 서버(로컬/gunicorn)에서만 true.
+RECOVERY_BACKGROUND_WORK = os.environ.get("RECOVERY_BACKGROUND_WORK", "false").lower() == "true"
+IP_EXEMPTION_DAYS = int(os.environ.get("IP_EXEMPTION_DAYS", 30))
+# 예외로 통과한 사용자가 이 횟수만큼 연달아 로그인에 실패하면 예외를 회수한다.
+IP_EXEMPTION_MAX_FAILURES = int(os.environ.get("IP_EXEMPTION_MAX_FAILURES", 3))
+
+# 복구 요청 기기를 구분하는 쿠키(lw_dev) — 30일 유지.
+DEVICE_COOKIE_NAME = "lw_dev"
+DEVICE_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 3600
+
+# 메일 발송. MAIL_BACKEND=console은 개발 전용(운영에서는 거부), smtp는 Mailpit/Gmail/Brevo 등.
+MAIL_BACKEND = os.environ.get("MAIL_BACKEND", "console").lower()
+SMTP_HOST = os.environ.get("SMTP_HOST", "")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", 587))
+SMTP_USER = os.environ.get("SMTP_USER", "")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+SMTP_STARTTLS = os.environ.get("SMTP_STARTTLS", "true").lower() == "true"
+# 포트 465처럼 처음부터 TLS로 접속하는 서버용(Gmail은 587+STARTTLS 또는 465+SSL 둘 다 지원).
+# true면 SMTP_STARTTLS는 무시된다.
+SMTP_USE_SSL = os.environ.get("SMTP_USE_SSL", "false").lower() == "true"
+# 응답 고정 시간(RECOVERY_MIN_RESPONSE_SECONDS)보다 짧게 둔다 — 소켓 작업 하나당 적용되는
+# 값이라 접속·로그인·전송이 모두 느려도 최악의 경우 이 값의 몇 배까지 걸릴 수 있다.
+SMTP_TIMEOUT_SECONDS = int(os.environ.get("SMTP_TIMEOUT_SECONDS", 6))
+# 같은 원인(설정/인증/연결)의 "메일 발송 실패" Slack 알림을 다시 보내기까지의 최소 간격(초).
+MAIL_FAILURE_ALERT_COOLDOWN_SECONDS = int(os.environ.get("MAIL_FAILURE_ALERT_COOLDOWN_SECONDS", 3600))
+MAIL_FROM = os.environ.get("MAIL_FROM", "login-watchdog@localhost")
+# 복구 링크의 기준 주소 — Host 헤더(공격자가 조작 가능)가 아니라 이 값으로만 링크를 만든다.
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
