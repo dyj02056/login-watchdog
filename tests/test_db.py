@@ -1272,3 +1272,82 @@ def test_count_recent_distinct_api_paths_returns_number_of_unique_paths(monkeypa
     result = db.count_recent_distinct_api_paths("9.9.9.9")
 
     assert result == 2
+
+
+# ============================================================================
+# recovery_requests 코드 시도권 예약 (guide37) — 비교 전에 조건부 UPDATE로 시도권을 받는다
+# ============================================================================
+
+class _ScriptedClient:
+    """execute()마다 미리 정해둔 결과를 순서대로 돌려주는 가짜 클라이언트. 조건부 UPDATE가
+    0행(경쟁에서 짐) → 다시 읽기 → 재시도로 이어지는 흐름을 한 줄씩 재현할 때 쓴다."""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls = []
+
+    def table(self, name):
+        self.calls.append(("table", (name,), {}))
+        return self
+
+    def __getattr__(self, method):
+        def call(*args, **kwargs):
+            self.calls.append((method, args, kwargs))
+            return self
+
+        return call
+
+    def execute(self):
+        return _FakeResult(self._responses.pop(0), None)
+
+
+def test_reserve_recovery_code_attempt_updates_only_from_the_value_it_read(monkeypatch):
+    fake_client = _ScriptedClient([[{"id": 1, "code_attempts": 3}]])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.reserve_recovery_code_attempt(1, 2, 5) == 3
+
+    assert ("update", ({"code_attempts": 3},), {}) in fake_client.calls
+    assert ("eq", ("code_attempts", 2), {}) in fake_client.calls  # 읽은 값 그대로일 때만
+    assert ("eq", ("status", "PENDING"), {}) in fake_client.calls
+
+
+def test_reserve_recovery_code_attempt_rereads_and_retries_after_losing_a_race(monkeypatch):
+    # 0행(다른 요청이 먼저 올림) → 다시 읽으니 3 → 3에서 4로 예약 성공
+    fake_client = _ScriptedClient([[], [{"code_attempts": 3, "status": "PENDING"}], [{"id": 1}]])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.reserve_recovery_code_attempt(1, 0, 5) == 4
+
+
+def test_reserve_recovery_code_attempt_returns_none_when_the_limit_is_reached(monkeypatch):
+    fake_client = _ScriptedClient([[], [{"code_attempts": 5, "status": "PENDING"}]])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.reserve_recovery_code_attempt(1, 4, 5) is None
+    assert sum(1 for call in fake_client.calls if call[0] == "update") == 1  # 한도에서는 더 시도하지 않는다
+
+
+def test_reserve_recovery_code_attempt_returns_none_when_request_is_no_longer_pending(monkeypatch):
+    fake_client = _ScriptedClient([[], [{"code_attempts": 1, "status": "REVOKED"}]])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.reserve_recovery_code_attempt(1, 0, 5) is None
+
+
+def test_reserve_recovery_code_attempt_gives_up_after_repeated_races(monkeypatch):
+    responses = []
+    for attempts in (1, 2, 3):
+        responses += [[], [{"code_attempts": attempts, "status": "PENDING"}]]
+    fake_client = _ScriptedClient(responses)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.reserve_recovery_code_attempt(1, 0, 5) is None  # 실패 쪽으로 닫힌다
+
+
+def test_reserve_recovery_code_attempt_does_not_update_when_already_at_the_limit(monkeypatch):
+    fake_client = _ScriptedClient([])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.reserve_recovery_code_attempt(1, 5, 5) is None
+    assert fake_client.calls == []

@@ -125,17 +125,53 @@ def consume_recovery_request(request_id: int) -> dict | None:
     return res.data[0] if res.data else None
 
 
-def increment_recovery_code_attempts(request_id: int, current_attempts: int, max_attempts: int) -> int:
-    """6자리 코드를 틀렸을 때 시도 횟수를 1 올리고, 한도에 도달하면 요청을 REVOKED로 만든다.
-    새 시도 횟수를 돌려준다. 코드는 경우의 수가 100만 개뿐이라 반드시 횟수를 제한해야 한다."""
-    new_attempts = current_attempts + 1
-    update = {"code_attempts": new_attempts}
-    if new_attempts >= max_attempts:
-        update["status"] = "REVOKED"
-    db.get_client().table("recovery_requests").update(update).eq("id", request_id).eq(
-        "status", "PENDING"
-    ).execute()
-    return new_attempts
+_RESERVE_RETRIES = 3
+
+
+def reserve_recovery_code_attempt(request_id: int, current_attempts: int, max_attempts: int) -> int | None:
+    """6자리 코드를 비교하기 "전에" 시도권 1회를 원자적으로 예약하고, 예약된 시도 번호(1부터)를
+    돌려준다. 한도에 도달했거나, 요청이 더 이상 PENDING이 아니거나, 경쟁이 계속돼 예약하지
+    못하면 None — 호출부는 None이면 코드를 비교하지 않는다(실패 쪽으로 닫힌다).
+
+    왜 비교 전에 예약하나: 코드는 경우의 수가 100만 개뿐이라 횟수 제한이 유일한 방어선이다.
+    "비교 → 틀리면 +1" 순서면 동시에 보낸 요청 1000개가 횟수가 오르기 전에 전부 비교를
+    마쳐버린다. 먼저 시도권을 받아야만 비교할 수 있게 하면, 동시에 몇 개를 보내든 한도
+    이상은 비교되지 않는다.
+
+    예약은 "읽은 횟수 그대로일 때만" 올리는 조건부 UPDATE다(db.update_user_password와 같은
+    방식). 경쟁에서 지면(0행) 다시 읽고 재시도한다. 한도에 닿아도 여기서 REVOKED로 바꾸지
+    않는다 — 마지막 시도권으로 맞는 코드를 넣은 사용자는 성공해야 하기 때문이다. 마지막
+    시도마저 틀렸을 때의 취소는 호출부가 revoke_recovery_request()로 한다.
+    """
+    current = current_attempts
+    for _ in range(_RESERVE_RETRIES):
+        if current >= max_attempts:
+            return None
+        res = (
+            db.get_client()
+            .table("recovery_requests")
+            .update({"code_attempts": current + 1})
+            .eq("id", request_id)
+            .eq("status", "PENDING")
+            .eq("code_attempts", current)
+            .gt("expires_at", db._now_iso())
+            .execute()
+        )
+        if res.data:
+            return current + 1
+
+        latest = (
+            db.get_client()
+            .table("recovery_requests")
+            .select("code_attempts, status")
+            .eq("id", request_id)
+            .limit(1)
+            .execute()
+        )
+        if not latest.data or latest.data[0]["status"] != "PENDING":
+            return None
+        current = latest.data[0]["code_attempts"]
+    return None
 
 
 def revoke_recovery_request(request_id: int) -> bool:

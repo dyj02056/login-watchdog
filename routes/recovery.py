@@ -48,6 +48,7 @@ recovery_bp = Blueprint("recovery", __name__)
 GENERIC_SENT_MESSAGE = "등록된 이메일이 있다면 안내 메일을 보냈습니다. 메일함을 확인해주세요."
 RATE_LIMITED_MESSAGE = "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."
 INVALID_LINK_MESSAGE = "만료되었거나 이미 사용된 링크입니다. 복구를 다시 요청해주세요."
+CODE_EXHAUSTED_MESSAGE = "코드가 올바르지 않습니다. 복구를 다시 요청해주세요."
 WRONG_DEVICE_MESSAGE = (
     "이 링크는 복구를 요청한 기기에서만 사용할 수 있습니다. "
     "요청한 기기의 브라우저에서 아래에 아이디와 메일의 6자리 코드를 입력해주세요."
@@ -354,16 +355,21 @@ def recovery_verify_submit():
     if req["target_kind"] == "ip" and not _device_matches(req):
         return render_template("recovery_verify.html", mode="code", message=WRONG_DEVICE_MESSAGE)
 
+    # 비교하기 "전에" 시도권부터 예약한다(guide37). 동시에 수백 개를 보내도 한도를 넘는
+    # 요청은 코드를 비교조차 하지 못한다 — 예약 실패(None)면 맞는 코드여도 통과시키지 않는다.
+    attempt = db.reserve_recovery_code_attempt(
+        req["id"], req["code_attempts"], config.RECOVERY_MAX_CODE_ATTEMPTS
+    )
+    if attempt is None:
+        return render_template("recovery_verify.html", mode="code", message=CODE_EXHAUSTED_MESSAGE)
+
     if not hmac.compare_digest(hash_secret(code), req["code_hash"]):
-        attempts = db.increment_recovery_code_attempts(
-            req["id"], req["code_attempts"], config.RECOVERY_MAX_CODE_ATTEMPTS
+        remaining = config.RECOVERY_MAX_CODE_ATTEMPTS - attempt
+        if remaining <= 0:
+            db.revoke_recovery_request(req["id"])
+            return render_template("recovery_verify.html", mode="code", message=CODE_EXHAUSTED_MESSAGE)
+        return render_template(
+            "recovery_verify.html", mode="code", message=f"코드가 올바르지 않습니다. (남은 시도 {remaining}회)"
         )
-        remaining = config.RECOVERY_MAX_CODE_ATTEMPTS - attempts
-        message = (
-            "코드가 올바르지 않습니다. 복구를 다시 요청해주세요."
-            if remaining <= 0
-            else f"코드가 올바르지 않습니다. (남은 시도 {remaining}회)"
-        )
-        return render_template("recovery_verify.html", mode="code", message=message)
 
     return _finish(req)

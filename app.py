@@ -124,6 +124,15 @@ limiter = Limiter(
     default_limits_exempt_when=lambda: request.endpoint in _PAGE_ACCESS_EXCLUDED_ENDPOINTS,
 )
 
+# 복구 코드 제출(POST /recovery/verify)에는 전역 한도보다 훨씬 좁은 한도를 따로 건다
+# (guide37). 6자리 코드는 시도 횟수 제한이 핵심 방어선이고, 이건 그 앞단의 2차 방어선이다.
+# limiter가 이 파일에서 만들어지므로 routes/recovery.py에서 데코레이터로 달면 순환
+# import가 된다 — 그래서 등록된 뷰 함수를 여기서 감싼다. GET(확인 화면)은 다른
+# 엔드포인트(recovery.recovery_verify_form)라 이 한도에 걸리지 않는다.
+app.view_functions["recovery.recovery_verify_submit"] = limiter.limit(
+    f"{config.RECOVERY_VERIFY_RATE_LIMIT_PER_MINUTE} per minute"
+)(app.view_functions["recovery.recovery_verify_submit"])
+
 
 @app.errorhandler(RateLimitExceeded)
 def handle_rate_limit_exceeded(error):

@@ -214,15 +214,18 @@ def store(monkeypatch):
 
     monkeypatch.setattr(db, "consume_recovery_request", consume)
 
-    def bump(request_id, current, max_attempts):
+    def reserve(request_id, current, max_attempts):
+        # 진짜 함수처럼 "저장된 값" 기준으로 예약한다 — 넘겨받은 current가 낡았어도
+        # (동시 요청) 한도를 넘겨 예약해주지 않는다.
         for r in s.requests:
-            if r["id"] == request_id:
-                r["code_attempts"] = current + 1
-                if current + 1 >= max_attempts:
-                    r["status"] = "REVOKED"
-                return current + 1
+            if r["id"] == request_id and r["status"] == "PENDING":
+                if r["code_attempts"] >= max_attempts:
+                    return None
+                r["code_attempts"] += 1
+                return r["code_attempts"]
+        return None
 
-    monkeypatch.setattr(db, "increment_recovery_code_attempts", bump)
+    monkeypatch.setattr(db, "reserve_recovery_code_attempt", reserve)
 
     def revoke(request_id):
         for r in s.requests:
@@ -620,6 +623,74 @@ def test_wrong_code_counts_attempts_and_revokes_after_the_limit(client, store):
     # 한도를 넘어 취소된 뒤에는 맞는 코드도 소용없다
     assert "복구 완료" not in _submit_code(client, "alice", real_code).get_data(as_text=True)
     assert store.released_accounts == []
+
+
+def test_correct_code_on_the_last_attempt_still_succeeds(client, store):
+    store.lock_account("alice")
+    _request_recovery(client)
+    real_code = store.mails[0][3]
+    wrong = "000000" if real_code != "000000" else "111111"
+
+    for _ in range(config.RECOVERY_MAX_CODE_ATTEMPTS - 1):
+        _submit_code(client, "alice", wrong)
+    response = _submit_code(client, "alice", real_code)
+
+    assert "복구 완료" in response.get_data(as_text=True)
+    assert store.released_accounts == ["alice"]
+
+
+def test_code_is_not_compared_when_no_attempt_can_be_reserved(client, store, monkeypatch):
+    # 동시 요청이 이미 시도권을 다 가져간 상황(guide37) — 이 요청이 읽은 code_attempts는
+    # 아직 0이지만 예약에 실패했으니, 맞는 코드라도 비교하지 않고 거절해야 한다.
+    store.lock_account("alice")
+    _request_recovery(client)
+    real_code = store.mails[0][3]
+    monkeypatch.setattr(db, "reserve_recovery_code_attempt", lambda request_id, current, max_attempts: None)
+
+    response = _submit_code(client, "alice", real_code)
+
+    assert "다시 요청" in response.get_data(as_text=True)
+    assert store.released_accounts == []
+    assert store.requests[0]["status"] == "PENDING"  # 소비되지 않았다
+
+
+def test_concurrent_wrong_codes_cannot_exceed_the_attempt_limit(client, store, monkeypatch):
+    # 동시에 들어온 요청들은 모두 code_attempts=0인 같은 행을 읽는다. 그 상황을 재현하려고
+    # 조회 함수가 매번 "처음 읽었던 그대로의 사본"을 돌려주게 한다.
+    store.lock_account("alice")
+    _request_recovery(client)
+    real_code = store.mails[0][3]
+    wrong = "000000" if real_code != "000000" else "111111"
+    stale = dict(store.requests[0])
+    monkeypatch.setattr(
+        db, "get_latest_pending_recovery_for_user",
+        lambda uid: dict(stale) if store.requests[0]["status"] == "PENDING" else None,
+    )
+    # hmac.compare_digest는 CSRF 검증에서도 쓰이므로, 복구 코드 해시와의 비교만 센다.
+    compared = []
+    original_compare = __import__("hmac").compare_digest
+
+    def counting_compare(a, b):
+        if b == stale["code_hash"]:
+            compared.append(1)
+        return original_compare(a, b)
+
+    monkeypatch.setattr("routes.recovery.hmac.compare_digest", counting_compare)
+
+    for _ in range(config.RECOVERY_MAX_CODE_ATTEMPTS + 3):
+        _submit_code(client, "alice", wrong)
+
+    assert len(compared) == config.RECOVERY_MAX_CODE_ATTEMPTS
+    assert store.requests[0]["code_attempts"] == config.RECOVERY_MAX_CODE_ATTEMPTS
+    assert store.requests[0]["status"] == "REVOKED"
+
+
+def test_verify_submit_has_its_own_rate_limit(client, store, monkeypatch):
+    responses = [_submit_code(client, "ghost", "123456") for _ in range(config.RECOVERY_VERIFY_RATE_LIMIT_PER_MINUTE)]
+    assert all(r.status_code == 200 for r in responses)
+
+    monkeypatch.setattr(soar, "record_rejection", lambda *a, **k: None)
+    assert _submit_code(client, "ghost", "123456").status_code == 429
 
 
 def test_code_for_ip_recovery_from_another_device_is_not_checked_and_not_counted(client, flask_app, store):
