@@ -46,6 +46,13 @@ def flask_app(monkeypatch):
     monkeypatch.setattr(db, "log_api_access", lambda ip, path, method: None)
     monkeypatch.setattr(detector, "is_macro_pattern_suspicious", lambda ip: (False, 1, False))
 
+    # 관리자 문지기(guide37)가 요청마다 세션의 admin_id로 계정을 조회한다. 기본값은 "세션의
+    # 아이디 그대로인 security_admin 계정이 있다"로 둔다 — role이 중요한 테스트는
+    # tests/admin_session.py의 stub_admin_role()로, 삭제된 계정을 흉내낼 테스트는
+    # get_admin_by_id를 직접 바꿔치기한다.
+    from tests.admin_session import stub_admin_role
+    stub_admin_role(monkeypatch, "security_admin")
+
     # 이전 테스트가 이미 app을 import해둔 상태일 수 있으므로, sys.modules에서
     # 지워서 위의 monkeypatch가 적용된 새 환경으로 app.py가 다시 실행되게 한다.
     sys.modules.pop("app", None)

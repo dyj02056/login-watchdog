@@ -20,6 +20,7 @@ import mailer
 import soar
 
 from tests.test_app import get_csrf_token  # noqa: E402
+from tests.admin_session import login_admin_session  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +134,7 @@ def test_deleted_member_session_is_logged_out(client, account, monkeypatch):
 def test_logout_keeps_the_admin_session_in_the_same_browser(client, account):
     _log_in(client)
     with client.session_transaction() as sess:
-        sess["admin_username"] = "boss"
+        login_admin_session(sess, "boss")
 
     token = get_csrf_token(client, "/dashboard/profile")
     client.post("/dashboard/logout", data={"csrf_token": token})

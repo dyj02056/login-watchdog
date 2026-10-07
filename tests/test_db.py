@@ -169,22 +169,23 @@ def test_verify_admin_credentials_hashes_even_when_username_not_found(monkeypatc
     assert calls[0][0] == admin_module._DUMMY_PASSWORD_HASH
 
 
-def test_get_admin_role_returns_stored_role(monkeypatch):
-    fake_client = _FakeQuery(rows=[{"role": "super_admin"}])
+def test_get_admin_by_id_returns_id_username_and_role(monkeypatch):
+    row = {"id": 3, "username": "sktmaster123", "role": "super_admin"}
+    fake_client = _FakeQuery(rows=[row])
     monkeypatch.setattr(db, "get_client", lambda: fake_client)
 
-    result = db.get_admin_role("sktmaster123")
+    result = db.get_admin_by_id(3)
 
-    assert result == "super_admin"
+    assert result == row
+    assert ("select", ("id, username, role",), {}) in fake_client.calls  # password_hash는 조회하지 않는다
+    assert ("eq", ("id", 3), {}) in fake_client.calls
 
 
-def test_get_admin_role_none_when_username_not_found(monkeypatch):
+def test_get_admin_by_id_none_when_admin_was_deleted(monkeypatch):
     fake_client = _FakeQuery(rows=[])
     monkeypatch.setattr(db, "get_client", lambda: fake_client)
 
-    result = db.get_admin_role("no_such_admin")
-
-    assert result is None
+    assert db.get_admin_by_id(3) is None
 
 
 def test_has_permission_true_when_row_exists(monkeypatch):

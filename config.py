@@ -122,6 +122,10 @@ EARLY_WARNING_BAND = int(os.environ.get("EARLY_WARNING_BAND", 2))
 # 자주 호출되므로 이 제한에서 제외한다.
 GLOBAL_RATE_LIMIT_PER_MINUTE = int(os.environ.get("GLOBAL_RATE_LIMIT_PER_MINUTE", 120))
 
+# 관리자 세션 최대 수명(시간, guide37) — 로그인 시각부터 센다. 지나면 다음 요청에서 다시
+# 로그인해야 한다. 대시보드가 5초마다 폴링해서 "활동 없음"이 생기지 않으므로 절대 수명만 둔다.
+ADMIN_SESSION_MAX_HOURS = int(os.environ.get("ADMIN_SESSION_MAX_HOURS", 8))
+
 # ============================================================================
 # 영구 잠금 + 이메일 인증 복구 (guide33 / guide34-a)
 # 배경: docs/beginner-guide/guide33_permanent_lock.md, guide34a_email_recovery.md

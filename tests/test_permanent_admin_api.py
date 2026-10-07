@@ -17,6 +17,7 @@ import lockdown
 import soar
 
 from tests.test_app import get_csrf_token  # noqa: E402
+from tests.admin_session import login_admin_session, stub_admin_role  # noqa: E402
 
 pytestmark = pytest.mark.real_lockdown
 
@@ -29,10 +30,10 @@ def _login_as(client, monkeypatch, granted_actions):
         asked.append(action)
         return action in granted_actions
 
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "test-role")
+    stub_admin_role(monkeypatch, "test-role")
     monkeypatch.setattr(db, "has_permission", fake_has_permission)
     with client.session_transaction() as sess:
-        sess["admin_username"] = "boss"
+        login_admin_session(sess, "boss")
     return get_csrf_token(client, "/admin/dashboard"), asked
 
 
@@ -257,7 +258,7 @@ def _mock_status_db(monkeypatch):
 
 def test_api_status_exposes_permanent_locks_requests_exemptions_and_permissions(client, monkeypatch):
     _mock_status_db(monkeypatch)
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    stub_admin_role(monkeypatch, "super_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: True)
     monkeypatch.setattr(db, "list_role_permissions", lambda role: ["release_permanent_lock", "unlock_ip"])
     monkeypatch.setattr(
@@ -281,7 +282,7 @@ def test_api_status_exposes_permanent_locks_requests_exemptions_and_permissions(
     monkeypatch.setattr(db, "list_admin_users", lambda: [])
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "boss"
+        login_admin_session(sess, "boss")
     data = client.get("/api/status").get_json()
 
     # 임시 잠금(2.2.2.2)은 영구 잠금 목록에 섞이지 않는다
@@ -294,7 +295,7 @@ def test_api_status_exposes_permanent_locks_requests_exemptions_and_permissions(
 
 def test_api_status_does_not_query_email_status_without_permanent_accounts(client, monkeypatch):
     _mock_status_db(monkeypatch)
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    stub_admin_role(monkeypatch, "security_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: False)
     monkeypatch.setattr(db, "list_role_permissions", lambda role: [])
     monkeypatch.setattr(db, "list_active_lockouts", lambda: [])
@@ -306,7 +307,7 @@ def test_api_status_does_not_query_email_status_without_permanent_accounts(clien
     )
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "boss"
+        login_admin_session(sess, "boss")
     data = client.get("/api/status").get_json()
 
     assert data["permanent_locks"] == []

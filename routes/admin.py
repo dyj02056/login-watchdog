@@ -9,14 +9,22 @@ import ipaddress
 import math
 from concurrent.futures import ThreadPoolExecutor
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, flash, g, jsonify, redirect, render_template, request, session, url_for
 
 import config
 import db
 import detector
 import lockdown
 import soar
-from helpers import _attach_locations, get_request_ip, is_bot_submission, login_required, require_permission
+from helpers import (
+    _attach_locations,
+    clear_admin_session,
+    get_request_ip,
+    is_bot_submission,
+    login_required,
+    require_permission,
+    start_admin_session,
+)
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -83,8 +91,12 @@ def admin_login_submit():
         # 세션(session)은 "이 브라우저는 로그인된 상태다"를 서버가 기억하게 해주는
         # 저장 공간이다. 여기 값을 넣어두면, 같은 브라우저로 다시 요청이 올 때마다
         # Flask가 자동으로 이 값을 복원해줘서 "로그인 유지"가 가능해진다.
-        session["admin_username"] = username
-        return redirect(url_for("admin.admin_dashboard"))
+        # 아이디뿐 아니라 기본키와 로그인 시각까지 넣는다 — 요청마다 DB의 계정과 대조해서,
+        # 삭제된 계정의 쿠키나 수명(ADMIN_SESSION_MAX_HOURS)이 지난 쿠키를 걸러낸다(guide37).
+        admin_id = db.get_admin_id_by_username(username)
+        if admin_id is not None:
+            start_admin_session(admin_id, username)
+            return redirect(url_for("admin.admin_dashboard"))
 
     # 3) 이 실패로 인해 방금 임계값을 넘었는지 확인하고, 넘었다면 잠근다
     #    (login_submit()과 동일한 detector/soar 조합 — 잠금 상태 자체는 lockouts
@@ -102,8 +114,9 @@ def admin_login_submit():
 @admin_bp.route("/admin/logout", methods=["POST"])
 @login_required
 def admin_logout():
-    """로그아웃 처리. 세션에 저장된 로그인 정보를 전부 지운다."""
-    session.clear()
+    """로그아웃 처리. 관리자 세션 값만 지운다 — 같은 브라우저에서 회원으로도 로그인해 있었다면
+    그 세션은 그대로 둔다(guide37 이전에는 session.clear()로 회원 세션까지 끊겼다)."""
+    clear_admin_session()
     return redirect(url_for("admin.admin_login"))
 
 
@@ -135,12 +148,6 @@ def _page_param(name: str) -> int:
     """
     page = request.args.get(name, 1, type=int)
     return page if page and page > 0 else 1
-
-
-def _permissions_for(admin_username: str) -> list[str]:
-    """이 관리자의 role이 가진 action 목록(role을 먼저 알아야 해서 한 함수로 묶었다)."""
-    role = db.get_admin_role(admin_username)
-    return db.list_role_permissions(role) if role else []
 
 
 def _build_permanent_locks(ip_lockouts: list[dict], account_lockouts: list[dict]) -> list[dict]:
@@ -224,6 +231,9 @@ def api_status():
     security_events_page = _page_param("security_events_page")
     security_incidents_page = _page_param("security_incidents_page")
     access_requests_page = _page_param("access_requests_page")
+    # login_required가 세션을 확인하면서 계정(role 포함)을 이미 조회해 g.admin에 담아뒀다(guide37).
+    # 아래 스레드에서는 g를 쓸 수 없으므로 여기서 먼저 꺼내둔다.
+    role = g.admin["role"]
 
     with ThreadPoolExecutor(max_workers=12) as executor:
         attempts_future = executor.submit(db.list_recent_attempts, attempts_page, config.ADMIN_PAGE_SIZE)
@@ -251,12 +261,11 @@ def api_status():
         # 관리자의 role을 알아야 한다 — 다른 8개 쿼리와 같은 배치에 묶어서
         # 병렬로 조회하면(순서상 9번째지만 동시에 실행됨) 이 role 조회 때문에
         # 폴링 응답이 느려지지 않는다.
-        role_future = executor.submit(db.get_admin_role, session["admin_username"])
         # 영구 잠금 + 이메일 복구(guide33/34-a) 카드용 데이터와, 화면이 어떤 버튼을 보여줄지
         # 정하는 데 쓰는 "현재 관리자의 권한 목록" — 위 쿼리들과 같은 배치로 병렬 조회한다.
         recovery_future = executor.submit(db.list_recent_recovery_requests, 20)
         exemptions_future = executor.submit(db.list_active_ip_exemptions, 20)
-        permissions_future = executor.submit(_permissions_for, session["admin_username"])
+        permissions_future = executor.submit(db.list_role_permissions, role)
 
         attempts, attempts_count = attempts_future.result()
         recent_attempts = _attach_locations(attempts)  # 다른 future들이 도는 동안 함께 실행됨
@@ -270,7 +279,6 @@ def api_status():
         security_events, security_events_count = security_events_future.result()
         security_incidents, security_incidents_count = security_incidents_future.result()
         access_requests, access_requests_count = access_requests_future.result()
-        role = role_future.result()
         recovery_requests = recovery_future.result()
         ip_exemptions = exemptions_future.result()
         permissions = permissions_future.result()
@@ -312,7 +320,7 @@ def api_status():
     # "관리자 계정 관리" 카드는 super_admin(manage_admin_users 권한 보유자)에게만
     # 응답에 실어 보낸다 — viewer/security_admin의 화면에는 이 키 자체가 없어서
     # dashboard.js가 카드를 숨긴다(다른 관리자 계정 목록이 노출되지 않음).
-    if role is not None and db.has_permission(role, "manage_admin_users"):
+    if db.has_permission(role, "manage_admin_users"):
         response_data["admin_users"] = db.list_admin_users()
 
     return jsonify(response_data)
@@ -365,15 +373,15 @@ def api_access_requests_approve():
     security_admin/super_admin 둘 다 가진다 — unlock_ip/resolve_security_event와
     같은 급의 "IP·계정 관련 보안 조치" 권한이라, 그 두 액션과 동일한 두 역할에게
     부여한다(login_watchdog_expansion_plan.md 논의 참고). session의
-    admin_username으로 admin_id를 찾아 "누가 승인했는지"를 access_requests에
-    함께 남긴다.
+    문지기(require_permission)가 확인해 둔 g.admin의 id로 "누가 승인했는지"를
+    access_requests에 함께 남긴다.
     """
     data = request.get_json(silent=True) or {}
     request_id = data.get("request_id")
     if not request_id:
         return jsonify({"success": False, "error": "request_id 값이 필요합니다."}), 400
 
-    admin_id = db.get_admin_id_by_username(session["admin_username"])
+    admin_id = g.admin["id"]
     executed = soar.execute_approved_request(request_id, admin_id)
     return jsonify({"success": executed})
 
@@ -389,7 +397,7 @@ def api_access_requests_reject():
     if not request_id:
         return jsonify({"success": False, "error": "request_id 값이 필요합니다."}), 400
 
-    admin_id = db.get_admin_id_by_username(session["admin_username"])
+    admin_id = g.admin["id"]
     rejected = soar.reject_pending_request(request_id, admin_id)
     return jsonify({"success": rejected})
 

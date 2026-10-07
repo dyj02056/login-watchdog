@@ -65,39 +65,33 @@ def verify_admin_credentials(username: str, password: str) -> bool:
     return result if res.data else False
 
 
-def get_admin_role(username: str) -> str | None:
-    """이 관리자 아이디의 role(security_viewer/security_admin/super_admin)을 돌려준다.
+def get_admin_id_by_username(username: str) -> int | None:
+    """이 관리자 아이디의 기본키(id)를 돌려준다.
 
-    Track B guide26에서 helpers.require_permission()이 요청마다 이 함수를 호출해서
-    "지금 이 관리자가 어떤 역할인지"부터 확인한다. has_permission()과 마찬가지로
-    캐싱하지 않고 매번 조회한다 — super_admin이 다른 관리자의 role을 바꾸거나
-    회수했을 때(guide28 권한회수), 그 관리자가 로그아웃하지 않아도 바로 다음
-    요청부터 새 role이 적용되어야 하기 때문이다.
+    관리자 로그인이 성공하면 routes/admin.py가 이 함수로 id를 찾아 세션에 함께 넣는다
+    (guide37) — 이후 요청은 세션의 id로 get_admin_by_id()를 불러 계정을 대조한다.
+    """
+    res = db.get_client().table("admin_users").select("id").eq("username", username).limit(1).execute()
+    return res.data[0]["id"] if res.data else None
 
-    계정이 없으면(이미 삭제됐거나 오타) None을 돌려준다 — 호출부(require_permission)는
-    None을 "아무 권한도 없음"으로 취급한다.
+
+def get_admin_by_id(admin_id: int) -> dict | None:
+    """id로 관리자 계정의 id/username/role을 조회한다(없으면 None).
+
+    helpers._load_current_admin()이 요청마다 세션의 admin_id로 이 함수를 불러, 세션이 아직
+    존재하는 계정을 가리키는지 확인한다(guide37). 계정을 지웠다가 같은 아이디로 다시 만들면
+    id가 달라지므로 옛 세션은 여기서 걸러진다. role도 함께 가져와서 require_permission이
+    역할 조회를 따로 하지 않게 한다.
     """
     res = (
         db.get_client()
         .table("admin_users")
-        .select("role")
-        .eq("username", username)
+        .select("id, username, role")
+        .eq("id", admin_id)
         .limit(1)
         .execute()
     )
-    return res.data[0]["role"] if res.data else None
-
-
-def get_admin_id_by_username(username: str) -> int | None:
-    """이 관리자 아이디의 기본키(id)를 돌려준다.
-
-    get_admin_role()과 마찬가지로 세션에는 username만 들어있는데, access_requests의
-    decided_by_admin_id 칸(Track A, guide31)은 admin_users(id)를 참조하는
-    외래키라서 숫자 id가 필요하다 — routes/admin.py의 승인/반려 API가 이 함수로
-    session["admin_username"]을 id로 바꿔서 db.decide_request()에 넘긴다.
-    """
-    res = db.get_client().table("admin_users").select("id").eq("username", username).limit(1).execute()
-    return res.data[0]["id"] if res.data else None
+    return res.data[0] if res.data else None
 
 
 def list_admin_users() -> list[dict]:
@@ -112,9 +106,8 @@ def list_admin_users() -> list[dict]:
 
 
 def get_admin_role_by_id(admin_id: int) -> str | None:
-    """id로 관리자 계정의 role을 조회한다. get_admin_role()은 username으로
-    찾지만(require_permission이 세션의 아이디로 조회), 대시보드의 "계정 삭제"
-    버튼은 행의 기본키(id)만 들고 있으므로 이 조회가 따로 필요하다.
+    """id로 관리자 계정의 role을 조회한다. 대시보드의 "계정 삭제" 버튼은 행의
+    기본키(id)만 들고 있으므로 삭제 대상의 role을 확인할 때 이 조회를 쓴다.
 
     routes/admin.py가 삭제 전에 이 함수로 대상이 super_admin인지 먼저 확인해
     "이 화면에서는 super_admin을 지울 수 없다"는 규칙을 지킨다.
