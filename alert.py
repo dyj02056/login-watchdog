@@ -310,6 +310,7 @@ _MAIL_FAILURE_HINTS = {
     "AUTH": "SMTP_USER와 SMTP_PASSWORD(Gmail은 일반 비밀번호가 아니라 '앱 비밀번호')를 확인하세요.",
     "CONNECT": "SMTP_HOST/SMTP_PORT와 SMTP_STARTTLS/SMTP_USE_SSL 조합을 확인하세요(587=STARTTLS, 465=SSL).",
     "OTHER": "발신자(MAIL_FROM)가 SMTP 계정과 같은지, 서버 일시 장애는 아닌지 확인하세요.",
+    "INTERNAL": "메일 설정 문제가 아닙니다. Vercel Runtime Logs에서 [recovery] 오류(DB 연결 등)를 확인하세요.",
 }
 
 

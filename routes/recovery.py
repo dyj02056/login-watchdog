@@ -25,6 +25,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
+import httpx
 from flask import Blueprint, make_response, render_template, request
 
 import config
@@ -68,6 +69,14 @@ def _recovery_base_url() -> str:
     return "" if config.IS_PRODUCTION else "http://127.0.0.1:5000"
 
 
+def _report_internal_error(error: Exception) -> None:
+    """복구 요청 처리 중 예외를 로그에 남기고 관리자에게 알린다. 사용자 화면에는 영향이 없다
+    (예외가 500으로 새면 계정 존재 여부가 드러나므로 응답은 항상 같다) — 그래서 이 알림이 없으면
+    복구 메일이 안 나가고 있어도 아무도 모른다."""
+    print(f"[recovery] 복구 요청 처리 중 오류: {type(error).__name__}: {error}", flush=True)
+    mailer.report_failure(mailer.FAIL_INTERNAL, f"복구 요청 처리 중 오류: {type(error).__name__}")
+
+
 def _run_with_fixed_response_time(work, started: float) -> None:
     """`work()`를 실행하고, 처리가 빨리 끝났든 오래 걸렸든 응답 시점이 항상
     RECOVERY_MIN_RESPONSE_SECONDS로 같아지게 맞춘다(타이밍 사이드채널 방지).
@@ -88,10 +97,22 @@ def _run_with_fixed_response_time(work, started: float) -> None:
     target = config.RECOVERY_MIN_RESPONSE_SECONDS
 
     def safe_work():
-        try:
-            work()
-        except Exception as e:  # noqa: BLE001
-            print(f"[recovery] 복구 요청 처리 중 오류: {type(e).__name__}: {e}", flush=True)
+        # 서버리스에서 한동안 쉬던 DB 연결을 재사용하면 첫 요청이 "Server disconnected" 같은
+        # 일시적 전송 오류로 실패한다(실제 배포 테스트에서 복구 요청이 이 오류로 조용히 사라졌다).
+        # 이런 오류만 한 번 더 시도한다 — work()는 메일을 보내기 전까지의 DB 작업이 다시 해도
+        # 안전하게 짜여 있고(기존 PENDING 요청을 취소하고 새로 만든다), 메일 발송 실패는
+        # mailer가 예외 없이 처리하므로 재시도해도 메일이 두 번 나가지 않는다.
+        for attempt in (1, 2):
+            try:
+                work()
+                return
+            except httpx.TransportError as e:
+                if attempt == 1:
+                    continue
+                _report_internal_error(e)
+            except Exception as e:  # noqa: BLE001
+                _report_internal_error(e)
+            return
 
     if target <= 0:
         safe_work()

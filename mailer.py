@@ -36,6 +36,7 @@ FAIL_CONFIG = "CONFIG"    # MAIL_BACKEND/SMTP_HOST/PUBLIC_BASE_URL 등 설정 �
 FAIL_AUTH = "AUTH"        # SMTP 아이디/앱 비밀번호가 틀림
 FAIL_CONNECT = "CONNECT"  # 서버에 접속하지 못함(포트 차단, 시간 초과, 서버 다운)
 FAIL_OTHER = "OTHER"      # 발신자 거부, 일시적 수신 거부 등
+FAIL_INTERNAL = "INTERNAL"  # 복구 요청 처리 중 DB 연결 오류 등 서버 내부 오류(메일 설정 문제 아님)
 
 # 같은 원인의 Slack 알림을 반복해서 보내지 않기 위한 마지막 알림 시각(프로세스 메모리).
 # 서버리스(Vercel)에서는 인스턴스마다 따로라서 "완벽한 1회"는 아니고 알림 폭주를 줄이는 용도다.

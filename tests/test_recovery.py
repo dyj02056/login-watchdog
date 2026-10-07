@@ -1026,3 +1026,70 @@ def test_send_test_mail_reports_result_without_alerting_slack(fake_smtp, monkeyp
     fake_smtp.send_error = ConnectionRefusedError("down")
     result, category, detail = mailer.send_test_mail("a@b.com")
     assert (result, category) == (mailer.FAILED, mailer.FAIL_CONNECT) and "SMTP_HOST" in detail
+
+
+# ===========================================================================
+# 일시적 DB 연결 끊김 재시도 (배포 E2E에서 실제로 발생: RemoteProtocolError: Server disconnected)
+# ===========================================================================
+
+def test_transient_transport_error_is_retried_once_and_then_succeeds(monkeypatch):
+    import time
+
+    import httpx
+
+    from routes import recovery
+
+    monkeypatch.setattr(config, "RECOVERY_MIN_RESPONSE_SECONDS", 0.05)
+    monkeypatch.setattr(config, "RECOVERY_BACKGROUND_WORK", False)
+    monkeypatch.setattr(mailer, "report_failure", lambda *a: (_ for _ in ()).throw(AssertionError("재시도로 성공하면 알리지 않는다")))
+    calls = []
+
+    def flaky():
+        calls.append(1)
+        if len(calls) == 1:
+            raise httpx.RemoteProtocolError("Server disconnected")
+
+    recovery._run_with_fixed_response_time(flaky, time.monotonic())
+
+    assert len(calls) == 2
+
+
+def test_persistent_transport_error_is_reported_to_admins_without_raising(monkeypatch):
+    import time
+
+    import httpx
+
+    from routes import recovery
+
+    monkeypatch.setattr(config, "RECOVERY_MIN_RESPONSE_SECONDS", 0.05)
+    reports = []
+    monkeypatch.setattr(mailer, "report_failure", lambda category, detail: reports.append((category, detail)))
+    calls = []
+
+    def always_down():
+        calls.append(1)
+        raise httpx.RemoteProtocolError("Server disconnected")
+
+    recovery._run_with_fixed_response_time(always_down, time.monotonic())
+
+    assert len(calls) == 2  # 한 번만 재시도한다
+    assert reports == [(mailer.FAIL_INTERNAL, "복구 요청 처리 중 오류: RemoteProtocolError")]
+
+
+def test_non_transport_errors_are_not_retried_but_are_reported(monkeypatch):
+    import time
+
+    from routes import recovery
+
+    monkeypatch.setattr(config, "RECOVERY_MIN_RESPONSE_SECONDS", 0.05)
+    reports = []
+    monkeypatch.setattr(mailer, "report_failure", lambda category, detail: reports.append(category))
+    calls = []
+
+    def buggy():
+        calls.append(1)
+        raise KeyError("x")
+
+    recovery._run_with_fixed_response_time(buggy, time.monotonic())
+
+    assert len(calls) == 1 and reports == [mailer.FAIL_INTERNAL]
