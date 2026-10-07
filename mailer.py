@@ -184,6 +184,24 @@ def send_recovery_done_notice(to_address: str, kind: str) -> str:
         what = "이 네트워크에서 회원님과 복구를 요청하신 기기의 접속이 허용되었습니다."
     body = (
         f"{what}\n\n"
-        "본인이 한 일이 아니라면 즉시 비밀번호를 변경하고 관리자에게 알려주세요."
+        "본인이 한 일이 아니라면 관리자에게 알려주세요.\n"
+        "계정이 공격받아 잠겼던 것이므로, 로그인한 뒤 '내 프로필' 화면에서 비밀번호를 바꾸는 것을 권장합니다"
+        f"{_profile_link_line()}\n"
+        "비밀번호를 바꾸면 다른 기기의 로그인은 모두 해제됩니다."
     )
     return _send_mail(to_address, "[로그인 워치독] 잠금 해제가 완료되었습니다", body)
+
+
+def _profile_link_line() -> str:
+    """메일에 넣을 '내 프로필' 주소(PUBLIC_BASE_URL이 있을 때만). Host 헤더는 쓰지 않는다."""
+    return f":\n{config.PUBLIC_BASE_URL}/dashboard/profile" if config.PUBLIC_BASE_URL else "."
+
+
+def send_password_changed_notice(to_address: str) -> str:
+    """비밀번호가 바뀌었다는 사실을 계정 이메일로 알린다(guide35) — 세션을 탈취한 사람이 바꿨다면
+    본인이 바로 알아챌 수 있게 하는 장치다. 실패해도 비밀번호 변경 자체는 그대로 유지된다."""
+    body = (
+        "로그인 워치독 계정의 비밀번호가 변경되었습니다. 다른 기기의 로그인은 모두 해제되었습니다.\n\n"
+        "본인이 변경한 것이 아니라면 즉시 관리자에게 알려주세요."
+    )
+    return _send_mail(to_address, "[로그인 워치독] 비밀번호가 변경되었습니다", body)

@@ -242,6 +242,8 @@ def login_submit():
         user = db.get_user_by_username(username)
         session["username"] = username
         session["user_id"] = user["id"]
+        # 세션 세대 번호 — 나중에 비밀번호가 바뀌면 이 세션을 끊는 데 쓴다(guide35).
+        session["session_version"] = user.get("session_version") or 0
         return redirect(url_for("member.member_dashboard"))
 
     # 영구 잠금 예외로 통과한 사용자가 연달아 실패하면 그 예외를 회수한다 — 예외는 "본인이

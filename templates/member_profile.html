@@ -22,19 +22,22 @@
         </div>
     </header>
 
-    <main>
+    <!-- 카드가 두 개(프로필, 비밀번호 변경)라 세로로 쌓는다(member.css의 .member-main--stack). -->
+    <main class="member-main--stack">
+        <!-- 안내 메시지는 두 카드 위에 한 번만 보여준다 — 아래 비밀번호 변경 폼의 결과가 위쪽
+             프로필 카드 안에 뜨면 폼을 쓰던 사용자가 놓치기 쉽다(guide35). -->
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <ul class="flash-list member-flash">
+                    {% for message in messages %}
+                        <li>{{ message }}</li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
+
         <div class="member-card">
             <h2>내 프로필</h2>
-
-            {% with messages = get_flashed_messages() %}
-                {% if messages %}
-                    <ul class="flash-list">
-                        {% for message in messages %}
-                            <li>{{ message }}</li>
-                        {% endfor %}
-                    </ul>
-                {% endif %}
-            {% endwith %}
 
             <!-- 아이디(username)는 로그인 시도 기록(login_attempts) 등 다른 표와
                  문자열 그대로 연결되어 있어서 여기서는 수정할 수 없게 readonly로
@@ -55,6 +58,33 @@
             </form>
 
             <a class="back-link" href="{{ url_for('member.member_dashboard') }}">← 대시보드로 돌아가기</a>
+        </div>
+
+        <!-- 비밀번호 변경(guide35) — 현재 비밀번호를 확인한 뒤 바꾸고, 바꾸면 다른 기기의 로그인은
+             모두 끊긴다(routes/member.py의 member_password_submit 참고). -->
+        <div class="member-card">
+            <h2>비밀번호 변경</h2>
+            <form method="post" action="{{ url_for('member.member_password_submit') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <!-- 허니팟(봇 탐지)용 숨김 필드 — helpers.is_bot_submission() 참고. -->
+                <div class="hp-field" aria-hidden="true">
+                    <label for="website">웹사이트</label>
+                    <input type="text" id="website" name="website" tabindex="-1" autocomplete="off">
+                </div>
+
+                <label for="current_password">현재 비밀번호</label>
+                <input type="password" id="current_password" name="current_password" autocomplete="current-password" required>
+
+                <label for="new_password">새 비밀번호 (8자 이상)</label>
+                <input type="password" id="new_password" name="new_password" autocomplete="new-password" minlength="8" required>
+
+                <label for="new_password_confirm">새 비밀번호 확인</label>
+                <input type="password" id="new_password_confirm" name="new_password_confirm" autocomplete="new-password" minlength="8" required>
+
+                <button type="submit">비밀번호 변경</button>
+            </form>
+            <p class="member-note">변경하면 이 기기를 제외한 다른 기기의 로그인은 모두 해제되고, 가입한 이메일로 알림이 갑니다.</p>
         </div>
     </main>
 </body>

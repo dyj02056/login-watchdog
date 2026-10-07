@@ -127,7 +127,8 @@ main {
 }
 
 .member-card input[type="text"],
-.member-card input[type="email"] {
+.member-card input[type="email"],
+.member-card input[type="password"] {
     width: 100%;
     box-sizing: border-box;
     padding: 8px 10px;
@@ -202,4 +203,27 @@ main {
    (dashboard.css와 같은 이름의 유틸리티 클래스 — 표를 그리는 쪽에서 붙여줌). */
 .mono {
     font-family: var(--font-mono);
+}
+
+
+/* 비밀번호 변경 카드 아래 안내 문구(guide35) */
+.member-card .member-note {
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin: 12px 0 0 0;
+    line-height: 1.5;
+}
+
+/* 카드가 여러 장인 화면(내 프로필: 프로필 + 비밀번호 변경)은 가로가 아니라 세로로 쌓는다(guide35).
+   main의 기본 배치(가로·세로 정중앙)를 그대로 두면 카드가 옆으로 붙어 높이가 어긋나 보인다. */
+main.member-main--stack {
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* 카드 바깥(위)에 보여주는 안내 메시지 — 카드와 같은 너비로 맞춘다(내 프로필 화면) */
+.flash-list.member-flash {
+    width: 100%;
+    max-width: 480px;
+    margin: 0;
 }

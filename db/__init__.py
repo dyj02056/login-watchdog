@@ -173,7 +173,9 @@ from .users import (
     delete_user,
     get_user_by_id,
     get_user_by_username,
+    get_user_session_version,
     list_users,
+    update_user_password,
     update_user_profile,
     verify_user_credentials,
 )
@@ -308,4 +310,7 @@ __all__ = [
     "list_active_ip_exemptions",
     "set_user_email_status",
     "get_email_statuses",
+    # 비밀번호 변경 + 세션 무효화 (guide35)
+    "get_user_session_version",
+    "update_user_password",
 ]

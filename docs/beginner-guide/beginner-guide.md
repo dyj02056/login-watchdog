@@ -41,6 +41,7 @@
 32. [32단계 — 사건 해결을 잠금 해제와 분리](guide32_incident_resolution.md)
 33. [33단계 — 영구 잠금 (자동 만료 없는 잠금 + 관리자 해제)](guide33_permanent_lock.md)
 34. [34단계 — 이메일 인증으로 영구 잠금 해제](guide34a_email_recovery.md)
+35. [35단계 — 비밀번호 변경 + 다른 기기 로그인 해제](guide35_password_change.md)
 
 ---
 

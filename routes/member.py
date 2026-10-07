@@ -13,8 +13,18 @@
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
+import config
 import db
-from helpers import _attach_locations, member_login_required
+import detector
+import mailer
+import soar
+from helpers import (
+    _attach_locations,
+    clear_member_session,
+    get_request_ip,
+    is_bot_submission,
+    member_login_required,
+)
 
 member_bp = Blueprint("member", __name__)
 
@@ -28,8 +38,7 @@ def _logout_missing_member():
     회원이 지금도 실제로 존재하는지는 확인하지 않는다 — 그래서 회원용 화면들이
     db.get_user_by_id()로 다시 한번 확인하고, 없으면 이 함수를 부른다.
     """
-    session.pop("username", None)
-    session.pop("user_id", None)
+    clear_member_session()
     flash("계정 정보를 찾을 수 없습니다. 다시 로그인해주세요.")
     return redirect(url_for("auth.login"))
 
@@ -101,6 +110,86 @@ def member_profile_submit():
     return redirect(url_for("member.member_profile"))
 
 
+@member_bp.route("/dashboard/password", methods=["POST"])
+@member_login_required
+def member_password_submit():
+    """비밀번호 변경 폼 제출을 처리한다(guide35).
+
+    1) 새 비밀번호 형식을 먼저 확인한다 — 여기서 걸리는 건 본인 확인과 무관한 입력 실수라서
+       실패 횟수에 넣지 않는다.
+    2) 현재 비밀번호를 확인한다 — 세션만 탈취한 사람이 비밀번호를 바꾸지 못하게 하는 장치다.
+       틀리면 로그인 실패와 똑같이 기록하고 같은 임계값으로 잠근다. 그러지 않으면 이 화면이
+       "로그인 잠금 없이 비밀번호를 무한히 맞춰보는" 우회로가 된다.
+    3) 바꾸면 세션 세대 번호가 올라가 다른 기기의 로그인이 모두 끊긴다(이 기기는 유지).
+       계정 이메일로 변경 알림을 보내서, 본인이 한 일이 아니면 바로 알 수 있게 한다.
+    """
+    ip = get_request_ip()
+    username = session["username"]
+
+    if is_bot_submission():
+        soar.notify_bot_detected(ip, request.path)
+        flash("일시적인 오류가 발생했습니다. 다시 시도해주세요.")
+        return redirect(url_for("member.member_profile"))
+
+    user = db.get_user_by_id(session["user_id"])
+    if user is None:
+        return _logout_missing_member()
+    if detector.is_account_locked(username):
+        clear_member_session()
+        flash("잠긴 계정입니다. 잠시 후 다시 로그인해주세요.")
+        return redirect(url_for("auth.login"))
+
+    current_password = request.form.get("current_password", "")
+    new_password = request.form.get("new_password", "")
+    new_password_confirm = request.form.get("new_password_confirm", "")
+
+    if not current_password or not new_password:
+        flash("현재 비밀번호와 새 비밀번호를 모두 입력해주세요.")
+        return redirect(url_for("member.member_profile"))
+    if len(new_password) < config.MIN_PASSWORD_LENGTH:
+        flash(f"새 비밀번호는 최소 {config.MIN_PASSWORD_LENGTH}자 이상이어야 합니다.")
+        return redirect(url_for("member.member_profile"))
+    if new_password != new_password_confirm:
+        flash("새 비밀번호와 확인이 일치하지 않습니다.")
+        return redirect(url_for("member.member_profile"))
+    if new_password == current_password:
+        flash("새 비밀번호가 현재 비밀번호와 같습니다.")
+        return redirect(url_for("member.member_profile"))
+
+    if not db.verify_user_credentials(username, current_password):
+        db.log_attempt(ip, username, False)
+        if _lock_if_suspicious(ip, username):
+            clear_member_session()
+            flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
+            return redirect(url_for("auth.login"))
+        flash("현재 비밀번호가 올바르지 않습니다.")
+        return redirect(url_for("member.member_profile"))
+
+    session["session_version"] = db.update_user_password(user["id"], new_password)
+    mailer.send_password_changed_notice(user["email"])
+    flash("비밀번호가 변경되었습니다. 다른 기기의 로그인은 모두 해제되었습니다.")
+    return redirect(url_for("member.member_profile"))
+
+
+def _lock_if_suspicious(ip: str, username: str) -> bool:
+    """비밀번호 변경 화면에서 현재 비밀번호를 틀렸을 때, 로그인 실패와 같은 기준으로 잠근다.
+    이번 실패로 잠금이 걸렸으면 True. 이미 잠긴 IP(예: 영구 잠금 예외로 들어온 회원)는 다시
+    잠그지 않는다 — 같은 IP에 5분 잠금 알림이 중복으로 나가지 않게 하기 위해서다."""
+    locked = False
+    if not detector.is_locked(ip):
+        suspicious, failure_count = detector.is_suspicious(ip)
+        if suspicious:
+            soar.enforce_lockout(ip, failure_count, detector.count_distinct_usernames(ip))
+            locked = True
+    account_suspicious, account_failure_count = detector.is_account_suspicious(username)
+    if account_suspicious:
+        soar.enforce_account_lockout(
+            username, account_failure_count, detector.count_distinct_ips_by_username(username), ip
+        )
+        locked = True
+    return locked
+
+
 @member_bp.route("/dashboard/logout", methods=["POST"])
 @member_login_required
 def member_logout():
@@ -110,6 +199,5 @@ def member_logout():
     user_id)만 콕 집어 지운다 — 만약 같은 브라우저에서 관리자로도 로그인되어
     있었다면, 회원만 로그아웃하고 관리자 세션은 그대로 유지하기 위해서다.
     """
-    session.pop("username", None)
-    session.pop("user_id", None)
+    clear_member_session()
     return redirect(url_for("auth.login"))

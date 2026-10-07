@@ -622,3 +622,15 @@ alter table access_requests drop constraint if exists access_requests_pending_ac
 alter table access_requests add constraint access_requests_pending_action_check check (
   pending_action in ('LOCK_IP', 'LOCK_ACCOUNT', 'ALERT_ONLY', 'PERMANENT_LOCK_IP')
 );
+
+
+-- ============================================================================
+-- 비밀번호 변경 + 세션 무효화 (guide35)
+--
+-- users.session_version: 이 계정의 "로그인 세션 세대 번호". 로그인할 때 세션에 함께 저장하고,
+-- 회원 화면에 들어올 때마다 DB 값과 비교한다. 비밀번호를 바꾸면 1 올라가서, 바꾸기 전에
+-- 만들어진 다른 기기의 세션(탈취된 세션 포함)은 자동으로 로그아웃된다.
+-- 기존 회원은 0으로 시작하고, 이미 로그인된 세션도 0으로 취급되어 그대로 유지된다.
+-- 여러 번 실행해도 안전하다.
+-- ============================================================================
+alter table users add column if not exists session_version int not null default 0;

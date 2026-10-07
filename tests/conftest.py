@@ -104,3 +104,6 @@ def _stub_permanent_lock_defaults(request, monkeypatch):
     monkeypatch.setattr(db, "list_active_ip_exemptions", lambda limit=20: [])
     monkeypatch.setattr(db, "list_role_permissions", lambda role: [])
     monkeypatch.setattr(db, "get_email_statuses", lambda usernames: {})
+    # 회원 화면 문지기(member_login_required)의 세션 세대 번호 확인(guide35) — 기존 회원 화면
+    # 테스트는 세대 번호를 모르므로 "변경 없음(0)"으로 둔다.
+    monkeypatch.setattr(db, "get_user_session_version", lambda user_id: 0)

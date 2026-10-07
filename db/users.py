@@ -148,3 +148,43 @@ def delete_user(user_id: int) -> bool:
     """
     res = db.get_client().table("users").delete().eq("id", user_id).execute()
     return len(res.data) > 0
+
+
+# ============================================================================
+# 비밀번호 변경 + 세션 무효화 (guide35)
+#
+# users.session_version은 "이 계정의 로그인 세션 세대 번호"다. 로그인할 때 그 번호를 세션에
+# 같이 넣어두고, 회원 화면에 들어올 때마다(helpers.member_login_required) DB의 번호와
+# 비교한다. 비밀번호를 바꾸면 번호를 1 올리므로, 바꾸기 전에 만들어진 다른 기기의 세션은
+# 번호가 맞지 않아 자동으로 로그아웃된다(탈취된 세션도 함께 끊긴다).
+# ============================================================================
+
+def get_user_session_version(user_id: int) -> int | None:
+    """이 회원의 현재 세션 세대 번호. 회원이 없으면(삭제됨) None."""
+    res = db.get_client().table("users").select("session_version").eq("id", user_id).limit(1).execute()
+    if not res.data:
+        return None
+    return res.data[0].get("session_version") or 0
+
+
+def update_user_password(user_id: int, new_password: str) -> int:
+    """비밀번호를 바꾸고 세션 세대 번호를 1 올린 뒤, 새 번호를 돌려준다.
+
+    번호는 "읽은 값 그대로일 때만" 올린다(조건부 UPDATE) — 두 기기에서 거의 동시에 바꾸는
+    드문 경우에도 번호가 한 번 덜 올라가 이전 세션이 살아남는 일이 없게, 경쟁에서 지면
+    다시 읽어서 한 번 더 시도한다.
+    """
+    password_hash = generate_password_hash(new_password)
+    for _ in range(3):
+        current = get_user_session_version(user_id) or 0
+        res = (
+            db.get_client()
+            .table("users")
+            .update({"password_hash": password_hash, "session_version": current + 1})
+            .eq("id", user_id)
+            .eq("session_version", current)
+            .execute()
+        )
+        if res.data:
+            return current + 1
+    raise RuntimeError("비밀번호 변경 중 세션 번호 갱신 경쟁이 반복되었습니다.")

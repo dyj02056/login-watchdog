@@ -1,6 +1,6 @@
 # 34단계 — 이메일 인증으로 영구 잠금 해제
 
-[◀ 33단계](guide33_permanent_lock.md) · [전체 목차](beginner-guide.md)
+[◀ 33단계](guide33_permanent_lock.md) · [전체 목차](beginner-guide.md) · [35단계 ▶](guide35_password_change.md)
 
 > [33단계](guide33_permanent_lock.md)의 영구 잠금은 관리자만 풀 수 있으면 억울하게 잠긴 사용자가 기다려야 합니다. 이 단계에서는 **본인 이메일로 인증하면 스스로 풀 수 있는** `/recovery` 화면을 만들었습니다. 다만 IP와 계정은 성격이 달라서 풀리는 방식이 다릅니다.
 

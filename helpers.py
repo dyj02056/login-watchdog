@@ -13,7 +13,7 @@ import ipaddress
 import secrets
 from functools import wraps
 
-from flask import jsonify, redirect, request, session, url_for
+from flask import flash, jsonify, redirect, request, session, url_for
 
 import config
 import db
@@ -215,5 +215,19 @@ def member_login_required(view):
     def wrapped_view(*args, **kwargs):
         if "username" not in session:
             return redirect(url_for("auth.login"))
+        # 세션 세대 번호 확인(guide35) — 다른 기기에서 비밀번호를 바꿨다면 DB의 번호가 올라가
+        # 있어서 이 세션은 더 이상 유효하지 않다. 회원이 삭제됐어도(None) 같은 방식으로 끊는다.
+        # 이 기능 이전에 만들어진 세션은 번호가 없으므로 0(기본값)으로 본다.
+        current = db.get_user_session_version(session.get("user_id"))
+        if current is None or current != session.get("session_version", 0):
+            clear_member_session()
+            flash("비밀번호가 변경되었거나 계정 정보가 바뀌어 로그아웃되었습니다. 다시 로그인해주세요.")
+            return redirect(url_for("auth.login"))
         return view(*args, **kwargs)
     return wrapped_view
+
+
+def clear_member_session() -> None:
+    """회원 로그인 관련 세션 값만 지운다(같은 브라우저의 관리자 세션은 그대로 둔다)."""
+    for key in ("username", "user_id", "session_version"):
+        session.pop(key, None)
