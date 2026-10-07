@@ -1,6 +1,6 @@
 # 35단계 — 비밀번호 변경 + 다른 기기 로그인 해제
 
-[◀ 34단계](guide34a_email_recovery.md) · [전체 목차](beginner-guide.md)
+[◀ 34단계](guide34a_email_recovery.md) · [전체 목차](beginner-guide.md) · [36단계 ▶](guide36_db_connection.md)
 
 > [34단계](guide34a_email_recovery.md)의 복구 완료 메일은 "본인이 아니라면 비밀번호를 바꾸세요"라고 안내했지만, 정작 사이트에는 비밀번호를 바꾸는 화면이 없었습니다. 이 단계에서는 **로그인한 회원이 '내 프로필'에서 비밀번호를 바꿀 수 있게** 하고, 바꾸면 **다른 기기의 로그인을 모두 끊도록** 했습니다.
 

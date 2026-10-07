@@ -191,6 +191,7 @@
       <span><b>스택</b> Flask · Supabase · Slack Webhook · ip-api.com · Vercel</span>
       <span><b>정리한 항목</b> 36개 (핵심 24 · 테스트 5 · 문서 3 · 미착수 4)</span>
     </div>
+    <p class="sub" style="margin-top:14px"><b>읽기 전에</b> — 01~03절은 <b>17단계 시점</b>의 구조입니다. 이후 app.py는 <code>routes/</code> Blueprint 5개로, db.py는 <code>db/</code> 패키지로 나뉘었고(현재 구조는 README의 "프로젝트 구조" 참고), 33~36단계에서 영구 잠금·이메일 복구·비밀번호 변경·DB 연결 안정화가 추가되었습니다. 추가된 부분은 <a href="#extension" style="color:var(--accent)">04절</a>에 정리했습니다.</p>
   </header>
 
   <section id="flow">
@@ -683,7 +684,7 @@
             <span class="file-path">docs/scenario.md</span>
             <div class="tag-row"><span class="tag owner">미착수</span><span class="tag status-optional">0줄</span></div>
           </div>
-          <div class="file-body"><p class="file-role">빈 파일. 시연 시나리오 문서로 기획됐으나 착수 안 됨.</p></div>
+          <div class="file-body"><p class="file-role">시연 시나리오 문서. 오랫동안 빈 파일이었다가 이후 단계에서 작성됨(브루트포스 → SIEM → 영구 잠금 → 이메일 복구 → 비밀번호 변경 순서의 시연 대본).</p></div>
         </div>
 
         <div class="file-row">
@@ -698,6 +699,145 @@
     </div>
   </section>
 
+  <section id="extension">
+    <span class="eyebrow">04 · 이후 확장 (33~36단계)</span>
+    <h2>영구 잠금과 이메일 복구는 어느 파일을 거쳐 가는가</h2>
+    <p class="lead">위쪽 줄은 반복해서 잠긴 IP·계정이 영구 잠금으로 올라가는 경로, 아래쪽 줄은 잠긴 사용자가 이메일 인증으로 스스로 푸는 경로입니다. 승격·해제·복구 반영은 모두 <b>lockdown.py</b> 한 곳에서 처리합니다 — soar.py가 이미 correlate.py를 import하고 있어서, 두 파일이 서로를 부르는 순환을 피하려고 따로 뺐습니다.</p>
+    <figure class="flow">
+      <div class="svg-wrap">
+        <svg viewBox="0 0 1040 340" role="img" aria-label="soar.py와 correlate.py가 lockdown.py로 영구 승격을 요청하고, lockdown.py가 lockouts와 lock_history에 기록하며 관리자 화면의 영구 잠금 카드에 나타나는 흐름, 그리고 잠긴 사용자가 routes/recovery.py에서 복구를 요청하면 mailer.py가 메일을 보내고 같은 기기에서 링크나 코드를 입력하면 lockdown.py가 해제하거나 예외를 발급하는 흐름도">
+          <!-- 관리자 해제 (점선) -->
+          <polyline class="edge-line dashed" marker-end="url(#arrow-accent)" points="905,146 905,196 400,196 400,148" />
+          <text class="edge-label accent" x="650" y="214" text-anchor="middle">영구 해제 · super_admin · 사유 필수</text>
+
+          <!-- 복구 입력 (점선) -->
+          <polyline class="edge-line dashed" marker-end="url(#arrow-accent)" points="715,296 715,322 300,322 300,298" />
+          <text class="edge-label accent" x="508" y="316" text-anchor="middle">링크 또는 6자리 코드 · 요청한 기기에서만</text>
+
+          <!-- 위쪽 줄 -->
+          <line class="edge-line" x1="190" y1="68" x2="300" y2="104" marker-end="url(#arrow)"></line>
+          <text class="edge-label" x="240" y="72" text-anchor="middle">30일 안 2회째</text>
+          <line class="edge-line" x1="190" y1="168" x2="300" y2="132" marker-end="url(#arrow)"></line>
+          <text class="edge-label" x="236" y="170" text-anchor="middle">CRITICAL·HIGH</text>
+          <line class="edge-line" x1="470" y1="104" x2="560" y2="70" marker-end="url(#arrow)"></line>
+          <line class="edge-line" x1="470" y1="132" x2="560" y2="166" marker-end="url(#arrow)"></line>
+          <line class="edge-line" x1="710" y1="68" x2="820" y2="104" marker-end="url(#arrow)"></line>
+          <text class="edge-label" x="768" y="74" text-anchor="middle">카드 표시</text>
+
+          <!-- 아래쪽 줄 -->
+          <line class="edge-line" x1="190" y1="268" x2="230" y2="268" marker-end="url(#arrow)"></line>
+          <line class="edge-line" x1="380" y1="268" x2="430" y2="268" marker-end="url(#arrow)"></line>
+          <text class="edge-label" x="405" y="260" text-anchor="middle">발송</text>
+          <line class="edge-line" x1="580" y1="268" x2="640" y2="268" marker-end="url(#arrow)"></line>
+          <line class="edge-line" x1="330" y1="240" x2="360" y2="148" marker-end="url(#arrow)"></line>
+          <text class="edge-label" x="352" y="222">복구 반영</text>
+
+          <!-- 노드: 위쪽 -->
+          <g><rect class="node-box" x="40" y="40" width="150" height="56" rx="9" style="stroke:var(--stage-response)"></rect>
+            <text class="node-label" x="115" y="64" text-anchor="middle" font-size="13">soar.py</text>
+            <text class="node-role" x="115" y="80" text-anchor="middle" font-size="11">임시 잠금 직후</text></g>
+          <g><rect class="node-box" x="40" y="140" width="150" height="56" rx="9" style="stroke:var(--stage-detect)"></rect>
+            <text class="node-label" x="115" y="164" text-anchor="middle" font-size="13">correlate.py</text>
+            <text class="node-role" x="115" y="180" text-anchor="middle" font-size="11">SIEM 사건 등급</text></g>
+          <g><rect class="node-box" x="300" y="90" width="170" height="56" rx="9" style="stroke:var(--stage-response)"></rect>
+            <text class="node-label" x="385" y="114" text-anchor="middle" font-size="13">lockdown.py</text>
+            <text class="node-role" x="385" y="130" text-anchor="middle" font-size="11">승격 · 해제 · 복구 반영</text></g>
+          <g><rect class="node-box" x="560" y="40" width="150" height="56" rx="9" style="stroke:var(--stage-data)"></rect>
+            <text class="node-label" x="635" y="64" text-anchor="middle" font-size="12">db/lockouts.py</text>
+            <text class="node-role" x="635" y="80" text-anchor="middle" font-size="11">lock_type=PERMANENT</text></g>
+          <g><rect class="node-box" x="560" y="140" width="150" height="56" rx="9" style="stroke:var(--stage-data)"></rect>
+            <text class="node-label" x="635" y="164" text-anchor="middle" font-size="12">db/lock_history.py</text>
+            <text class="node-role" x="635" y="180" text-anchor="middle" font-size="11">잠금 이력 · 횟수</text></g>
+          <g><rect class="node-box" x="820" y="90" width="170" height="56" rx="9" style="stroke:var(--stage-output)"></rect>
+            <text class="node-label" x="905" y="114" text-anchor="middle" font-size="12">관리자 대시보드</text>
+            <text class="node-role" x="905" y="130" text-anchor="middle" font-size="11">영구 잠금·복구·IP 예외</text></g>
+
+          <!-- 노드: 아래쪽 -->
+          <g><rect class="node-box" x="40" y="240" width="150" height="56" rx="9" style="stroke:var(--stage-people)"></rect>
+            <text class="node-label" x="115" y="264" text-anchor="middle" font-size="13">잠긴 사용자</text>
+            <text class="node-role" x="115" y="280" text-anchor="middle" font-size="11">아이디 입력</text></g>
+          <g><rect class="node-box" x="230" y="240" width="150" height="56" rx="9" style="stroke:var(--stage-server)"></rect>
+            <text class="node-label" x="305" y="264" text-anchor="middle" font-size="12">routes/recovery.py</text>
+            <text class="node-role" x="305" y="280" text-anchor="middle" font-size="11">응답 8초 고정</text></g>
+          <g><rect class="node-box" x="430" y="240" width="150" height="56" rx="9" style="stroke:var(--stage-output)"></rect>
+            <text class="node-label" x="505" y="264" text-anchor="middle" font-size="13">mailer.py</text>
+            <text class="node-role" x="505" y="280" text-anchor="middle" font-size="11">Brevo SMTP</text></g>
+          <g><rect class="node-box" x="640" y="240" width="150" height="56" rx="9" style="stroke:var(--ink-muted);stroke-dasharray:4 3"></rect>
+            <text class="node-label" x="715" y="264" text-anchor="middle" font-size="13">사용자 메일함</text>
+            <text class="node-role" x="715" y="280" text-anchor="middle" font-size="11">15분 · 1회용</text></g>
+        </svg>
+      </div>
+      <figcaption>실선 = 자동으로 일어나는 경로 · 점선(초록) = 사람이 개입하는 경로(관리자 해제, 사용자의 링크·코드 입력) · 계정 잠금은 완전 해제, IP 잠금은 "그 회원 + 그 기기"에게만 예외 발급</figcaption>
+    </figure>
+
+    <div class="stage-groups" style="margin-top:24px">
+
+      <div class="stage-group" data-stage="response">
+        <div class="stage-head"><span class="name">SOAR 대응 · 확장</span><span class="count">1개 파일</span></div>
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">lockdown.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 33</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body">
+            <p class="file-role">영구 잠금 담당 부서. 임시 잠금이 30일 안 2번째면 영구로 올리고(허용 목록 IP·없는 아이디 제외), SIEM 사건 등급에 따라 승격하며, 관리자 해제와 이메일 복구 결과(계정 해제 / IP 예외)를 반영한다.</p>
+            <div class="fn-list"><span class="fn">after_temporary_lock()</span><span class="fn">promote_ip()</span><span class="fn">promote_account()</span><span class="fn">consider_incident_promotion()</span><span class="fn">release()</span><span class="fn">apply_recovery()</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage-group" data-stage="server">
+        <div class="stage-head"><span class="name">서버 · 진입점 · 확장</span><span class="count">2개 파일</span></div>
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">routes/recovery.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 34</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body">
+            <p class="file-role">이메일 인증 복구 화면 4개. 계정 존재 여부를 숨기려고 응답을 8초로 고정하고, IP 복구는 요청한 기기(lw_dev 쿠키)에서만 완료되며, 토큰은 해시로만 저장해 1회만 소비한다.</p>
+            <div class="fn-list"><span class="fn">GET /recovery</span><span class="fn">POST /recovery/request</span><span class="fn">GET/POST /recovery/verify</span></div>
+          </div>
+        </div>
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">routes/member.py (비밀번호 변경)</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 35</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body">
+            <p class="file-role">현재 비밀번호를 확인한 뒤 변경하고, 세션 세대 번호(users.session_version)를 올려 다른 기기의 로그인을 모두 끊는다. 현재 비밀번호를 틀리면 로그인 실패와 같은 기준으로 기록·잠금한다.</p>
+            <div class="fn-list"><span class="fn">POST /dashboard/password</span><span class="fn">helpers.member_login_required (세대 번호 확인)</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage-group" data-stage="output">
+        <div class="stage-head"><span class="name">알림 · 확장</span><span class="count">1개 파일</span></div>
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">mailer.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 34</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body">
+            <p class="file-role">복구·완료·비밀번호 변경 알림 메일 발송(console / SMTP). 실패 원인을 CONFIG·AUTH·CONNECT·OTHER·INTERNAL로 나눠 Slack에 알린다(같은 원인은 1시간에 한 번). 운영에서는 console 백엔드를 거부한다.</p>
+            <div class="fn-list"><span class="fn">send_recovery_email()</span><span class="fn">send_recovery_done_notice()</span><span class="fn">send_password_changed_notice()</span><span class="fn">send_test_mail()</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage-group" data-stage="data">
+        <div class="stage-head"><span class="name">데이터 계층 · 확장</span><span class="count">3개 파일</span></div>
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">db/lock_history.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 33</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">잠금 이력(추가만 하는 표). 덮어쓰는 lockouts 대신 여기서 "최근 30일 몇 번 잠겼나"를 세고, 누가 언제 풀었는지 남긴다.</p></div>
+        </div>
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">db/recovery.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 34</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">recovery_requests(1회용 복구 요청), ip_lock_exemptions(본인+기기 출입증), users.email_status(수신 거부 표시).</p></div>
+        </div>
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">db/_client.py (연결 안정화)</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 36</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">Supabase 연결을 HTTP/1.1 + 5초 연결 유지 + 조회(GET) 1회 재시도로 만든다. 서버리스에서 쉬던 연결이 끊겨 가끔 500이 나던 문제를 해결. 기록·수정은 두 번 기록될 위험 때문에 재시도하지 않는다.</p></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
   <footer>
     <span>login-watchdog</span>
     <span>·</span>
@@ -705,7 +845,7 @@
     <span>·</span>
     <span>배포: login-watchdog.vercel.app</span>
     <span>·</span>
-    <span>근거: app.py·db.py 등 실제 코드 + docs/beginner-guide (guide01~guide17)</span>
+    <span>근거: app.py·db.py 등 실제 코드 + docs/beginner-guide (01~03절 guide01~guide17, 04절 guide33~guide36)</span>
   </footer>
 
 </div>

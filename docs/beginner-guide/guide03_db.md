@@ -3,6 +3,8 @@
 [◀ 2단계](guide02_schema.md) · [전체 목차](beginner-guide.md) · [4단계 ▶](guide04_response.md)
 
 
+> **나중에 바뀐 점 (36단계)** — 이 단계의 `get_client()`는 그 뒤 `db/_client.py`로 옮겨졌고, 배포 환경(Vercel)에서 쉬던 연결이 끊겨 가끔 오류가 나던 문제 때문에 Supabase 연결을 HTTP/1.1 + 조회 1회 재시도로 만들도록 바뀌었습니다. 호출 방법(`get_client().table(...)`)은 그대로입니다 — [36단계](guide36_db_connection.md) 참고.
+
 ### 우리가 한 일
 1. [db.py](../../db.py) 파일에 "Supabase와 주고받는 모든 대화"를 함수 단위로 정리
 2. 실제 데이터를 넣었다 빼면서(스모크 테스트) 함수들이 진짜로 작동하는지 확인

@@ -35,8 +35,14 @@
 **Layer 5. 방어 강화**
 15. [L7 공격 방어 보강](#15-l7-공격-방어-보강)
 
+**Layer 5-A. 확장 기능** *(33~36단계)*
+16. [영구 잠금](#16-영구-잠금)
+17. [이메일 인증 복구](#17-이메일-인증-복구)
+18. [비밀번호 변경 + 다른 기기 로그인 해제](#18-비밀번호-변경--다른-기기-로그인-해제)
+19. [배포 환경 DB 연결 안정화](#19-배포-환경-db-연결-안정화)
+
 **Layer 6. 부록**
-16. [부록](#16-부록)
+20. [부록](#20-부록)
 
 ---
 
@@ -263,7 +269,7 @@ return {"count": res.count or 0, "latest_at": latest_at}
 
 ### 6. 용어 풀이 / 한계
 - **Post-Redirect-Get 패턴**: 폼 제출 처리 후 같은 화면을 다시 그리지 않고 redirect로 "재방문"시켜, 새로고침 시 폼이 중복 제출되는 걸 막는 패턴.
-- **한계**: 로그인만 하면 다른 회원의 글 id를 순차 조회(스크래핑)하는 것 자체는 막지 않습니다 — 게시판이 "회원 전체 공개" 설계라 의도된 범위입니다 ([16번 부록](#16-부록) 참고).
+- **한계**: 로그인만 하면 다른 회원의 글 id를 순차 조회(스크래핑)하는 것 자체는 막지 않습니다 — 게시판이 "회원 전체 공개" 설계라 의도된 범위입니다 ([20번 부록](#20-부록) 참고).
 
 ---
 
@@ -490,7 +496,7 @@ python scripts/bruteforce_sim.py
 
 \* README상 "관리자 API 반복 접근"은 위험도가 높아 표기상 CRITICAL/HIGH 취급되는 경우가 있으나, 실제 코드가 `security_events`에 기록하는 severity 값은 `"MEDIUM"`입니다([soar.py:157-169](../../soar.py#L157)) — 문서와 실제 코드를 대조할 때 주의하세요.
 
-**교차 참조**: Password Spraying은 [5번 섹션](#5-브루트포스-탐지--자동-ip-잠금)에서 이미 다룹니다(같은 코드, `distinct_usernames`로만 구분). Automated Scraping(게시글 id 순차 조회)은 탐지 코드가 없는 **의도된 사각지대**이며 [16번 부록](#16-부록)에서 다룹니다.
+**교차 참조**: Password Spraying은 [5번 섹션](#5-브루트포스-탐지--자동-ip-잠금)에서 이미 다룹니다(같은 코드, `distinct_usernames`로만 구분). Automated Scraping(게시글 id 순차 조회)은 탐지 코드가 없는 **의도된 사각지대**이며 [20번 부록](#20-부록)에서 다룹니다.
 
 ### 2. 실행 흐름 (Web Scanning 예시)
 ```
@@ -540,7 +546,7 @@ for i in $(seq 1 11); do curl -s -o /dev/null http://127.0.0.1:5000/no-such-page
 
 ### 6. 용어 풀이 / 한계
 - **관찰형 탐지**: 실제로 막지 않고 "기록 + 알림"까지만 자동화하는 유형. 잠글 명확한 대상이 없거나(404), 잠그면 정상 사용자가 피해를 볼 위험(관리자 세션 폴링)이 있을 때 씁니다.
-- **한계**: Automated Scraping(순차 게시글 조회)은 게시판이 "회원 전체 공개" 설계라 의도적으로 차단하지 않습니다 — [README.md:253](../../README.md#L253).
+- **한계**: Automated Scraping(순차 게시글 조회)은 게시판이 "회원 전체 공개" 설계라 의도적으로 차단하지 않습니다 — [README.md:281](../../README.md#L281).
 
 ---
 
@@ -1315,11 +1321,79 @@ curl -X POST http://127.0.0.1:5000/login \
 
 ---
 
+# Layer 5-A. 확장 기능 (33~36단계)
+
+Layer 1~5가 갖춰진 뒤 추가된 기능들입니다. 새 기능도 같은 원칙을 따릅니다 — **판단은 detector.py,
+실행은 soar.py와 그 확장인 lockdown.py, 사람의 최종 확인은 관리자 화면**. 각 장은 계층 관점의 흐름만
+정리하고, 코드 인용·예시 데이터·시현 방법 등 자세한 설명은 [01 문서](01-feature-order.md)의 같은 장으로 연결합니다.
+
+## 16. 영구 잠금
+
+**계층 위치**: Layer 2(탐지)는 그대로이고, Layer 3(대응)이 "5분 잠금"에서 한 단계 더 나아갑니다.
+
+| 계층 | 담당 | 하는 일 |
+|---|---|---|
+| Layer 2 판단 | [detector.py](../../detector.py) `get_ip_lock_state` / `get_account_lock_state` | 잠금이 없음/임시/영구인지 판정만 함 |
+| Layer 3 실행 | [soar.py:85](../../soar.py#L85) → [lockdown.py:136](../../lockdown.py#L136) `after_temporary_lock` | 임시 잠금 직후 이력을 남기고, 30일 안 2번째면 영구로 승격 |
+| Layer 3 상관분석 | [correlate.py:60-63](../../correlate.py#L60) → [lockdown.py:187](../../lockdown.py#L187) | CRITICAL 사건은 즉시 승격, HIGH는 승인 대기(11번의 승인 표 재사용) |
+| Layer 4 관리 | [routes/admin.py:458](../../routes/admin.py#L458), [492](../../routes/admin.py#L492) | 수동 승격, **super_admin만** 사유를 적고 해제(13번 RBAC에 권한 4종 추가) |
+| Layer 1 화면 | [routes/auth.py:216](../../routes/auth.py#L216) | 영구 잠긴 IP·계정은 로그인 차단 + 복구 링크, 영구 잠긴 IP는 가입도 차단 |
+
+**왜 lockdown.py를 따로 뒀나**: soar.py(실행)가 이미 correlate.py(상관분석)를 import합니다. correlate.py도
+승격을 해야 하는데 soar.py를 import하면 순환이 생깁니다. 그래서 승격·해제를 lockdown.py에 모으고 둘 다 이 파일만
+import합니다 — "판단과 실행 분리" 원칙을 유지하면서 실행 쪽만 한 파일 늘어난 구조입니다.
+
+자세한 설명: [01 문서 16번](01-feature-order.md#16-영구-잠금), [guide33](../beginner-guide/guide33_permanent_lock.md)
+
+## 17. 이메일 인증 복구
+
+**계층 위치**: Layer 1에 새 화면(`/recovery`)이 생기고, Layer 3의 영구 잠금을 사람이 아닌 **본인 인증**으로 되돌리는 경로입니다.
+
+| 계층 | 담당 | 하는 일 |
+|---|---|---|
+| Layer 1 화면 | [routes/recovery.py](../../routes/recovery.py) | 요청 → 메일 → 확인 → 완료 화면 4개 |
+| Layer 3 실행 | [lockdown.py:256](../../lockdown.py#L256) `apply_recovery` | 계정 잠금 해제 + 보호관찰 / IP는 "회원 + 기기" 예외 발급 |
+| 알림 | [mailer.py](../../mailer.py) | 복구·완료 메일 발송, 실패 원인 분류 후 Slack 알림(alert.py 재사용) |
+| Layer 4 관리 | [routes/admin.py:515](../../routes/admin.py#L515), [530](../../routes/admin.py#L530) | IP 예외 회수, 진행 중 복구 요청 취소 |
+
+**방어 원칙**: 계정 존재 여부를 숨기려고 응답을 8초로 고정하고, IP 복구는 요청한 기기에서만 완료되며, 토큰은
+해시로만 저장하고 1회만 소비합니다. 메일은 응답 전에 보내서 서버리스에서도 끊기지 않게 했습니다.
+
+자세한 설명: [01 문서 17번](01-feature-order.md#17-이메일-인증-복구), [guide34a](../beginner-guide/guide34a_email_recovery.md)
+
+## 18. 비밀번호 변경 + 다른 기기 로그인 해제
+
+**계층 위치**: Layer 1(회원 화면)의 기능이지만, Layer 2(로그인 실패 판정)와 연결됩니다.
+
+| 계층 | 담당 | 하는 일 |
+|---|---|---|
+| Layer 1 화면 | [routes/member.py:115](../../routes/member.py#L115) | 현재 비밀번호 확인 후 변경, 변경 알림 메일 |
+| Layer 1 문지기 | [helpers.py:221](../../helpers.py#L221) `member_login_required` | 세션의 세대 번호와 DB 번호가 다르면 로그아웃 |
+| Layer 2 판단 재사용 | [routes/member.py:174](../../routes/member.py#L174) | 현재 비밀번호를 틀리면 로그인 실패와 같은 기준으로 기록·잠금 |
+| 데이터 | [db/users.py:170](../../db/users.py#L170) | 해시 저장 + `session_version` +1 (조건부 UPDATE) |
+
+자세한 설명: [01 문서 18번](01-feature-order.md#18-비밀번호-변경--다른-기기-로그인-해제), [guide35](../beginner-guide/guide35_password_change.md)
+
+## 19. 배포 환경 DB 연결 안정화
+
+**계층 위치**: 모든 계층 아래의 **데이터 접근 계층**(db 패키지)입니다. 위 계층 코드는 전혀 바뀌지 않았습니다.
+
+| 담당 | 하는 일 |
+|---|---|
+| [db/_client.py:58](../../db/_client.py#L58) `_build_http_client` | Supabase 연결을 HTTP/1.1, 5초 연결 유지, 접속 1회 재시도로 생성 |
+| [db/_client.py:46](../../db/_client.py#L46) `_RetryOnDisconnectTransport` | 연결이 끊기면 조회(GET/HEAD)만 1회 재시도, 기록·수정은 재시도 안 함 |
+
+DB 호출 155곳을 그대로 둔 채 연결 한 곳만 바꿨다는 점에서, "db 패키지만 DB와 대화한다"는 구조 덕분에 가능했던 수정입니다.
+
+자세한 설명: [01 문서 19번](01-feature-order.md#19-배포-환경-db-연결-안정화), [guide36](../beginner-guide/guide36_db_connection.md)
+
+---
+
 # Layer 6. 부록
 
-## 16. 부록
+## 20. 부록
 
-### 16.1 테스트 커버리지 매핑
+### 20.1 테스트 커버리지 매핑
 
 | 테스트 파일 | 대상 기능 |
 |---|---|
@@ -1335,13 +1409,20 @@ curl -X POST http://127.0.0.1:5000/login \
 | [tests/test_unlock_ip.py](../../tests/test_unlock_ip.py) | scripts/unlock_ip.py |
 | [tests/test_helpers.py](../../tests/test_helpers.py) | helpers.py 공용 함수 |
 | [tests/test_config.py](../../tests/test_config.py) | config.py 값 로딩 |
+| [tests/test_permanent_lock.py](../../tests/test_permanent_lock.py) | 영구 잠금 승격·해제·DB 보호(16번) |
+| [tests/test_permanent_admin_api.py](../../tests/test_permanent_admin_api.py) | 영구 잠금 관리자 API·RBAC(16번) |
+| [tests/test_recovery.py](../../tests/test_recovery.py) | 이메일 복구·메일 발송·로그인 예외(17번) |
+| [tests/test_unlock_permanent.py](../../tests/test_unlock_permanent.py) | unlock 스크립트 `--permanent`(16번) |
+| [tests/test_send_test_mail.py](../../tests/test_send_test_mail.py) | 메일 설정 점검 스크립트(17번) |
+| [tests/test_password_change.py](../../tests/test_password_change.py) | 비밀번호 변경·세션 해제(18번) |
+| [tests/test_db_client.py](../../tests/test_db_client.py) | DB 연결 재시도(19번) |
 
 실행 방법:
 ```bash
 pytest
 ```
 
-### 16.2 시뮬레이션 스크립트 전체 목록
+### 20.2 시뮬레이션 스크립트 전체 목록
 
 | 스크립트 | 대상 |
 |---|---|
@@ -1355,23 +1436,27 @@ pytest
 | [scripts/macro_bot_sim.py](../../scripts/macro_bot_sim.py) | API 매크로/봇(7번) |
 | [scripts/tune_thresholds.py](../../scripts/tune_thresholds.py) | 임계값 튜닝(14번) |
 | [scripts/daily_report.py](../../scripts/daily_report.py) | 일일 리포트(AI 요약 포함) |
-| [scripts/unlock_ip.py](../../scripts/unlock_ip.py) / [scripts/unlock_account.py](../../scripts/unlock_account.py) | 터미널에서 수동 잠금 해제 |
+| [scripts/unlock_ip.py](../../scripts/unlock_ip.py) / [scripts/unlock_account.py](../../scripts/unlock_account.py) | 터미널에서 수동 잠금 해제 (영구 잠금은 `--permanent --note "사유"`) |
+| [scripts/send_test_mail.py](../../scripts/send_test_mail.py) | 메일 발송 설정 점검(17번) |
 | [scripts/create_admin.py](../../scripts/create_admin.py) | 관리자 계정 생성 |
 | [scripts/delete_security_events.py](../../scripts/delete_security_events.py) | 보안 이벤트 정리 |
 
-### 16.3 DB 스키마
-전체 테이블 정의는 [docs/schema.sql](../../docs/schema.sql) 참고 (19개 테이블).
+### 20.3 DB 스키마
+전체 테이블 정의는 [docs/schema.sql](../../docs/schema.sql) 참고. 처음 19개 테이블에 RBAC·상관분석·조기 경보 등으로 표가 늘었고, 영구 잠금으로 `lock_history`·`recovery_requests`·`ip_lock_exemptions`가 추가되어 지금은 25개입니다. 기존 DB에 추가로 실행할 SQL은 [docs/migrations/](../../docs/migrations)에 있습니다. 표별 설명은 [db-schema-guide.md](db-schema-guide.md).
 
-### 16.4 알려진 제한사항 (의도된 미구현 범위)
-전체 목록은 [README.md의 "알려진 제한사항"](../../README.md#L238) 절 참고. 이 문서와 관련된 주요 항목:
+### 20.4 알려진 제한사항 (의도된 미구현 범위)
+전체 목록은 [README.md의 "알려진 제한사항"](../../README.md#L262) 절 참고. 이 문서와 관련된 주요 항목:
 
-- **Automated Scraping (게시글 id 순차 조회) 미차단** — [README.md:253](../../README.md#L253). 게시판이 "회원 전체 공개" 설계이므로 버그가 아니라 의도된 범위 ([3번 섹션](#3-게시판--댓글) 참고).
+- **Automated Scraping (게시글 id 순차 조회) 미차단** — [README.md:281](../../README.md#L281). 게시판이 "회원 전체 공개" 설계이므로 버그가 아니라 의도된 범위 ([3번 섹션](#3-게시판--댓글) 참고).
+- **영구 잠금은 이미 로그인된 세션을 끊지 않음** — 세션은 비밀번호를 바꿀 때만 끊깁니다(16번, 18번).
+- **비밀번호 재설정(잊었을 때) 미구현** — 로그인 후 변경만 가능하고, 잊은 경우는 관리자가 처리합니다(18번).
+- **DB 기록 요청은 연결 끊김 시 재시도하지 않음** — 두 번 기록되는 것을 막기 위한 선택이라 드물게 오류가 날 수 있습니다(19번).
 - **네트워크(L3)/전송(L4) 계층 공격(SYN Flood, 포트 스캐닝 등) 미구현** — [README.md:5](../../README.md#L5). 현재는 애플리케이션 계층(L7) 공격 대응에 집중되어 있음.
 
-### 16.5 이 계층 구조가 의미하는 것
+### 20.5 이 계층 구조가 의미하는 것
 Layer 1~6을 다시 훑어보면, 이 프로젝트의 설계 원칙이 하나로 요약됩니다 —
 **"판단(Layer 2)"과 "실행(Layer 3)"을 분리**하고, 그 위에 **"사람의 최종 확인(Layer 4)"**을
 얹은 구조입니다. `detector.py`는 절대 아무것도 바꾸지 않고, `soar.py`만 실제로
 잠급니다([detector.py:1-10](../../detector.py#L1) 참고) — 이 원칙 덕분에 "판단 기준만
 바꾸고 싶다"거나 "이 조치는 사람 승인을 거치게 하고 싶다"(Layer 3의 11번, LLM 조기
-경보) 같은 변경이 기존 코드를 건드리지 않고도 가능해집니다.
+경보) 같은 변경이 기존 코드를 건드리지 않고도 가능해집니다. 영구 잠금(16번)도 같은 구조로 넣었습니다 — 판정은 detector.py에 "잠금 종류"만 추가했고, 승격·해제라는 새 실행은 soar.py의 확장인 lockdown.py가 맡습니다.

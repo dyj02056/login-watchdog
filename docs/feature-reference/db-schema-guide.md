@@ -1,8 +1,8 @@
 # Supabase DB 스키마 가이드 (비전공자용)
 
-이 문서는 [docs/schema.sql](schema.sql)에 정의된 Supabase 테이블 25개를 "이게 왜 있고, 어떤 값이 들어가는지" 비전공자도 알 수 있게 정리한 문서입니다.
+이 문서는 [docs/schema.sql](../schema.sql)에 정의된 Supabase 테이블 25개를 "이게 왜 있고, 어떤 값이 들어가는지" 비전공자도 알 수 있게 정리한 문서입니다.
 
-> 실제 스키마 정의(SQL)는 [docs/schema.sql](schema.sql)이 원본입니다. 이 문서는 그걸 읽기 쉽게 풀어 쓴 참고 자료이며, 스키마가 바뀌면 이 문서도 함께 업데이트해야 합니다.
+> 실제 스키마 정의(SQL)는 [docs/schema.sql](../schema.sql)이 원본입니다. 이 문서는 그걸 읽기 쉽게 풀어 쓴 참고 자료이며, 스키마가 바뀌면 이 문서도 함께 업데이트해야 합니다.
 
 ## 한눈에 보는 전체 목록
 
@@ -76,9 +76,14 @@
 |---|---|---|
 | `username` | 글자 (기본키) | 잠긴 계정의 아이디 |
 | `locked_at` | 날짜/시각 | 잠긴 시각 |
-| `unlock_at` | 날짜/시각 | 자동으로 풀릴 예정 시각 |
+| `unlock_at` | 날짜/시각 (영구 잠금은 없음) | 자동으로 풀릴 예정 시각. 영구 잠금이면 비어 있다 |
 | `failure_count` | 숫자 | 잠기게 된 총 실패 횟수 (여러 IP 합산) |
 | `active` | 참/거짓 | 지금도 잠겨있는지 |
+| `lock_type` | 글자 | `TEMPORARY`(5분 후 자동 해제) / `PERMANENT`(영구) |
+| `recoverable` | 글자 | 영구 잠금을 푸는 방법: `SELF`(본인 이메일 인증으로 해제) / `ADMIN_ONLY`(관리자만). 계정에는 IP 전용 개념인 `EXEMPTION`이 없다 |
+| `permanent_reason` | 글자 (없을 수 있음) | 영구로 올라간 이유 (`REPEAT_OFFENDER`, `ADMIN_MANUAL` 등) |
+| `promoted_at` | 날짜/시각 (없을 수 있음) | 영구 잠금으로 올라간 시각 |
+| `probation_until` | 날짜/시각 (없을 수 있음) | 이메일 복구 후 보호관찰이 끝나는 시각(기본 24시간). 그 전에 다시 잠기면 관리자 전용 영구 잠금이 된다 |
 
 ---
 
@@ -239,12 +244,12 @@ IP로 국가/도시를 알아내주는 외부 서비스(`ip-api.com`)는 분당 
 | 컬럼 | 값 종류 | 설명 |
 |---|---|---|
 | `id` | 숫자 | 이벤트 번호 |
-| `event_type` | 글자 | 어떤 종류의 이벤트인지 (예: `BRUTE_FORCE`, `BOT_DETECTED`, `WEB_SCANNING` 등) |
+| `event_type` | 글자 | 어떤 종류의 이벤트인지 (예: `BRUTE_FORCE`, `BOT_DETECTED`, `WEB_SCANNING` 등). 영구 잠금이 걸리면 `PERMANENT_LOCK`(CRITICAL), 복구 메일이 수신 거부되면 `EMAIL_UNDELIVERABLE`(MEDIUM)도 기록된다 |
 | `severity` | 글자 | 위험 등급 — `MEDIUM` / `HIGH` / `CRITICAL` |
 | `ip_address` | 글자 | 관련된 IP |
 | `path` | 글자 (없을 수 있음) | 관련된 경로 (경로와 무관한 이벤트는 비어있음) |
 | `count` | 숫자 | 이 이벤트가 지금까지 몇 번 반복됐는지 |
-| `action` | 글자 | 자동으로 취한 조치 (예: `LOCK_IP`, `REJECTED`) |
+| `action` | 글자 | 자동으로 취한 조치 (예: `LOCK_IP`, `REJECTED`, 영구 잠금은 `PERMANENT_LOCKED`) |
 | `username` | 글자 (없을 수 있음) | 계정 단위 이벤트일 때만 채워짐 |
 | `detected_at` | 날짜/시각 | 처음 탐지된 시각 |
 | `resolved_at` | 날짜/시각 (없을 수 있음) | 처리 완료된 시각. 비어있으면 아직 "미해결" 상태 |
@@ -289,6 +294,15 @@ IP로 국가/도시를 알아내주는 외부 서비스(`ip-api.com`)는 분당 
 | `role` | 글자 | 조치를 할 수 있는 역할 (`roles` 표와 연결) |
 | `action` | 글자 | 허용된 조치 (예: `unlock_ip`, `delete_user`, `manage_admin_users`, `approve_pending_action`, `resolve_incident` 등) |
 
+영구 잠금 관리용 조치 4개(guide33)는 이렇게 나뉩니다. 영구 잠금의 **완전 해제는 `super_admin`만** 할 수 있습니다.
+
+| action | 하는 일 | security_admin | super_admin |
+|---|---|:---:|:---:|
+| `promote_permanent_lock` | IP·계정을 관리자가 직접 영구 잠금 | ○ | ○ |
+| `release_permanent_lock` | 영구 잠금 완전 해제(사유 필수) | ✕ | ○ |
+| `revoke_ip_exemption` | IP 예외(본인+본인 기기 출입증) 회수 | ○ | ○ |
+| `revoke_recovery_request` | 진행 중인 이메일 복구 요청 취소 | ○ | ○ |
+
 ---
 
 ## 21. `api_access_log` — `/api/*` 요청 전체 기록 (매크로/봇 탐지용)
@@ -312,8 +326,8 @@ IP로 국가/도시를 알아내주는 외부 서비스(`ip-api.com`)는 분당 
 | 컬럼 | 값 종류 | 설명 |
 |---|---|---|
 | `request_id` | 숫자 | 요청 번호 |
-| `event_type` | 글자 | 어떤 유형의 조기 경보인지 (`BRUTE_FORCE`, `WEB_SCANNING` 등) |
-| `pending_action` | 글자 | 승인되면 실제로 실행할 조치 (`LOCK_IP` / `LOCK_ACCOUNT` / `ALERT_ONLY`) |
+| `event_type` | 글자 | 어떤 유형의 조기 경보인지 (`BRUTE_FORCE`, `WEB_SCANNING` 등). SIEM 상관분석 사건이 HIGH가 되어 영구 잠금 승인을 기다리는 건은 `SIEM_HIGH_INCIDENT` |
+| `pending_action` | 글자 | 승인되면 실제로 실행할 조치 (`LOCK_IP` / `LOCK_ACCOUNT` / `ALERT_ONLY` / `PERMANENT_LOCK_IP`(영구 잠금)) |
 | `target_kind` | 글자 | 대상이 IP인지 계정인지 (`ip` / `account`) |
 | `target_value` | 글자 | 대상이 되는 IP 주소 또는 계정 아이디 |
 | `path` | 글자 (없을 수 있음) | 관련 경로 (해당하는 유형만) |

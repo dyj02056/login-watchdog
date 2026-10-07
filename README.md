@@ -11,8 +11,8 @@
 - **회원가입 / 로그인** — Supabase에 저장된 실제 계정으로 로그인하는 감시 대상 화면 (`/signup`, `/login`)
 - **브루트포스 탐지 + 자동 잠금** — 같은 IP가 60초 안에 5회 초과 로그인 실패 시 해당 IP를 5분간 자동 잠금
 - **Slack 알림** — 잠금이 발생하는 순간 Slack 채널에 시각·IP·실패 횟수·조치 내용을 전송 (웹훅 미설정 시 콘솔 로그로 자동 대체)
-- **회원 대시보드** (`/dashboard`) — 로그인한 회원 본인의 인사말 화면. 최근 로그인 기록(접속 국가/도시 포함) 조회, 표시 이름·이메일 프로필 수정 가능
-- **관리자 대시보드** (`/admin/dashboard`) — 세션 로그인으로 보호되는 별도 화면에서 최근 로그인 시도(접속 위치 포함), 현재 잠긴 IP, 등록된 회원 목록(삭제 가능), 회원가입 On/Off, 관리자 로그인 기록을 실시간(폴링) 확인 + "즉시 해제" 버튼으로 수동 잠금 해제
+- **회원 대시보드** (`/dashboard`) — 로그인한 회원 본인의 인사말 화면. 최근 로그인 기록(접속 국가/도시 포함) 조회, 표시 이름·이메일 프로필 수정, 비밀번호 변경(바꾸면 다른 기기의 로그인은 모두 해제) 가능
+- **관리자 대시보드** (`/admin/dashboard`) — 세션 로그인으로 보호되는 별도 화면에서 최근 로그인 시도(접속 위치 포함), 현재 잠긴 IP, 등록된 회원 목록(삭제 가능), 회원가입 On/Off, 관리자 로그인 기록을 실시간(폴링) 확인 + "즉시 해제" 버튼으로 수동 잠금 해제 영구 잠금 / 복구 요청 / IP 예외 카드에서 영구 잠금을 관리(완전 해제는 `super_admin`만, 사유 필수).
 - **통합 보안 위험등급** — Brute Force/Password Spraying/관리자 로그인 무차별 대입(CRITICAL), 가입·게시글·댓글 도배 거부(HIGH), Web Scanning·Unauthorized Access·반복 페이지 접근 관찰(MEDIUM)을 공통 `security_events` 표에 등급과 함께 기록. 관리자 대시보드 맨 위 "보안 이벤트" 표에서 등급 배지와 함께 조회하고, HIGH/MEDIUM은 "처리 완료" 버튼으로 처리(CRITICAL은 잠금 해제 시 자동 처리). Slack 메시지 첫 줄에도 등급 표시
 - **IP 위치 조회** — [ip-api.com](https://ip-api.com)으로 접속 IP의 국가·도시를 조회해 회원/관리자 대시보드에 표시. 조회 결과는 Supabase(`ip_locations`)에 캐시되어 같은 IP를 반복 조회하지 않음(무료 API의 분당 45건 한도 대응)
 - **게시판·댓글** (`/board`) — 로그인한 회원 전용 게시판. 글 작성/수정/삭제(본인 글만), 댓글 작성/삭제(본인 댓글만), 페이지 번호 방식 목록, 새 댓글이 달리면 알림 배너 표시. 관리자 대시보드에서는 별도로 전체 게시글·댓글을 조회·삭제 가능. 자세한 설계 배경은 [docs/board-comment/](docs/board-comment) 참고
@@ -23,15 +23,17 @@
 - **API 엔드포인트별 매크로/봇 탐지** — 같은 IP가 60초 안에 서로 다른 `/api/*` 경로를 5개 초과해서 호출하면(대시보드 자동 폴링 API는 제외) MEDIUM 관찰 알림. 기존 `track_page_access()`가 "GET, 같은 경로 하나의 반복"만 보던 사각지대(POST API, 여러 경로에 걸친 패턴)를 메운다. 자세한 내용은 [docs/beginner-guide/guide29_macro_bot_detection.md](docs/beginner-guide/guide29_macro_bot_detection.md) 참고
 - **영구 잠금 + 이메일 인증 해제** — 같은 IP/계정이 최근 30일 안에 두 번째로 잠기거나(반복 위반), 상관분석 사건이 CRITICAL이면 5분 임시 잠금이 자동 만료 없는 **영구 잠금**으로 올라갑니다(HIGH 사건은 기본적으로 관리자 승인 대기). 계정 잠금은 본인 이메일 인증(`/recovery`)으로 해제하고(이후 24시간 보호관찰), IP 잠금은 인증한 "본인 + 본인 기기"에게만 예외를 발급합니다(같은 공유 IP의 공격자는 계속 차단). 관리자 로그인 IP 잠금과 이메일을 신뢰할 수 없는 계정은 관리자만 풀 수 있습니다. 대시보드 "영구 잠금" 카드에서 **super_admin만** 사유를 입력해 "영구 해제"할 수 있고(`release_permanent_lock` 권한), security_admin은 수동 승격·예외 회수·복구 요청 취소까지 가능합니다. 자세한 내용은 [guide33_permanent_lock.md](docs/beginner-guide/guide33_permanent_lock.md), [guide34a_email_recovery.md](docs/beginner-guide/guide34a_email_recovery.md) 참고
 - **비밀번호 변경 + 다른 기기 로그인 해제** — 회원은 '내 프로필'(`/dashboard/profile`)에서 현재 비밀번호를 확인한 뒤 비밀번호를 바꿀 수 있습니다. 현재 비밀번호를 틀리면 로그인 실패와 같은 기준으로 기록·잠금되어 이 화면이 비밀번호 대입 우회로가 되지 않고, 바꾸면 세션 세대 번호(`users.session_version`)가 올라가 이 기기를 제외한 모든 로그인 세션(탈취된 세션 포함)이 끊기며 가입 이메일로 변경 알림이 갑니다. 자세한 내용은 [guide35_password_change.md](docs/beginner-guide/guide35_password_change.md) 참고
+- **배포 환경 DB 연결 안정화** — Vercel(서버리스)에서 쉬던 Supabase 연결을 재사용하다 "Server disconnected"로 가끔 500이 나던 문제를, HTTP/1.1 연결과 조회 요청 1회 자동 재시도로 해결. 자세한 내용은 [guide36_db_connection.md](docs/beginner-guide/guide36_db_connection.md) 참고
 - **임계값 튜닝 리포트** — `scripts/tune_thresholds.py`로 최근 N일간 CRITICAL(IP/계정 잠금) 이벤트 중 관리자가 자동 만료를 기다리지 않고 훨씬 빨리 수동 해제한 비율을 event_type별로 집계. 오탐(너무 예민한 임계값) 여부를 점검하는 완전한 읽기 전용 도구. 자세한 내용은 [docs/beginner-guide/guide30_threshold_tuning.md](docs/beginner-guide/guide30_threshold_tuning.md) 참고
 
 ## 기술 스택
 
 | 영역 | 사용 기술 |
 |---|---|
-| 백엔드 | Flask (Blueprint 4개로 라우트 분리, `routes/` 참고) + Flask-Limiter (전역 요청 빈도 제한) |
-| 데이터베이스 | Supabase (PostgreSQL) |
+| 백엔드 | Flask (Blueprint 5개로 라우트 분리, `routes/` 참고) + Flask-Limiter (전역 요청 빈도 제한) |
+| 데이터베이스 | Supabase (PostgreSQL) — 서버리스에서 쉬던 연결이 끊기는 문제를 막으려고 HTTP/1.1 연결 + 조회 1회 재시도로 접속 (`db/_client.py`) |
 | 알림 | Slack Incoming Webhook |
+| 메일 | SMTP(파이썬 표준 `smtplib`) — 배포는 Brevo, 개발은 console 출력 또는 Mailpit(Docker) |
 | 인증 | Flask 세션 + `werkzeug.security` (비밀번호 해시) |
 | 프런트엔드 | Jinja2 템플릿 + 바닐라 JS |
 | 테스트 | pytest |
@@ -53,7 +55,7 @@ pip install -r requirements.txt
 
 ### 3. Supabase 프로젝트 준비
 1. [supabase.com](https://supabase.com)에서 프로젝트 생성
-2. **SQL Editor**에서 [docs/schema.sql](docs/schema.sql) 내용 전체 실행 (`users`, `login_attempts`, `lockouts`, `account_lockouts`, `admin_users`, `admin_login_log`, `app_settings`, `ip_locations`, `signup_attempts`, `posts`, `comments`, `post_attempts`, `comment_attempts`, `not_found_attempts`, `unauthorized_attempts`, `page_access_attempts`, `security_events`, `roles`, `permissions` 19개 테이블 생성). 영구 잠금 기능(guide33)을 쓰려면 기존 DB에는 [docs/migrations/guide33_permanent_lock.sql](docs/migrations/guide33_permanent_lock.sql)을 **한 번 더** 실행해야 합니다(`schema.sql` 맨 아래에도 같은 내용이 들어 있고, 여러 번 실행해도 안전합니다)
+2. **SQL Editor**에서 [docs/schema.sql](docs/schema.sql) 내용 전체 실행 (`users`, `login_attempts`, `lockouts`, `account_lockouts`, `admin_users`, `admin_login_log`, `app_settings`, `ip_locations`, `signup_attempts`, `posts`, `comments`, `post_attempts`, `comment_attempts`, `not_found_attempts`, `unauthorized_attempts`, `page_access_attempts`, `security_events`, `roles`, `permissions` 19개 테이블 생성). 영구 잠금 기능(guide33)을 쓰려면 기존 DB에는 [docs/migrations/guide33_permanent_lock.sql](docs/migrations/guide33_permanent_lock.sql)을, 비밀번호 변경 기능(guide35)을 쓰려면 [docs/migrations/guide35_password_change.sql](docs/migrations/guide35_password_change.sql)을 **추가로** 실행해야 합니다(`schema.sql` 맨 아래에도 같은 내용이 들어 있고, 여러 번 실행해도 안전합니다). 특히 guide35 SQL은 **새 코드를 배포하기 전에** 실행해야 합니다 — 없으면 회원 화면 전체가 오류가 납니다
 3. **Project Settings → API**에서 `Project URL`과 `service_role` key 확인
 
 ### 4. 환경변수 설정
@@ -73,6 +75,8 @@ cp .env.example .env
 | `TRUST_FORWARDED_FOR` | `X-Forwarded-For` 헤더 신뢰 여부. **데모/시연 전용, 운영에서는 반드시 `false`** |
 | `PERMANENT_LOCK_*` | 영구 잠금 정책 — `STRIKE_COUNT`/`ACCOUNT_STRIKE_COUNT`(기본 2회째 승격), `STRIKE_WINDOW_DAYS`(30), `AUTO_ON_HIGH`(false=HIGH 사건은 관리자 승인 대기), `AUTO_CLOSE_INCIDENT`(false), `IP_ALLOWLIST`(기본 `127.0.0.1,::1` — **관리자 PC IP를 꼭 추가**) |
 | `MAIL_BACKEND` / `SMTP_*` / `MAIL_FROM` / `PUBLIC_BASE_URL` | 복구 메일 발송. 개발은 `console`(터미널 출력, 운영에서는 거부됨) 또는 Mailpit(`docker compose -f docker-compose.mailpit.yml up -d`, `SMTP_HOST=127.0.0.1` `SMTP_PORT=1025` `SMTP_STARTTLS=false`, 받은 메일은 http://127.0.0.1:8025). **배포(Vercel)** 는 `MAIL_BACKEND=smtp` + Gmail SMTP(앱 비밀번호) 설정이 필요합니다 — 환경변수 목록과 점검 방법은 [guide34a_email_recovery.md](docs/beginner-guide/guide34a_email_recovery.md)의 "배포(Vercel)에서 복구 메일 보내기" 참고. `PUBLIC_BASE_URL`은 복구 링크의 기준 주소로, Host 헤더 대신 이 값만 씁니다. 설정은 `python scripts/send_test_mail.py --to 내주소@gmail.com`으로 미리 확인할 수 있습니다 |
+| `FLASK_ENV` | 배포(Vercel)에서는 반드시 `production` — 세션·기기 쿠키에 Secure가 붙고, 토큰을 로그에 찍는 console 메일 백엔드가 차단됩니다. 로컬 HTTP 서버에서 이 값을 켜면 로그인 쿠키가 전송되지 않으니 로컬에서는 비워 두세요 |
+| (선택) `RECOVERY_*`, `IP_EXEMPTION_*`, `SMTP_USE_SSL`, `SMTP_TIMEOUT_SECONDS`, `MAIL_FAILURE_ALERT_COOLDOWN_SECONDS` | 복구 정책(토큰 유효 15분, 요청 한도, 응답 고정 8초, 보호관찰 24시간 등)과 메일 세부 설정. 기본값으로 충분하며 전체 목록은 [.env.example](.env.example)과 [guide34a](docs/beginner-guide/guide34a_email_recovery.md) 참고 |
 | `VERCEL_AUTOMATION_BYPASS_SECRET` | Vercel Authentication(프리뷰 배포 보호)을 우회하는 Protection Bypass Secret. `scripts/bruteforce_sim.py`로 Vercel 프리뷰 배포를 대상으로 테스트할 때만 필요, 로컬 서버·운영 배포에는 불필요 |
 
 ### 5. 서버 실행
@@ -146,7 +150,7 @@ python app.py
 ```bash
 pytest tests/
 ```
-실제 Supabase에 접속하지 않고 가짜 데이터(monkeypatch)로 판정 로직만 검증하므로 몇 초 안에 끝납니다. 현재 총 253개 테스트가 모두 통과합니다.
+실제 Supabase에 접속하지 않고 가짜 데이터(monkeypatch)로 판정 로직만 검증하므로 몇 초 안에 끝납니다. 현재 총 501개 테스트가 모두 통과합니다.
 
 ## 유지보수 스크립트
 (김재호)
@@ -159,7 +163,9 @@ GET 11회를 보내 재현할 수 있습니다. [실행 조건과 알림 확인 
 |---|---|
 | `scripts/bruteforce_sim.py` | `/login`에 일부러 틀린 비밀번호를 반복 제출해, 설정된 횟수(기본 5회 초과)에서 실제로 IP가 잠기는지 검증하는 시뮬레이터. 팀이 소유한 로컬 서버만 대상으로 하며, 그 외 주소는 `--i-know-what-im-doing` 없이는 거부됨. `--ip`로 가짜 공격자 IP를 지정하거나, Vercel 프리뷰 배포처럼 Vercel Authentication이 걸린 주소를 대상으로 할 때는 `--bypass-secret`으로 우회할 수도 있음(아래 참고) |
 | `scripts/daily_report.py` | 최근 N시간(기본 24시간)의 로그인 시도/잠금 현황을 콘솔에 텍스트로 요약 |
-| `scripts/unlock_ip.py` | 지금 잠겨있는 IP를 조회하거나 즉시 해제. `/admin/login`도 `/login`과 같은 IP 기준 잠금을 공유하므로, 브루트포스 시뮬레이션 도중 관리자 계정 IP까지 함께 잠기면 대시보드의 "즉시 해제" 버튼조차 쓸 수 없는 상황이 생기는데(로그인 자체가 막혀서), 이때 서버·로그인 없이 터미널에서 바로 풀 때 사용 |
+| `scripts/unlock_ip.py` | 지금 잠겨있는 IP를 조회하거나 즉시 해제. `/admin/login`도 `/login`과 같은 IP 기준 잠금을 공유하므로, 브루트포스 시뮬레이션 도중 관리자 계정 IP까지 함께 잠기면 대시보드의 "즉시 해제" 버튼조차 쓸 수 없는 상황이 생기는데(로그인 자체가 막혀서), 이때 서버·로그인 없이 터미널에서 바로 풀 때 사용. 영구 잠금은 `--permanent`를 붙여야만 풀리고(`--note`로 해제 사유 기록), 없으면 건너뜀 |
+| `scripts/unlock_account.py` | 잠긴 계정(분산 브루트포스 대응 계정 잠금)을 조회하거나 즉시 해제. 영구 잠금은 `unlock_ip.py`와 같이 `--permanent`가 있어야 풀림 |
+| `scripts/send_test_mail.py` | 지금 메일 설정(SMTP)으로 테스트 메일 한 통을 보내 접속·인증·발송이 되는지 확인. 실패하면 원인(`CONFIG`/`AUTH`/`CONNECT`/`OTHER`)과 고칠 곳을 알려주며, 비밀번호는 출력하지 않음 |
 | `scripts/create_admin.py` | `security_viewer`/`security_admin`/`super_admin` 역할을 가진 새 관리자 계정을 생성. 대시보드 "관리자 계정 관리" 카드는 `super_admin`이 `security_viewer`/`security_admin`만 만들 수 있는 것과 달리, 이 스크립트는 터미널 접근 자체가 신뢰된 작업이라는 전제로 `super_admin`도 만들 수 있음(예: 최초 팀원 온보딩) |
 | `scripts/macro_bot_sim.py` | 이미 만들어진 관리자 계정으로 로그인한 뒤, 서로 다른 관리자 API 6개를 순서대로 호출해 매크로/봇 탐지가 실제로 알림을 울리는지 검증. `security_viewer`(무권한) 계정으로 실행하면 6번 모두 403으로 안전하게 거절되면서도 탐지 로그는 정상적으로 남음 |
 | `scripts/tune_thresholds.py` | 최근 N일(기본 7일)간 CRITICAL 잠금 중 자동 만료 전에 수동으로 조기 해제된 비율을 event_type별로 집계하는 완전한 읽기 전용 리포트. 비율이 높으면 임계값이 너무 예민할 수 있다는 신호 |
@@ -178,7 +184,14 @@ python scripts/bruteforce_sim.py --host https://<브랜치>-git-<프리뷰경로
 ```bash
 python scripts/unlock_ip.py                # 현재 활성 잠금 목록만 조회 (아무것도 바꾸지 않음)
 python scripts/unlock_ip.py --ip 127.0.0.1  # 이 IP 하나만 즉시 해제
-python scripts/unlock_ip.py --all           # 활성 잠금 전부 즉시 해제
+python scripts/unlock_ip.py --all           # 활성 잠금 전부 즉시 해제 (영구 잠금은 건너뜀)
+python scripts/unlock_ip.py --ip 1.2.3.4 --permanent --note "오탐 확인"   # 영구 잠금 해제 (사유 기록)
+python scripts/unlock_account.py --username alice --permanent --note "본인 확인 완료"
+```
+
+`send_test_mail.py` 사용 예 (배포 전에 메일 설정 확인):
+```bash
+python scripts/send_test_mail.py --to 내이메일@gmail.com
 ```
 
 `create_admin.py` 사용 예:
@@ -189,22 +202,25 @@ python scripts/create_admin.py --username sktadmin123 --password <비밀번호> 
 
 ## 프로젝트 구조
 
-`app.py`(1,108줄)와 `db.py`(1,030줄)가 파일 하나에 너무 많은 책임을 담고 있어 원하는 코드를 찾기 어려워졌던 것을 계기로, 각각 `routes/` Blueprint 4개와 `db/` 표 묶음별 패키지로 쪼갰습니다(배경은 [docs/refactor/2026-09-15-file-split.md](docs/refactor/2026-09-15-file-split.md) 참고). 호출부(`app.py`/`detector.py`/`soar.py`/`scripts/*.py`/테스트)는 지금도 예전처럼 `import db` 후 `db.log_attempt(...)`처럼 쓰며, 어느 파일이 실제로 그 함수를 담고 있는지는 몰라도 됩니다.
+`app.py`(1,108줄)와 `db.py`(1,030줄)가 파일 하나에 너무 많은 책임을 담고 있어 원하는 코드를 찾기 어려워졌던 것을 계기로, 각각 `routes/` Blueprint(지금은 5개)와 `db/` 표 묶음별 패키지로 쪼갰습니다(배경은 [docs/refactor/2026-09-15-file-split.md](docs/refactor/2026-09-15-file-split.md) 참고). 호출부(`app.py`/`detector.py`/`soar.py`/`scripts/*.py`/테스트)는 지금도 예전처럼 `import db` 후 `db.log_attempt(...)`처럼 쓰며, 어느 파일이 실제로 그 함수를 담고 있는지는 몰라도 됩니다.
 
 ```
 login-watchdog/
 ├── app.py                         # Flask 진입점(축소) — 앱 생성, 세션/CSRF 설정, 에러 핸들러, before_request, Blueprint 4개 등록
 ├── helpers.py                     # 라우트 전체가 공유하는 문지기 데코레이터(login_required/require_permission/member_login_required)·공용 함수
-├── routes/                        # Blueprint 4개 — 실제 화면 라우트 (app.py에서 분리)
+├── routes/                        # Blueprint 5개 — 실제 화면 라우트 (app.py에서 분리)
 │   ├── auth.py                    #   auth_bp: /signup, /login
 │   ├── admin.py                   #   admin_bp: /admin/login, /admin/dashboard, /api/*(관리자용, RBAC로 세분화)
 │   ├── board.py                   #   board_bp: /board/*
-│   └── member.py                  #   member_bp: /dashboard/*
+│   ├── member.py                  #   member_bp: /dashboard/* (프로필, 비밀번호 변경)
+│   └── recovery.py                #   recovery_bp: /recovery/* (영구 잠금 이메일 인증 복구)
 ├── db/                             # Supabase 연동 — 표 묶음별로 분리된 패키지 (db.py에서 분리)
 │   ├── __init__.py                 #   하위 모듈 함수를 전부 다시 내보내기(re-export), 호출부는 여전히 db.함수명()으로 사용
-│   ├── _client.py                  #   get_client(), _now_iso() — Supabase 연결
+│   ├── _client.py                  #   get_client(), _now_iso() — Supabase 연결(HTTP/1.1 + 조회 1회 재시도)
 │   ├── attempts.py                 #   login_attempts (로그인 시도 기록)
-│   ├── lockouts.py                 #   lockouts (IP 잠금 현재 상태)
+│   ├── lockouts.py                 #   lockouts (IP 잠금 현재 상태 — 임시/영구)
+│   ├── lock_history.py             #   lock_history (잠금 이력 — 영구 승격 횟수 판단)
+│   ├── recovery.py                 #   recovery_requests, ip_lock_exemptions, users.email_status (이메일 복구)
 │   ├── account_lockouts.py         #   account_lockouts (계정 단위 잠금, 분산 브루트포스 대응)
 │   ├── admin.py                    #   admin_users, admin_login_log (관리자 계정/로그인 기록/역할)
 │   ├── roles.py                    #   roles, permissions (RBAC — 역할별 허용 액션)
@@ -218,6 +234,8 @@ login-watchdog/
 ├── detector.py                    # 브루트포스 판정 로직
 ├── soar.py                        # 판정 결과에 따른 조치(잠금/해제) 실행
 ├── correlate.py                   # 상관분석 판정 로직 (같은 IP의 서로 다른 이벤트를 사건으로 묶을지)
+├── lockdown.py                    # 영구 잠금 승격·해제·이메일 복구 반영 (soar/correlate 순환 import 방지용 분리)
+├── mailer.py                      # 복구·알림 메일 발송 (console/SMTP, 실패 원인 분류 + Slack 알림)
 ├── alert.py                       # Slack 알림 전송
 ├── geoip.py                       # IP 위치(국가·도시) 조회, 캐싱
 ├── config.py                      # 임계값·윈도우·잠금시간 등 상수
@@ -226,7 +244,9 @@ login-watchdog/
 ├── tests/                         # pytest 단위 테스트
 ├── scripts/                       # 유지보수 스크립트 (bruteforce_sim.py, daily_report.py, unlock_ip.py, create_admin.py 등 — 위 "유지보수 스크립트" 참고)
 ├── docs/schema.sql                # Supabase 테이블 정의
-├── docs/beginner-guide/           # 비전공자용 단계별 구현 해설서 (26개 파일로 분리)
+├── docs/migrations/               # 기존 DB에 추가로 실행할 SQL (guide33 영구 잠금, guide35 비밀번호 변경)
+├── docker-compose.mailpit.yml     # 개발용 가짜 메일 서버(Mailpit) — 실제 발송 없이 메일 흐름 확인
+├── docs/beginner-guide/           # 비전공자용 단계별 구현 해설서 (36단계, 단계별 파일로 분리)
 ├── docs/board-comment/            # 게시판·댓글 기능 설계 문서(분석 → 결정 → 계획 → 결과)
 ├── docs/refactor/                 # app.py/db.py/dashboard.js 파일 분리 리팩터링 배경 기록
 └── plan.md, research.md           # 설계 근거 문서
@@ -235,7 +255,7 @@ login-watchdog/
 ## 더 자세히 알고 싶다면
 
 - [plan.md](plan.md) — 각 파일을 왜 이렇게 설계했는지에 대한 상세 근거
-- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide26_rbac_foundation.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
+- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide36_db_connection.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
 - [docs/board-comment/](docs/board-comment) — 게시판·댓글 기능을 왜 이렇게 설계했는지(구현 전 분석 → 모호한 질문 11개 결정 → 구현 계획 → 결과 보고) 순서대로 기록한 문서 4종
 - [docs/refactor/2026-09-15-file-split.md](docs/refactor/2026-09-15-file-split.md) — `app.py`/`db.py`/`dashboard.js`를 각각 `routes/`+`helpers.py`, `db/` 패키지, `public/js/dashboard/` ES 모듈로 나눈 리팩터링 배경과 과정
 
@@ -247,11 +267,12 @@ login-watchdog/
 - **`TRUST_FORWARDED_FOR`는 데모 전용** — 켜두면 요청 헤더의 IP를 신뢰합니다(형식이 올바른 IP인지는 검증하지만, 그 값 자체가 진짜 요청자의 IP인지는 확인할 수 없습니다). 운영 환경에서 켜두면 공격자가 헤더에 임의의(형식은 유효한) IP를 넣는 것만으로 IP 잠금을 우회할 수 있어 위험합니다.
 - **동시 실행 시 경쟁 조건(race condition) 가능성** — 여러 사람이 동시에 같은 IP로 브루트포스를 시뮬레이션하면 Slack 알림이 중복 발송되거나 잠금 처리가 겹칠 수 있습니다. 시연 시 한 명만 시뮬레이션 실행을 권장합니다.
 - **대시보드는 실시간이 아니라 폴링 방식** — 웹소켓 기반 실시간 스트리밍이 아니라 일정 주기(기본 5초, `ADMIN_DASHBOARD_POLL_MS`)로 새로고침합니다. 최대 그 주기만큼 화면이 실제 상태보다 늦게 보일 수 있습니다. 원래는 Supabase 무료 쿼터 보호를 위해 10초로 늘렸었지만, 공격 대응 상황을 더 빠르게 확인할 수 있도록 5초로 다시 줄였습니다 — 오래 켜두는 환경에서 쿼터가 걱정되면 `.env`에서 다시 늘릴 수 있습니다. 주기 조절 방법은 [docs/beginner-guide/guide09_quota.md](docs/beginner-guide/guide09_quota.md)를 참고하세요.
-- **계정 단위 잠금은 수동 해제 미지원** — IP 잠금과 달리 `account_lockouts`(분산 브루트포스 대응)는 관리자 대시보드의 "즉시 해제" 버튼이 아직 없어, 5분 자동 해제만 기다릴 수 있습니다.
-- **대시보드 화면은 대부분 아직 역할을 모름** — "관리자 계정 관리" 카드는 예외적으로 서버가 `/api/status` 응답에 `admin_users` 필드를 role에 따라 조건부로 실어 보내는 방식으로 화면 자체를 숨깁니다(guide26 후속). 하지만 그 외 나머지 버튼(회원 삭제, 게시글·댓글 삭제, 회원가입 토글, IP 해제 등)은 로그인한 관리자의 역할과 무관하게 전부 그려져서 보이고, 권한이 없는 역할이 눌러도 서버가 403으로 막을 뿐 화면에 "권한 없음" 안내는 뜨지 않고 조용히 실패합니다.
-- **영구 IP 잠금은 로컬 시연 전용** — 영구 잠금은 접속 IP를 근거로 하므로 `TRUST_FORWARDED_FOR=true`(헤더를 믿는 데모 설정)에서는 누구나 헤더로 임의 IP를 영구 잠금 상태로 만들 수 있고, Vercel 배포에서는 `request.remote_addr`가 사용자별 IP인지 먼저 확인해야 합니다(공용 프록시 IP면 한 번의 영구 잠금이 모든 사용자를 막습니다). 그래서 관리자 PC의 IP는 반드시 `PERMANENT_LOCK_IP_ALLOWLIST`에 넣어두세요.
+- **계정 단위 잠금 해제는 관리자 수동 또는 5분 자동** — 대시보드 "현재 잠긴 IP / 계정" 카드의 "즉시 해제"(임시 잠금)나 `scripts/unlock_account.py`로 풀 수 있습니다. 영구 잠금은 이 버튼으로 풀리지 않고 "영구 잠금" 카드의 "영구 해제"(super_admin) 또는 회원 본인의 이메일 인증으로 풉니다.
+- **대시보드 화면은 일부만 역할을 반영** — "관리자 계정 관리" 카드는 서버가 role에 따라 데이터를 아예 보내지 않고, 영구 잠금·복구 요청·IP 예외 카드는 `/api/status`가 내려주는 권한 목록(`permissions`)에 따라 버튼을 숨깁니다(guide33). 그 외 기존 버튼(회원 삭제, 게시글·댓글 삭제, 회원가입 토글, IP 해제 등)은 역할과 무관하게 보이고, 권한이 없는 역할이 눌러도 서버가 403으로 막을 뿐 화면에 "권한 없음" 안내는 뜨지 않습니다.
+- **영구 IP 잠금과 `TRUST_FORWARDED_FOR`** — 영구 잠금은 접속 IP를 근거로 하므로 `TRUST_FORWARDED_FOR=true`(헤더를 믿는 데모 설정)에서는 누구나 헤더로 임의 IP를 영구 잠금 상태로 만들 수 있습니다(로컬 시연 전용으로만 켜세요). 배포(Vercel, `TRUST_FORWARDED_FOR=false`)에서는 서버가 실제 사용자별 공인 IP를 기록하는 것을 확인했습니다. 관리자 PC의 IP는 반드시 `PERMANENT_LOCK_IP_ALLOWLIST`에 넣어두세요(가정·학교 와이파이처럼 IP가 바뀌면 갱신 필요).
 - **영구 잠금은 이미 로그인된 세션을 끊지 않음** — 잠금은 새 로그인만 막습니다. 다른 기기의 세션을 끊는 것은 회원이 비밀번호를 바꿀 때뿐입니다(guide35).
 - **관리자 로그인 IP가 영구 잠금되면** 그 IP에서는 관리자 로그인도 막히고 이메일 복구도 없습니다. 다른 관리자/다른 IP로 로그인해 대시보드에서 풀거나, 터미널에서 `python scripts/unlock_ip.py --ip <IP> --permanent`로 풀어야 합니다.
+- **DB 연결 끊김은 조회만 자동 재시도** — 서버리스에서 쉬던 연결이 끊겨 가끔 500이 나던 문제를 HTTP/1.1 연결과 조회(GET) 1회 재시도로 막았습니다(guide36). 기록·수정 요청은 두 번 기록될 위험 때문에 재시도하지 않아서, 그 순간 연결이 끊기면 드물게 오류가 날 수 있습니다.
 - **L3/L4(네트워크/전송 계층) 공격 대응은 아직 없음** — 현재 방어 로직은 전부 HTTP 요청(L7) 내용을 근거로 판단합니다. SYN Flood, 포트 스캐닝처럼 그보다 아래 계층에서 발생하는 공격은 별도의 관찰 지점(리버스 프록시/방화벽 등) 설계가 필요하며, 이 프로젝트의 다음 확장 목표입니다.
 - **개발용 서버 사용** — `app.run(debug=True)`는 Flask가 공식적으로 "운영 배포에 쓰지 말라"고 명시하는 개발용 서버입니다. 외부 공개 서비스로 배포하려면 별도의 프로덕션 WSGI 서버(gunicorn 등)로 교체해야 합니다.
 - **감시 대상 계정은 데모 수준 인증** — 가입 때 이메일 소유 확인과 "비밀번호를 잊었을 때" 메일 재설정은 제공하지 않습니다(로그인 후 비밀번호 변경은 가능, 잊은 경우는 관리자가 처리). 영구 잠금의 이메일 복구에서 메일 서버가 수신자를 영구 거부하면 그 계정은 관리자만 풀 수 있게 표시됩니다 — Gmail처럼 나중에 반송하는 경우는 알 수 없습니다.
@@ -259,5 +280,3 @@ login-watchdog/
 - **게시판은 회원 전용, 대댓글·첨부파일 미지원** — 비로그인 사용자는 글 목록조차 볼 수 없고, 댓글은 단일 depth(답글 불가)이며 이미지/파일 첨부도 지원하지 않습니다. 회원이 탈퇴해도 작성한 글·댓글은 삭제되지 않고 흔적만 남습니다(감사 로그와 동일한 정책). 새 댓글 알림은 웹소켓이 아니라 폴링(기본 5초, `BOARD_COMMENT_POLL_MS`) 방식입니다. 설계 배경은 [docs/board-comment/02-design-decisions.md](docs/board-comment/02-design-decisions.md) 참고.
 - **게시글 id 순차 조회(스크래핑) 미차단** — 로그인만 하면 다른 회원의 글 id를 하나씩 순차 조회해 게시판 전체를 스크래핑하는 것 자체는 막지 않습니다. 게시판이 "회원 전체 공개" 설계이므로 이는 버그가 아니라 의도된 범위입니다.
 - **Slowloris 등 저속 연결형 DoS는 스코프 밖** — 연결을 아주 느리게 유지해 서버 자원을 고갈시키는 공격은 애플리케이션 코드가 아니라 리버스 프록시·WAF 같은 인프라 레벨에서 막아야 하는 유형이라 이 프로젝트에서는 다루지 않습니다.
-
-## test 문장입니다 branch

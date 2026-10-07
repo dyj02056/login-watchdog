@@ -24,7 +24,11 @@
 13. [API 엔드포인트 매크로/봇 탐지](#13-api-엔드포인트-매크로봇-탐지)
 14. [임계값 튜닝 리포트](#14-임계값-튜닝-리포트)
 15. [LLM 판단 에이전트](#15-llm-판단-에이전트)
-16. [부록](#16-부록)
+16. [영구 잠금](#16-영구-잠금)
+17. [이메일 인증 복구](#17-이메일-인증-복구)
+18. [비밀번호 변경 + 다른 기기 로그인 해제](#18-비밀번호-변경--다른-기기-로그인-해제)
+19. [배포 환경 DB 연결 안정화](#19-배포-환경-db-연결-안정화)
+20. [부록](#20-부록)
 
 ---
 
@@ -536,7 +540,7 @@ else:
 
 \* README상 "관리자 API 반복 접근"은 위험도가 높아 표기상 CRITICAL/HIGH 취급되는 경우가 있으나, 실제 코드가 `security_events`에 기록하는 severity 값은 `"MEDIUM"`입니다([soar.py:157-169](../../soar.py#L157)) — 문서와 실제 코드를 대조할 때 주의하세요.
 
-**교차 참조**: Password Spraying은 [3번 섹션](#3-브루트포스-탐지--자동-ip-잠금)에서 이미 다룹니다(같은 코드, `distinct_usernames`로만 구분). Automated Scraping(게시글 id 순차 조회)은 탐지 코드가 없는 **의도된 사각지대**이며 [16번 부록](#16-부록)에서 다룹니다.
+**교차 참조**: Password Spraying은 [3번 섹션](#3-브루트포스-탐지--자동-ip-잠금)에서 이미 다룹니다(같은 코드, `distinct_usernames`로만 구분). Automated Scraping(게시글 id 순차 조회)은 탐지 코드가 없는 **의도된 사각지대**이며 [20번 부록](#20-부록)에서 다룹니다.
 
 ### 2. 실행 흐름 (Web Scanning 예시)
 ```
@@ -586,7 +590,7 @@ for i in $(seq 1 11); do curl -s -o /dev/null http://127.0.0.1:5000/no-such-page
 
 ### 6. 용어 풀이 / 한계
 - **관찰형 탐지**: 실제로 막지 않고 "기록 + 알림"까지만 자동화하는 유형. 잠글 명확한 대상이 없거나(404), 잠그면 정상 사용자가 피해를 볼 위험(관리자 세션 폴링)이 있을 때 씁니다.
-- **한계**: Automated Scraping(순차 게시글 조회)은 게시판이 "회원 전체 공개" 설계라 의도적으로 차단하지 않습니다 — [README.md:253](../../README.md#L253).
+- **한계**: Automated Scraping(순차 게시글 조회)은 게시판이 "회원 전체 공개" 설계라 의도적으로 차단하지 않습니다 — [README.md:281](../../README.md#L281).
 
 ---
 
@@ -1327,9 +1331,315 @@ def _run_pending_action(request: dict) -> None:
 
 ---
 
-## 16. 부록
+## 16. 영구 잠금
 
-### 16.1 테스트 커버리지 매핑
+### 0. 왜 필요한가
+3번의 자동 잠금은 5분이면 풀립니다. 같은 공격자가 5분마다 다시 시도하면 끝없이 반복할 수
+있습니다. 그래서 **같은 IP·계정이 반복해서 잠기면 자동 만료가 없는 "영구 잠금"으로 올리고**,
+영구 잠금은 이메일 인증(17번)이나 관리자 해제로만 풀리게 했습니다.
+
+### 1. 기능
+- 같은 IP가 30일 안에 **2번째** 잠기면 영구 잠금(T1). 관리자 로그인 잠금은 관리자 로그인끼리만 세고, 관리자만 풀 수 있음(T5)
+- 같은 계정이 30일 안에 2번째 잠기면 계정 영구 잠금(T2). 가입되지 않은 아이디는 승격하지 않음
+- SIEM 사건(11번)이 CRITICAL이면 즉시 영구 잠금(T3), HIGH면 관리자 승인 대기(T4, 12번의 승인 표 재사용)
+- 허용 목록 IP(`PERMANENT_LOCK_IP_ALLOWLIST`)는 절대 영구 잠금하지 않음(관리자 자충수 방지)
+- 영구 잠긴 IP는 로그인·회원가입 모두 차단, 로그인 화면에 이메일 복구 링크 표시
+- 관리자는 대시보드 "영구 잠금" 카드에서 사유를 적고 해제(**super_admin만**), 수동 영구 잠금도 가능
+
+### 2. 실행 흐름
+```
+로그인 실패가 임계값 초과 (3번 흐름 그대로)
+   │
+   ▼
+[soar.py:45] enforce_lockout() — 5분 임시 잠금 + Slack + 보안 이벤트 (기존)
+   │
+   ▼
+[soar.py:85] lockdown.after_temporary_lock("ip", ...)        ← 신규
+   │
+   ├─ [db/lock_history.py:16] insert_lock_history()  — 잠금 이력 한 줄 추가
+   ├─ [db/lock_history.py:44] count_lock_history()   — 최근 30일 임시 잠금 횟수
+   └─ 기준(2회) 이상 → [lockdown.py:78] promote_ip()
+          ├─ 허용 목록 IP면 중단
+          ├─ [db/lockouts.py:64] promote_lockout_permanent() — 조건부 UPDATE(실제로 바뀐 경우만 계속)
+          ├─ lock_history에 PERMANENT 이력
+          ├─ PERMANENT_LOCK(CRITICAL) 이벤트 → correlate로 전달(사건에 기록, 재승격은 안 함)
+          └─ Slack "영구 잠금" 알림 (한 번만)
+
+SIEM 사건이 열리거나 갱신될 때
+   │
+   ▼
+[correlate.py:39] check_and_correlate()
+   └─ [lockdown.py:187] consider_incident_promotion() — CRITICAL 즉시 승격 / HIGH 승인 대기
+```
+
+핵심 코드:
+
+**횟수는 덮어쓰는 `lockouts`가 아니라 추가만 하는 `lock_history`에서 센다** — [lockdown.py:148-159](../../lockdown.py#L148)
+```python
+db.insert_lock_history(target_kind, target_value, "TEMPORARY", "THRESHOLD", source_event_type)
+...
+strikes = db.count_lock_history("ip", target_value, window, event_types)
+if strikes >= config.PERMANENT_LOCK_STRIKE_COUNT:
+    recoverable = "ADMIN_ONLY" if source_event_type == "ADMIN_BRUTE_FORCE" else "EXEMPTION"
+    promote_ip(target_value, "REPEAT_OFFENDER", recoverable, strikes=strikes)
+```
+
+**영구 잠금이 "안 잠김"으로 보이지 않게** — [db/lockouts.py:194](../../db/lockouts.py#L194)
+```python
+.or_(f"lock_type.eq.PERMANENT,unlock_at.gt.{db._now_iso()}")
+```
+영구 잠금은 `unlock_at`이 비어 있어서, 예전처럼 "풀릴 시각이 미래인가"만 보면 안 잠긴 것으로 판정됩니다.
+
+**영구 잠금 이벤트는 다시 승격을 부르지 않는다(재귀 방지)** — [correlate.py:60-63](../../correlate.py#L60)
+```python
+if event_type == lockdown.PERMANENT_LOCK_EVENT_TYPE:
+    lockdown.close_incident_if_configured(incident)
+else:
+    lockdown.consider_incident_promotion(ip, incident)
+```
+
+**`lockdown.py`를 따로 둔 이유** — `soar.py`가 이미 `correlate.py`를 import하므로, `correlate.py`가
+`soar.py`의 승격 함수를 부르면 순환 import가 됩니다. 승격·해제 로직을 `lockdown.py`에 모으고 둘 다 이
+파일만 import합니다.
+
+**관리자 해제 (super_admin 전용, 사유 필수)** — [routes/admin.py:492](../../routes/admin.py#L492) → [lockdown.py:229](../../lockdown.py#L229)
+```python
+released = lockdown.release(kind, value, f"admin:{session['admin_username']}", note)
+```
+해제한 관리자는 요청 본문이 아니라 로그인 세션에서 가져와 `lock_history.released_by`에 남깁니다.
+기존 "즉시 해제" API를 영구 잠금에 쓰면 409로 안내합니다([routes/admin.py:336](../../routes/admin.py#L336)).
+
+### 3. 예시 데이터
+같은 IP `112.150.15.124`가 60초 안에 6번 실패 → 임시 잠금 #1(`lock_history` 1줄) → 잠금이 풀린 뒤 또 6번 실패 →
+임시 잠금 #2 → 최근 30일 2회 → `lockouts`가 `lock_type=PERMANENT`, `unlock_at=NULL`, `recoverable=EXEMPTION`,
+`permanent_reason=REPEAT_OFFENDER`로 바뀌고 `security_events`에 `PERMANENT_LOCK`(CRITICAL)이 기록됩니다.
+
+### 4. 시현 방법
+1. 로컬에서는 `.env`에 `TRUST_FORWARDED_FOR=true`, `bruteforce_sim.py --ip 1.2.3.4`로 가짜 IP를 6회 실패
+2. `python scripts/unlock_ip.py --ip 1.2.3.4`로 임시 잠금만 해제한 뒤 다시 실패 → 영구 잠금으로 승격
+3. 관리자 대시보드 "영구 잠금" 카드에 "영구" 배지가 뜨는지, super_admin에게만 "영구 해제" 버튼이 보이는지 확인
+4. 해제는 사유 입력창에 사유를 적어야만 진행됨. 터미널은 `python scripts/unlock_ip.py --ip 1.2.3.4 --permanent --note "사유"`
+
+### 5. 결과 화면
+관리자 대시보드 "영구 잠금" 카드(구분·대상·승격 사유·복구 방식·승격 시각·처리), 사유 입력 모달.
+
+### 6. 용어 풀이 / 한계
+- **승격(promotion)**: 이미 있는 임시 잠금을 같은 줄에서 영구 잠금으로 올리는 것.
+- **append-only 표**: 줄을 고치거나 지우지 않고 추가만 하는 표(`lock_history`). 과거 횟수를 셀 수 있음.
+- **조건부 UPDATE**: `WHERE lock_type='TEMPORARY'`처럼 조건을 걸어, 동시에 두 요청이 와도 한 번만 바뀌게 하는 방법.
+- **한계**: 영구 잠금은 새 로그인만 막고 이미 로그인된 세션은 끊지 않습니다. `TRUST_FORWARDED_FOR=true`에서는 헤더로 임의 IP를 잠글 수 있어 로컬 시연 전용입니다. 자세한 내용은 [guide33](../beginner-guide/guide33_permanent_lock.md).
+
+---
+
+## 17. 이메일 인증 복구
+
+### 0. 왜 필요한가
+영구 잠금을 관리자만 풀 수 있으면 억울하게 잠긴 사용자는 기다리기만 해야 합니다. 본인 이메일로
+인증하면 스스로 풀 수 있게 하되, IP는 여러 사람이 함께 쓸 수 있으므로 풀리는 방식을 다르게 했습니다.
+
+### 1. 기능
+- `/recovery`에서 아이디 입력 → 가입 이메일로 링크(15분, 1회용)와 6자리 코드 발송
+- **계정** 영구 잠금: 인증하면 완전 해제 + 24시간 보호관찰(그 안에 다시 잠기면 관리자 전용)
+- **IP** 영구 잠금: IP는 잠긴 채로 두고 "그 회원 + 요청한 기기"에게만 30일 예외(출입증) 발급
+- 계정 존재 여부를 숨김: 항상 같은 문구, 응답 시간 8초 고정
+- 메일 서버가 수신자를 영구 거부하면 그 계정은 `UNDELIVERABLE`로 표시하고 관리자 전용으로 올림
+- 관리자 대시보드 "복구 요청"(취소), "IP 예외"(회수) 카드
+
+### 2. 실행 흐름
+```
+[사용자] POST /recovery/request {username}
+   │
+   ▼
+[routes/recovery.py:231] recovery_request_submit()
+   │  ① 기기 쿠키(lw_dev) 발급   ② 고정 시간(8초) 안에서 처리
+   ▼
+[routes/recovery.py:80] _run_with_fixed_response_time()
+   └─ [routes/recovery.py:168] _issue_recovery()
+          ├─ 하루 한도·60초 쿨다운 확인, 계정/IP 잠금 조회(동시에)
+          ├─ [routes/recovery.py:133] _eligible_target() — account(SELF) 또는 ip(EXEMPTION)
+          ├─ 토큰·코드 생성 → 해시만 DB 저장(recovery_requests)
+          └─ [mailer.py:161] send_recovery_email() — 실패면 요청 취소, 5xx 거부면 UNDELIVERABLE
+
+[사용자] GET /recovery/verify?t=... → 확인 화면만(토큰 소비 안 함)
+[사용자] POST /recovery/verify {t} 또는 {username, code}
+   │
+   ▼
+[routes/recovery.py:332] recovery_verify_submit()
+   ├─ IP 복구면 요청한 기기인지 확인 [routes/recovery.py:290] _device_matches()
+   ├─ 조건부 UPDATE로 1회 소비 (PENDING → VERIFIED)
+   └─ [lockdown.py:256] apply_recovery() — 계정 해제+보호관찰 / IP 예외 발급
+```
+
+핵심 코드:
+
+**응답 시간을 고정해 계정 존재 여부를 숨김** — [routes/recovery.py:80](../../routes/recovery.py#L80)
+```python
+remaining = target - (time.monotonic() - started)
+if remaining > 0:
+    time.sleep(remaining)
+```
+처리(메일 발송 포함)는 응답 전에 끝냅니다. Vercel은 응답을 보내면 함수를 멈추므로 백그라운드로 미루면 메일이 끊길 수 있습니다.
+
+**IP 복구는 요청한 기기에서만** — [routes/recovery.py:290](../../routes/recovery.py#L290)
+```python
+current = get_device_hash()
+stored = req.get("device_hash")
+return bool(current and stored) and hmac.compare_digest(current, stored)
+```
+공격자가 피해자 아이디로 복구를 요청하고 피해자가 메일 링크를 눌러도, 공격자 기기에는 예외가 발급되지 않습니다.
+
+**로그인 시 예외 통과** — [routes/auth.py:216-224](../../routes/auth.py#L216)
+```python
+if detector.is_locked(ip):
+    if detector.get_ip_lock_state(ip) != detector.LOCK_STATE_PERMANENT:
+        ...  # 임시 잠금은 기존 안내
+    exemption = _find_ip_exemption(ip, username)   # 회원 + 기기 쿠키가 모두 맞아야 함
+```
+예외로 들어온 회원이 3번 연속 비밀번호를 틀리면 예외가 회수됩니다([routes/auth.py:254](../../routes/auth.py#L254)).
+
+**메일 발송 실패를 관리자에게 알림** — [mailer.py:46](../../mailer.py#L46)
+사용자 화면은 항상 같은 안내라서, 설정이 틀려도 아무도 모를 수 있습니다. 원인을 `CONFIG`/`AUTH`/`CONNECT`/`OTHER`/`INTERNAL`로 나눠 Slack에 알리고, 같은 원인은 1시간에 한 번만 보냅니다.
+
+### 3. 예시 데이터
+`wdprod01`(이메일 `dyj02056@gmail.com`)이 영구 잠긴 IP에서 복구 요청 → `recovery_requests`에 `target_kind=ip`,
+`status=PENDING`, `token_hash`/`code_hash`/`device_hash`(모두 해시) → 같은 기기에서 코드 입력 → `VERIFIED` →
+`ip_lock_exemptions`에 `ACTIVE`, 30일 만료로 한 줄 추가. 이 회원은 그 기기로만 로그인 가능하고, 같은 IP의 다른 기기는 계속 차단.
+
+### 4. 시현 방법
+1. 개발 환경: `docker compose -f docker-compose.mailpit.yml up -d`, `.env`에 `MAIL_BACKEND=smtp`, `SMTP_HOST=127.0.0.1`, `SMTP_PORT=1025`, `SMTP_STARTTLS=false`
+2. 16번 방법으로 영구 잠금을 만든 뒤 로그인 화면의 "본인 인증으로 잠금 해제" → 아이디 입력
+3. http://127.0.0.1:8025 에서 메일 확인 → 같은 브라우저에서 링크 열고 [해제]
+4. 다른 브라우저(쿠키 없음)에서 같은 링크를 열면 "요청한 기기에서만" 안내가 뜨는지 확인
+5. 배포 환경은 Brevo SMTP로 실제 메일이 갑니다. 설정 확인은 `python scripts/send_test_mail.py --to 주소`
+
+### 5. 결과 화면
+복구 요청 화면, 확인 화면(가려진 아이디·요청 IP·시각), 완료 화면, 관리자 대시보드 "복구 요청"·"IP 예외" 카드.
+
+### 6. 용어 풀이 / 한계
+- **토큰/코드 해시 저장**: 원문은 메일에만 있고 DB에는 SHA-256 지문만 남아, DB가 유출돼도 링크를 만들 수 없음.
+- **기기 쿠키(`lw_dev`)**: 복구를 요청한 브라우저를 구분하는 무작위 쿠키. HttpOnly, 운영에서는 Secure.
+- **보호관찰**: 복구 직후 24시간 동안 다시 잠기면 관리자만 풀 수 있게 하는 기간.
+- **한계**: 가입 때 이메일 소유 확인은 없어서 오타 주소로 가입했다면 메일을 받을 수 없습니다. Gmail처럼 나중에 반송하는 경우는 "존재하지 않는 이메일"로 감지하지 못합니다. 자세한 내용은 [guide34a](../beginner-guide/guide34a_email_recovery.md).
+
+---
+
+## 18. 비밀번호 변경 + 다른 기기 로그인 해제
+
+### 0. 왜 필요한가
+복구 완료 메일은 "본인이 아니면 비밀번호를 바꾸세요"라고 안내하지만, 바꾸는 화면이 없었습니다.
+또 비밀번호만 바꾸고 이미 로그인된 세션을 그대로 두면, 세션을 훔친 사람은 계속 로그인 상태로 남습니다.
+
+### 1. 기능
+- '내 프로필'(`/dashboard/profile`)에서 현재 비밀번호 확인 후 새 비밀번호(8자 이상)로 변경
+- 현재 비밀번호를 틀리면 **로그인 실패와 같은 기준으로 기록·잠금**(이 화면이 비밀번호 대입 우회로가 되지 않게)
+- 변경하면 이 기기를 제외한 **모든 로그인 세션 해제** + 가입 이메일로 변경 알림
+
+### 2. 실행 흐름
+```
+로그인 시 [routes/auth.py:246] session["session_version"] = 계정의 세대 번호
+
+회원 화면·게시판 요청마다
+   ▼
+[helpers.py:207] member_login_required — 세션의 번호와 DB 번호 비교, 다르면 로그아웃
+
+POST /dashboard/password
+   ▼
+[routes/member.py:115] member_password_submit()
+   ├─ 봇 차단 필드, 계정 잠금 여부
+   ├─ 새 비밀번호 형식(길이·확인·현재와 다름) — 실패해도 실패 횟수에 안 넣음
+   ├─ [routes/member.py:159] 현재 비밀번호 확인 — 틀리면 log_attempt + [routes/member.py:174] _lock_if_suspicious()
+   ├─ [db/users.py:170] update_user_password() — 해시 저장 + 세대 번호 +1 (조건부 UPDATE)
+   ├─ 이 기기 세션에만 새 번호 저장
+   └─ [mailer.py:200] send_password_changed_notice()
+```
+
+핵심 코드:
+
+**다른 기기 세션을 끊는 문지기** — [helpers.py:221-224](../../helpers.py#L221)
+```python
+current = db.get_user_session_version(session.get("user_id"))
+if current is None or current != session.get("session_version", 0):
+    clear_member_session()
+    ...
+```
+
+**이 기기만 새 번호로 유지** — [routes/member.py:168](../../routes/member.py#L168)
+```python
+session["session_version"] = db.update_user_password(user["id"], new_password)
+```
+
+### 3. 예시 데이터
+`wdprod01`의 `session_version=0`. 기기 A, B가 로그인(둘 다 0) → A에서 변경 → DB 1, A 세션 1 → B는 다음 요청에서
+0≠1이라 로그아웃 → 되돌리기 위해 다시 변경하면 2.
+
+### 4. 시현 방법
+1. 두 브라우저(또는 일반 창 + 시크릿 창)에서 같은 계정으로 로그인
+2. 한쪽에서 '내 프로필' → 비밀번호 변경
+3. 다른 쪽에서 아무 회원 화면으로 이동 → 로그인 화면으로 이동하며 안내 표시
+4. 가입 이메일에서 "비밀번호가 변경되었습니다" 메일 확인
+
+### 5. 결과 화면
+'내 프로필'의 비밀번호 변경 카드(카드 위에 결과 안내), 다른 기기의 로그아웃 안내.
+
+### 6. 용어 풀이 / 한계
+- **세션 세대 번호(`users.session_version`)**: 비밀번호를 바꿀 때마다 1씩 올라가는 숫자. 세션에 적힌 번호가 다르면 그 세션은 무효.
+- **한계**: 비밀번호를 잊었을 때 메일로 재설정하는 기능은 없습니다(관리자가 처리). 영구 잠금이 걸릴 때는 세션을 끊지 않습니다. 회원 화면 요청마다 DB 조회가 1회 늘어납니다. 자세한 내용은 [guide35](../beginner-guide/guide35_password_change.md).
+
+---
+
+## 19. 배포 환경 DB 연결 안정화
+
+### 0. 왜 필요한가
+배포 사이트(Vercel)에서 `/login`, 관리자 대시보드가 가끔 500 오류를 냈습니다. 함수가 잠시 쉬는 사이
+Supabase가 닫은 HTTP/2 연결을, 함수가 다시 깨어나 그대로 쓰다가 `Server disconnected`로 실패한 것입니다.
+
+### 1. 기능
+- Supabase 연결을 HTTP/1.1로 바꿔, 쉬던 연결을 재사용하기 전에 닫혔는지 확인
+- 5초 넘게 쉰 연결은 재사용하지 않고, 접속 단계 실패는 1회 재시도
+- 연결이 중간에 끊기면 **조회(GET/HEAD)만** 1회 재시도. 기록·수정은 두 번 기록될 위험 때문에 재시도하지 않음
+
+### 2. 실행 흐름
+```
+db.get_client() 최초 호출
+   ▼
+[db/_client.py:72] get_client() — create_client(url, key, options=SyncClientOptions(httpx_client=...))
+   ▼
+[db/_client.py:58] _build_http_client() — HTTP/1.1, keepalive 5초, retries=1
+   ▼
+모든 DB 요청 → [db/_client.py:46] _RetryOnDisconnectTransport.handle_request()
+   ├─ 성공 → 그대로 반환
+   └─ RemoteProtocolError/ReadError → GET/HEAD면 새 연결로 1회 재시도, 아니면 그대로 오류
+```
+
+핵심 코드 — [db/_client.py:49-55](../../db/_client.py#L49)
+```python
+try:
+    return super().handle_request(request)
+except _DISCONNECT_ERRORS:
+    if request.method not in _RETRYABLE_METHODS:
+        raise
+    return super().handle_request(request)
+```
+
+### 3. 예시 데이터
+배포 전 50분: `/api/status` 오류 8건, `/login` 1건. 배포 후 약 24분: 0건. 로그의 Supabase 요청이 `HTTP/2 200 OK`에서
+`HTTP/1.1 200 OK`로 바뀐 것으로 적용을 확인.
+
+### 4. 시현 방법
+로컬에서는 재현이 어렵습니다. 배포 후 Vercel 런타임 로그(무료 플랜은 1시간 보관)에서 `RemoteProtocolError`가 없는지 확인합니다.
+
+### 5. 결과 화면
+Vercel 런타임 로그의 오류 건수.
+
+### 6. 용어 풀이 / 한계
+- **HTTP/2 vs HTTP/1.1**: HTTP/2는 연결 하나로 여러 요청을 보내고, HTTP/1.1은 연결을 여러 개 둡니다. 여기서는 끊긴 연결을 감지하기 쉬운 HTTP/1.1을 택했습니다.
+- **한계**: 기록 요청 도중 연결이 끊기는 드문 경우는 여전히 오류가 날 수 있습니다. 오래 쉰 뒤 첫 요청은 0.3초 정도 느릴 수 있습니다. 자세한 내용은 [guide36](../beginner-guide/guide36_db_connection.md).
+
+---
+
+## 20. 부록
+
+### 20.1 테스트 커버리지 매핑
 
 | 테스트 파일 | 대상 기능 |
 |---|---|
@@ -1345,13 +1655,20 @@ def _run_pending_action(request: dict) -> None:
 | [tests/test_unlock_ip.py](../../tests/test_unlock_ip.py) | scripts/unlock_ip.py |
 | [tests/test_helpers.py](../../tests/test_helpers.py) | helpers.py 공용 함수 |
 | [tests/test_config.py](../../tests/test_config.py) | config.py 값 로딩 |
+| [tests/test_permanent_lock.py](../../tests/test_permanent_lock.py) | 영구 잠금 승격·해제·DB 보호(16번) |
+| [tests/test_permanent_admin_api.py](../../tests/test_permanent_admin_api.py) | 영구 잠금 관리자 API·RBAC(16번) |
+| [tests/test_recovery.py](../../tests/test_recovery.py) | 이메일 복구·메일 발송·로그인 예외(17번) |
+| [tests/test_unlock_permanent.py](../../tests/test_unlock_permanent.py) | unlock 스크립트 `--permanent`(16번) |
+| [tests/test_send_test_mail.py](../../tests/test_send_test_mail.py) | 메일 설정 점검 스크립트(17번) |
+| [tests/test_password_change.py](../../tests/test_password_change.py) | 비밀번호 변경·세션 해제(18번) |
+| [tests/test_db_client.py](../../tests/test_db_client.py) | DB 연결 재시도(19번) |
 
 실행 방법:
 ```bash
 pytest
 ```
 
-### 16.2 시뮬레이션 스크립트 전체 목록
+### 20.2 시뮬레이션 스크립트 전체 목록
 
 | 스크립트 | 대상 |
 |---|---|
@@ -1365,15 +1682,19 @@ pytest
 | [scripts/macro_bot_sim.py](../../scripts/macro_bot_sim.py) | API 매크로/봇(13번) |
 | [scripts/tune_thresholds.py](../../scripts/tune_thresholds.py) | 임계값 튜닝(14번) |
 | [scripts/daily_report.py](../../scripts/daily_report.py) | 일일 리포트(AI 요약 포함) |
-| [scripts/unlock_ip.py](../../scripts/unlock_ip.py) / [scripts/unlock_account.py](../../scripts/unlock_account.py) | 터미널에서 수동 잠금 해제 |
+| [scripts/unlock_ip.py](../../scripts/unlock_ip.py) / [scripts/unlock_account.py](../../scripts/unlock_account.py) | 터미널에서 수동 잠금 해제 (영구 잠금은 `--permanent --note "사유"`) |
+| [scripts/send_test_mail.py](../../scripts/send_test_mail.py) | 메일 발송 설정 점검(17번) |
 | [scripts/create_admin.py](../../scripts/create_admin.py) | 관리자 계정 생성 |
 | [scripts/delete_security_events.py](../../scripts/delete_security_events.py) | 보안 이벤트 정리 |
 
-### 16.3 DB 스키마
-전체 테이블 정의는 [docs/schema.sql](../../docs/schema.sql) 참고 (19개 테이블).
+### 20.3 DB 스키마
+전체 테이블 정의는 [docs/schema.sql](../../docs/schema.sql) 참고. 처음 19개 테이블에 RBAC·상관분석·조기 경보 등으로 표가 늘었고, 영구 잠금으로 `lock_history`·`recovery_requests`·`ip_lock_exemptions`가 추가되어 지금은 25개입니다. 기존 DB에 추가로 실행할 SQL은 [docs/migrations/](../../docs/migrations)에 있습니다. 표별 설명은 [db-schema-guide.md](db-schema-guide.md).
 
-### 16.4 알려진 제한사항 (의도된 미구현 범위)
-전체 목록은 [README.md의 "알려진 제한사항"](../../README.md#L238) 절 참고. 이 문서와 관련된 주요 항목:
+### 20.4 알려진 제한사항 (의도된 미구현 범위)
+전체 목록은 [README.md의 "알려진 제한사항"](../../README.md#L262) 절 참고. 이 문서와 관련된 주요 항목:
 
-- **Automated Scraping (게시글 id 순차 조회) 미차단** — [README.md:253](../../README.md#L253). 게시판이 "회원 전체 공개" 설계이므로 버그가 아니라 의도된 범위 (8번 섹션 참고).
+- **Automated Scraping (게시글 id 순차 조회) 미차단** — [README.md:281](../../README.md#L281). 게시판이 "회원 전체 공개" 설계이므로 버그가 아니라 의도된 범위 (8번 섹션 참고).
+- **영구 잠금은 이미 로그인된 세션을 끊지 않음** — 세션은 비밀번호를 바꿀 때만 끊깁니다(16번, 18번).
+- **비밀번호 재설정(잊었을 때) 미구현** — 로그인 후 변경만 가능하고, 잊은 경우는 관리자가 처리합니다(18번).
+- **DB 기록 요청은 연결 끊김 시 재시도하지 않음** — 두 번 기록되는 것을 막기 위한 선택이라 드물게 오류가 날 수 있습니다(19번).
 - **네트워크(L3)/전송(L4) 계층 공격(SYN Flood, 포트 스캐닝 등) 미구현** — [README.md:5](../../README.md#L5). 현재는 애플리케이션 계층(L7) 공격 대응에 집중되어 있음.

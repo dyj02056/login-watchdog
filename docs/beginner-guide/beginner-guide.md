@@ -42,6 +42,7 @@
 33. [33단계 — 영구 잠금 (자동 만료 없는 잠금 + 관리자 해제)](guide33_permanent_lock.md)
 34. [34단계 — 이메일 인증으로 영구 잠금 해제](guide34a_email_recovery.md)
 35. [35단계 — 비밀번호 변경 + 다른 기기 로그인 해제](guide35_password_change.md)
+36. [36단계 — 배포 환경 DB 연결 끊김 해결](guide36_db_connection.md)
 
 ---
 
