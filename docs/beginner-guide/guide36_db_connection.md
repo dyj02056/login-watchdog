@@ -1,6 +1,6 @@
 # 36단계 — 배포 환경 DB 연결 끊김 해결
 
-[◀ 35단계](guide35_password_change.md) · [전체 목차](beginner-guide.md)
+[◀ 35단계](guide35_password_change.md) · [전체 목차](beginner-guide.md) · [37단계 ▶](guide37_session_and_code_hardening.md)
 
 > 배포 사이트에서 `/login`이나 관리자 대시보드(`/api/status`)가 **가끔** 500 오류를 냈습니다. 다시 요청하면 멀쩡했습니다. 이 단계에서는 원인을 찾아 Supabase 연결 방식을 바꿔 해결했습니다. 코드 수정은 `db/_client.py` 한 파일뿐이고, DB를 부르는 155곳의 코드는 그대로입니다.
 

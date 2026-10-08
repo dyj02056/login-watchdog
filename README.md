@@ -24,6 +24,7 @@
 - **영구 잠금 + 이메일 인증 해제** — 같은 IP/계정이 최근 30일 안에 두 번째로 잠기거나(반복 위반), 상관분석 사건이 CRITICAL이면 5분 임시 잠금이 자동 만료 없는 **영구 잠금**으로 올라갑니다(HIGH 사건은 기본적으로 관리자 승인 대기). 계정 잠금은 본인 이메일 인증(`/recovery`)으로 해제하고(이후 24시간 보호관찰), IP 잠금은 인증한 "본인 + 본인 기기"에게만 예외를 발급합니다(같은 공유 IP의 공격자는 계속 차단). 관리자 로그인 IP 잠금과 이메일을 신뢰할 수 없는 계정은 관리자만 풀 수 있습니다. 대시보드 "영구 잠금" 카드에서 **super_admin만** 사유를 입력해 "영구 해제"할 수 있고(`release_permanent_lock` 권한), security_admin은 수동 승격·예외 회수·복구 요청 취소까지 가능합니다. 자세한 내용은 [guide33_permanent_lock.md](docs/beginner-guide/guide33_permanent_lock.md), [guide34a_email_recovery.md](docs/beginner-guide/guide34a_email_recovery.md) 참고
 - **비밀번호 변경 + 다른 기기 로그인 해제** — 회원은 '내 프로필'(`/dashboard/profile`)에서 현재 비밀번호를 확인한 뒤 비밀번호를 바꿀 수 있습니다. 현재 비밀번호를 틀리면 로그인 실패와 같은 기준으로 기록·잠금되어 이 화면이 비밀번호 대입 우회로가 되지 않고, 바꾸면 세션 세대 번호(`users.session_version`)가 올라가 이 기기를 제외한 모든 로그인 세션(탈취된 세션 포함)이 끊기며 가입 이메일로 변경 알림이 갑니다. 자세한 내용은 [guide35_password_change.md](docs/beginner-guide/guide35_password_change.md) 참고
 - **배포 환경 DB 연결 안정화** — Vercel(서버리스)에서 쉬던 Supabase 연결을 재사용하다 "Server disconnected"로 가끔 500이 나던 문제를, HTTP/1.1 연결과 조회 요청 1회 자동 재시도로 해결. 자세한 내용은 [guide36_db_connection.md](docs/beginner-guide/guide36_db_connection.md) 참고
+- **복구 코드 시도 제한 보강 + 관리자 세션 검증** — 6자리 복구 코드는 비교하기 전에 시도권을 조건부 UPDATE로 먼저 예약해서, 동시에 여러 번 보내도 5회를 넘겨 맞춰볼 수 없습니다(`/recovery/verify`에 IP당 분당 10회 한도도 추가). 관리자 세션은 요청마다 DB의 계정(id·아이디)과 대조하고 로그인 후 8시간(`ADMIN_SESSION_MAX_HOURS`)이 지나면 만료되어, 삭제된 관리자의 쿠키로는 대시보드를 볼 수 없습니다. 배포 직후 관리자는 한 번 다시 로그인해야 합니다. 자세한 내용은 [guide37_session_and_code_hardening.md](docs/beginner-guide/guide37_session_and_code_hardening.md) 참고
 - **임계값 튜닝 리포트** — `scripts/tune_thresholds.py`로 최근 N일간 CRITICAL(IP/계정 잠금) 이벤트 중 관리자가 자동 만료를 기다리지 않고 훨씬 빨리 수동 해제한 비율을 event_type별로 집계. 오탐(너무 예민한 임계값) 여부를 점검하는 완전한 읽기 전용 도구. 자세한 내용은 [docs/beginner-guide/guide30_threshold_tuning.md](docs/beginner-guide/guide30_threshold_tuning.md) 참고
 
 ## 기술 스택
@@ -76,6 +77,7 @@ cp .env.example .env
 | `PERMANENT_LOCK_*` | 영구 잠금 정책 — `STRIKE_COUNT`/`ACCOUNT_STRIKE_COUNT`(기본 2회째 승격), `STRIKE_WINDOW_DAYS`(30), `AUTO_ON_HIGH`(false=HIGH 사건은 관리자 승인 대기), `AUTO_CLOSE_INCIDENT`(false), `IP_ALLOWLIST`(기본 `127.0.0.1,::1` — **관리자 PC IP를 꼭 추가**) |
 | `MAIL_BACKEND` / `SMTP_*` / `MAIL_FROM` / `PUBLIC_BASE_URL` | 복구 메일 발송. 개발은 `console`(터미널 출력, 운영에서는 거부됨) 또는 Mailpit(`docker compose -f docker-compose.mailpit.yml up -d`, `SMTP_HOST=127.0.0.1` `SMTP_PORT=1025` `SMTP_STARTTLS=false`, 받은 메일은 http://127.0.0.1:8025). **배포(Vercel)** 는 `MAIL_BACKEND=smtp` + Gmail SMTP(앱 비밀번호) 설정이 필요합니다 — 환경변수 목록과 점검 방법은 [guide34a_email_recovery.md](docs/beginner-guide/guide34a_email_recovery.md)의 "배포(Vercel)에서 복구 메일 보내기" 참고. `PUBLIC_BASE_URL`은 복구 링크의 기준 주소로, Host 헤더 대신 이 값만 씁니다. 설정은 `python scripts/send_test_mail.py --to 내주소@gmail.com`으로 미리 확인할 수 있습니다 |
 | `FLASK_ENV` | 배포(Vercel)에서는 반드시 `production` — 세션·기기 쿠키에 Secure가 붙고, 토큰을 로그에 찍는 console 메일 백엔드가 차단됩니다. 로컬 HTTP 서버에서 이 값을 켜면 로그인 쿠키가 전송되지 않으니 로컬에서는 비워 두세요 |
+| (선택) `ADMIN_SESSION_MAX_HOURS` | 관리자 세션 최대 수명(시간, 기본 8). 로그인 시각부터 세며, 지나면 다시 로그인해야 합니다(guide37) |
 | (선택) `RECOVERY_*`, `IP_EXEMPTION_*`, `SMTP_USE_SSL`, `SMTP_TIMEOUT_SECONDS`, `MAIL_FAILURE_ALERT_COOLDOWN_SECONDS` | 복구 정책(토큰 유효 15분, 요청 한도, 응답 고정 8초, 보호관찰 24시간 등)과 메일 세부 설정. 기본값으로 충분하며 전체 목록은 [.env.example](.env.example)과 [guide34a](docs/beginner-guide/guide34a_email_recovery.md) 참고 |
 | `VERCEL_AUTOMATION_BYPASS_SECRET` | Vercel Authentication(프리뷰 배포 보호)을 우회하는 Protection Bypass Secret. `scripts/bruteforce_sim.py`로 Vercel 프리뷰 배포를 대상으로 테스트할 때만 필요, 로컬 서버·운영 배포에는 불필요 |
 
@@ -255,7 +257,7 @@ login-watchdog/
 ## 더 자세히 알고 싶다면
 
 - [plan.md](plan.md) — 각 파일을 왜 이렇게 설계했는지에 대한 상세 근거
-- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide36_db_connection.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
+- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide37_session_and_code_hardening.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
 - [docs/board-comment/](docs/board-comment) — 게시판·댓글 기능을 왜 이렇게 설계했는지(구현 전 분석 → 모호한 질문 11개 결정 → 구현 계획 → 결과 보고) 순서대로 기록한 문서 4종
 - [docs/refactor/2026-09-15-file-split.md](docs/refactor/2026-09-15-file-split.md) — `app.py`/`db.py`/`dashboard.js`를 각각 `routes/`+`helpers.py`, `db/` 패키지, `public/js/dashboard/` ES 모듈로 나눈 리팩터링 배경과 과정
 
