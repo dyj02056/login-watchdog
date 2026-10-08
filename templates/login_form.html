@@ -65,7 +65,7 @@
         <div class="auth-links">
             <a href="{{ url_for('auth.signup') }}">회원가입</a>
             <!-- 비밀번호 찾기(guide41) — 인증된 이메일로 재설정 링크를 보낸다. -->
-            <a href="{{ url_for('password.password_forgot_form') }}">비밀번호를 잊으셨나요?</a>
+            <a href="{{ url_for('password.password_forgot_form') }}">비밀번호 찾기</a>
             <!-- recovery_link : 계정 잠금(임시·영구 구분 없이, guide39) 또는 영구 IP 잠금 안내가 나갔을 때 routes/auth.py가 True로 넘긴다
                  (guide33). 이메일 인증으로 잠금을 풀거나 본인 기기 접속을 허용받는 화면이다. -->
             {% if recovery_link %}
