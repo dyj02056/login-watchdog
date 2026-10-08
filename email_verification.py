@@ -11,7 +11,10 @@
 # GET은 확인 화면만(메일 스캐너가 미리 열어도 안 닳게) 실제 처리는 POST에서 조건부 1회 소비.
 # 메일 링크를 눌렀다는 것 자체가 그 메일함의 주인이라는 증거라서, 처리하면 VERIFIED가 된다.
 #
-# 라우트(routes/member.py, routes/email.py, routes/auth.py)는 "언제" 부를지만 정하고, 실제
+# 비밀번호 재설정(guide41)도 같은 표(email_tokens, PASSWORD_RESET)와 같은 원칙으로 이 파일이 처리한다 —
+# 단, 재설정 메일은 "계정을 되찾는 메일"이라 VERIFIED 주소에만 보낸다.
+#
+# 라우트(routes/member.py, routes/email.py, routes/auth.py, routes/password.py)는 "언제" 부를지만 정하고, 실제
 # 판단·발송은 전부 이 파일이 한다 — alert.py/mailer.py처럼 결과를 예외 대신 값으로 돌려준다.
 # ============================================================================
 
@@ -52,10 +55,10 @@ def mask_email(email: str) -> str:
     return f"{masked}@{domain}" if domain else masked
 
 
-def _rate_limited(user_id: int, purpose: str) -> bool:
+def _rate_limited(user_id: int, purpose: str, max_per_day: int | None = None) -> bool:
     """같은 회원·용도로 최근 쿨다운 안에 보냈거나, 하루 한도를 채웠으면 True."""
     count, latest = db.get_email_token_activity(user_id, purpose, 24)
-    if count >= config.EMAIL_TOKEN_MAX_PER_DAY:
+    if count >= (max_per_day if max_per_day is not None else config.EMAIL_TOKEN_MAX_PER_DAY):
         return True
     if latest:
         latest_dt = datetime.fromisoformat(latest)
@@ -66,7 +69,7 @@ def _rate_limited(user_id: int, purpose: str) -> bool:
     return False
 
 
-def _issue(user_id: int, purpose: str, email: str, ip: str) -> tuple[dict, str] | None:
+def _issue(user_id: int, purpose: str, email: str, ip: str, path: str = "/email/confirm") -> tuple[dict, str] | None:
     """토큰을 만들어 저장하고 (행, 메일에 넣을 링크)를 돌려준다. 링크를 만들 수 없거나(운영에서
     PUBLIC_BASE_URL 없음) 동시 요청에 밀렸으면 None."""
     base_url = public_base_url()
@@ -78,7 +81,7 @@ def _issue(user_id: int, purpose: str, email: str, ip: str) -> tuple[dict, str] 
     row = db.create_email_token(user_id, purpose, email, hash_secret(token), ip, expires_at.isoformat())
     if row is None:
         return None
-    return row, f"{base_url}/email/confirm?t={token}"
+    return row, f"{base_url}{path}?t={token}"
 
 
 def _after_send(user_id: int, row: dict, result: str) -> str:
@@ -86,7 +89,9 @@ def _after_send(user_id: int, row: dict, result: str) -> str:
     if result == mailer.SENT:
         return SENT
     db.revoke_email_token(row["id"])
-    if result == mailer.REFUSED and row["purpose"] == db.email_tokens.PURPOSE_EMAIL_VERIFY:
+    # 회원 자신의 주소로 보낸 메일(인증·재설정)이 영구 거부되면 그 주소는 더 이상 믿을 수 없다.
+    # 이메일 변경 확인은 "새 주소"로 보낸 것이라 지금 주소의 상태와는 무관하다.
+    if result == mailer.REFUSED and row["purpose"] != db.email_tokens.PURPOSE_EMAIL_CHANGE:
         db.set_user_email_status(user_id, "UNDELIVERABLE")
     return UNAVAILABLE
 
@@ -128,15 +133,22 @@ def request_email_change(user: dict, new_email: str, ip: str) -> str:
 
 
 def get_pending_token(token: str) -> dict | None:
-    """링크(GET)로 들어왔을 때 확인 화면에 보여줄 토큰 정보. 소비하지 않는다."""
+    """링크로 들어왔을 때 토큰 정보(용도 무관). 소비하지 않는다."""
     if not token:
         return None
     return db.get_pending_email_token(hash_secret(token))
 
 
+def get_pending_email_token(token: str) -> dict | None:
+    """/email/confirm이 다룰 수 있는 토큰(이메일 인증·변경)만 돌려준다. 비밀번호 재설정 토큰은
+    /password/reset에서만 쓰여야 한다 — 여기서 받아 소비해 버리면 재설정 링크가 닳는다."""
+    row = get_pending_token(token)
+    return row if row and row["purpose"] in PURPOSE_LABELS else None
+
+
 def confirm(token: str) -> tuple[str, dict | None]:
     """확인 버튼(POST)으로 토큰을 소비하고 용도에 맞게 반영한다. (결과, 회원 행)을 돌려준다."""
-    row = get_pending_token(token)
+    row = get_pending_email_token(token)
     if row is None:
         return CONFIRM_INVALID, None
     consumed = db.consume_email_token(row["id"])
@@ -168,3 +180,63 @@ def mark_verified_after_recovery(user: dict) -> None:
     표시한다(guide40). 실패해도 복구 자체에는 영향을 주지 않는다."""
     if user.get("email_status") != "VERIFIED":
         db.mark_user_email_verified(user["id"], user["email"])
+
+
+# ============================================================================
+# 비밀번호 재설정 (guide41)
+#
+#   /password/forgot  아이디 입력 → request_password_reset() → [VERIFIED 계정만] 재설정 링크 메일
+#   /password/reset   링크(GET, 소비 안 함) → 새 비밀번호 입력 → reset_password()로 1회 소비 + 변경
+#
+# 화면 응답은 아이디가 없든, 미인증·반송이든, 한도에 걸렸든 항상 같다(호출부가 고정 응답 시간까지
+# 맞춘다) — 응답으로 가입 여부나 인증 여부를 알 수 없게 하기 위해서다. 6자리 코드는 쓰지 않는다:
+# 링크를 가진 사람이 곧 메일함 주인이라 기기 제한이 필요 없고, 코드 무차별 대입이라는 공격 면을
+# 아예 만들지 않는다. 비밀번호를 바꾸면 session_version이 올라가 모든 기기의 로그인이 끊긴다.
+# ============================================================================
+
+RESET_DONE = "RESET_DONE"
+RESET_INVALID = "RESET_INVALID"
+
+
+def request_password_reset(username: str, ip: str) -> None:
+    """재설정 링크를 보낼 수 있으면 보낸다. 결과를 돌려주지 않는다 — 화면은 항상 같은 안내다."""
+    if not config.USERNAME_PATTERN.match(username):
+        return
+    user = db.get_user_by_username(username)
+    if user is None or user.get("email_status") != "VERIFIED":
+        return
+    purpose = db.email_tokens.PURPOSE_PASSWORD_RESET
+    if _rate_limited(user["id"], purpose, config.PASSWORD_RESET_MAX_PER_DAY):
+        return
+    issued = _issue(user["id"], purpose, user["email"], ip, path="/password/reset")
+    if issued is None:
+        return
+    row, link = issued
+    _after_send(user["id"], row, mailer.send_password_reset_email(user["email"], link))
+
+
+def get_reset_target(token: str) -> tuple[dict, dict] | None:
+    """재설정 링크(GET)·제출(POST) 공통 확인 — 유효한 PASSWORD_RESET 토큰이고, 그 회원의 이메일이
+    메일을 보낸 그 주소 그대로일 때만 (토큰, 회원)을 돌려준다. 메일을 보낸 뒤 이메일을 바꿨다면
+    옛 주소로 간 재설정 링크는 쓸 수 없다. 소비하지 않는다."""
+    row = get_pending_token(token)
+    if row is None or row["purpose"] != db.email_tokens.PURPOSE_PASSWORD_RESET:
+        return None
+    user = db.get_user_by_id(row["user_id"])
+    if user is None or user["email"] != row["email"]:
+        return None
+    return row, user
+
+
+def reset_password(token: str, new_password: str) -> tuple[str, dict | None]:
+    """토큰을 1회 소비하고 비밀번호를 바꾼다. 새 비밀번호 형식 검사는 호출부가 먼저 한다 —
+    입력 실수 때문에 링크가 닳지 않게 하기 위해서다."""
+    target = get_reset_target(token)
+    if target is None:
+        return RESET_INVALID, None
+    row, user = target
+    if db.consume_email_token(row["id"]) is None:
+        return RESET_INVALID, None
+    db.update_user_password(user["id"], new_password)  # session_version이 올라가 모든 세션이 끊긴다
+    mailer.send_password_reset_notice(user["email"])
+    return RESET_DONE, user

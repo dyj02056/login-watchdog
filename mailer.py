@@ -258,3 +258,29 @@ def send_email_changed_notice(old_address: str, masked_new_address: str) -> str:
         f"{_profile_link_line()}"
     )
     return _send_mail(old_address, "[로그인 워치독] 이메일이 변경되었습니다", body)
+
+
+# ============================================================================
+# 비밀번호 재설정 (guide41)
+# ============================================================================
+
+def send_password_reset_email(to_address: str, link: str) -> str:
+    """비밀번호 찾기로 보내는 재설정 링크 메일 — 인증된(VERIFIED) 주소로만 보낸다."""
+    body = (
+        "로그인 워치독 계정의 비밀번호 재설정 요청이 접수되었습니다.\n\n"
+        f"아래 링크를 열어 새 비밀번호를 정해주세요 "
+        f"(유효시간 {config.EMAIL_TOKEN_TTL_MINUTES}분, 1회용):\n{link}\n\n"
+        "비밀번호를 바꾸면 모든 기기의 로그인이 해제됩니다.\n"
+        "본인이 요청하지 않았다면 이 메일을 무시하세요. 링크를 누르지 않으면 비밀번호는 바뀌지 않습니다."
+    )
+    return _send_mail(to_address, "[로그인 워치독] 비밀번호 재설정 안내", body)
+
+
+def send_password_reset_notice(to_address: str) -> str:
+    """비밀번호가 재설정됐다는 사실을 알린다 — 본인이 한 일이 아니라면 바로 알아챌 수 있게 한다."""
+    body = (
+        "로그인 워치독 계정의 비밀번호가 이메일 인증을 거쳐 재설정되었습니다. "
+        "모든 기기의 로그인이 해제되었습니다.\n\n"
+        "본인이 재설정한 것이 아니라면 즉시 관리자에게 알려주세요."
+    )
+    return _send_mail(to_address, "[로그인 워치독] 비밀번호가 재설정되었습니다", body)

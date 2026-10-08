@@ -65,13 +65,14 @@ def _report_internal_error(error: Exception) -> None:
     """복구 요청 처리 중 예외를 로그에 남기고 관리자에게 알린다. 사용자 화면에는 영향이 없다
     (예외가 500으로 새면 계정 존재 여부가 드러나므로 응답은 항상 같다) — 그래서 이 알림이 없으면
     복구 메일이 안 나가고 있어도 아무도 모른다."""
-    print(f"[recovery] 복구 요청 처리 중 오류: {type(error).__name__}: {error}", flush=True)
-    mailer.report_failure(mailer.FAIL_INTERNAL, f"복구 요청 처리 중 오류: {type(error).__name__}")
+    print(f"[recovery] 복구·재설정 요청 처리 중 오류: {type(error).__name__}: {error}", flush=True)
+    mailer.report_failure(mailer.FAIL_INTERNAL, f"복구·재설정 요청 처리 중 오류: {type(error).__name__}")
 
 
-def _run_with_fixed_response_time(work, started: float) -> None:
+def run_with_fixed_response_time(work, started: float) -> None:
     """`work()`를 실행하고, 처리가 빨리 끝났든 오래 걸렸든 응답 시점이 항상
     RECOVERY_MIN_RESPONSE_SECONDS로 같아지게 맞춘다(타이밍 사이드채널 방지).
+    비밀번호 찾기 요청(routes/password.py, guide41)도 같은 이유로 이 함수를 쓴다.
 
     "아이디 없음"은 DB 조회 한두 번으로 끝나고 "실제 복구 메일"은 조회 여러 번 + SMTP까지
     거치므로, 그냥 두면 응답 시간 차이로 아이디 존재 여부가 드러난다.
@@ -251,7 +252,7 @@ def recovery_request_submit():
             return GENERIC_SENT_MESSAGE
 
         result = {}
-        _run_with_fixed_response_time(lambda: result.update(message=work()), started)
+        run_with_fixed_response_time(lambda: result.update(message=work()), started)
         # IP 빈도 제한에 걸렸을 때만 다른 문구를 보여준다(IP 기준이라 계정 존재 여부와 무관).
         # 처리가 고정 시간 안에 끝나지 않았다면 기본 안내 문구로 응답한다.
         message = result.get("message", GENERIC_SENT_MESSAGE)

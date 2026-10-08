@@ -109,6 +109,7 @@ from .board import (
 )
 from .email_tokens import (
     consume_email_token,
+    count_email_tokens_by_ip,
     create_email_token,
     get_email_token_activity,
     get_pending_email_token,
@@ -259,6 +260,7 @@ __all__ = [
     "get_pending_email_token",
     "get_pending_email_token_for_user",
     "consume_email_token",
+    "count_email_tokens_by_ip",
     "revoke_email_token",
     "get_email_token_activity",
     "list_users",

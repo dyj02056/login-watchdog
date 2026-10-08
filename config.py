@@ -205,6 +205,11 @@ IP_EXEMPTION_MAX_FAILURES = int(os.environ.get("IP_EXEMPTION_MAX_FAILURES", 3))
 EMAIL_TOKEN_TTL_MINUTES = int(os.environ.get("EMAIL_TOKEN_TTL_MINUTES", 15))
 EMAIL_TOKEN_COOLDOWN_SECONDS = int(os.environ.get("EMAIL_TOKEN_COOLDOWN_SECONDS", 60))
 EMAIL_TOKEN_MAX_PER_DAY = int(os.environ.get("EMAIL_TOKEN_MAX_PER_DAY", 5))
+# 비밀번호 재설정(guide41) — 회원당 하루 한도, IP당 시간당 한도, 요청·재설정 제출의 IP당 분당 한도.
+# 재설정 메일은 "계정을 되찾는 메일"이라 영구 잠금 복구(RECOVERY_MAX_PER_USER_PER_DAY=3)와 같은 수준으로 잡았다.
+PASSWORD_RESET_MAX_PER_DAY = int(os.environ.get("PASSWORD_RESET_MAX_PER_DAY", 3))
+PASSWORD_RESET_MAX_PER_IP_PER_HOUR = int(os.environ.get("PASSWORD_RESET_MAX_PER_IP_PER_HOUR", 5))
+PASSWORD_RESET_RATE_LIMIT_PER_MINUTE = int(os.environ.get("PASSWORD_RESET_RATE_LIMIT_PER_MINUTE", 10))
 # 링크 확인 제출(POST /email/confirm)의 IP당 분당 한도 — /recovery/verify와 같은 2차 방어선.
 EMAIL_CONFIRM_RATE_LIMIT_PER_MINUTE = int(os.environ.get("EMAIL_CONFIRM_RATE_LIMIT_PER_MINUTE", 10))
 

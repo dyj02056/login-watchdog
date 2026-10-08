@@ -132,6 +132,15 @@
                 <button type="submit">비밀번호 변경</button>
             </form>
             <p class="member-note">변경하면 이 기기를 제외한 다른 기기의 로그인은 모두 해제되고, 가입한 이메일로 알림이 갑니다.</p>
+            <!-- 현재 비밀번호를 모르는 경우의 연결 링크(guide41) — 인증된 이메일일 때만 재설정 메일이 간다. -->
+            {% if user.email_status == "VERIFIED" %}
+                <p class="member-note">
+                    현재 비밀번호가 기억나지 않나요?
+                    <a href="{{ url_for('password.password_forgot_form', username=user.username) }}">이메일로 재설정</a>
+                </p>
+            {% else %}
+                <p class="member-note">현재 비밀번호가 기억나지 않는다면, 먼저 위에서 이메일 인증을 해야 이메일로 재설정할 수 있습니다.</p>
+            {% endif %}
         </div>
     </main>
 </body>

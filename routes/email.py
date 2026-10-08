@@ -45,7 +45,7 @@ def _invalid():
 def email_confirm_form():
     """메일 링크(?t=토큰)가 여는 확인 화면. 토큰은 소비하지 않는다."""
     token = request.args.get("t", "")
-    row = email_verification.get_pending_token(token)
+    row = email_verification.get_pending_email_token(token)
     if row is None:
         return _invalid()
     user = db.get_user_by_id(row["user_id"])

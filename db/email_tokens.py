@@ -124,3 +124,19 @@ def get_email_token_activity(user_id: int, purpose: str, hours: int = 24) -> tup
     )
     rows = res.data
     return len(rows), (rows[0]["created_at"] if rows else None)
+
+
+def count_email_tokens_by_ip(ip: str, purpose: str, hours: int = 1) -> int:
+    """이 IP가 최근 `hours`시간 안에 만든 이 용도의 토큰 수(비밀번호 재설정 요청의 IP 빈도 제한, guide41).
+    아이디를 바꿔가며 여러 계정에 재설정 메일을 뿌리는 것을 막는다."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    res = (
+        db.get_client()
+        .table("email_tokens")
+        .select("id", count="exact")
+        .eq("requested_ip", ip)
+        .eq("purpose", purpose)
+        .gte("created_at", cutoff)
+        .execute()
+    )
+    return res.count or 0

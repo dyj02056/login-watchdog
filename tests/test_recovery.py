@@ -974,7 +974,7 @@ def test_response_time_is_fixed_regardless_of_how_long_the_work_takes(monkeypatc
 
     def timed(work):
         started = time.monotonic()
-        recovery._run_with_fixed_response_time(work, started)
+        recovery.run_with_fixed_response_time(work, started)
         return time.monotonic() - started
 
     fast = timed(lambda: None)                      # 없는 아이디처럼 바로 끝나는 처리
@@ -994,7 +994,7 @@ def test_background_mode_responds_on_time_and_finishes_the_work_afterwards(monke
     done = []
 
     started = time.monotonic()
-    recovery._run_with_fixed_response_time(lambda: (time.sleep(0.3), done.append(True)), started)
+    recovery.run_with_fixed_response_time(lambda: (time.sleep(0.3), done.append(True)), started)
     assert time.monotonic() - started < 0.25 and done == []   # 응답은 먼저 나가고
     time.sleep(0.4)
     assert done == [True]                                     # 처리는 뒤에서 마무리된다
@@ -1011,7 +1011,7 @@ def test_default_mode_finishes_the_work_before_responding_even_if_it_is_slow(mon
     monkeypatch.setattr(config, "RECOVERY_BACKGROUND_WORK", False)
     done = []
 
-    recovery._run_with_fixed_response_time(lambda: (time.sleep(0.25), done.append(True)), time.monotonic())
+    recovery.run_with_fixed_response_time(lambda: (time.sleep(0.25), done.append(True)), time.monotonic())
 
     assert done == [True]  # 응답 시점에 이미 끝나 있다
 
@@ -1026,10 +1026,10 @@ def test_errors_during_work_never_leak_as_a_500(monkeypatch, capsys, background)
     monkeypatch.setattr(config, "RECOVERY_MIN_RESPONSE_SECONDS", 0.05)
     monkeypatch.setattr(config, "RECOVERY_BACKGROUND_WORK", background)
 
-    recovery._run_with_fixed_response_time(lambda: 1 / 0, time.monotonic())  # 예외가 안 나면 통과
+    recovery.run_with_fixed_response_time(lambda: 1 / 0, time.monotonic())  # 예외가 안 나면 통과
 
     time.sleep(0.05)
-    assert "복구 요청 처리 중 오류" in capsys.readouterr().out
+    assert "재설정 요청 처리 중 오류" in capsys.readouterr().out
 
 
 def test_missing_public_base_url_in_production_reports_a_config_failure(client, store, monkeypatch):
@@ -1208,7 +1208,7 @@ def test_transient_transport_error_is_retried_once_and_then_succeeds(monkeypatch
         if len(calls) == 1:
             raise httpx.RemoteProtocolError("Server disconnected")
 
-    recovery._run_with_fixed_response_time(flaky, time.monotonic())
+    recovery.run_with_fixed_response_time(flaky, time.monotonic())
 
     assert len(calls) == 2
 
@@ -1229,10 +1229,10 @@ def test_persistent_transport_error_is_reported_to_admins_without_raising(monkey
         calls.append(1)
         raise httpx.RemoteProtocolError("Server disconnected")
 
-    recovery._run_with_fixed_response_time(always_down, time.monotonic())
+    recovery.run_with_fixed_response_time(always_down, time.monotonic())
 
     assert len(calls) == 2  # 한 번만 재시도한다
-    assert reports == [(mailer.FAIL_INTERNAL, "복구 요청 처리 중 오류: RemoteProtocolError")]
+    assert reports == [(mailer.FAIL_INTERNAL, "복구·재설정 요청 처리 중 오류: RemoteProtocolError")]
 
 
 def test_non_transport_errors_are_not_retried_but_are_reported(monkeypatch):
@@ -1249,6 +1249,6 @@ def test_non_transport_errors_are_not_retried_but_are_reported(monkeypatch):
         calls.append(1)
         raise KeyError("x")
 
-    recovery._run_with_fixed_response_time(buggy, time.monotonic())
+    recovery.run_with_fixed_response_time(buggy, time.monotonic())
 
     assert len(calls) == 1 and reports == [mailer.FAIL_INTERNAL]
