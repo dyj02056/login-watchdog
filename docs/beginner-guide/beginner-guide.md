@@ -45,6 +45,7 @@
 36. [36단계 — 배포 환경 DB 연결 끊김 해결](guide36_db_connection.md)
 37. [37단계 — 복구 코드 시도 제한 보강 + 관리자 세션 검증](guide37_session_and_code_hardening.md)
 38. [38단계 — 관리자 계정 단위 잠금 (분산 브루트포스 대응)](guide38_admin_account_lockout.md)
+39. [39단계 — 로그인·복구 응답으로 계정 존재 여부가 드러나지 않게](guide39_account_enumeration.md)
 
 ---
 

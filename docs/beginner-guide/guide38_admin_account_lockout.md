@@ -1,6 +1,6 @@
 # 38단계 — 관리자 계정 단위 잠금 (분산 브루트포스 대응)
 
-[◀ 37단계](guide37_session_and_code_hardening.md) · [전체 목차](beginner-guide.md)
+[◀ 37단계](guide37_session_and_code_hardening.md) · [전체 목차](beginner-guide.md) · [39단계 ▶](guide39_account_enumeration.md)
 
 > 관리자 로그인(`/admin/login`)은 지금까지 **IP 단위**로만 잠겼습니다. 공격자가 IP를 여러 개 돌려 쓰면 IP마다 실패가 4회 이하로 유지되어, 관리자 계정은 사실상 무제한으로 비밀번호를 시도당할 수 있었습니다. 회원 로그인에는 이미 있던 **계정 단위 잠금**을 관리자에게도 적용했습니다.
 

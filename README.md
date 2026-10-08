@@ -26,6 +26,7 @@
 - **배포 환경 DB 연결 안정화** — Vercel(서버리스)에서 쉬던 Supabase 연결을 재사용하다 "Server disconnected"로 가끔 500이 나던 문제를, HTTP/1.1 연결과 조회 요청 1회 자동 재시도로 해결. 자세한 내용은 [guide36_db_connection.md](docs/beginner-guide/guide36_db_connection.md) 참고
 - **복구 코드 시도 제한 보강 + 관리자 세션 검증** — 6자리 복구 코드는 비교하기 전에 시도권을 조건부 UPDATE로 먼저 예약해서, 동시에 여러 번 보내도 5회를 넘겨 맞춰볼 수 없습니다(`/recovery/verify`에 IP당 분당 10회 한도도 추가). 관리자 세션은 요청마다 DB의 계정(id·아이디)과 대조하고 로그인 후 8시간(`ADMIN_SESSION_MAX_HOURS`)이 지나면 만료되어, 삭제된 관리자의 쿠키로는 대시보드를 볼 수 없습니다. 배포 직후 관리자는 한 번 다시 로그인해야 합니다. 자세한 내용은 [guide37_session_and_code_hardening.md](docs/beginner-guide/guide37_session_and_code_hardening.md) 참고
 - **관리자 계정 단위 잠금** — `/admin/login`도 회원처럼 계정 단위로 잠급니다. IP와 무관하게 한 관리자 아이디가 15분 안에 8회를 넘게 실패하면 5분간 잠기고(분산 브루트포스 대응), Slack CRITICAL 알림과 `ADMIN_DISTRIBUTED_BRUTE_FORCE` 이벤트가 남습니다. 회원 잠금과는 별도 표(`admin_account_lockouts`)라 같은 이름의 회원과 서로 영향을 주지 않고, 아이디가 없어도 똑같이 잠겨 관리자 아이디 존재 여부가 드러나지 않습니다. 잠금이 관리자를 쫓아내는 수단이 되지 않도록 허용 목록(`PERMANENT_LOCK_IP_ALLOWLIST`) IP는 계정 잠금을 건너뛰고, 영구 잠금으로는 올리지 않습니다. 해제는 대시보드(super_admin 전용) 또는 `scripts/unlock_account.py --admin`. 자세한 내용은 [guide38_admin_account_lockout.md](docs/beginner-guide/guide38_admin_account_lockout.md) 참고
+- **계정 존재 여부 노출 방지** — `/login`은 임시·영구 계정 잠금을 같은 문구와 같은 복구 링크로 안내합니다(영구 승격은 가입된 아이디에만 일어나서 "영구"라는 말이 가입 여부를 알려줬음). 복구용 6자리 코드는 계정·IP 복구 모두 **복구를 요청한 기기에서만** 받고, 아이디 없음·요청 없음·다른 기기를 같은 문구로 답하며 시도 횟수도 쓰지 않아, 다른 기기에서 진행 중인 복구를 알아내거나 남의 복구를 취소시킬 수 없습니다(메일 링크는 어느 기기에서나 동작). 자세한 내용은 [guide39_account_enumeration.md](docs/beginner-guide/guide39_account_enumeration.md) 참고
 - **임계값 튜닝 리포트** — `scripts/tune_thresholds.py`로 최근 N일간 CRITICAL(IP/계정 잠금) 이벤트 중 관리자가 자동 만료를 기다리지 않고 훨씬 빨리 수동 해제한 비율을 event_type별로 집계. 오탐(너무 예민한 임계값) 여부를 점검하는 완전한 읽기 전용 도구. 자세한 내용은 [docs/beginner-guide/guide30_threshold_tuning.md](docs/beginner-guide/guide30_threshold_tuning.md) 참고
 
 ## 기술 스택
@@ -259,7 +260,7 @@ login-watchdog/
 ## 더 자세히 알고 싶다면
 
 - [plan.md](plan.md) — 각 파일을 왜 이렇게 설계했는지에 대한 상세 근거
-- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide38_admin_account_lockout.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
+- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide39_account_enumeration.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
 - [docs/board-comment/](docs/board-comment) — 게시판·댓글 기능을 왜 이렇게 설계했는지(구현 전 분석 → 모호한 질문 11개 결정 → 구현 계획 → 결과 보고) 순서대로 기록한 문서 4종
 - [docs/refactor/2026-09-15-file-split.md](docs/refactor/2026-09-15-file-split.md) — `app.py`/`db.py`/`dashboard.js`를 각각 `routes/`+`helpers.py`, `db/` 패키지, `public/js/dashboard/` ES 모듈로 나눈 리팩터링 배경과 과정
 
@@ -280,6 +281,8 @@ login-watchdog/
 - **DB 연결 끊김은 조회만 자동 재시도** — 서버리스에서 쉬던 연결이 끊겨 가끔 500이 나던 문제를 HTTP/1.1 연결과 조회(GET) 1회 재시도로 막았습니다(guide36). 기록·수정 요청은 두 번 기록될 위험 때문에 재시도하지 않아서, 그 순간 연결이 끊기면 드물게 오류가 날 수 있습니다.
 - **L3/L4(네트워크/전송 계층) 공격 대응은 아직 없음** — 현재 방어 로직은 전부 HTTP 요청(L7) 내용을 근거로 판단합니다. SYN Flood, 포트 스캐닝처럼 그보다 아래 계층에서 발생하는 공격은 별도의 관찰 지점(리버스 프록시/방화벽 등) 설계가 필요하며, 이 프로젝트의 다음 확장 목표입니다.
 - **개발용 서버 사용** — `app.run(debug=True)`는 Flask가 공식적으로 "운영 배포에 쓰지 말라"고 명시하는 개발용 서버입니다. 외부 공개 서비스로 배포하려면 별도의 프로덕션 WSGI 서버(gunicorn 등)로 교체해야 합니다.
+- **회원가입 응답은 아직 가입 여부를 알려줌** — "이미 사용 중인 아이디 또는 이메일입니다"로 가입된 아이디·이메일을 확인할 수 있습니다. 숨기려면 가입 확인 메일 방식으로 바꿔야 해서 남겨 두었습니다(가입은 IP당 빈도 제한이 있음, guide39). 로그인 잠금 문구와 복구 코드 화면은 가입 여부를 드러내지 않습니다.
+- **복구 코드는 요청한 기기에서만** — PC에서 복구를 요청하고 휴대폰 브라우저에 6자리 코드를 넣으면 거절됩니다. 이 경우 휴대폰에서는 메일의 링크를 누르면 됩니다(guide39).
 - **감시 대상 계정은 데모 수준 인증** — 가입 때 이메일 소유 확인과 "비밀번호를 잊었을 때" 메일 재설정은 제공하지 않습니다(로그인 후 비밀번호 변경은 가능, 잊은 경우는 관리자가 처리). 영구 잠금의 이메일 복구에서 메일 서버가 수신자를 영구 거부하면 그 계정은 관리자만 풀 수 있게 표시됩니다 — Gmail처럼 나중에 반송하는 경우는 알 수 없습니다.
 - **IP 위치 조회는 참고용** — ip-api.com 무료 API는 HTTPS를 지원하지 않고(서버 간 통신이라 브라우저 보안 경고와는 무관), 도시 단위 정확도가 완벽하지 않을 수 있습니다. `127.0.0.1` 같은 사설 IP는 항상 "위치 확인 불가"로 표시됩니다.
 - **게시판은 회원 전용, 대댓글·첨부파일 미지원** — 비로그인 사용자는 글 목록조차 볼 수 없고, 댓글은 단일 depth(답글 불가)이며 이미지/파일 첨부도 지원하지 않습니다. 회원이 탈퇴해도 작성한 글·댓글은 삭제되지 않고 흔적만 남습니다(감사 로그와 동일한 정책). 새 댓글 알림은 웹소켓이 아니라 폴링(기본 5초, `BOARD_COMMENT_POLL_MS`) 방식입니다. 설계 배경은 [docs/board-comment/02-design-decisions.md](docs/board-comment/02-design-decisions.md) 참고.
