@@ -104,7 +104,7 @@ def send_lockout_alert(
 
 
 def send_account_lockout_alert(
-    username: str, failure_count: int, locked_at: datetime, distinct_ip_count: int
+    username: str, failure_count: int, locked_at: datetime, distinct_ip_count: int, is_admin: bool = False
 ) -> None:
     """계정(아이디) 잠금이 발생했다는 사실을 Slack 채널에 메시지로 알린다.
 
@@ -112,12 +112,16 @@ def send_account_lockout_alert(
     아니라 계정이다 — 여러 IP에 걸쳐 나뉘어 들어온 공격이 계정 전체 실패
     횟수 기준으로 잠긴 경우이므로, "몇 개의 IP가 관련됐는지"를 함께 보여줘서
     분산 브루트포스임을 한눈에 알 수 있게 한다.
+
+    is_admin=True면 관리자 계정 잠금(guide38)이다 — 대상이 관리자 계정이라는 점을
+    표시해서 회원 계정 잠금과 구분한다.
     """
     minutes = config.LOCKOUT_DURATION_SECONDS // 60
+    target_label = "관리자 계정" if is_admin else "대상 계정"
     message = (
         ":rotating_light: [CRITICAL] 로그인 워치독 알림\n"
         f"시각: {locked_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
-        f"대상 계정: {username}\n"
+        f"{target_label}: {username}\n"
         f"실패 횟수: {failure_count}회 (서로 다른 IP {distinct_ip_count}개에서 분산 시도)\n"
         "공격 유형: 분산/저속 브루트포스 의심 (여러 IP가 한 계정을 나눠서 집중 공격)\n"
         f"조치: {minutes}분간 계정 잠금 처리"

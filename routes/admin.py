@@ -56,9 +56,16 @@ def admin_login_submit():
     시도 기록만 남길 뿐 잠금 판정을 전혀 하지 않아서, 관리자 계정만 브루트포스에
     무방비로 노출돼 있었다(18단계 보안 점검에서 발견 및 보완). 관리자 계정이 뚫리면
     회원 삭제·잠금 해제·회원가입 On/Off까지 전부 장악되므로 우선순위가 가장 높았다.
+
+    IP 잠금만으로는 IP를 나눠 쓰는 분산 브루트포스를 못 막아서, 회원 로그인처럼 관리자
+    계정 단위 잠금도 건다(guide38). 아이디가 실제로 있든 없든 같은 기준으로 잠그고 같은
+    문구로 거절해서 관리자 아이디 존재 여부가 드러나지 않게 한다. 계정 잠금은 공격자가
+    관리자를 못 들어오게 만드는 수단도 될 수 있으므로, 허용 목록(PERMANENT_LOCK_IP_ALLOWLIST,
+    관리자 PC) IP에서의 로그인은 계정 잠금을 건너뛴다(IP 잠금은 그대로 적용).
     """
     # 1) 시간이 지나 자동으로 풀려야 할 잠금들을 정리 (login_submit()과 동일)
     soar.try_release_expired_lockouts()
+    soar.try_release_expired_admin_account_lockouts()
 
     ip = get_request_ip()
 
@@ -82,6 +89,14 @@ def admin_login_submit():
     username = request.form.get("username", "")
     password = request.form.get("password", "")
 
+    # 3) 이 관리자 아이디가 계정 단위로 잠겨 있으면 비밀번호를 확인하지 않고 거절한다(guide38).
+    #    허용 목록 IP는 건너뛴다 — 공격자가 일부러 틀려서 관리자를 잠가도 관리자 PC에서는
+    #    로그인해서 대시보드에서 풀 수 있게 하기 위해서다.
+    account_locked = detector.is_admin_account_locked(username)
+    if account_locked and not lockdown.is_ip_allowlisted(ip):
+        flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
+        return render_template("login_form.html", form_action=url_for("admin.admin_login_submit"))
+
     success = db.verify_admin_credentials(username, password)
     # 성공/실패와 무관하게 "누가 언제 관리자 로그인을 시도했는지"는 항상 기록해서
     # 나중에 대시보드에서 감사(audit) 이력을 확인할 수 있게 한다.
@@ -98,16 +113,28 @@ def admin_login_submit():
             start_admin_session(admin_id, username)
             return redirect(url_for("admin.admin_dashboard"))
 
-    # 3) 이 실패로 인해 방금 임계값을 넘었는지 확인하고, 넘었다면 잠근다
+    # 4) 이 실패로 인해 방금 임계값을 넘었는지 확인하고, 넘었다면 잠근다
     #    (login_submit()과 동일한 detector/soar 조합 — 잠금 상태 자체는 lockouts
-    #    표를 공유하므로, 이 IP는 /login 쪽에서도 함께 잠긴다).
+    #    표를 공유하므로, 이 IP는 /login 쪽에서도 함께 잠긴다). IP 기준을 먼저 보고,
+    #    아니면 IP와 무관하게 이 관리자 아이디의 총 실패 횟수를 본다(guide38).
     suspicious, failure_count = detector.is_admin_suspicious(ip)
     if suspicious:
         distinct_usernames = detector.count_distinct_admin_usernames(ip)
         soar.enforce_lockout(ip, failure_count, distinct_usernames, is_admin=True)
         flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
-    else:
-        flash("아이디 또는 비밀번호가 올바르지 않습니다.")
+        return render_template("login_form.html", form_action=url_for("admin.admin_login_submit"))
+
+    # 이미 잠긴 계정(허용 목록 IP라서 여기까지 온 경우)은 다시 잠그지 않는다 — 실패할
+    # 때마다 Slack 알림과 이벤트가 반복되는 것을 막는다.
+    if not account_locked:
+        account_suspicious, account_failure_count = detector.is_admin_account_suspicious(username)
+        if account_suspicious:
+            distinct_ips = db.count_recent_distinct_admin_ips_by_username(username)
+            soar.enforce_admin_account_lockout(username, account_failure_count, distinct_ips, ip)
+            flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
+            return render_template("login_form.html", form_action=url_for("admin.admin_login_submit"))
+
+    flash("아이디 또는 비밀번호가 올바르지 않습니다.")
     return render_template("login_form.html", form_action=url_for("admin.admin_login_submit"))
 
 
@@ -222,6 +249,7 @@ def api_status():
     """
     soar.try_release_expired_lockouts()
     soar.try_release_expired_account_lockouts()
+    soar.try_release_expired_admin_account_lockouts()
 
     attempts_page = _page_param("attempts_page")
     users_page = _page_param("users_page")
@@ -240,6 +268,7 @@ def api_status():
         lockouts_future = executor.submit(db.list_active_lockouts)
         # "현재 잠긴 IP / 계정" 카드의 계정 잠금 목록 — IP 잠금 목록과 같은 배치로 병렬 조회.
         account_lockouts_future = executor.submit(db.list_active_account_lockouts)
+        admin_account_lockouts_future = executor.submit(db.list_active_admin_account_lockouts)
         admin_log_future = executor.submit(db.list_admin_login_log, admin_log_page, config.ADMIN_PAGE_SIZE)
         users_future = executor.submit(db.list_users, users_page, config.ADMIN_PAGE_SIZE)
         signup_future = executor.submit(db.get_signup_enabled)
@@ -271,6 +300,7 @@ def api_status():
         recent_attempts = _attach_locations(attempts)  # 다른 future들이 도는 동안 함께 실행됨
         active_lockouts = lockouts_future.result()
         active_account_lockouts = account_lockouts_future.result()
+        active_admin_account_lockouts = admin_account_lockouts_future.result()
         admin_log, admin_log_count = admin_log_future.result()
         users, users_count = users_future.result()
         signup_enabled = signup_future.result()
@@ -288,6 +318,8 @@ def api_status():
             "attempts_total_pages": max(1, math.ceil(attempts_count / config.ADMIN_PAGE_SIZE)),
             "active_lockouts": active_lockouts,
             "active_account_lockouts": active_account_lockouts,
+            # 관리자 계정 단위 잠금(guide38) — 회원 계정 잠금과 같은 카드에 "관리자" 배지로 표시한다.
+            "active_admin_account_lockouts": active_admin_account_lockouts,
             "admin_login_log": admin_log,
             "admin_log_total_pages": max(1, math.ceil(admin_log_count / config.ADMIN_PAGE_SIZE)),
             "users": users,
@@ -362,6 +394,21 @@ def api_unlock_account():
     if not released and lockdown.is_permanent_account(username):
         return jsonify({"success": False, "error": "영구 잠금은 '영구 해제'로만 풀 수 있습니다."}), 409
     return jsonify({"success": released})
+
+
+@admin_bp.route("/api/unlock-admin-account", methods=["POST"])
+@require_permission("unlock_admin_account")
+def api_unlock_admin_account():
+    """잠긴 관리자 계정의 "즉시 해제" 버튼이 호출하는 API(guide38). super_admin만 가진
+    unlock_admin_account 권한이 필요하다 — 관리자 계정의 잠금을 푸는 것은 회원 계정보다
+    위험도가 높아서 /api/unlock-account(unlock_ip 권한)와 권한을 나눴다.
+    """
+    data = request.get_json(silent=True) or {}
+    username = data.get("username")
+    if not username:
+        return jsonify({"success": False, "error": "username 값이 필요합니다."}), 400
+
+    return jsonify({"success": soar.manual_release_admin_account(username)})
 
 
 @admin_bp.route("/api/access-requests/approve", methods=["POST"])

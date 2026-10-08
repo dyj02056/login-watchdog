@@ -53,6 +53,13 @@ def flask_app(monkeypatch):
     from tests.admin_session import stub_admin_role
     stub_admin_role(monkeypatch, "security_admin")
 
+    # 관리자 계정 단위 잠금(guide38)이 /admin/login과 /api/status에 새로 끼워 넣은 조회 —
+    # 기본값은 "잠긴 관리자 계정 없음, 실패 0회"로 둔다. 이 기능을 테스트하는 곳만 다시 바꾼다.
+    monkeypatch.setattr(db, "list_expired_active_admin_account_lockouts", lambda: [])
+    monkeypatch.setattr(db, "list_active_admin_account_lockouts", lambda: [])
+    monkeypatch.setattr(db, "get_active_admin_account_lockout", lambda username: None)
+    monkeypatch.setattr(db, "count_recent_admin_failures_by_username", lambda username: 0)
+
     # 이전 테스트가 이미 app을 import해둔 상태일 수 있으므로, sys.modules에서
     # 지워서 위의 monkeypatch가 적용된 새 환경으로 app.py가 다시 실행되게 한다.
     sys.modules.pop("app", None)

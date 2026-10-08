@@ -190,17 +190,36 @@ def resolve_security_events_for_ip(ip: str) -> None:
     ).eq("severity", "CRITICAL").is_("resolved_at", "null").execute()
 
 
-def resolve_security_events_for_username(username: str) -> None:
+# 관리자 계정 단위 잠금(guide38)의 이벤트 유형 — soar.enforce_admin_account_lockout()이 기록한다.
+ADMIN_ACCOUNT_LOCK_EVENT_TYPE = "ADMIN_DISTRIBUTED_BRUTE_FORCE"
+
+
+def resolve_security_events_for_username(username: str, event_types: list[str] | None = None) -> None:
     """이 계정의 미해결 CRITICAL 이벤트를 전부 해결됨으로 표시한다.
 
     resolve_security_events_for_ip()의 계정 버전이다 — 분산 브루트포스로 인한
     계정 잠금(soar.enforce_account_lockout)은 IP가 아니라 계정을 잠그므로,
     그 잠금이 풀리는 순간(soar.try_release_expired_account_lockouts) 이 함수로
     관련 CRITICAL 이벤트도 함께 정리한다.
+
+    회원 "alice"와 관리자 "alice"는 security_events.username이 같다(guide38). 그래서
+    event_types를 주면 그 유형만 정리하고(관리자 계정 잠금 해제), 주지 않으면 관리자 계정
+    잠금 이벤트(ADMIN_ACCOUNT_LOCK_EVENT_TYPE)를 뺀 나머지를 정리한다(회원 계정 잠금 해제) —
+    어느 쪽을 풀어도 같은 이름의 다른 쪽 이벤트는 그대로 남는다.
     """
-    db.get_client().table("security_events").update({"resolved_at": db._now_iso()}).eq(
-        "username", username
-    ).eq("severity", "CRITICAL").is_("resolved_at", "null").execute()
+    query = (
+        db.get_client()
+        .table("security_events")
+        .update({"resolved_at": db._now_iso()})
+        .eq("username", username)
+        .eq("severity", "CRITICAL")
+        .is_("resolved_at", "null")
+    )
+    if event_types is not None:
+        query = query.in_("event_type", event_types)
+    else:
+        query = query.neq("event_type", ADMIN_ACCOUNT_LOCK_EVENT_TYPE)
+    query.execute()
 
 
 def get_unresolved_security_event(ip: str, event_type: str) -> dict | None:

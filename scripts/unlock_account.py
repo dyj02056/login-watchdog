@@ -11,6 +11,10 @@
 # 웹 화면을 거치지 않고 db.py를 통해 Supabase의 account_lockouts 표를 직접
 # 갱신하는 스크립트를 별도로 둔다.
 #
+# --admin을 붙이면 회원 계정이 아니라 관리자 계정 잠금(admin_account_lockouts, guide38)을
+# 다룬다 — super_admin 본인이 잠겼고 허용 목록 밖에 있어 대시보드에 들어갈 수 없을 때 쓰는
+# 비상 해제 수단이다. 관리자 계정 잠금은 항상 임시 잠금이라 --permanent와 함께 쓸 수 없다.
+#
 # 안전 원칙: unlock_ip.py와 동일하게, 아무 옵션 없이 실행하면 지금 잠긴 계정
 # 목록만 조회하고 아무것도 바꾸지 않는다. 실제 해제는 --username 또는 --all을
 # 명시했을 때만 일어난다.
@@ -31,6 +35,7 @@ load_dotenv()
 
 import db  # noqa: E402  (load_dotenv()가 SUPABASE_URL 등을 먼저 읽어들인 뒤에 import 해야 함)
 import lockdown  # noqa: E402
+import soar  # noqa: E402
 
 
 # --permanent로 영구 잠금을 풀 때 lock_history에 남길 기본 사유(--note로 바꿀 수 있다).
@@ -120,6 +125,35 @@ def unlock_all(lockouts: list[dict], permanent: bool = False, note: str = DEFAUL
         print(f"[OK] {lockout['username']} 잠금을 해제했습니다.")
 
 
+def show_active_admin_lockouts() -> list[dict]:
+    """지금 잠겨 있는 관리자 계정(guide38)을 보여준다. 아무것도 바꾸지 않는다."""
+    lockouts = db.list_active_admin_account_lockouts()
+    if not lockouts:
+        print("[*] 현재 활성 관리자 계정 잠금이 없습니다.")
+        return lockouts
+
+    print(f"[*] 현재 활성 관리자 계정 잠금 {len(lockouts)}건:")
+    for lockout in lockouts:
+        print(
+            f"    - {lockout['username']} "
+            f"(실패 {lockout['failure_count']}회, "
+            f"{lockout['locked_at']} 잠금 -> {lockout['unlock_at']} 자동 해제 예정)"
+        )
+    return lockouts
+
+
+def unlock_admin(username: str) -> bool:
+    """관리자 계정 하나의 잠금을 푼다. 대시보드 "즉시 해제"와 같은 soar 함수를 써서 그 잠금의
+    보안 이벤트만 함께 정리한다(같은 이름 회원의 이벤트는 그대로)."""
+    released = soar.manual_release_admin_account(username)
+    print(
+        f"[OK] 관리자 계정 {username} 잠금을 해제했습니다."
+        if released
+        else f"[*] 관리자 계정 {username}은(는) 잠겨있지 않습니다. 할 일이 없습니다."
+    )
+    return released
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="로그인 워치독에서 잠긴 계정을 조회하거나 즉시 해제하는 유지보수 스크립트."
@@ -143,10 +177,27 @@ def main() -> None:
         default=DEFAULT_NOTE,
         help="영구 잠금을 풀 때 해제 이력(lock_history)에 남길 사유.",
     )
+    parser.add_argument(
+        "--admin",
+        action="store_true",
+        help="회원 계정이 아니라 관리자 계정 잠금(guide38)을 조회·해제한다.",
+    )
     args = parser.parse_args()
 
     if args.username and args.all:
         parser.error("--username과 --all은 동시에 쓸 수 없습니다. 하나만 선택하세요.")
+
+    if args.admin:
+        if args.permanent:
+            parser.error("관리자 계정 잠금은 영구 잠금이 없어서 --permanent와 함께 쓸 수 없습니다.")
+        if args.all:
+            for lockout in show_active_admin_lockouts():
+                unlock_admin(lockout["username"])
+        elif args.username:
+            unlock_admin(args.username)
+        else:
+            show_active_admin_lockouts()
+        return
 
     if args.all:
         lockouts = show_active_lockouts()

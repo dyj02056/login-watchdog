@@ -118,6 +118,57 @@ def enforce_account_lockout(
     )
 
 
+def enforce_admin_account_lockout(
+    username: str, failure_count: int, distinct_ip_count: int, triggering_ip: str
+) -> None:
+    """관리자 계정에 잠금을 걸고, Slack으로 알리고, CRITICAL 이벤트로 기록한다(guide38).
+
+    enforce_account_lockout()의 관리자 버전이다. 다른 점은 둘이다.
+    - 회원 표(account_lockouts)가 아니라 admin_account_lockouts에 잠근다 — 같은 이름의
+      회원과 서로 영향을 주지 않게 한다.
+    - 영구 잠금으로 올리지 않는다(lockdown.after_temporary_lock을 부르지 않는다). 관리자를
+      영구히 못 들어오게 만드는 것 자체가 공격자가 노리는 서비스 거부가 되기 때문이다.
+      감사 추적을 위해 잠금 이력(lock_history)에는 한 줄 남긴다.
+    """
+    db.create_admin_account_lockout(username, failure_count)
+    alert.send_account_lockout_alert(
+        username, failure_count, datetime.now(timezone.utc), distinct_ip_count, is_admin=True
+    )
+    _record_event(
+        db.ADMIN_ACCOUNT_LOCK_EVENT_TYPE,
+        "CRITICAL",
+        triggering_ip,
+        None,
+        failure_count,
+        "ACCOUNT_LOCKED",
+        username=username,
+    )
+    db.insert_lock_history(
+        "admin_account", username, "TEMPORARY", "THRESHOLD", db.ADMIN_ACCOUNT_LOCK_EVENT_TYPE
+    )
+
+
+def _release_admin_account(username: str) -> bool:
+    """관리자 계정 잠금을 풀고, 그 잠금의 CRITICAL 이벤트만 정리한다(같은 이름 회원 이벤트는 그대로)."""
+    released = db.release_admin_account_lockout(username)
+    if released:
+        db.resolve_security_events_for_username(username, [db.ADMIN_ACCOUNT_LOCK_EVENT_TYPE])
+    return released
+
+
+def try_release_expired_admin_account_lockouts() -> None:
+    """잠금 시간이 지난 관리자 계정 잠금을 풀어준다(try_release_expired_account_lockouts()의 관리자 버전)."""
+    for lockout in db.list_expired_active_admin_account_lockouts():
+        _release_admin_account(lockout["username"])
+
+
+def manual_release_admin_account(username: str) -> bool:
+    """대시보드 "즉시 해제"(super_admin 전용) 또는 CLI로 관리자 계정 잠금을 푼다. 잠겨 있지 않았으면 False."""
+    if db.get_active_admin_account_lockout(username) is None:
+        return False
+    return _release_admin_account(username)
+
+
 def try_release_expired_account_lockouts() -> None:
     """5분이 지났는데 아직 안 풀린 계정 잠금들을 찾아서 전부 풀어준다.
 

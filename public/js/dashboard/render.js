@@ -10,8 +10,9 @@ import { escapeHtml, formatTime } from "./utils.js";
  * 지금 잠긴 IP와 계정들을 카드 형태로 그린다. 각 카드에는 "즉시 해제" 버튼이 붙는다.
  * @param {Array} lockouts - [{ip_address, locked_at, unlock_at, failure_count}, ...]
  * @param {Array} accountLockouts - [{username, locked_at, unlock_at, failure_count}, ...]
+ * @param {Array} adminAccountLockouts - 관리자 계정 잠금(guide38), accountLockouts와 같은 모양
  */
-export function renderLockoutCards(lockouts, accountLockouts = []) {
+export function renderLockoutCards(lockouts, accountLockouts = [], adminAccountLockouts = []) {
     const container = document.getElementById("lockout-list");
 
     // 영구 잠금은 이 카드 목록이 아니라 아래 "영구 잠금" 표에서 다룬다 — 영구 행에는
@@ -19,7 +20,7 @@ export function renderLockoutCards(lockouts, accountLockouts = []) {
     lockouts = lockouts.filter((lockout) => lockout.lock_type !== "PERMANENT");
     accountLockouts = accountLockouts.filter((lockout) => lockout.lock_type !== "PERMANENT");
 
-    if (lockouts.length === 0 && accountLockouts.length === 0) {
+    if (lockouts.length === 0 && accountLockouts.length === 0 && adminAccountLockouts.length === 0) {
         container.innerHTML = '<p class="empty-state">현재 잠긴 IP/계정이 없습니다.</p>';
         return;
     }
@@ -49,7 +50,24 @@ export function renderLockoutCards(lockouts, accountLockouts = []) {
             </div>
         `
     );
-    container.innerHTML = [...ipCards, ...accountCards].join("");
+    // 관리자 계정 잠금(guide38)은 해제 권한(unlock_admin_account)이 super_admin에게만 있어서,
+    // 권한이 없으면 버튼 대신 안내만 보여준다(실제 검사는 서버가 따로 한다).
+    const adminAccountCards = adminAccountLockouts.map(
+        (lockout) => `
+            <div class="lockout-card">
+                <div class="lockout-type">관리자 계정 잠금</div>
+                <div class="ip">${escapeHtml(lockout.username)}</div>
+                <div>실패 ${lockout.failure_count}회</div>
+                <div>해제 예정: ${formatTime(lockout.unlock_at)}</div>
+                ${
+                    hasPermission("unlock_admin_account")
+                        ? `<button data-username="${escapeHtml(lockout.username)}" class="unlock-admin-account-btn">즉시 해제</button>`
+                        : '<div class="empty-state">해제는 super_admin만 가능</div>'
+                }
+            </div>
+        `
+    );
+    container.innerHTML = [...ipCards, ...accountCards, ...adminAccountCards].join("");
 }
 
 /**

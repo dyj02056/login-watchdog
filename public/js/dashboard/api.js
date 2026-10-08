@@ -74,7 +74,7 @@ export async function fetchStatus() {
 
     // 현재 관리자의 권한을 먼저 기억해둬야 아래 render 함수들이 버튼 노출을 정할 수 있다.
     permissionState.actions = data.permissions || [];
-    renderLockoutCards(data.active_lockouts, data.active_account_lockouts);
+    renderLockoutCards(data.active_lockouts, data.active_account_lockouts, data.active_admin_account_lockouts || []);
     renderPermanentLocks(data.permanent_locks || []);
     renderRecoveryRequests(data.recovery_requests || []);
     renderIpExemptions(data.ip_exemptions || []);
@@ -125,6 +125,20 @@ export async function unlockIp(ip) {
  */
 export async function unlockAccount(username) {
     await fetch("/api/unlock-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
+        body: JSON.stringify({ username: username }),
+    });
+    fetchStatus();
+}
+
+/**
+ * 잠긴 관리자 계정 카드의 "즉시 해제" 버튼(guide38, super_admin 전용)을 눌렀을 때 그 관리자
+ * 계정의 잠금을 풀어달라고 요청한다. unlockAccount()와 같은 패턴이다.
+ * @param {string} username
+ */
+export async function unlockAdminAccount(username) {
+    await fetch("/api/unlock-admin-account", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-CSRFToken": csrfToken },
         body: JSON.stringify({ username: username }),

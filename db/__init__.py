@@ -13,6 +13,7 @@
 #   attempts.py         — login_attempts (로그인 시도 기록)
 #   lockouts.py         — lockouts (IP 잠금 현재 상태)
 #   admin.py            — admin_users, admin_login_log (관리자 계정/로그인 기록)
+#   admin_lockouts.py   — admin_account_lockouts (관리자 계정 단위 잠금, guide38)
 #   users.py            — users (회원 계정)
 #   settings.py         — app_settings, signup_attempts (설정값, 가입 빈도 제한)
 #   geoip_cache.py       — ip_locations (IP 위치 조회 캐시)
@@ -66,6 +67,15 @@ from .admin import (
     list_admin_users,
     log_admin_attempt,
     verify_admin_credentials,
+)
+from .admin_lockouts import (
+    count_recent_admin_failures_by_username,
+    count_recent_distinct_admin_ips_by_username,
+    create_admin_account_lockout,
+    get_active_admin_account_lockout,
+    list_active_admin_account_lockouts,
+    list_expired_active_admin_account_lockouts,
+    release_admin_account_lockout,
 )
 from .api_access_log import count_recent_distinct_api_paths, log_api_access
 from .attempts import (
@@ -142,6 +152,7 @@ from .recovery import (
 )
 from .roles import has_permission, list_role_permissions
 from .security_events import (
+    ADMIN_ACCOUNT_LOCK_EVENT_TYPE,
     count_recent_not_found_attempts,
     count_recent_page_access_attempts,
     count_recent_unauthorized_attempts,
@@ -181,10 +192,18 @@ from .users import (
 )
 
 __all__ = [
+    "ADMIN_ACCOUNT_LOCK_EVENT_TYPE",
     "get_client",
     "ensure_bootstrap_admin",
     "verify_admin_credentials",
     "get_admin_by_id",
+    "count_recent_admin_failures_by_username",
+    "count_recent_distinct_admin_ips_by_username",
+    "create_admin_account_lockout",
+    "get_active_admin_account_lockout",
+    "list_active_admin_account_lockouts",
+    "list_expired_active_admin_account_lockouts",
+    "release_admin_account_lockout",
     "get_admin_id_by_username",
     "has_permission",
     "list_admin_users",

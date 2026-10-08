@@ -21,6 +21,14 @@ TRUST_FORWARDED_FOR = os.environ.get("TRUST_FORWARDED_FOR", "false").lower() == 
 # 몇 번 틀리는 정도로는 계정 전체가 잠기지 않게 여유를 주기 위해서다.
 ACCOUNT_FAILURE_THRESHOLD = int(os.environ.get("ACCOUNT_FAILURE_THRESHOLD", 8))
 
+# 관리자 계정 단위 실패 임계값과 집계 창(guide38) — /admin/login은 IP 단위 잠금만 있어서
+# IP를 나눠 쓰는 분산 브루트포스에 무방비였다. 회원(60초 창)보다 긴 15분 창으로 세서
+# 분당 몇 회씩 천천히 시도하는 공격도 잡는다. 관리자는 몇 명뿐이라 오탐 여지가 작다.
+# 잠금 시간은 회원과 같은 LOCKOUT_DURATION_SECONDS(5분)이고, 영구 승격은 하지 않는다
+# (관리자를 영구히 못 들어오게 만드는 것 자체가 서비스 거부가 되기 때문).
+ADMIN_ACCOUNT_FAILURE_THRESHOLD = int(os.environ.get("ADMIN_ACCOUNT_FAILURE_THRESHOLD", 8))
+ADMIN_ACCOUNT_DETECTION_WINDOW_SECONDS = int(os.environ.get("ADMIN_ACCOUNT_DETECTION_WINDOW_SECONDS", 900))
+
 # 회원가입(/signup) 요청 빈도 제한 — 같은 IP가 DETECTION_WINDOW_SECONDS(기본 60초) 안에
 # 이 횟수 이상 가입을 시도하면(성공/실패 무관) 추가 요청을 거부한다. 로그인 브루트포스
 # 탐지(FAILURE_THRESHOLD)와 별개로, 계정 대량 생성(테이블 flooding) 남용을 막기 위한 값.

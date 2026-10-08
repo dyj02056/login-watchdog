@@ -24,7 +24,7 @@ def insert_lock_history(
 ) -> None:
     """잠금이 걸린 사실을 이력에 한 줄 추가한다.
 
-    target_kind는 'ip' 또는 'account', lock_type은 'TEMPORARY'/'PERMANENT',
+    target_kind는 'ip' / 'account' / 'admin_account'(관리자 계정, guide38), lock_type은 'TEMPORARY'/'PERMANENT',
     trigger_reason은 THRESHOLD / REPEAT_OFFENDER / SIEM_CRITICAL / SIEM_HIGH /
     NETWORK_IDS / ADMIN_MANUAL 중 하나다(docs/schema.sql의 CHECK 제약과 같다).
     """

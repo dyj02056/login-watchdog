@@ -12,6 +12,7 @@
 import db
 from config import (
     ACCOUNT_FAILURE_THRESHOLD,
+    ADMIN_ACCOUNT_FAILURE_THRESHOLD,
     COMMENT_RATE_LIMIT,
     FAILURE_THRESHOLD,
     MACRO_DISTINCT_API_THRESHOLD,
@@ -76,6 +77,22 @@ def is_account_locked(username: str) -> bool:
     있는지(None이 아닌지)만 확인한다.
     """
     return db.get_active_account_lockout(username) is not None
+
+
+def is_admin_account_suspicious(username: str) -> tuple[bool, int]:
+    """이 관리자 아이디가 여러 IP에 걸쳐 분산 공격당하고 있는 상태인지 판단한다(guide38).
+
+    is_account_suspicious()의 관리자 버전 — admin_login_log를 회원보다 긴 창
+    (ADMIN_ACCOUNT_DETECTION_WINDOW_SECONDS, 기본 15분)으로 세고,
+    ADMIN_ACCOUNT_FAILURE_THRESHOLD(기본 8회)를 "초과"하면 수상하다고 본다.
+    """
+    failure_count = db.count_recent_admin_failures_by_username(username)
+    return failure_count > ADMIN_ACCOUNT_FAILURE_THRESHOLD, failure_count
+
+
+def is_admin_account_locked(username: str) -> bool:
+    """이 관리자 아이디가 지금 잠겨 있는지(is_account_locked()의 관리자 버전)."""
+    return db.get_active_admin_account_lockout(username) is not None
 
 
 def count_distinct_usernames(ip: str) -> int:

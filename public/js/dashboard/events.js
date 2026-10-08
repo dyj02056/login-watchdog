@@ -21,6 +21,7 @@ import {
     revokeRecoveryRequest,
     toggleSignup,
     unlockAccount,
+    unlockAdminAccount,
     unlockIp,
 } from "./api.js";
 import { pages } from "./state.js";
@@ -36,6 +37,9 @@ document.getElementById("lockout-list").addEventListener("click", (event) => {
     } else if (event.target.classList.contains("unlock-account-btn")) {
         const username = event.target.getAttribute("data-username");
         unlockAccount(username);
+    } else if (event.target.classList.contains("unlock-admin-account-btn")) {
+        const username = event.target.getAttribute("data-username");
+        unlockAdminAccount(username);
     }
 });
 
