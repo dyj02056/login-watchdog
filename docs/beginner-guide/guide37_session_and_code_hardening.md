@@ -1,6 +1,6 @@
 # 37단계 — 복구 코드 시도 제한 보강 + 관리자 세션 검증
 
-[◀ 36단계](guide36_db_connection.md) · [전체 목차](beginner-guide.md)
+[◀ 36단계](guide36_db_connection.md) · [전체 목차](beginner-guide.md) · [38단계 ▶](guide38_admin_account_lockout.md)
 
 > 코드 점검에서 두 가지 빈틈을 찾아 막았습니다. 하나는 [34단계](guide34a_email_recovery.md)의 6자리 복구 코드를 **동시에 여러 번 보내면 "5회 제한"을 넘겨 시도할 수 있던 문제**, 다른 하나는 **삭제된 관리자도 브라우저에 남은 쿠키로 대시보드를 계속 볼 수 있던 문제**입니다. DB 스키마는 바뀌지 않습니다.
 

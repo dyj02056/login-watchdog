@@ -49,6 +49,15 @@
 2. `super_admin`으로 로그인 → "영구 해제" 클릭 → 사유를 비우면 진행되지 않음 → 사유 입력 후 해제
 3. "IP 예외" 카드의 "회수"로 4번에서 발급된 출입증 회수
 
+## 5-1. 관리자 계정 분산 브루트포스 → 계정 잠금 (2분)
+
+1. IP를 바꿔가며 IP당 4회씩(IP 잠금에 안 걸리게) 관리자 로그인에 실패:
+   `python scripts/bruteforce_sim.py --admin --username demo_admin --attempts 4 --ip 203.0.113.21` → `.22` → `.23`
+2. 앞의 두 번은 `[FAIL]`(IP 잠금 안 걸림)이 정상, 세 번째에 총 9회가 되어 **관리자 계정**이 잠김
+3. **보여줄 곳**: "현재 잠긴 IP / 계정"의 "관리자 계정 잠금" 카드(security_admin에게는 "해제는 super_admin만 가능"), 보안 이벤트 `ADMIN_DISTRIBUTED_BRUTE_FORCE`, Slack "관리자 계정: demo_admin"
+4. 없는 아이디(`demo_admin`)여도 똑같이 잠긴다는 점 — 응답으로 관리자 아이디 존재 여부를 알 수 없음
+5. 허용 목록 PC에서는 같은 계정이 잠겨 있어도 로그인할 수 있다는 점(관리자 쫓아내기 방지)을 설명
+
 ## 6. 비밀번호 변경 → 다른 기기 로그아웃 (2분)
 
 1. 두 브라우저에서 같은 회원으로 로그인
@@ -60,6 +69,7 @@
 ## 7. 정리
 
 - `python scripts/unlock_ip.py --all --permanent --note "시연 정리"` — 시연에서 만든 잠금 전부 해제
+- `python scripts/unlock_account.py --admin --all` — 시연에서 잠근 관리자 계정 해제
 - 대시보드에서 시연용 사건 "해결", 시연용 IP 예외 "회수"
 - `TRUST_FORWARDED_FOR`를 다시 `false`로 되돌리기
 

@@ -25,6 +25,7 @@
 - **비밀번호 변경 + 다른 기기 로그인 해제** — 회원은 '내 프로필'(`/dashboard/profile`)에서 현재 비밀번호를 확인한 뒤 비밀번호를 바꿀 수 있습니다. 현재 비밀번호를 틀리면 로그인 실패와 같은 기준으로 기록·잠금되어 이 화면이 비밀번호 대입 우회로가 되지 않고, 바꾸면 세션 세대 번호(`users.session_version`)가 올라가 이 기기를 제외한 모든 로그인 세션(탈취된 세션 포함)이 끊기며 가입 이메일로 변경 알림이 갑니다. 자세한 내용은 [guide35_password_change.md](docs/beginner-guide/guide35_password_change.md) 참고
 - **배포 환경 DB 연결 안정화** — Vercel(서버리스)에서 쉬던 Supabase 연결을 재사용하다 "Server disconnected"로 가끔 500이 나던 문제를, HTTP/1.1 연결과 조회 요청 1회 자동 재시도로 해결. 자세한 내용은 [guide36_db_connection.md](docs/beginner-guide/guide36_db_connection.md) 참고
 - **복구 코드 시도 제한 보강 + 관리자 세션 검증** — 6자리 복구 코드는 비교하기 전에 시도권을 조건부 UPDATE로 먼저 예약해서, 동시에 여러 번 보내도 5회를 넘겨 맞춰볼 수 없습니다(`/recovery/verify`에 IP당 분당 10회 한도도 추가). 관리자 세션은 요청마다 DB의 계정(id·아이디)과 대조하고 로그인 후 8시간(`ADMIN_SESSION_MAX_HOURS`)이 지나면 만료되어, 삭제된 관리자의 쿠키로는 대시보드를 볼 수 없습니다. 배포 직후 관리자는 한 번 다시 로그인해야 합니다. 자세한 내용은 [guide37_session_and_code_hardening.md](docs/beginner-guide/guide37_session_and_code_hardening.md) 참고
+- **관리자 계정 단위 잠금** — `/admin/login`도 회원처럼 계정 단위로 잠급니다. IP와 무관하게 한 관리자 아이디가 15분 안에 8회를 넘게 실패하면 5분간 잠기고(분산 브루트포스 대응), Slack CRITICAL 알림과 `ADMIN_DISTRIBUTED_BRUTE_FORCE` 이벤트가 남습니다. 회원 잠금과는 별도 표(`admin_account_lockouts`)라 같은 이름의 회원과 서로 영향을 주지 않고, 아이디가 없어도 똑같이 잠겨 관리자 아이디 존재 여부가 드러나지 않습니다. 잠금이 관리자를 쫓아내는 수단이 되지 않도록 허용 목록(`PERMANENT_LOCK_IP_ALLOWLIST`) IP는 계정 잠금을 건너뛰고, 영구 잠금으로는 올리지 않습니다. 해제는 대시보드(super_admin 전용) 또는 `scripts/unlock_account.py --admin`. 자세한 내용은 [guide38_admin_account_lockout.md](docs/beginner-guide/guide38_admin_account_lockout.md) 참고
 - **임계값 튜닝 리포트** — `scripts/tune_thresholds.py`로 최근 N일간 CRITICAL(IP/계정 잠금) 이벤트 중 관리자가 자동 만료를 기다리지 않고 훨씬 빨리 수동 해제한 비율을 event_type별로 집계. 오탐(너무 예민한 임계값) 여부를 점검하는 완전한 읽기 전용 도구. 자세한 내용은 [docs/beginner-guide/guide30_threshold_tuning.md](docs/beginner-guide/guide30_threshold_tuning.md) 참고
 
 ## 기술 스택
@@ -56,7 +57,7 @@ pip install -r requirements.txt
 
 ### 3. Supabase 프로젝트 준비
 1. [supabase.com](https://supabase.com)에서 프로젝트 생성
-2. **SQL Editor**에서 [docs/schema.sql](docs/schema.sql) 내용 전체 실행 (`users`, `login_attempts`, `lockouts`, `account_lockouts`, `admin_users`, `admin_login_log`, `app_settings`, `ip_locations`, `signup_attempts`, `posts`, `comments`, `post_attempts`, `comment_attempts`, `not_found_attempts`, `unauthorized_attempts`, `page_access_attempts`, `security_events`, `roles`, `permissions` 19개 테이블 생성). 영구 잠금 기능(guide33)을 쓰려면 기존 DB에는 [docs/migrations/guide33_permanent_lock.sql](docs/migrations/guide33_permanent_lock.sql)을, 비밀번호 변경 기능(guide35)을 쓰려면 [docs/migrations/guide35_password_change.sql](docs/migrations/guide35_password_change.sql)을 **추가로** 실행해야 합니다(`schema.sql` 맨 아래에도 같은 내용이 들어 있고, 여러 번 실행해도 안전합니다). 특히 guide35 SQL은 **새 코드를 배포하기 전에** 실행해야 합니다 — 없으면 회원 화면 전체가 오류가 납니다
+2. **SQL Editor**에서 [docs/schema.sql](docs/schema.sql) 내용 전체 실행 (`users`, `login_attempts`, `lockouts`, `account_lockouts`, `admin_users`, `admin_login_log`, `app_settings`, `ip_locations`, `signup_attempts`, `posts`, `comments`, `post_attempts`, `comment_attempts`, `not_found_attempts`, `unauthorized_attempts`, `page_access_attempts`, `security_events`, `roles`, `permissions` 19개 테이블 생성). 영구 잠금 기능(guide33)을 쓰려면 기존 DB에는 [docs/migrations/guide33_permanent_lock.sql](docs/migrations/guide33_permanent_lock.sql)을, 비밀번호 변경 기능(guide35)을 쓰려면 [docs/migrations/guide35_password_change.sql](docs/migrations/guide35_password_change.sql)을 **추가로** 실행해야 합니다(`schema.sql` 맨 아래에도 같은 내용이 들어 있고, 여러 번 실행해도 안전합니다). 특히 guide35 SQL은 **새 코드를 배포하기 전에** 실행해야 합니다 — 없으면 회원 화면 전체가 오류가 납니다. 관리자 계정 단위 잠금(guide38)을 쓰려면 [docs/migrations/guide38_admin_account_lockout.sql](docs/migrations/guide38_admin_account_lockout.sql)도 **배포 전에** 실행해야 합니다 — 없으면 `/admin/login`과 대시보드가 오류가 납니다
 3. **Project Settings → API**에서 `Project URL`과 `service_role` key 확인
 
 ### 4. 환경변수 설정
@@ -77,6 +78,7 @@ cp .env.example .env
 | `PERMANENT_LOCK_*` | 영구 잠금 정책 — `STRIKE_COUNT`/`ACCOUNT_STRIKE_COUNT`(기본 2회째 승격), `STRIKE_WINDOW_DAYS`(30), `AUTO_ON_HIGH`(false=HIGH 사건은 관리자 승인 대기), `AUTO_CLOSE_INCIDENT`(false), `IP_ALLOWLIST`(기본 `127.0.0.1,::1` — **관리자 PC IP를 꼭 추가**) |
 | `MAIL_BACKEND` / `SMTP_*` / `MAIL_FROM` / `PUBLIC_BASE_URL` | 복구 메일 발송. 개발은 `console`(터미널 출력, 운영에서는 거부됨) 또는 Mailpit(`docker compose -f docker-compose.mailpit.yml up -d`, `SMTP_HOST=127.0.0.1` `SMTP_PORT=1025` `SMTP_STARTTLS=false`, 받은 메일은 http://127.0.0.1:8025). **배포(Vercel)** 는 `MAIL_BACKEND=smtp` + Gmail SMTP(앱 비밀번호) 설정이 필요합니다 — 환경변수 목록과 점검 방법은 [guide34a_email_recovery.md](docs/beginner-guide/guide34a_email_recovery.md)의 "배포(Vercel)에서 복구 메일 보내기" 참고. `PUBLIC_BASE_URL`은 복구 링크의 기준 주소로, Host 헤더 대신 이 값만 씁니다. 설정은 `python scripts/send_test_mail.py --to 내주소@gmail.com`으로 미리 확인할 수 있습니다 |
 | `FLASK_ENV` | 배포(Vercel)에서는 반드시 `production` — 세션·기기 쿠키에 Secure가 붙고, 토큰을 로그에 찍는 console 메일 백엔드가 차단됩니다. 로컬 HTTP 서버에서 이 값을 켜면 로그인 쿠키가 전송되지 않으니 로컬에서는 비워 두세요 |
+| (선택) `ADMIN_ACCOUNT_FAILURE_THRESHOLD` / `ADMIN_ACCOUNT_DETECTION_WINDOW_SECONDS` | 관리자 계정 단위 잠금 기준(기본 8회 초과 / 900초=15분, guide38). IP와 무관하게 한 관리자 아이디의 실패를 셉니다 |
 | (선택) `ADMIN_SESSION_MAX_HOURS` | 관리자 세션 최대 수명(시간, 기본 8). 로그인 시각부터 세며, 지나면 다시 로그인해야 합니다(guide37) |
 | (선택) `RECOVERY_*`, `IP_EXEMPTION_*`, `SMTP_USE_SSL`, `SMTP_TIMEOUT_SECONDS`, `MAIL_FAILURE_ALERT_COOLDOWN_SECONDS` | 복구 정책(토큰 유효 15분, 요청 한도, 응답 고정 8초, 보호관찰 24시간 등)과 메일 세부 설정. 기본값으로 충분하며 전체 목록은 [.env.example](.env.example)과 [guide34a](docs/beginner-guide/guide34a_email_recovery.md) 참고 |
 | `VERCEL_AUTOMATION_BYPASS_SECRET` | Vercel Authentication(프리뷰 배포 보호)을 우회하는 Protection Bypass Secret. `scripts/bruteforce_sim.py`로 Vercel 프리뷰 배포를 대상으로 테스트할 때만 필요, 로컬 서버·운영 배포에는 불필요 |
@@ -246,7 +248,7 @@ login-watchdog/
 ├── tests/                         # pytest 단위 테스트
 ├── scripts/                       # 유지보수 스크립트 (bruteforce_sim.py, daily_report.py, unlock_ip.py, create_admin.py 등 — 위 "유지보수 스크립트" 참고)
 ├── docs/schema.sql                # Supabase 테이블 정의
-├── docs/migrations/               # 기존 DB에 추가로 실행할 SQL (guide33 영구 잠금, guide35 비밀번호 변경)
+├── docs/migrations/               # 기존 DB에 추가로 실행할 SQL (guide33 영구 잠금, guide35 비밀번호 변경, guide38 관리자 계정 잠금)
 ├── docker-compose.mailpit.yml     # 개발용 가짜 메일 서버(Mailpit) — 실제 발송 없이 메일 흐름 확인
 ├── docs/beginner-guide/           # 비전공자용 단계별 구현 해설서 (36단계, 단계별 파일로 분리)
 ├── docs/board-comment/            # 게시판·댓글 기능 설계 문서(분석 → 결정 → 계획 → 결과)
@@ -257,7 +259,7 @@ login-watchdog/
 ## 더 자세히 알고 싶다면
 
 - [plan.md](plan.md) — 각 파일을 왜 이렇게 설계했는지에 대한 상세 근거
-- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide37_session_and_code_hardening.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
+- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide38_admin_account_lockout.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
 - [docs/board-comment/](docs/board-comment) — 게시판·댓글 기능을 왜 이렇게 설계했는지(구현 전 분석 → 모호한 질문 11개 결정 → 구현 계획 → 결과 보고) 순서대로 기록한 문서 4종
 - [docs/refactor/2026-09-15-file-split.md](docs/refactor/2026-09-15-file-split.md) — `app.py`/`db.py`/`dashboard.js`를 각각 `routes/`+`helpers.py`, `db/` 패키지, `public/js/dashboard/` ES 모듈로 나눈 리팩터링 배경과 과정
 
@@ -273,6 +275,7 @@ login-watchdog/
 - **대시보드 화면은 일부만 역할을 반영** — "관리자 계정 관리" 카드는 서버가 role에 따라 데이터를 아예 보내지 않고, 영구 잠금·복구 요청·IP 예외 카드는 `/api/status`가 내려주는 권한 목록(`permissions`)에 따라 버튼을 숨깁니다(guide33). 그 외 기존 버튼(회원 삭제, 게시글·댓글 삭제, 회원가입 토글, IP 해제 등)은 역할과 무관하게 보이고, 권한이 없는 역할이 눌러도 서버가 403으로 막을 뿐 화면에 "권한 없음" 안내는 뜨지 않습니다.
 - **영구 IP 잠금과 `TRUST_FORWARDED_FOR`** — 영구 잠금은 접속 IP를 근거로 하므로 `TRUST_FORWARDED_FOR=true`(헤더를 믿는 데모 설정)에서는 누구나 헤더로 임의 IP를 영구 잠금 상태로 만들 수 있습니다(로컬 시연 전용으로만 켜세요). 배포(Vercel, `TRUST_FORWARDED_FOR=false`)에서는 서버가 실제 사용자별 공인 IP를 기록하는 것을 확인했습니다. 관리자 PC의 IP는 반드시 `PERMANENT_LOCK_IP_ALLOWLIST`에 넣어두세요(가정·학교 와이파이처럼 IP가 바뀌면 갱신 필요).
 - **영구 잠금은 이미 로그인된 세션을 끊지 않음** — 잠금은 새 로그인만 막습니다. 다른 기기의 세션을 끊는 것은 회원이 비밀번호를 바꿀 때뿐입니다(guide35).
+- **관리자 계정 잠금은 허용 목록 IP에서는 적용되지 않음** — 공격자가 일부러 틀려 관리자를 못 들어오게 만드는 것을 막기 위한 의도된 예외입니다(guide38). 그래서 `PERMANENT_LOCK_IP_ALLOWLIST`에는 실제 관리자 PC만 넣어야 하며, 허용 목록에 넣은 IP가 뚫리면 그 IP에서는 IP 잠금만 남습니다. 관리자 계정 잠금은 5분 임시 잠금뿐이라, 천천히 계속 시도하는 공격은 5분마다 다시 잠기며 그때마다 Slack 알림이 갑니다.
 - **관리자 로그인 IP가 영구 잠금되면** 그 IP에서는 관리자 로그인도 막히고 이메일 복구도 없습니다. 다른 관리자/다른 IP로 로그인해 대시보드에서 풀거나, 터미널에서 `python scripts/unlock_ip.py --ip <IP> --permanent`로 풀어야 합니다.
 - **DB 연결 끊김은 조회만 자동 재시도** — 서버리스에서 쉬던 연결이 끊겨 가끔 500이 나던 문제를 HTTP/1.1 연결과 조회(GET) 1회 재시도로 막았습니다(guide36). 기록·수정 요청은 두 번 기록될 위험 때문에 재시도하지 않아서, 그 순간 연결이 끊기면 드물게 오류가 날 수 있습니다.
 - **L3/L4(네트워크/전송 계층) 공격 대응은 아직 없음** — 현재 방어 로직은 전부 HTTP 요청(L7) 내용을 근거로 판단합니다. SYN Flood, 포트 스캐닝처럼 그보다 아래 계층에서 발생하는 공격은 별도의 관찰 지점(리버스 프록시/방화벽 등) 설계가 필요하며, 이 프로젝트의 다음 확장 목표입니다.
