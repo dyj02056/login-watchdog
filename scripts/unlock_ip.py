@@ -33,6 +33,7 @@ load_dotenv()
 
 import db  # noqa: E402  (load_dotenv()가 SUPABASE_URL 등을 먼저 읽어들인 뒤에 import 해야 함)
 import lockdown  # noqa: E402
+from ip_utils import normalize_ip  # noqa: E402
 
 
 # --permanent로 영구 잠금을 풀 때 lock_history에 남길 기본 사유 — 터미널에서 풀어도
@@ -159,7 +160,8 @@ def main() -> None:
         return
 
     if args.ip:
-        unlock_one(args.ip, args.permanent, args.note)
+        # 잠금은 IPv6면 /64 대역 키로 걸려 있다(guide42) — 전체 주소를 넣어도 같은 키로 바꿔서 찾는다.
+        unlock_one(normalize_ip(args.ip), args.permanent, args.note)
         return
 
     # 아무 옵션도 주지 않으면 "조회만" 하고 끝낸다 — 실수로 뭔가를 풀어버리는

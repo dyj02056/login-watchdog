@@ -21,6 +21,7 @@ import db
 import detector
 import geoip
 import soar
+from ip_utils import normalize_ip
 
 
 def _attach_locations(attempts: list[dict]) -> list[dict]:
@@ -71,6 +72,11 @@ def get_request_ip() -> str:
     를 켠 환경에서 그 문자열이 외부 요청 주소에 섞여 들어갈 수 있다.
     ipaddress.ip_address()로 "진짜 IP 형식인가"부터 확인하고, 아니면 헤더값을
     버리고 원래 접속 IP(request.remote_addr)로 되돌아간다.
+
+    IPv6 대역 단위 (guide42): 돌려주는 값은 ip_utils.normalize_ip()를 거친 "탐지·잠금 단위"다 —
+    IPv4는 그대로, IPv6는 /64 대역(예: 2001:db8:1:2::/64)이다. IPv6 사용자는 대역 안에서 주소를
+    거의 공짜로 바꿀 수 있어서, 주소 하나 단위로 세면 IP 잠금·요청 제한이 모두 우회되기 때문이다.
+    이 함수 하나만 바꾸면 이 값을 쓰는 탐지·잠금·요청 제한·이벤트가 전부 같은 단위로 동작한다.
     """
     if config.TRUST_FORWARDED_FOR:
         forwarded = request.headers.get("X-Forwarded-For")
@@ -81,9 +87,9 @@ def get_request_ip() -> str:
             try:
                 ipaddress.ip_address(candidate)
             except ValueError:
-                return request.remote_addr
-            return candidate
-    return request.remote_addr
+                return normalize_ip(request.remote_addr)
+            return normalize_ip(candidate)
+    return normalize_ip(request.remote_addr)
 
 
 # ============================================================================

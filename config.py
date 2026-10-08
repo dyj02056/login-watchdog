@@ -173,6 +173,9 @@ PERMANENT_LOCK_AUTO_CLOSE_INCIDENT = (
 
 # 절대 영구 잠그지 않을 IP(관리자 PC, Docker 게이트웨이 등). 자기 자신을 잠그는 "자충수"
 # 방지용이다(soar.notify_unauthorized_access 주석과 같은 이유).
+# IPv6를 몇 비트 대역 단위로 세고 잠글지(guide42). 보통 가정·회선 하나가 /64를 받는다 — 통신사가
+# /56·/48을 주는 환경이면 값을 줄인다. 1~128 밖의 값은 64로 취급한다(ip_utils.py).
+IPV6_PREFIX_LENGTH = int(os.environ.get("IPV6_PREFIX_LENGTH", 64))
 PERMANENT_LOCK_IP_ALLOWLIST = _csv_set(os.environ.get("PERMANENT_LOCK_IP_ALLOWLIST", "127.0.0.1,::1"))
 
 # 이메일 복구 정책

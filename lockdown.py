@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 import alert
 import config
 import db
+from ip_utils import normalize_ip
 
 PERMANENT_LOCK_EVENT_TYPE = "PERMANENT_LOCK"
 
@@ -33,8 +34,12 @@ _ADMIN_LOGIN_EVENT_TYPES = ["ADMIN_BRUTE_FORCE"]
 # ---------------------------------------------------------------------------
 
 def is_ip_allowlisted(ip: str) -> bool:
-    """이 IP가 "절대 영구 잠그지 않는 목록"(관리자 PC 등)에 있는지."""
-    return ip in config.PERMANENT_LOCK_IP_ALLOWLIST
+    """이 IP가 "절대 영구 잠그지 않는 목록"(관리자 PC 등)에 있는지.
+
+    양쪽을 같은 단위로 정규화해서 비교한다(guide42) — 요청 IP는 IPv6면 /64 대역 키로 들어오므로,
+    .env에 관리자 PC의 IPv6 전체 주소를 적어도 같은 대역이면 허용 목록으로 인정된다."""
+    key = normalize_ip(ip)
+    return any(normalize_ip(entry) == key for entry in config.PERMANENT_LOCK_IP_ALLOWLIST)
 
 
 def is_permanent_ip(ip: str) -> bool:
