@@ -27,6 +27,7 @@
 - **복구 코드 시도 제한 보강 + 관리자 세션 검증** — 6자리 복구 코드는 비교하기 전에 시도권을 조건부 UPDATE로 먼저 예약해서, 동시에 여러 번 보내도 5회를 넘겨 맞춰볼 수 없습니다(`/recovery/verify`에 IP당 분당 10회 한도도 추가). 관리자 세션은 요청마다 DB의 계정(id·아이디)과 대조하고 로그인 후 8시간(`ADMIN_SESSION_MAX_HOURS`)이 지나면 만료되어, 삭제된 관리자의 쿠키로는 대시보드를 볼 수 없습니다. 배포 직후 관리자는 한 번 다시 로그인해야 합니다. 자세한 내용은 [guide37_session_and_code_hardening.md](docs/beginner-guide/guide37_session_and_code_hardening.md) 참고
 - **관리자 계정 단위 잠금** — `/admin/login`도 회원처럼 계정 단위로 잠급니다. IP와 무관하게 한 관리자 아이디가 15분 안에 8회를 넘게 실패하면 5분간 잠기고(분산 브루트포스 대응), Slack CRITICAL 알림과 `ADMIN_DISTRIBUTED_BRUTE_FORCE` 이벤트가 남습니다. 회원 잠금과는 별도 표(`admin_account_lockouts`)라 같은 이름의 회원과 서로 영향을 주지 않고, 아이디가 없어도 똑같이 잠겨 관리자 아이디 존재 여부가 드러나지 않습니다. 잠금이 관리자를 쫓아내는 수단이 되지 않도록 허용 목록(`PERMANENT_LOCK_IP_ALLOWLIST`) IP는 계정 잠금을 건너뛰고, 영구 잠금으로는 올리지 않습니다. 해제는 대시보드(super_admin 전용) 또는 `scripts/unlock_account.py --admin`. 자세한 내용은 [guide38_admin_account_lockout.md](docs/beginner-guide/guide38_admin_account_lockout.md) 참고
 - **계정 존재 여부 노출 방지** — `/login`은 임시·영구 계정 잠금을 같은 문구와 같은 복구 링크로 안내합니다(영구 승격은 가입된 아이디에만 일어나서 "영구"라는 말이 가입 여부를 알려줬음). 복구용 6자리 코드는 계정·IP 복구 모두 **복구를 요청한 기기에서만** 받고, 아이디 없음·요청 없음·다른 기기를 같은 문구로 답하며 시도 횟수도 쓰지 않아, 다른 기기에서 진행 중인 복구를 알아내거나 남의 복구를 취소시킬 수 없습니다(메일 링크는 어느 기기에서나 동작). 자세한 내용은 [guide39_account_enumeration.md](docs/beginner-guide/guide39_account_enumeration.md) 참고
+- **이메일 인증 + 이메일 변경 보호** — 가입하면 가입 이메일로 인증 링크가 가고(가입·로그인은 바로 가능), 대시보드에서 다시 보낼 수 있습니다. 이메일 상태는 미인증/인증됨/반송 3가지이고, 인증된 이메일로만 비밀번호 재설정 메일을 보냅니다(다음 단계). 이메일 변경은 **현재 비밀번호 + 새 주소로 보낸 확인 링크**를 거쳐야 반영되고, 바뀌면 기존 주소로 알림이 갑니다 — 세션만 탈취한 사람이 이메일을 바꿔 계정을 가져가는 경로를 막습니다. 이미 다른 계정이 쓰는 주소여도 화면 응답은 같습니다. 자세한 내용은 [guide40_email_verification.md](docs/beginner-guide/guide40_email_verification.md) 참고
 - **임계값 튜닝 리포트** — `scripts/tune_thresholds.py`로 최근 N일간 CRITICAL(IP/계정 잠금) 이벤트 중 관리자가 자동 만료를 기다리지 않고 훨씬 빨리 수동 해제한 비율을 event_type별로 집계. 오탐(너무 예민한 임계값) 여부를 점검하는 완전한 읽기 전용 도구. 자세한 내용은 [docs/beginner-guide/guide30_threshold_tuning.md](docs/beginner-guide/guide30_threshold_tuning.md) 참고
 
 ## 기술 스택
@@ -58,7 +59,7 @@ pip install -r requirements.txt
 
 ### 3. Supabase 프로젝트 준비
 1. [supabase.com](https://supabase.com)에서 프로젝트 생성
-2. **SQL Editor**에서 [docs/schema.sql](docs/schema.sql) 내용 전체 실행 (`users`, `login_attempts`, `lockouts`, `account_lockouts`, `admin_users`, `admin_login_log`, `app_settings`, `ip_locations`, `signup_attempts`, `posts`, `comments`, `post_attempts`, `comment_attempts`, `not_found_attempts`, `unauthorized_attempts`, `page_access_attempts`, `security_events`, `roles`, `permissions` 19개 테이블 생성). 영구 잠금 기능(guide33)을 쓰려면 기존 DB에는 [docs/migrations/guide33_permanent_lock.sql](docs/migrations/guide33_permanent_lock.sql)을, 비밀번호 변경 기능(guide35)을 쓰려면 [docs/migrations/guide35_password_change.sql](docs/migrations/guide35_password_change.sql)을 **추가로** 실행해야 합니다(`schema.sql` 맨 아래에도 같은 내용이 들어 있고, 여러 번 실행해도 안전합니다). 특히 guide35 SQL은 **새 코드를 배포하기 전에** 실행해야 합니다 — 없으면 회원 화면 전체가 오류가 납니다. 관리자 계정 단위 잠금(guide38)을 쓰려면 [docs/migrations/guide38_admin_account_lockout.sql](docs/migrations/guide38_admin_account_lockout.sql)도 **배포 전에** 실행해야 합니다 — 없으면 `/admin/login`과 대시보드가 오류가 납니다
+2. **SQL Editor**에서 [docs/schema.sql](docs/schema.sql) 내용 전체 실행 (`users`, `login_attempts`, `lockouts`, `account_lockouts`, `admin_users`, `admin_login_log`, `app_settings`, `ip_locations`, `signup_attempts`, `posts`, `comments`, `post_attempts`, `comment_attempts`, `not_found_attempts`, `unauthorized_attempts`, `page_access_attempts`, `security_events`, `roles`, `permissions` 19개 테이블 생성). 영구 잠금 기능(guide33)을 쓰려면 기존 DB에는 [docs/migrations/guide33_permanent_lock.sql](docs/migrations/guide33_permanent_lock.sql)을, 비밀번호 변경 기능(guide35)을 쓰려면 [docs/migrations/guide35_password_change.sql](docs/migrations/guide35_password_change.sql)을 **추가로** 실행해야 합니다(`schema.sql` 맨 아래에도 같은 내용이 들어 있고, 여러 번 실행해도 안전합니다). 특히 guide35 SQL은 **새 코드를 배포하기 전에** 실행해야 합니다 — 없으면 회원 화면 전체가 오류가 납니다. 관리자 계정 단위 잠금(guide38)을 쓰려면 [docs/migrations/guide38_admin_account_lockout.sql](docs/migrations/guide38_admin_account_lockout.sql)도 **배포 전에** 실행해야 합니다 — 없으면 `/admin/login`과 대시보드가 오류가 납니다. 이메일 인증(guide40)은 [docs/migrations/guide40_email_verification.sql](docs/migrations/guide40_email_verification.sql)을 **배포 전에** 실행해야 합니다 — 없으면 회원가입과 회원 화면이 오류가 납니다
 3. **Project Settings → API**에서 `Project URL`과 `service_role` key 확인
 
 ### 4. 환경변수 설정
@@ -79,6 +80,7 @@ cp .env.example .env
 | `PERMANENT_LOCK_*` | 영구 잠금 정책 — `STRIKE_COUNT`/`ACCOUNT_STRIKE_COUNT`(기본 2회째 승격), `STRIKE_WINDOW_DAYS`(30), `AUTO_ON_HIGH`(false=HIGH 사건은 관리자 승인 대기), `AUTO_CLOSE_INCIDENT`(false), `IP_ALLOWLIST`(기본 `127.0.0.1,::1` — **관리자 PC IP를 꼭 추가**) |
 | `MAIL_BACKEND` / `SMTP_*` / `MAIL_FROM` / `PUBLIC_BASE_URL` | 복구 메일 발송. 개발은 `console`(터미널 출력, 운영에서는 거부됨) 또는 Mailpit(`docker compose -f docker-compose.mailpit.yml up -d`, `SMTP_HOST=127.0.0.1` `SMTP_PORT=1025` `SMTP_STARTTLS=false`, 받은 메일은 http://127.0.0.1:8025). **배포(Vercel)** 는 `MAIL_BACKEND=smtp` + Gmail SMTP(앱 비밀번호) 설정이 필요합니다 — 환경변수 목록과 점검 방법은 [guide34a_email_recovery.md](docs/beginner-guide/guide34a_email_recovery.md)의 "배포(Vercel)에서 복구 메일 보내기" 참고. `PUBLIC_BASE_URL`은 복구 링크의 기준 주소로, Host 헤더 대신 이 값만 씁니다. 설정은 `python scripts/send_test_mail.py --to 내주소@gmail.com`으로 미리 확인할 수 있습니다 |
 | `FLASK_ENV` | 배포(Vercel)에서는 반드시 `production` — 세션·기기 쿠키에 Secure가 붙고, 토큰을 로그에 찍는 console 메일 백엔드가 차단됩니다. 로컬 HTTP 서버에서 이 값을 켜면 로그인 쿠키가 전송되지 않으니 로컬에서는 비워 두세요 |
+| (선택) `EMAIL_TOKEN_TTL_MINUTES` / `EMAIL_TOKEN_COOLDOWN_SECONDS` / `EMAIL_TOKEN_MAX_PER_DAY` / `EMAIL_CONFIRM_RATE_LIMIT_PER_MINUTE` | 이메일 인증·변경 확인 링크(guide40): 유효 15분, 같은 회원·용도 재발송 60초 간격·하루 5회, 확인 제출 IP당 분당 10회 |
 | (선택) `ADMIN_ACCOUNT_FAILURE_THRESHOLD` / `ADMIN_ACCOUNT_DETECTION_WINDOW_SECONDS` | 관리자 계정 단위 잠금 기준(기본 8회 초과 / 900초=15분, guide38). IP와 무관하게 한 관리자 아이디의 실패를 셉니다 |
 | (선택) `ADMIN_SESSION_MAX_HOURS` | 관리자 세션 최대 수명(시간, 기본 8). 로그인 시각부터 세며, 지나면 다시 로그인해야 합니다(guide37) |
 | (선택) `RECOVERY_*`, `IP_EXEMPTION_*`, `SMTP_USE_SSL`, `SMTP_TIMEOUT_SECONDS`, `MAIL_FAILURE_ALERT_COOLDOWN_SECONDS` | 복구 정책(토큰 유효 15분, 요청 한도, 응답 고정 8초, 보호관찰 24시간 등)과 메일 세부 설정. 기본값으로 충분하며 전체 목록은 [.env.example](.env.example)과 [guide34a](docs/beginner-guide/guide34a_email_recovery.md) 참고 |
@@ -249,7 +251,7 @@ login-watchdog/
 ├── tests/                         # pytest 단위 테스트
 ├── scripts/                       # 유지보수 스크립트 (bruteforce_sim.py, daily_report.py, unlock_ip.py, create_admin.py 등 — 위 "유지보수 스크립트" 참고)
 ├── docs/schema.sql                # Supabase 테이블 정의
-├── docs/migrations/               # 기존 DB에 추가로 실행할 SQL (guide33 영구 잠금, guide35 비밀번호 변경, guide38 관리자 계정 잠금)
+├── docs/migrations/               # 기존 DB에 추가로 실행할 SQL (guide33 영구 잠금, guide35 비밀번호 변경, guide38 관리자 계정 잠금, guide40 이메일 인증)
 ├── docker-compose.mailpit.yml     # 개발용 가짜 메일 서버(Mailpit) — 실제 발송 없이 메일 흐름 확인
 ├── docs/beginner-guide/           # 비전공자용 단계별 구현 해설서 (36단계, 단계별 파일로 분리)
 ├── docs/board-comment/            # 게시판·댓글 기능 설계 문서(분석 → 결정 → 계획 → 결과)
@@ -260,7 +262,7 @@ login-watchdog/
 ## 더 자세히 알고 싶다면
 
 - [plan.md](plan.md) — 각 파일을 왜 이렇게 설계했는지에 대한 상세 근거
-- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide39_account_enumeration.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
+- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide40_email_verification.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
 - [docs/board-comment/](docs/board-comment) — 게시판·댓글 기능을 왜 이렇게 설계했는지(구현 전 분석 → 모호한 질문 11개 결정 → 구현 계획 → 결과 보고) 순서대로 기록한 문서 4종
 - [docs/refactor/2026-09-15-file-split.md](docs/refactor/2026-09-15-file-split.md) — `app.py`/`db.py`/`dashboard.js`를 각각 `routes/`+`helpers.py`, `db/` 패키지, `public/js/dashboard/` ES 모듈로 나눈 리팩터링 배경과 과정
 
@@ -283,7 +285,8 @@ login-watchdog/
 - **개발용 서버 사용** — `app.run(debug=True)`는 Flask가 공식적으로 "운영 배포에 쓰지 말라"고 명시하는 개발용 서버입니다. 외부 공개 서비스로 배포하려면 별도의 프로덕션 WSGI 서버(gunicorn 등)로 교체해야 합니다.
 - **회원가입 응답은 아직 가입 여부를 알려줌** — "이미 사용 중인 아이디 또는 이메일입니다"로 가입된 아이디·이메일을 확인할 수 있습니다. 숨기려면 가입 확인 메일 방식으로 바꿔야 해서 남겨 두었습니다(가입은 IP당 빈도 제한이 있음, guide39). 로그인 잠금 문구와 복구 코드 화면은 가입 여부를 드러내지 않습니다.
 - **복구 코드는 요청한 기기에서만** — PC에서 복구를 요청하고 휴대폰 브라우저에 6자리 코드를 넣으면 거절됩니다. 이 경우 휴대폰에서는 메일의 링크를 누르면 됩니다(guide39).
-- **감시 대상 계정은 데모 수준 인증** — 가입 때 이메일 소유 확인과 "비밀번호를 잊었을 때" 메일 재설정은 제공하지 않습니다(로그인 후 비밀번호 변경은 가능, 잊은 경우는 관리자가 처리). 영구 잠금의 이메일 복구에서 메일 서버가 수신자를 영구 거부하면 그 계정은 관리자만 풀 수 있게 표시됩니다 — Gmail처럼 나중에 반송하는 경우는 알 수 없습니다.
+- **이메일 인증은 가입을 막지 않음** — 가입 직후 인증 메일을 보내지만, 인증하지 않아도 로그인·이용은 가능합니다(guide40). 인증 여부는 비밀번호 재설정(다음 단계) 같은 "계정을 되찾는 메일"에만 영향을 줍니다. 기존 회원은 모두 미인증 상태로 시작하므로 대시보드에서 한 번 인증해야 합니다.
+- **감시 대상 계정은 데모 수준 인증** — "비밀번호를 잊었을 때" 메일 재설정은 아직 제공하지 않습니다(다음 단계 예정, 로그인 후 비밀번호 변경은 가능, 잊은 경우는 관리자가 처리). 영구 잠금의 이메일 복구에서 메일 서버가 수신자를 영구 거부하면 그 계정은 관리자만 풀 수 있게 표시됩니다 — Gmail처럼 나중에 반송하는 경우는 알 수 없습니다.
 - **IP 위치 조회는 참고용** — ip-api.com 무료 API는 HTTPS를 지원하지 않고(서버 간 통신이라 브라우저 보안 경고와는 무관), 도시 단위 정확도가 완벽하지 않을 수 있습니다. `127.0.0.1` 같은 사설 IP는 항상 "위치 확인 불가"로 표시됩니다.
 - **게시판은 회원 전용, 대댓글·첨부파일 미지원** — 비로그인 사용자는 글 목록조차 볼 수 없고, 댓글은 단일 depth(답글 불가)이며 이미지/파일 첨부도 지원하지 않습니다. 회원이 탈퇴해도 작성한 글·댓글은 삭제되지 않고 흔적만 남습니다(감사 로그와 동일한 정책). 새 댓글 알림은 웹소켓이 아니라 폴링(기본 5초, `BOARD_COMMENT_POLL_MS`) 방식입니다. 설계 배경은 [docs/board-comment/02-design-decisions.md](docs/board-comment/02-design-decisions.md) 참고.
 - **게시글 id 순차 조회(스크래핑) 미차단** — 로그인만 하면 다른 회원의 글 id를 하나씩 순차 조회해 게시판 전체를 스크래핑하는 것 자체는 막지 않습니다. 게시판이 "회원 전체 공개" 설계이므로 이는 버그가 아니라 의도된 범위입니다.

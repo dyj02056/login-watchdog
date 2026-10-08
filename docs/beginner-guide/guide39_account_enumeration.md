@@ -1,6 +1,6 @@
 # 39단계 — 로그인·복구 응답으로 계정 존재 여부가 드러나지 않게
 
-[◀ 38단계](guide38_admin_account_lockout.md) · [전체 목차](beginner-guide.md)
+[◀ 38단계](guide38_admin_account_lockout.md) · [전체 목차](beginner-guide.md) · [40단계 ▶](guide40_email_verification.md)
 
 > [34단계](guide34a_email_recovery.md)의 복구 요청 화면은 계정이 있는지 철저히 숨겼지만, 정작 **로그인 화면의 잠금 문구**와 **6자리 코드 입력 화면**이 가입 여부를 알려주고 있었습니다. 두 곳을 막고, 그 과정에서 찾은 **"남의 복구 요청을 취소시키는 공격"**도 함께 막았습니다. DB 스키마는 바뀌지 않습니다.
 
