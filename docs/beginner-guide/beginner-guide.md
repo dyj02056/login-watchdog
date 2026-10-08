@@ -48,6 +48,7 @@
 39. [39단계 — 로그인·복구 응답으로 계정 존재 여부가 드러나지 않게](guide39_account_enumeration.md)
 40. [40단계 — 이메일 인증 + 이메일 변경 보호](guide40_email_verification.md)
 41. [41단계 — 비밀번호 찾기 (인증된 이메일로 재설정)](guide41_password_reset.md)
+42. [42단계 — IPv6는 /64 대역 단위로 세고 잠근다](guide42_ipv6_prefix.md)
 
 ---
 

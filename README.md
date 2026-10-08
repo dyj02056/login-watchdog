@@ -29,6 +29,7 @@
 - **계정 존재 여부 노출 방지** — `/login`은 임시·영구 계정 잠금을 같은 문구와 같은 복구 링크로 안내합니다(영구 승격은 가입된 아이디에만 일어나서 "영구"라는 말이 가입 여부를 알려줬음). 복구용 6자리 코드는 계정·IP 복구 모두 **복구를 요청한 기기에서만** 받고, 아이디 없음·요청 없음·다른 기기를 같은 문구로 답하며 시도 횟수도 쓰지 않아, 다른 기기에서 진행 중인 복구를 알아내거나 남의 복구를 취소시킬 수 없습니다(메일 링크는 어느 기기에서나 동작). 자세한 내용은 [guide39_account_enumeration.md](docs/beginner-guide/guide39_account_enumeration.md) 참고
 - **이메일 인증 + 이메일 변경 보호** — 가입하면 가입 이메일로 인증 링크가 가고(가입·로그인은 바로 가능), 대시보드에서 다시 보낼 수 있습니다. 이메일 상태는 미인증/인증됨/반송 3가지이고, 인증된 이메일로만 비밀번호 재설정 메일을 보냅니다(다음 단계). 이메일 변경은 **현재 비밀번호 + 새 주소로 보낸 확인 링크**를 거쳐야 반영되고, 바뀌면 기존 주소로 알림이 갑니다 — 세션만 탈취한 사람이 이메일을 바꿔 계정을 가져가는 경로를 막습니다. 이미 다른 계정이 쓰는 주소여도 화면 응답은 같습니다. 자세한 내용은 [guide40_email_verification.md](docs/beginner-guide/guide40_email_verification.md) 참고
 - **비밀번호 찾기** — 로그인 화면의 "비밀번호 찾기"(또는 프로필의 "이메일로 재설정")에서 아이디를 입력하면, **인증된 이메일**로만 재설정 링크(15분, 1회용)가 갑니다. 아이디가 없든 미인증이든 화면 응답과 응답 시간은 같습니다. 새 비밀번호를 검사한 뒤에야 링크를 소비하고, 재설정하면 모든 기기의 로그인이 끊기며 알림 메일이 갑니다. 자세한 내용은 [guide41_password_reset.md](docs/beginner-guide/guide41_password_reset.md) 참고
+- **IPv6는 /64 대역 단위** — IPv6 사용자는 /64 대역 안에서 주소를 거의 공짜로 바꿀 수 있어서, 요청 IP를 한 곳(`helpers.get_request_ip`)에서 대역 키(예: `2001:db8:1:2::/64`)로 정규화합니다. 로그인 실패 집계·IP 잠금·요청 제한·보안 이벤트가 모두 대역 단위로 동작합니다(IPv4는 그대로). 현재 배포 주소에는 IPv6 입구가 없어 운영에는 IPv6가 들어오지 않으며, 호스팅 변경·자체 서버 운영에 대비한 것입니다. 자세한 내용은 [guide42_ipv6_prefix.md](docs/beginner-guide/guide42_ipv6_prefix.md) 참고
 - **임계값 튜닝 리포트** — `scripts/tune_thresholds.py`로 최근 N일간 CRITICAL(IP/계정 잠금) 이벤트 중 관리자가 자동 만료를 기다리지 않고 훨씬 빨리 수동 해제한 비율을 event_type별로 집계. 오탐(너무 예민한 임계값) 여부를 점검하는 완전한 읽기 전용 도구. 자세한 내용은 [docs/beginner-guide/guide30_threshold_tuning.md](docs/beginner-guide/guide30_threshold_tuning.md) 참고
 
 ## 기술 스택
@@ -81,6 +82,7 @@ cp .env.example .env
 | `PERMANENT_LOCK_*` | 영구 잠금 정책 — `STRIKE_COUNT`/`ACCOUNT_STRIKE_COUNT`(기본 2회째 승격), `STRIKE_WINDOW_DAYS`(30), `AUTO_ON_HIGH`(false=HIGH 사건은 관리자 승인 대기), `AUTO_CLOSE_INCIDENT`(false), `IP_ALLOWLIST`(기본 `127.0.0.1,::1` — **관리자 PC IP를 꼭 추가**) |
 | `MAIL_BACKEND` / `SMTP_*` / `MAIL_FROM` / `PUBLIC_BASE_URL` | 복구 메일 발송. 개발은 `console`(터미널 출력, 운영에서는 거부됨) 또는 Mailpit(`docker compose -f docker-compose.mailpit.yml up -d`, `SMTP_HOST=127.0.0.1` `SMTP_PORT=1025` `SMTP_STARTTLS=false`, 받은 메일은 http://127.0.0.1:8025). **배포(Vercel)** 는 `MAIL_BACKEND=smtp` + Gmail SMTP(앱 비밀번호) 설정이 필요합니다 — 환경변수 목록과 점검 방법은 [guide34a_email_recovery.md](docs/beginner-guide/guide34a_email_recovery.md)의 "배포(Vercel)에서 복구 메일 보내기" 참고. `PUBLIC_BASE_URL`은 복구 링크의 기준 주소로, Host 헤더 대신 이 값만 씁니다. 설정은 `python scripts/send_test_mail.py --to 내주소@gmail.com`으로 미리 확인할 수 있습니다 |
 | `FLASK_ENV` | 배포(Vercel)에서는 반드시 `production` — 세션·기기 쿠키에 Secure가 붙고, 토큰을 로그에 찍는 console 메일 백엔드가 차단됩니다. 로컬 HTTP 서버에서 이 값을 켜면 로그인 쿠키가 전송되지 않으니 로컬에서는 비워 두세요 |
+| (선택) `IPV6_PREFIX_LENGTH` | IPv6를 몇 비트 대역 단위로 세고 잠글지(기본 64, guide42). 회선 하나에 /56·/48을 주는 환경이면 줄입니다 |
 | (선택) `PASSWORD_RESET_MAX_PER_DAY` / `PASSWORD_RESET_MAX_PER_IP_PER_HOUR` / `PASSWORD_RESET_RATE_LIMIT_PER_MINUTE` | 비밀번호 찾기(guide41): 회원당 하루 3회, IP당 시간당 5회, 요청·재설정 제출 IP당 분당 10회. 응답 시간은 `RECOVERY_MIN_RESPONSE_SECONDS`를 같이 씁니다 |
 | (선택) `EMAIL_TOKEN_TTL_MINUTES` / `EMAIL_TOKEN_COOLDOWN_SECONDS` / `EMAIL_TOKEN_MAX_PER_DAY` / `EMAIL_CONFIRM_RATE_LIMIT_PER_MINUTE` | 이메일 인증·변경 확인 링크(guide40): 유효 15분, 같은 회원·용도 재발송 60초 간격·하루 5회, 확인 제출 IP당 분당 10회 |
 | (선택) `ADMIN_ACCOUNT_FAILURE_THRESHOLD` / `ADMIN_ACCOUNT_DETECTION_WINDOW_SECONDS` | 관리자 계정 단위 잠금 기준(기본 8회 초과 / 900초=15분, guide38). IP와 무관하게 한 관리자 아이디의 실패를 셉니다 |
@@ -264,13 +266,13 @@ login-watchdog/
 ## 더 자세히 알고 싶다면
 
 - [plan.md](plan.md) — 각 파일을 왜 이렇게 설계했는지에 대한 상세 근거
-- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide41_password_reset.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
+- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide42_ipv6_prefix.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
 - [docs/board-comment/](docs/board-comment) — 게시판·댓글 기능을 왜 이렇게 설계했는지(구현 전 분석 → 모호한 질문 11개 결정 → 구현 계획 → 결과 보고) 순서대로 기록한 문서 4종
 - [docs/refactor/2026-09-15-file-split.md](docs/refactor/2026-09-15-file-split.md) — `app.py`/`db.py`/`dashboard.js`를 각각 `routes/`+`helpers.py`, `db/` 패키지, `public/js/dashboard/` ES 모듈로 나눈 리팩터링 배경과 과정
 
 ## 알려진 제한사항
 
-- **IP 단위 잠금** — 계정이 아니라 접속 IP를 기준으로 잠급니다. 같은 공유 IP(회사·카페 와이파이 등)의 여러 사용자가 한 명의 실패 때문에 함께 잠길 수 있습니다. `/admin/login`도 `/login`과 같은 IP 기준 잠금을 공유하므로, 같은 컴퓨터에서 브루트포스를 시뮬레이션하다 관리자 계정 IP까지 함께 잠기면 대시보드의 "즉시 해제" 버튼도 쓸 수 없습니다(로그인 자체가 막혀서) — 이때는 `scripts/unlock_ip.py`로 터미널에서 바로 풀 수 있습니다.
+- **IP 단위 잠금** — 계정이 아니라 접속 IP를 기준으로 잠급니다. 같은 공유 IP(회사·카페 와이파이 등)의 여러 사용자가 한 명의 실패 때문에 함께 잠길 수 있습니다. `/admin/login`도 `/login`과 같은 IP 기준 잠금을 공유하므로, 같은 컴퓨터에서 브루트포스를 시뮬레이션하다 관리자 계정 IP까지 함께 잠기면 대시보드의 "즉시 해제" 버튼도 쓸 수 없습니다(로그인 자체가 막혀서) — 이때는 `scripts/unlock_ip.py`로 터미널에서 바로 풀 수 있습니다. IPv6는 주소 하나가 아니라 **/64 대역**을 한 단위로 잠그므로(guide42), 같은 대역(한 집·한 사무실 정도)의 사용자도 함께 잠깁니다.
 - **관리자 계정은 여전히 회원가입 화면 없음** — `.env` 값으로 서버 최초 기동 시 부트스트랩 계정 1명만 자동 생성됩니다. `super_admin`은 대시보드 "관리자 계정 관리" 카드에서 `security_viewer`/`security_admin` 계정을 만들 수 있지만, `super_admin` 계정 자체는 이 화면으로 만들 수 없고 `scripts/create_admin.py`를 터미널에서 직접 실행해야 합니다(의도된 제약 — "super_admin은 화면·서버 양쪽에서 늘리거나 지울 수 없다"는 원칙, guide26 참고). 또한 이 원칙이 코드로 강제되는 건 이 특정 화면/API에서뿐이라, Supabase에 직접 접속해 `admin_users.role`을 수정하는 것까지는 막지 못합니다 — 최종 책임자 계정이 유일한 super_admin일 때 그 계정이 잠기거나 삭제되면 Supabase에 직접 접속하지 않고는 아무도 새 super_admin을 만들 수 없습니다.
 - **자동 해제는 "정시"가 아니라 "다음 요청 시"** — 백그라운드 타이머 없이, `/login` 요청이나 대시보드 폴링이 들어올 때 만료된 잠금을 정리합니다. 한동안 요청이 없으면 5분이 지나도 실제 해제가 늦어질 수 있습니다.
 - **`TRUST_FORWARDED_FOR`는 데모 전용** — 켜두면 요청 헤더의 IP를 신뢰합니다(형식이 올바른 IP인지는 검증하지만, 그 값 자체가 진짜 요청자의 IP인지는 확인할 수 없습니다). 운영 환경에서 켜두면 공격자가 헤더에 임의의(형식은 유효한) IP를 넣는 것만으로 IP 잠금을 우회할 수 있어 위험합니다.

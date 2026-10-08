@@ -1,6 +1,6 @@
 # 41단계 — 비밀번호 찾기 (인증된 이메일로 재설정)
 
-[◀ 40단계](guide40_email_verification.md) · [전체 목차](beginner-guide.md)
+[◀ 40단계](guide40_email_verification.md) · [전체 목차](beginner-guide.md) · [42단계 ▶](guide42_ipv6_prefix.md)
 
 > 지금까지 비밀번호를 잊은 회원은 스스로 해결할 방법이 없어 관리자가 처리해야 했습니다. [40단계](guide40_email_verification.md)에서 "확인된 이메일"과 "세션만으로는 바꿀 수 없는 이메일"을 만들어 두었으므로, 이제 그 이메일로 **비밀번호를 재설정**할 수 있게 했습니다. DB 스키마 변경은 없습니다(토큰 용도 `PASSWORD_RESET`은 40단계 마이그레이션에서 미리 정의).
 
