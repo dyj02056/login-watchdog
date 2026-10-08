@@ -39,7 +39,7 @@
 | 회원별 하루 한도(3회)·쿨다운(60초) 초과 | 같은 안내 | 메일 없음 |
 | 같은 IP가 1시간에 5회 초과 | "요청이 너무 많습니다" | IP 기준이라 가입 여부와 무관 |
 
-응답 시간도 [34단계](guide34a_email_recovery.md) 복구 요청과 같은 **고정 응답 시간**(`RECOVERY_MIN_RESPONSE_SECONDS`, 기본 8초)으로 맞춥니다. 메일을 보내는 경우와 아무것도 안 하는 경우의 처리 시간 차이로 가입 여부를 추측할 수 없게 하기 위해서입니다. 복구 화면의 함수(`run_with_fixed_response_time`)를 그대로 공용으로 씁니다.
+응답 시간도 [34단계](guide34a_email_recovery.md) 복구 요청과 같은 **고정 응답 시간**(`RECOVERY_MIN_RESPONSE_SECONDS`, 기본 8초 → [43단계](guide43_recovery_request_limit.md)에서 5초)으로 맞춥니다. 메일을 보내는 경우와 아무것도 안 하는 경우의 처리 시간 차이로 가입 여부를 추측할 수 없게 하기 위해서입니다. 복구 화면의 함수(`run_with_fixed_response_time`)를 그대로 공용으로 씁니다.
 
 ## 링크 처리의 세부 원칙
 

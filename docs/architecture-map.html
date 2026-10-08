@@ -758,7 +758,7 @@
             <text class="node-role" x="115" y="280" text-anchor="middle" font-size="11">아이디 입력</text></g>
           <g><rect class="node-box" x="230" y="240" width="150" height="56" rx="9" style="stroke:var(--stage-server)"></rect>
             <text class="node-label" x="305" y="264" text-anchor="middle" font-size="12">routes/recovery.py</text>
-            <text class="node-role" x="305" y="280" text-anchor="middle" font-size="11">응답 8초 고정</text></g>
+            <text class="node-role" x="305" y="280" text-anchor="middle" font-size="11">응답 5초 고정</text></g>
           <g><rect class="node-box" x="430" y="240" width="150" height="56" rx="9" style="stroke:var(--stage-output)"></rect>
             <text class="node-label" x="505" y="264" text-anchor="middle" font-size="13">mailer.py</text>
             <text class="node-role" x="505" y="280" text-anchor="middle" font-size="11">Brevo SMTP</text></g>
@@ -790,7 +790,7 @@
           <div class="file-id"><span class="file-path">routes/recovery.py</span>
             <div class="tag-row"><span class="tag owner">GUIDE 34</span><span class="tag status-core">핵심</span></div></div>
           <div class="file-body">
-            <p class="file-role">이메일 인증 복구 화면 4개. 계정 존재 여부를 숨기려고 응답을 8초로 고정하고, IP 복구는 요청한 기기(lw_dev 쿠키)에서만 완료되며, 토큰은 해시로만 저장해 1회만 소비한다.</p>
+            <p class="file-role">이메일 인증 복구 화면 4개. 계정 존재 여부를 숨기려고 응답을 5초로 고정하고, IP 복구는 요청한 기기(lw_dev 쿠키)에서만 완료되며, 토큰은 해시로만 저장해 1회만 소비한다.</p>
             <div class="fn-list"><span class="fn">GET /recovery</span><span class="fn">POST /recovery/request</span><span class="fn">GET/POST /recovery/verify</span></div>
           </div>
         </div>

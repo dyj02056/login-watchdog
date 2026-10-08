@@ -2,7 +2,7 @@
 
 [◀ 42단계](guide42_ipv6_prefix.md) · [전체 목차](beginner-guide.md)
 
-> 복구 요청(`/recovery/request`)과 비밀번호 찾기 요청(`/password/forgot`)은 가입 여부가 응답 시간으로 드러나지 않도록 **항상 8초 뒤에** 응답합니다([34단계](guide34a_email_recovery.md), [41단계](guide41_password_reset.md)). 이 8초 동안 서버리스 함수 하나가 묶여 있습니다. 그래서 요청이 몰리면 함수 자원이 고갈될 수 있습니다. 이번 단계에서는 **복구 요청에 전용 한도**를 걸고, 8초를 줄일 근거를 얻기 위해 **실제 처리 시간을 기록**하게 했습니다. DB 스키마 변경은 없습니다.
+> 복구 요청(`/recovery/request`)과 비밀번호 찾기 요청(`/password/forgot`)은 가입 여부가 응답 시간으로 드러나지 않도록 **항상 8초 뒤에** 응답합니다([34단계](guide34a_email_recovery.md), [41단계](guide41_password_reset.md)). 이 8초 동안 서버리스 함수 하나가 묶여 있습니다. 그래서 요청이 몰리면 함수 자원이 고갈될 수 있습니다. 이번 단계에서는 **복구 요청에 전용 한도**를 걸고, **실제 처리 시간을 기록**하게 한 뒤, 운영 실측을 근거로 고정 시간을 **8초에서 5초로** 줄였습니다. DB 스키마 변경은 없습니다.
 
 ## 문제
 
@@ -53,7 +53,32 @@ IP 하나가 분당 120번 복구를 요청하면 함수 120개가 8초씩 묶�
 | `/password/forgot` 인증된 테스트 회원(재설정 메일 생성) | 200, 8.00초 | 0.86초 |
 | `/password/forgot` 없는 아이디 2번 | 200, 각 8.00초 | 0.70~0.94초 |
 
-로컬은 메일을 터미널에 출력하므로 **SMTP 발송 시간이 빠져 있습니다**. 실제 Gmail SMTP를 거치는 운영의 값은 배포한 뒤 같은 방식으로 측정합니다. 그 값으로 `RECOVERY_MIN_RESPONSE_SECONDS`의 새 기본값을 정합니다(메일 발송 경우의 최댓값 + 여유 약 1초).
+로컬은 메일을 터미널에 출력하므로 **SMTP 발송 시간이 빠져 있습니다**. 그래서 실제 Gmail SMTP를 거치는 운영에서 다시 측정했습니다.
+
+## 운영(Vercel)에서 측정한 결과
+
+배포 직후 테스트 회원과 없는 아이디로 요청했습니다(고정 시간 8초일 때, 서버 로그의 `[timing]` 값).
+
+| 요청 | 응답 | 실제 처리(`work`) |
+|---|---|---|
+| `/password/forgot` 인증된 테스트 회원 — **실제 메일 발송**(배포 후 첫 요청) | 200, 8.24초 | **3.04초** |
+| `/password/forgot` 메일 없음(없는 아이디, 하루 한도를 넘긴 회원) | 200, 8.2~8.5초 | 0.81~1.47초 |
+| `/recovery/request` 없는 아이디 1~5번째 | 200, 8.2~8.4초 | 0.61~0.68초 |
+| `/recovery/request` 6번째 | **429, 1.74초** (거절 기록을 DB에 남기는 시간 포함) | (실행 안 됨) |
+
+`overrun`은 없었고, 응답 시간은 모든 경우에 8.2초 안팎으로 같았습니다.
+
+## 고정 시간을 5초로
+
+| 선택지 | 판단 |
+|---|---|
+| 4초 (메일 발송 3.04초 + 1초) | 메일 발송을 실측한 것이 1번뿐이고 Gmail 응답 속도가 들쭉날쭉해서 여유가 적다 |
+| **5초 (채택)** | 실측보다 약 2초 여유. 함수가 묶이는 시간이 약 40% 줄어든다 |
+| 8초 유지 | 안전하지만 줄일 근거가 생겼으므로 유지할 이유가 약하다 |
+
+`config.RECOVERY_MIN_RESPONSE_SECONDS`의 기본값을 5.0으로 바꿨습니다. Vercel에는 이 환경변수를 따로 설정하지 않았으므로 코드의 기본값이 그대로 운영에 적용됩니다.
+
+운영하면서 `[timing] ... overrun`이 보이면 처리가 5초를 넘긴 것입니다. 그 요청은 응답이 늦어져 시간 차이가 드러날 수 있습니다. 이때는 Vercel 환경변수 `RECOVERY_MIN_RESPONSE_SECONDS`를 6~8로 설정하면 코드를 고치지 않고 늘릴 수 있습니다.
 
 ## 확인한 결과 (자동 테스트)
 
@@ -65,10 +90,6 @@ IP 하나가 분당 120번 복구를 요청하면 함수 120개가 8초씩 묶�
 | `test_work_time_is_logged_without_identifiers` | `[timing] /recovery/request work=… target=…` 형식, `overrun` 없음 |
 | `test_work_slower_than_the_target_is_flagged_as_overrun` | 작업이 고정 시간을 넘기면 `overrun` 표시 |
 
-## 다음 단계
-
-배포한 뒤 테스트 회원으로 메일을 보내는 경우와 보내지 않는 경우를 각각 몇 번씩 요청합니다. 그리고 `[timing]` 로그로 운영의 실제 처리 시간을 확인합니다. 측정값이 충분히 작으면 고정 시간을 4초 안팎으로 줄이고, 크면 그대로 둔 채 결과를 기록합니다.
-
 ## 이 단계에서 만들어지거나 바뀐 파일
 
-- 수정: [app.py](../../app.py)(한도 등록), [config.py](../../config.py)(`RECOVERY_REQUEST_RATE_LIMIT_PER_MINUTE`), [routes/recovery.py](../../routes/recovery.py)(`_log_timing`, `run_with_fixed_response_time`), `tests/test_recovery.py`, [.env.example](../../.env.example), [README.md](../../README.md)
+- 수정: [app.py](../../app.py)(한도 등록), [config.py](../../config.py)(`RECOVERY_REQUEST_RATE_LIMIT_PER_MINUTE`, `RECOVERY_MIN_RESPONSE_SECONDS` 8→5), [routes/recovery.py](../../routes/recovery.py)(`_log_timing`, `run_with_fixed_response_time`), `tests/test_recovery.py`, [.env.example](../../.env.example), [README.md](../../README.md), 8초를 언급하던 문서(34a·41단계, `scenario.md`, `feature-reference`, `architecture-map.html`)

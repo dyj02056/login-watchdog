@@ -194,11 +194,12 @@ RECOVERY_REQUEST_RATE_LIMIT_PER_MINUTE = int(os.environ.get("RECOVERY_REQUEST_RA
 RECOVERY_PROBATION_HOURS = int(os.environ.get("RECOVERY_PROBATION_HOURS", 24))
 # 복구 요청 응답에 걸리는 "고정" 시간(초) — 메일을 실제로 보낸 경우(DB 조회 여러 번 + SMTP)와
 # 아무것도 안 한 경우(없는 아이디 등)의 응답 시간 차이로 계정 존재 여부가 새지 않게, 처리가
-# 끝나도 이 시간이 될 때까지 기다렸다가 항상 같은 시점에 응답한다. 원격 Supabase는 쿼리
-# 하나에 수백 ms가 걸려서 실제 처리가 4~5초까지 걸리므로 넉넉히(8초) 잡았다. 처리가 이 시간을
-# 넘기면 그만큼 응답이 늦어져 시간 차이가 드러날 수 있으니, 배포에서 실측해서 조정한다.
+# 끝나도 이 시간이 될 때까지 기다렸다가 항상 같은 시점에 응답한다. 처음에는 추정으로 8초를
+# 잡았고, guide43에서 운영(Vercel) 실측(메일 발송 3.04초, 메일 없음 0.6~1.5초)에 여유를 더해
+# 5초로 줄였다 — 이 시간 동안 서버리스 함수가 묶이므로 짧을수록 좋다. 처리가 이 시간을 넘기면
+# 그만큼 응답이 늦어져 시간 차이가 드러나므로, `[timing] ... overrun` 로그가 보이면 늘린다.
 # 0이면 기다림 없이 그 자리에서 처리한다(테스트용).
-RECOVERY_MIN_RESPONSE_SECONDS = float(os.environ.get("RECOVERY_MIN_RESPONSE_SECONDS", 8.0))
+RECOVERY_MIN_RESPONSE_SECONDS = float(os.environ.get("RECOVERY_MIN_RESPONSE_SECONDS", 5.0))
 # 복구 처리를 응답과 별개의 백그라운드 스레드로 돌릴지. 기본 false — Vercel 같은 서버리스는
 # 응답을 보내는 순간 함수를 멈춰서 백그라운드 스레드의 메일 발송이 끝나기 전에 끊길 수 있으므로,
 # 기본은 "요청 안에서 메일 발송까지 끝낸 뒤 응답"한다. 상시 실행 서버(로컬/gunicorn)에서만 true.

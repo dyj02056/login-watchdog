@@ -1441,7 +1441,7 @@ released = lockdown.release(kind, value, f"admin:{session['admin_username']}", n
 - `/recovery`에서 아이디 입력 → 가입 이메일로 링크(15분, 1회용)와 6자리 코드 발송
 - **계정** 영구 잠금: 인증하면 완전 해제 + 24시간 보호관찰(그 안에 다시 잠기면 관리자 전용)
 - **IP** 영구 잠금: IP는 잠긴 채로 두고 "그 회원 + 요청한 기기"에게만 30일 예외(출입증) 발급
-- 계정 존재 여부를 숨김: 항상 같은 문구, 응답 시간 8초 고정
+- 계정 존재 여부를 숨김: 항상 같은 문구, 응답 시간 5초 고정(guide43에서 8초→5초)
 - 메일 서버가 수신자를 영구 거부하면 그 계정은 `UNDELIVERABLE`로 표시하고 관리자 전용으로 올림
 - 관리자 대시보드 "복구 요청"(취소), "IP 예외"(회수) 카드
 
@@ -1451,7 +1451,7 @@ released = lockdown.release(kind, value, f"admin:{session['admin_username']}", n
    │
    ▼
 [routes/recovery.py:231] recovery_request_submit()
-   │  ① 기기 쿠키(lw_dev) 발급   ② 고정 시간(8초) 안에서 처리
+   │  ① 기기 쿠키(lw_dev) 발급   ② 고정 시간(5초) 안에서 처리
    ▼
 [routes/recovery.py:80] _run_with_fixed_response_time()
    └─ [routes/recovery.py:168] _issue_recovery()
