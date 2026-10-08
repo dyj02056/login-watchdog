@@ -16,6 +16,7 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 import config
 import db
 import detector
+import email_verification
 import mailer
 import soar
 from helpers import (
@@ -25,8 +26,15 @@ from helpers import (
     is_bot_submission,
     member_login_required,
 )
+from routes.auth import EMAIL_PATTERN  # 회원가입과 같은 이메일 형식 검사
 
 member_bp = Blueprint("member", __name__)
+
+_EMAIL_CHANGE_SENT_MESSAGE = "새 이메일로 확인 메일을 보냈습니다. 메일의 링크를 눌러야 변경됩니다(15분 안에)."
+_EMAIL_REQUEST_MESSAGES = {
+    email_verification.RATE_LIMITED: "요청이 너무 잦습니다. 잠시 후 다시 시도해주세요.",
+    email_verification.UNAVAILABLE: "지금은 메일을 보낼 수 없습니다. 잠시 후 다시 시도해주세요.",
+}
 
 
 def _logout_missing_member():
@@ -57,7 +65,9 @@ def member_dashboard():
     if user is None:
         return _logout_missing_member()
     display_name = user["name"] if user["name"] else session["username"]
-    return render_template("member_dashboard.html", display_name=display_name)
+    return render_template(
+        "member_dashboard.html", display_name=display_name, email_status=user.get("email_status")
+    )
 
 
 @member_bp.route("/dashboard/history", methods=["GET"])
@@ -81,32 +91,94 @@ def member_profile():
     user = db.get_user_by_id(session["user_id"])
     if user is None:
         return _logout_missing_member()
-    return render_template("member_profile.html", user=user)
+    # 이메일 변경 확인 대기 중이면 새 주소(가린 형태)를 보여준다(guide40).
+    pending = db.get_pending_email_token_for_user(user["id"], db.email_tokens.PURPOSE_EMAIL_CHANGE)
+    pending_email = email_verification.mask_email(pending["email"]) if pending else None
+    return render_template("member_profile.html", user=user, pending_email=pending_email)
 
 
 @member_bp.route("/dashboard/profile", methods=["POST"])
 @member_login_required
 def member_profile_submit():
-    """프로필 수정 폼 제출을 처리한다.
+    """프로필(표시 이름) 수정 폼 제출을 처리한다.
+
+    이메일은 더 이상 이 폼에서 바꾸지 않는다(guide40) — 세션만 있으면 바로 바뀌던 구조라 세션을
+    탈취한 사람이 이메일을 자기 주소로 바꿔 계정을 가져갈 수 있었다. 이메일 변경은 아래
+    member_email_change_submit()이 현재 비밀번호 확인 + 새 주소 확인 링크로 처리한다.
 
     처리가 끝나면 render_template으로 바로 화면을 그리지 않고 redirect()로
-    /dashboard/profile을 "다시 방문"하게 만든다. 이렇게 하면 사용자가 수정 후
-    브라우저를 새로고침해도 폼이 다시 제출되며 오류가 나는 대신, 그냥 최신
-    프로필을 다시 보여준다("Post-Redirect-Get" 패턴이라고 부른다).
+    /dashboard/profile을 "다시 방문"하게 만든다("Post-Redirect-Get" 패턴).
     """
     name = request.form.get("name", "").strip()
-    email = request.form.get("email", "").strip()
-
-    if not email:
-        flash("이메일을 입력해주세요.")
-        return redirect(url_for("member.member_profile"))
-
-    updated = db.update_user_profile(session["user_id"], name, email)
-    if not updated:
-        flash("이미 다른 회원이 사용 중인 이메일입니다.")
-        return redirect(url_for("member.member_profile"))
-
+    db.update_user_name(session["user_id"], name)
     flash("프로필이 수정되었습니다.")
+    return redirect(url_for("member.member_profile"))
+
+
+@member_bp.route("/dashboard/email/change", methods=["POST"])
+@member_login_required
+def member_email_change_submit():
+    """이메일 변경 요청(guide40). 현재 비밀번호를 확인한 뒤 새 주소로 확인 링크를 보낸다 —
+    링크를 눌러야(routes/email.py) 실제로 바뀌고, 바뀌면 기존 주소로 알림이 간다.
+
+    현재 비밀번호를 틀리면 비밀번호 변경(guide35)과 똑같이 로그인 실패로 기록하고 같은 기준으로
+    잠근다. 그 주소를 다른 계정이 쓰고 있어도 화면 응답은 똑같다(email_verification 참고).
+    """
+    ip = get_request_ip()
+    username = session["username"]
+
+    if is_bot_submission():
+        soar.notify_bot_detected(ip, request.path)
+        flash("일시적인 오류가 발생했습니다. 다시 시도해주세요.")
+        return redirect(url_for("member.member_profile"))
+
+    user = db.get_user_by_id(session["user_id"])
+    if user is None:
+        return _logout_missing_member()
+
+    new_email = request.form.get("new_email", "").strip()
+    current_password = request.form.get("current_password", "")
+    if not new_email or not current_password:
+        flash("새 이메일과 현재 비밀번호를 모두 입력해주세요.")
+        return redirect(url_for("member.member_profile"))
+    if not EMAIL_PATTERN.match(new_email):
+        flash("올바른 이메일 형식이 아닙니다.")
+        return redirect(url_for("member.member_profile"))
+    if new_email.lower() == user["email"].lower():
+        flash("지금 쓰고 있는 이메일과 같습니다.")
+        return redirect(url_for("member.member_profile"))
+
+    if not db.verify_user_credentials(username, current_password):
+        db.log_attempt(ip, username, False)
+        if _lock_if_suspicious(ip, username):
+            clear_member_session()
+            flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
+            return redirect(url_for("auth.login"))
+        flash("현재 비밀번호가 올바르지 않습니다.")
+        return redirect(url_for("member.member_profile"))
+
+    result = email_verification.request_email_change(user, new_email, ip)
+    flash(_EMAIL_REQUEST_MESSAGES.get(result, _EMAIL_CHANGE_SENT_MESSAGE))
+    return redirect(url_for("member.member_profile"))
+
+
+@member_bp.route("/dashboard/email/verify/resend", methods=["POST"])
+@member_login_required
+def member_email_verify_resend():
+    """대시보드·프로필의 "인증 메일 다시 보내기"(guide40). 쿨다운·하루 한도는 email_verification이 본다."""
+    user = db.get_user_by_id(session["user_id"])
+    if user is None:
+        return _logout_missing_member()
+    result = email_verification.send_verification(user, get_request_ip())
+    if result == email_verification.SENT:
+        flash(f"{email_verification.mask_email(user['email'])}(으)로 인증 메일을 보냈습니다. 메일의 링크를 눌러주세요.")
+    elif result == email_verification.ALREADY_VERIFIED:
+        flash("이미 인증된 이메일입니다.")
+    else:
+        flash(_EMAIL_REQUEST_MESSAGES[result])
+    # 대시보드 배너에서 눌렀으면 대시보드로, 프로필에서 눌렀으면 프로필로 돌아간다.
+    if request.form.get("next") == "dashboard":
+        return redirect(url_for("member.member_dashboard"))
     return redirect(url_for("member.member_profile"))
 
 

@@ -506,27 +506,14 @@ def test_get_user_by_id_none_when_not_found(monkeypatch):
     assert db.get_user_by_id(999) is None
 
 
-def test_update_user_profile_true_when_email_not_taken(monkeypatch):
-    # 이메일 중복 검사 쿼리가 빈 목록을 돌려주는 상황 = "다른 사람은 안 쓰고 있다"
+def test_update_user_name_only_updates_the_name(monkeypatch):
+    # 이메일은 더 이상 프로필 폼에서 바로 바뀌지 않는다(guide40) — 이름만 고친다.
     fake_client = _FakeQuery(rows=[])
     monkeypatch.setattr(db, "get_client", lambda: fake_client)
 
-    result = db.update_user_profile(3, "새 이름", "new@example.com")
+    db.update_user_name(3, "새 이름")
 
-    assert result is True
-    assert ("update", ({"name": "새 이름", "email": "new@example.com"},), {}) in fake_client.calls
-
-
-def test_update_user_profile_false_when_email_taken_by_someone_else(monkeypatch):
-    # 이메일 중복 검사 쿼리가 "다른 사람의" 행을 하나라도 돌려주면 실패해야 한다
-    fake_client = _FakeQuery(rows=[{"id": 99}])
-    monkeypatch.setattr(db, "get_client", lambda: fake_client)
-
-    result = db.update_user_profile(3, "새 이름", "taken@example.com")
-
-    assert result is False
-    # 중복이 확인된 즉시 되돌아가야 하므로, update()는 아예 호출되면 안 된다.
-    assert not any(call[0] == "update" for call in fake_client.calls)
+    assert ("update", ({"name": "새 이름"},), {}) in fake_client.calls
 
 
 def test_list_attempts_by_username_filters_by_username(monkeypatch):

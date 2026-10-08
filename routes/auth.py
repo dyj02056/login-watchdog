@@ -12,6 +12,8 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 import config
 import db
 import detector
+import email_verification
+import mailer
 import soar
 from helpers import get_device_hash, get_request_ip, is_bot_submission
 
@@ -145,7 +147,17 @@ def signup_submit():
         flash("이미 사용 중인 아이디 또는 이메일입니다.")
         return render_template("signup.html", signup_enabled=True)
 
-    flash("회원가입이 완료되었습니다. 로그인해주세요.")
+    # 가입 이메일로 인증 링크를 보낸다(guide40). 메일이 실패해도 가입은 그대로 유지한다 —
+    # 로그인한 뒤 대시보드에서 다시 보낼 수 있다.
+    try:
+        verification = email_verification.send_verification(created, ip)
+    except Exception as e:  # noqa: BLE001
+        mailer.report_failure(mailer.FAIL_INTERNAL, f"가입 인증 메일 처리 중 오류: {type(e).__name__}")
+        verification = email_verification.UNAVAILABLE
+    if verification == email_verification.SENT:
+        flash("회원가입이 완료되었습니다. 가입 이메일로 인증 메일을 보냈습니다. 로그인해주세요.")
+    else:
+        flash("회원가입이 완료되었습니다. 로그인해주세요. 이메일 인증은 로그인 후 대시보드에서 할 수 있습니다.")
     return redirect(url_for("auth.login"))
 
 

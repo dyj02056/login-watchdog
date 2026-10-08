@@ -33,6 +33,31 @@
                  로그인 아이디를 대신 보여준다. -->
             <h2>안녕하세요, {{ display_name }}님 반갑습니다.</h2>
 
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    <ul class="flash-list">
+                        {% for message in messages %}<li>{{ message }}</li>{% endfor %}
+                    </ul>
+                {% endif %}
+            {% endwith %}
+
+            <!-- 이메일 인증 안내(guide40) — 인증된 이메일로만 비밀번호 재설정 메일을 보낸다. -->
+            {% if email_status == "UNDELIVERABLE" %}
+                <div class="email-banner email-banner--bad">
+                    가입 이메일로 메일이 전달되지 않습니다.
+                    <a href="{{ url_for('member.member_profile') }}">프로필에서 이메일 변경</a>
+                </div>
+            {% elif email_status != "VERIFIED" %}
+                <div class="email-banner">
+                    이메일 인증이 필요합니다 — 비밀번호를 잊었을 때 이 주소로 재설정합니다.
+                    <form method="post" action="{{ url_for('member.member_email_verify_resend') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="next" value="dashboard">
+                        <button type="submit">인증 메일 보내기</button>
+                    </form>
+                </div>
+            {% endif %}
+
             <div class="member-actions">
                 <a href="{{ url_for('member.member_history') }}">최근 로그인 기록 보기</a>
                 <a href="{{ url_for('member.member_profile') }}">프로필 보기 · 수정</a>

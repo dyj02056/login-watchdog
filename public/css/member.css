@@ -227,3 +227,49 @@ main.member-main--stack {
     max-width: 480px;
     margin: 0;
 }
+
+/* 이메일 인증 상태(guide40) — 프로필의 현재 이메일 옆 배지와 대시보드 안내 배너 */
+.member-card .email-current {
+    font-size: 14px;
+    margin: 0 0 12px 0;
+    word-break: break-all;
+}
+
+.email-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    margin-left: 6px;
+    border-radius: var(--radius-s);
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--warning-soft);
+    color: var(--warning);
+}
+
+.email-badge--ok {
+    background: var(--success-soft);
+    color: var(--success);
+}
+
+.email-badge--bad {
+    background: var(--danger-soft);
+    color: var(--danger);
+}
+
+.email-banner {
+    background: var(--warning-soft);
+    color: var(--ink);
+    border-radius: var(--radius-s);
+    padding: 10px 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 0 0 12px 0;
+}
+
+.email-banner--bad {
+    background: var(--danger-soft);
+}
+
+.email-banner form {
+    margin-top: 8px;
+}

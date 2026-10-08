@@ -6,6 +6,7 @@
 # db.get_client() 호출 이유는 db/attempts.py 상단 설명 참고.
 # ============================================================================
 
+from postgrest.exceptions import APIError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import db
@@ -40,33 +41,33 @@ def get_user_by_id(user_id: int) -> dict | None:
     return res.data[0] if res.data else None
 
 
-def create_user(username: str, email: str, password: str) -> bool:
+def create_user(username: str, email: str, password: str) -> dict | None:
     """새 사용자 계정을 만든다 (회원가입).
 
     같은 아이디나 같은 이메일로 이미 가입한 사람이 있으면 실패(False)를 돌려주고
     아무것도 저장하지 않는다. 문제없으면 비밀번호를 암호화해서 저장하고 True를 돌려준다.
 
     반환값:
-        True  - 회원가입 성공
-        False - 아이디 또는 이메일이 이미 사용 중이라 가입 실패
+        새로 만든 회원 행(dict) - 회원가입 성공 (가입 인증 메일을 보낼 때 id·email이 필요하다, guide40)
+        None                    - 아이디 또는 이메일이 이미 사용 중이라 가입 실패
     """
     # 1) 아이디 중복 확인
     existing_username = (
         db.get_client().table("users").select("id").eq("username", username).limit(1).execute()
     )
     if existing_username.data:
-        return False
+        return None
     # 2) 이메일 중복 확인
     existing_email = (
         db.get_client().table("users").select("id").eq("email", email).limit(1).execute()
     )
     if existing_email.data:
-        return False
+        return None
     # 3) 문제 없으면 비밀번호를 암호화해서 새 계정 저장
-    db.get_client().table("users").insert(
+    res = db.get_client().table("users").insert(
         {"username": username, "email": email, "password_hash": generate_password_hash(password)}
     ).execute()
-    return True
+    return res.data[0] if res.data else None
 
 
 def verify_user_credentials(username: str, password: str) -> bool:
@@ -89,28 +90,60 @@ def verify_user_credentials(username: str, password: str) -> bool:
     return result if user else False
 
 
-def update_user_profile(user_id: int, name: str, email: str) -> bool:
-    """회원 본인이 프로필 화면에서 "표시 이름"과 이메일을 수정할 때 쓰인다.
+def update_user_name(user_id: int, name: str) -> None:
+    """회원 본인이 프로필 화면에서 "표시 이름"을 바꿀 때 쓰인다.
 
-    이메일은 users 표에서 unique(고유값)로 걸려있으므로, 다른 사람이 이미 쓰고
-    있는 이메일로 바꾸려고 하면 실패(False)를 돌려주고 아무것도 바꾸지 않는다.
-    (본인이 원래 쓰던 이메일 그대로 "수정"하는 경우는 "다른 사람의" 이메일이
-    아니므로 문제없이 통과한다 — 그래서 자기 자신의 id는 검사에서 제외한다.)
+    예전 update_user_profile()은 이메일도 함께 바로 바꿨다 — 세션만 있으면 비밀번호 확인도
+    메일 확인도 없이 이메일을 바꿀 수 있어서, 세션을 탈취한 사람이 이메일을 자기 주소로 바꿔
+    계정을 가져갈 수 있었다(guide40). 이메일 변경은 이제 현재 비밀번호 + 새 주소로 보낸 확인
+    링크를 거쳐 change_user_email()로만 일어난다.
     """
-    existing_email = (
+    db.get_client().table("users").update({"name": name}).eq("id", user_id).execute()
+
+
+def is_email_taken(email: str, exclude_user_id: int | None = None) -> bool:
+    """이 이메일을 (exclude_user_id가 아닌) 다른 회원이 이미 쓰고 있는지."""
+    query = db.get_client().table("users").select("id").eq("email", email)
+    if exclude_user_id is not None:
+        query = query.neq("id", exclude_user_id)
+    return bool(query.limit(1).execute().data)
+
+
+def change_user_email(user_id: int, new_email: str) -> bool:
+    """새 주소로 보낸 확인 링크를 누른 뒤에만 불린다(guide40) — 이메일을 바꾸고, 링크를 눌렀다는
+    것 자체가 메일함 주인이라는 증거이므로 VERIFIED로 표시한다.
+
+    링크를 누르기 전에 다른 사람이 그 주소로 가입했을 수 있으므로 여기서 다시 확인하고, 그래도
+    두 요청이 겹쳐 unique 제약에 걸리면(23505) False를 돌려준다.
+    """
+    if is_email_taken(new_email, exclude_user_id=user_id):
+        return False
+    try:
+        db.get_client().table("users").update(
+            {"email": new_email, "email_status": "VERIFIED", "email_status_checked_at": db._now_iso()}
+        ).eq("id", user_id).execute()
+    except APIError as e:
+        if e.code != "23505":
+            raise
+        return False
+    return True
+
+
+def mark_user_email_verified(user_id: int, email: str) -> bool:
+    """이 회원의 이메일이 아직 `email`일 때만 VERIFIED로 표시한다(guide40). 실제로 바뀌었으면 True.
+
+    조건에 email을 넣는 이유: 인증 메일을 보낸 뒤 회원이 이메일을 바꿨다면, 옛 주소로 간
+    인증 링크가 새 주소를 "인증됨"으로 만들면 안 되기 때문이다.
+    """
+    res = (
         db.get_client()
         .table("users")
-        .select("id")
+        .update({"email_status": "VERIFIED", "email_status_checked_at": db._now_iso()})
+        .eq("id", user_id)
         .eq("email", email)
-        .neq("id", user_id)  # neq = not equal = "이 값과 다른 것만" — 본인 행은 제외
-        .limit(1)
         .execute()
     )
-    if existing_email.data:
-        return False
-
-    db.get_client().table("users").update({"name": name, "email": email}).eq("id", user_id).execute()
-    return True
+    return bool(res.data)
 
 
 def list_users(page: int = 1, page_size: int = 100) -> tuple[list[dict], int]:
@@ -128,7 +161,7 @@ def list_users(page: int = 1, page_size: int = 100) -> tuple[list[dict], int]:
     res = (
         db.get_client()
         .table("users")
-        .select("id, username, email, created_at", count="exact")
+        .select("id, username, email, email_status, created_at", count="exact")
         .order("created_at", desc=True)
         .range(start, end)
         .execute()

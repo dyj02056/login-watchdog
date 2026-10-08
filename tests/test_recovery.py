@@ -18,6 +18,7 @@ import alert
 import config
 import db
 import detector
+import email_verification
 import helpers
 import lockdown
 import mailer
@@ -153,6 +154,7 @@ class Store:
         self.done_notices = []
         self.released_accounts = []
         self.probation = []
+        self.verified = []
         self.history_released = []
         self.email_status_changes = []
         self.recoverable_changes = []
@@ -262,6 +264,8 @@ def store(monkeypatch):
     monkeypatch.setattr(db, "resolve_security_events_for_username", lambda u: None)
     monkeypatch.setattr(db, "mark_lock_released", lambda *a, **k: s.history_released.append(a))
     monkeypatch.setattr(db, "set_account_probation", lambda u, until: s.probation.append((u, until)))
+    # 복구에 성공하면 그 주소를 이메일 인증으로도 친다(guide40)
+    monkeypatch.setattr(db, "mark_user_email_verified", lambda uid, email: s.verified.append((uid, email)) or True)
     monkeypatch.setattr(
         db, "insert_ip_exemption",
         lambda ip, uid, dev, via, exp: s.exemptions.append({"ip": ip, "user_id": uid, "device_hash": dev, "via": via}),
@@ -614,6 +618,17 @@ def test_correct_code_completes_account_recovery(client, store):
     assert store.released_accounts == ["alice"]
 
 
+def test_successful_recovery_marks_the_email_as_verified(client, store):
+    # 복구 메일의 코드를 썼다 = 그 메일함의 주인이라는 증거라서 이메일 인증으로도 친다(guide40).
+    store.lock_account("alice")
+    _request_recovery(client)
+
+    _submit_code(client, "alice", store.mails[0][3])
+
+    alice = store.users["alice"]
+    assert store.verified == [(alice["id"], alice["email"])]
+
+
 def test_wrong_code_counts_attempts_and_revokes_after_the_limit(client, store):
     store.lock_account("alice")
     _request_recovery(client)
@@ -916,7 +931,8 @@ def test_signup_from_a_temporarily_locked_ip_is_not_blocked_by_permanent_check(c
     monkeypatch.setattr(detector, "is_signup_rate_limited", lambda ip: (False, 0))
     monkeypatch.setattr(db, "log_signup_attempt", lambda ip: None)
     created = []
-    monkeypatch.setattr(db, "create_user", lambda *a: created.append(a) or True)
+    monkeypatch.setattr(db, "create_user", lambda *a: created.append(a) or {"id": 1, "email": a[1]})
+    monkeypatch.setattr(email_verification, "send_verification", lambda user, ip: email_verification.SENT)
 
     token = get_csrf_token(client, "/signup")
     client.post(

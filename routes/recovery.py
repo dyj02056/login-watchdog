@@ -30,6 +30,7 @@ from flask import Blueprint, make_response, render_template, request
 
 import config
 import db
+import email_verification
 import lockdown
 import mailer
 import soar
@@ -38,7 +39,9 @@ from helpers import (
     get_request_ip,
     hash_secret,
     is_bot_submission,
+    mask_username,
     new_device_token,
+    public_base_url,
     set_device_cookie,
 )
 
@@ -56,21 +59,6 @@ WRONG_DEVICE_MESSAGE = (
     "이 링크는 복구를 요청한 기기에서만 사용할 수 있습니다. "
     "요청한 기기의 브라우저에서 아래에 아이디와 메일의 6자리 코드를 입력해주세요."
 )
-
-
-def _mask_username(username: str) -> str:
-    """확인 화면에 보여줄 아이디를 일부 가린다(예: user → u**r)."""
-    if len(username) <= 2:
-        return username[0] + "*" if username else ""
-    return username[0] + "*" * (len(username) - 2) + username[-1]
-
-
-def _recovery_base_url() -> str:
-    """복구 링크의 기준 주소. PUBLIC_BASE_URL이 없으면 개발 환경에서만 로컬 주소로 대신하고,
-    운영(production)에서는 빈 문자열을 돌려줘서 메일을 보내지 않게 한다."""
-    if config.PUBLIC_BASE_URL:
-        return config.PUBLIC_BASE_URL
-    return "" if config.IS_PRODUCTION else "http://127.0.0.1:5000"
 
 
 def _report_internal_error(error: Exception) -> None:
@@ -199,7 +187,7 @@ def _issue_recovery(ip: str, user: dict | None, device_token: str) -> None:
     target = _eligible_target(user, account_lock, ip_lock, ip)
     if target is None:
         return
-    base_url = _recovery_base_url()
+    base_url = public_base_url()
     if not base_url:
         mailer.report_failure(mailer.FAIL_CONFIG, "PUBLIC_BASE_URL이 설정되지 않아 복구 메일을 보내지 않았습니다.")
         return
@@ -285,7 +273,7 @@ def _confirm_page(req: dict, token: str):
         message=WRONG_DEVICE_MESSAGE if wrong_device else None,
         token=token,
         kind=req["target_kind"],
-        masked_username=_mask_username(user["username"]),
+        masked_username=mask_username(user["username"]),
         requested_ip=req["requested_ip"],
         requested_at=req["created_at"],
     )
@@ -328,6 +316,11 @@ def _finish(req: dict):
             message="이미 해제되었거나 이메일 인증으로 풀 수 없는 상태입니다. 관리자에게 문의해주세요.",
         )
 
+    # 복구 메일의 링크·코드를 썼다 = 그 메일함의 주인이라는 증거이므로 이메일 인증으로도 친다(guide40).
+    try:
+        email_verification.mark_verified_after_recovery(user)
+    except Exception as e:  # noqa: BLE001
+        _report_internal_error(e)
     mailer.send_recovery_done_notice(user["email"], consumed["target_kind"])
     return render_template("recovery_done.html", success=True, kind=consumed["target_kind"], message=None)
 

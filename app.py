@@ -48,6 +48,7 @@ from routes.admin import admin_bp
 from routes.auth import auth_bp
 from routes.board import board_bp
 from routes.member import member_bp
+from routes.email import email_bp
 from routes.recovery import recovery_bp
 
 # static_folder="public", static_url_path="": 기본값이면 Flask가 "static/" 폴더를
@@ -98,6 +99,7 @@ app.register_blueprint(admin_bp)
 app.register_blueprint(board_bp)
 app.register_blueprint(member_bp)
 app.register_blueprint(recovery_bp)
+app.register_blueprint(email_bp)
 
 # 운영(production)에서 복구 메일 설정이 비어 있으면 서버 시작 로그에 경고를 남긴다(guide34-a).
 mailer.print_configuration_warnings()
@@ -132,6 +134,10 @@ limiter = Limiter(
 app.view_functions["recovery.recovery_verify_submit"] = limiter.limit(
     f"{config.RECOVERY_VERIFY_RATE_LIMIT_PER_MINUTE} per minute"
 )(app.view_functions["recovery.recovery_verify_submit"])
+# 이메일 확인 링크 제출(POST /email/confirm, guide40)도 같은 이유로 좁은 한도를 따로 건다.
+app.view_functions["email.email_confirm_submit"] = limiter.limit(
+    f"{config.EMAIL_CONFIRM_RATE_LIMIT_PER_MINUTE} per minute"
+)(app.view_functions["email.email_confirm_submit"])
 
 
 @app.errorhandler(RateLimitExceeded)

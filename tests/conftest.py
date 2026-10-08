@@ -60,6 +60,9 @@ def flask_app(monkeypatch):
     monkeypatch.setattr(db, "get_active_admin_account_lockout", lambda username: None)
     monkeypatch.setattr(db, "count_recent_admin_failures_by_username", lambda username: 0)
 
+    # 내 프로필 화면이 "이메일 변경 확인 대기 중"을 보여주려고 조회한다(guide40) — 기본값은 "없음".
+    monkeypatch.setattr(db, "get_pending_email_token_for_user", lambda user_id, purpose: None)
+
     # 이전 테스트가 이미 app을 import해둔 상태일 수 있으므로, sys.modules에서
     # 지워서 위의 monkeypatch가 적용된 새 환경으로 app.py가 다시 실행되게 한다.
     sys.modules.pop("app", None)

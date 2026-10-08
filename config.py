@@ -200,6 +200,14 @@ IP_EXEMPTION_DAYS = int(os.environ.get("IP_EXEMPTION_DAYS", 30))
 # 예외로 통과한 사용자가 이 횟수만큼 연달아 로그인에 실패하면 예외를 회수한다.
 IP_EXEMPTION_MAX_FAILURES = int(os.environ.get("IP_EXEMPTION_MAX_FAILURES", 3))
 
+# 이메일 인증·이메일 변경 확인 링크(guide40) — 유효 시간과, 회원·용도별 재발송 간격/하루 한도.
+# 한도는 메일 폭탄(남의 주소로 확인 메일을 계속 보내게 하는 것)을 막기 위한 값이다.
+EMAIL_TOKEN_TTL_MINUTES = int(os.environ.get("EMAIL_TOKEN_TTL_MINUTES", 15))
+EMAIL_TOKEN_COOLDOWN_SECONDS = int(os.environ.get("EMAIL_TOKEN_COOLDOWN_SECONDS", 60))
+EMAIL_TOKEN_MAX_PER_DAY = int(os.environ.get("EMAIL_TOKEN_MAX_PER_DAY", 5))
+# 링크 확인 제출(POST /email/confirm)의 IP당 분당 한도 — /recovery/verify와 같은 2차 방어선.
+EMAIL_CONFIRM_RATE_LIMIT_PER_MINUTE = int(os.environ.get("EMAIL_CONFIRM_RATE_LIMIT_PER_MINUTE", 10))
+
 # 복구 요청 기기를 구분하는 쿠키(lw_dev) — 30일 유지.
 DEVICE_COOKIE_NAME = "lw_dev"
 DEVICE_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 3600

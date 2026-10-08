@@ -1,0 +1,56 @@
+<!--
+  email_confirm.html — 이메일 인증 / 이메일 변경 확인 화면 (guide40)
+
+  mode 값에 따라 보여주는 내용이 달라진다:
+    confirm  메일 링크로 들어옴 — 무엇을 확인하는지 보여주고 버튼을 누르게 한다
+             (GET은 토큰을 소비하지 않는다. 실제 처리는 이 폼의 POST에서만 일어난다)
+    done     처리 결과(성공/실패 문구는 message)
+    invalid  만료되었거나 이미 사용된 링크
+-->
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <title>로그인 워치독 — 이메일 확인</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+</head>
+<body>
+    <button id="theme-toggle" type="button" class="theme-toggle theme-toggle--floating">다크 모드</button>
+
+    <div class="auth-card">
+        <h1>{{ title }}</h1>
+
+        {% if message %}
+            <ul class="flash-list">
+                <li>{{ message }}</li>
+            </ul>
+        {% endif %}
+
+        {% if mode == "confirm" %}
+            <div class="recovery-detail">
+                <div>대상 계정: <strong>{{ masked_username }}</strong></div>
+                <div>확인할 이메일: <strong>{{ masked_email }}</strong></div>
+                <div>
+                    {% if purpose == "EMAIL_CHANGE" %}
+                        버튼을 누르면 계정 이메일이 이 주소로 바뀌고, 기존 주소로 변경 알림이 갑니다.
+                    {% else %}
+                        버튼을 누르면 이 주소가 인증되어, 비밀번호 재설정 메일을 받을 수 있게 됩니다.
+                    {% endif %}
+                </div>
+            </div>
+            <p class="recovery-note">직접 요청하신 게 아니라면 이 화면을 닫으세요. 아무 일도 일어나지 않습니다.</p>
+            <form method="post" action="{{ url_for('email.email_confirm_submit') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="t" value="{{ token }}">
+                <button type="submit">{% if purpose == "EMAIL_CHANGE" %}이메일 변경{% else %}인증{% endif %}</button>
+            </form>
+        {% endif %}
+
+        <div class="auth-links">
+            <a href="{{ url_for('auth.login') }}">로그인으로 이동</a>
+        </div>
+    </div>
+</body>
+</html>

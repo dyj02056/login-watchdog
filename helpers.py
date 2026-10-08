@@ -95,6 +95,23 @@ def get_request_ip() -> str:
 # 쿠키가 없으므로 계속 막힌다. 쿠키 원문은 브라우저에만 있고 DB에는 해시만 저장한다.
 # ============================================================================
 
+def mask_username(username: str) -> str:
+    """확인 화면에 보여줄 아이디를 일부 가린다(예: user → u**r). 복구·이메일 확인 화면이 같이 쓴다."""
+    if len(username) <= 2:
+        return username[0] + "*" if username else ""
+    return username[0] + "*" * (len(username) - 2) + username[-1]
+
+
+def public_base_url() -> str:
+    """메일에 넣을 링크의 기준 주소. PUBLIC_BASE_URL만 쓴다 — request.host_url(Host 헤더)은
+    공격자가 조작할 수 있어서, 피해자에게 공격자 주소로 된 링크가 가게 만들 수 있기 때문이다.
+    값이 없으면 개발 환경에서만 로컬 주소로 대신하고, 운영에서는 빈 문자열(= 메일을 보내지 않음).
+    복구 메일(guide34-a)과 이메일 인증 메일(guide40)이 같이 쓴다."""
+    if config.PUBLIC_BASE_URL:
+        return config.PUBLIC_BASE_URL
+    return "" if config.IS_PRODUCTION else "http://127.0.0.1:5000"
+
+
 def hash_secret(value: str) -> str:
     """토큰·코드·기기 쿠키를 DB에 저장하기 전에 SHA-256 지문(해시)으로 바꾼다.
     지문에서 원래 값을 되돌릴 수 없으므로 DB가 유출돼도 진짜 값은 새지 않는다."""

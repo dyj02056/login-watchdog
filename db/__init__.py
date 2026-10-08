@@ -23,6 +23,7 @@
 #   api_access_log.py    — api_access_log (매크로/봇 탐지, Track C guide29)
 #   lock_history.py      — lock_history (잠금 이력 append-only, guide33 영구 잠금)
 #   recovery.py          — recovery_requests / ip_lock_exemptions (이메일 복구, guide34-a)
+#   email_tokens.py      — email_tokens (이메일 인증·변경 확인·비밀번호 재설정 링크, guide40)
 #
 # 이 파일은 위 각 모듈의 함수를 그대로 다시 내보내기(re-export)만 한다 — 그래서
 # app.py/detector.py/soar.py/scripts/*.py나 테스트 코드는 예전처럼
@@ -106,6 +107,14 @@ from .board import (
     log_post_attempt,
     update_post,
 )
+from .email_tokens import (
+    consume_email_token,
+    create_email_token,
+    get_email_token_activity,
+    get_pending_email_token,
+    get_pending_email_token_for_user,
+    revoke_email_token,
+)
 from .geoip_cache import get_cached_ip_locations, save_ip_location
 from .incidents import (
     close_incident_system,
@@ -180,14 +189,17 @@ from .settings import (
     set_signup_enabled,
 )
 from .users import (
+    change_user_email,
     create_user,
     delete_user,
     get_user_by_id,
     get_user_by_username,
     get_user_session_version,
+    is_email_taken,
     list_users,
+    mark_user_email_verified,
+    update_user_name,
     update_user_password,
-    update_user_profile,
     verify_user_credentials,
 )
 
@@ -239,7 +251,16 @@ __all__ = [
     "get_user_by_id",
     "create_user",
     "verify_user_credentials",
-    "update_user_profile",
+    "update_user_name",
+    "is_email_taken",
+    "change_user_email",
+    "mark_user_email_verified",
+    "create_email_token",
+    "get_pending_email_token",
+    "get_pending_email_token_for_user",
+    "consume_email_token",
+    "revoke_email_token",
+    "get_email_token_activity",
     "list_users",
     "delete_user",
     "get_signup_enabled",

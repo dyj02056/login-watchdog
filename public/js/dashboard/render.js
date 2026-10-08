@@ -121,6 +121,12 @@ export function renderAdminLoginLog(log) {
  * 가입된 회원 목록 표를 채운다. 각 줄에 "삭제" 버튼이 붙는다.
  * @param {Array} users - [{id, username, email, created_at}, ...]
  */
+// 회원 이메일 인증 상태 배지(guide40). 반송(UNDELIVERABLE)만 위험 색으로 강조한다.
+const EMAIL_STATUS_BADGES = {
+    VERIFIED: '<span class="lock-badge lock-badge--warn">인증됨</span>',
+    UNDELIVERABLE: '<span class="lock-badge">반송</span>',
+};
+
 export function renderUsersTable(users) {
     const tbody = document.getElementById("users-table-body");
 
@@ -137,7 +143,9 @@ export function renderUsersTable(users) {
                 <tr>
                     <td class="mono">${formatTime(user.created_at)}</td>
                     <td>${escapeHtml(user.username)}</td>
-                    <td>${escapeHtml(user.email)}</td>
+                    <td>${escapeHtml(user.email)} ${
+                        EMAIL_STATUS_BADGES[user.email_status] || '<span class="lock-badge lock-badge--warn">미인증</span>'
+                    }</td>
                     <td>
                         <button data-user-id="${user.id}" data-username="${escapeHtml(user.username)}" class="delete-user-btn">삭제</button>
                     </td>

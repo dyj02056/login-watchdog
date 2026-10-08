@@ -25,6 +25,7 @@ import detector
 import soar
 import geoip
 import db
+import email_verification
 from tests.admin_session import login_admin_session, stub_admin_role  # noqa: E402
 
 
@@ -399,8 +400,10 @@ def test_signup_accepts_valid_input(client, monkeypatch):
     monkeypatch.setattr(
         db,
         "create_user",
-        lambda username, email, password: created_with.append((username, email, password)) or True,
+        lambda username, email, password: created_with.append((username, email, password))
+        or {"id": 1, "username": username, "email": email, "email_status": "UNKNOWN"},
     )
+    monkeypatch.setattr(email_verification, "send_verification", lambda user, ip: email_verification.SENT)
 
     token = get_csrf_token(client, "/signup")
     response = client.post(
