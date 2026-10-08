@@ -28,6 +28,7 @@
 - **관리자 계정 단위 잠금** — `/admin/login`도 회원처럼 계정 단위로 잠급니다. IP와 무관하게 한 관리자 아이디가 15분 안에 8회를 넘게 실패하면 5분간 잠기고(분산 브루트포스 대응), Slack CRITICAL 알림과 `ADMIN_DISTRIBUTED_BRUTE_FORCE` 이벤트가 남습니다. 회원 잠금과는 별도 표(`admin_account_lockouts`)라 같은 이름의 회원과 서로 영향을 주지 않고, 아이디가 없어도 똑같이 잠겨 관리자 아이디 존재 여부가 드러나지 않습니다. 잠금이 관리자를 쫓아내는 수단이 되지 않도록 허용 목록(`PERMANENT_LOCK_IP_ALLOWLIST`) IP는 계정 잠금을 건너뛰고, 영구 잠금으로는 올리지 않습니다. 해제는 대시보드(super_admin 전용) 또는 `scripts/unlock_account.py --admin`. 자세한 내용은 [guide38_admin_account_lockout.md](docs/beginner-guide/guide38_admin_account_lockout.md) 참고
 - **계정 존재 여부 노출 방지** — `/login`은 임시·영구 계정 잠금을 같은 문구와 같은 복구 링크로 안내합니다(영구 승격은 가입된 아이디에만 일어나서 "영구"라는 말이 가입 여부를 알려줬음). 복구용 6자리 코드는 계정·IP 복구 모두 **복구를 요청한 기기에서만** 받고, 아이디 없음·요청 없음·다른 기기를 같은 문구로 답하며 시도 횟수도 쓰지 않아, 다른 기기에서 진행 중인 복구를 알아내거나 남의 복구를 취소시킬 수 없습니다(메일 링크는 어느 기기에서나 동작). 자세한 내용은 [guide39_account_enumeration.md](docs/beginner-guide/guide39_account_enumeration.md) 참고
 - **이메일 인증 + 이메일 변경 보호** — 가입하면 가입 이메일로 인증 링크가 가고(가입·로그인은 바로 가능), 대시보드에서 다시 보낼 수 있습니다. 이메일 상태는 미인증/인증됨/반송 3가지이고, 인증된 이메일로만 비밀번호 재설정 메일을 보냅니다(다음 단계). 이메일 변경은 **현재 비밀번호 + 새 주소로 보낸 확인 링크**를 거쳐야 반영되고, 바뀌면 기존 주소로 알림이 갑니다 — 세션만 탈취한 사람이 이메일을 바꿔 계정을 가져가는 경로를 막습니다. 이미 다른 계정이 쓰는 주소여도 화면 응답은 같습니다. 자세한 내용은 [guide40_email_verification.md](docs/beginner-guide/guide40_email_verification.md) 참고
+- **비밀번호 찾기** — 로그인 화면의 "비밀번호를 잊으셨나요?"(또는 프로필의 "이메일로 재설정")에서 아이디를 입력하면, **인증된 이메일**로만 재설정 링크(15분, 1회용)가 갑니다. 아이디가 없든 미인증이든 화면 응답과 응답 시간은 같습니다. 새 비밀번호를 검사한 뒤에야 링크를 소비하고, 재설정하면 모든 기기의 로그인이 끊기며 알림 메일이 갑니다. 자세한 내용은 [guide41_password_reset.md](docs/beginner-guide/guide41_password_reset.md) 참고
 - **임계값 튜닝 리포트** — `scripts/tune_thresholds.py`로 최근 N일간 CRITICAL(IP/계정 잠금) 이벤트 중 관리자가 자동 만료를 기다리지 않고 훨씬 빨리 수동 해제한 비율을 event_type별로 집계. 오탐(너무 예민한 임계값) 여부를 점검하는 완전한 읽기 전용 도구. 자세한 내용은 [docs/beginner-guide/guide30_threshold_tuning.md](docs/beginner-guide/guide30_threshold_tuning.md) 참고
 
 ## 기술 스택
@@ -80,6 +81,7 @@ cp .env.example .env
 | `PERMANENT_LOCK_*` | 영구 잠금 정책 — `STRIKE_COUNT`/`ACCOUNT_STRIKE_COUNT`(기본 2회째 승격), `STRIKE_WINDOW_DAYS`(30), `AUTO_ON_HIGH`(false=HIGH 사건은 관리자 승인 대기), `AUTO_CLOSE_INCIDENT`(false), `IP_ALLOWLIST`(기본 `127.0.0.1,::1` — **관리자 PC IP를 꼭 추가**) |
 | `MAIL_BACKEND` / `SMTP_*` / `MAIL_FROM` / `PUBLIC_BASE_URL` | 복구 메일 발송. 개발은 `console`(터미널 출력, 운영에서는 거부됨) 또는 Mailpit(`docker compose -f docker-compose.mailpit.yml up -d`, `SMTP_HOST=127.0.0.1` `SMTP_PORT=1025` `SMTP_STARTTLS=false`, 받은 메일은 http://127.0.0.1:8025). **배포(Vercel)** 는 `MAIL_BACKEND=smtp` + Gmail SMTP(앱 비밀번호) 설정이 필요합니다 — 환경변수 목록과 점검 방법은 [guide34a_email_recovery.md](docs/beginner-guide/guide34a_email_recovery.md)의 "배포(Vercel)에서 복구 메일 보내기" 참고. `PUBLIC_BASE_URL`은 복구 링크의 기준 주소로, Host 헤더 대신 이 값만 씁니다. 설정은 `python scripts/send_test_mail.py --to 내주소@gmail.com`으로 미리 확인할 수 있습니다 |
 | `FLASK_ENV` | 배포(Vercel)에서는 반드시 `production` — 세션·기기 쿠키에 Secure가 붙고, 토큰을 로그에 찍는 console 메일 백엔드가 차단됩니다. 로컬 HTTP 서버에서 이 값을 켜면 로그인 쿠키가 전송되지 않으니 로컬에서는 비워 두세요 |
+| (선택) `PASSWORD_RESET_MAX_PER_DAY` / `PASSWORD_RESET_MAX_PER_IP_PER_HOUR` / `PASSWORD_RESET_RATE_LIMIT_PER_MINUTE` | 비밀번호 찾기(guide41): 회원당 하루 3회, IP당 시간당 5회, 요청·재설정 제출 IP당 분당 10회. 응답 시간은 `RECOVERY_MIN_RESPONSE_SECONDS`를 같이 씁니다 |
 | (선택) `EMAIL_TOKEN_TTL_MINUTES` / `EMAIL_TOKEN_COOLDOWN_SECONDS` / `EMAIL_TOKEN_MAX_PER_DAY` / `EMAIL_CONFIRM_RATE_LIMIT_PER_MINUTE` | 이메일 인증·변경 확인 링크(guide40): 유효 15분, 같은 회원·용도 재발송 60초 간격·하루 5회, 확인 제출 IP당 분당 10회 |
 | (선택) `ADMIN_ACCOUNT_FAILURE_THRESHOLD` / `ADMIN_ACCOUNT_DETECTION_WINDOW_SECONDS` | 관리자 계정 단위 잠금 기준(기본 8회 초과 / 900초=15분, guide38). IP와 무관하게 한 관리자 아이디의 실패를 셉니다 |
 | (선택) `ADMIN_SESSION_MAX_HOURS` | 관리자 세션 최대 수명(시간, 기본 8). 로그인 시각부터 세며, 지나면 다시 로그인해야 합니다(guide37) |
@@ -262,7 +264,7 @@ login-watchdog/
 ## 더 자세히 알고 싶다면
 
 - [plan.md](plan.md) — 각 파일을 왜 이렇게 설계했는지에 대한 상세 근거
-- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide40_email_verification.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
+- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide41_password_reset.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
 - [docs/board-comment/](docs/board-comment) — 게시판·댓글 기능을 왜 이렇게 설계했는지(구현 전 분석 → 모호한 질문 11개 결정 → 구현 계획 → 결과 보고) 순서대로 기록한 문서 4종
 - [docs/refactor/2026-09-15-file-split.md](docs/refactor/2026-09-15-file-split.md) — `app.py`/`db.py`/`dashboard.js`를 각각 `routes/`+`helpers.py`, `db/` 패키지, `public/js/dashboard/` ES 모듈로 나눈 리팩터링 배경과 과정
 
@@ -285,8 +287,8 @@ login-watchdog/
 - **개발용 서버 사용** — `app.run(debug=True)`는 Flask가 공식적으로 "운영 배포에 쓰지 말라"고 명시하는 개발용 서버입니다. 외부 공개 서비스로 배포하려면 별도의 프로덕션 WSGI 서버(gunicorn 등)로 교체해야 합니다.
 - **회원가입 응답은 아직 가입 여부를 알려줌** — "이미 사용 중인 아이디 또는 이메일입니다"로 가입된 아이디·이메일을 확인할 수 있습니다. 숨기려면 가입 확인 메일 방식으로 바꿔야 해서 남겨 두었습니다(가입은 IP당 빈도 제한이 있음, guide39). 로그인 잠금 문구와 복구 코드 화면은 가입 여부를 드러내지 않습니다.
 - **복구 코드는 요청한 기기에서만** — PC에서 복구를 요청하고 휴대폰 브라우저에 6자리 코드를 넣으면 거절됩니다. 이 경우 휴대폰에서는 메일의 링크를 누르면 됩니다(guide39).
-- **이메일 인증은 가입을 막지 않음** — 가입 직후 인증 메일을 보내지만, 인증하지 않아도 로그인·이용은 가능합니다(guide40). 인증 여부는 비밀번호 재설정(다음 단계) 같은 "계정을 되찾는 메일"에만 영향을 줍니다. 기존 회원은 모두 미인증 상태로 시작하므로 대시보드에서 한 번 인증해야 합니다.
-- **감시 대상 계정은 데모 수준 인증** — "비밀번호를 잊었을 때" 메일 재설정은 아직 제공하지 않습니다(다음 단계 예정, 로그인 후 비밀번호 변경은 가능, 잊은 경우는 관리자가 처리). 영구 잠금의 이메일 복구에서 메일 서버가 수신자를 영구 거부하면 그 계정은 관리자만 풀 수 있게 표시됩니다 — Gmail처럼 나중에 반송하는 경우는 알 수 없습니다.
+- **이메일 인증은 가입을 막지 않음** — 가입 직후 인증 메일을 보내지만, 인증하지 않아도 로그인·이용은 가능합니다(guide40). 인증 여부는 비밀번호 재설정(guide41) 같은 "계정을 되찾는 메일"에만 영향을 줍니다. 기존 회원은 모두 미인증 상태로 시작하므로 대시보드에서 한 번 인증해야 합니다.
+- **비밀번호 찾기는 인증된 이메일에만** — 이메일을 인증하지 않은 회원(기존 회원 포함)이 비밀번호를 잊으면 지금처럼 관리자가 처리합니다. 관리자 계정의 비밀번호 재설정은 제공하지 않습니다(guide41). 영구 잠금의 이메일 복구에서 메일 서버가 수신자를 영구 거부하면 그 계정은 관리자만 풀 수 있게 표시됩니다 — Gmail처럼 나중에 반송하는 경우는 알 수 없습니다.
 - **IP 위치 조회는 참고용** — ip-api.com 무료 API는 HTTPS를 지원하지 않고(서버 간 통신이라 브라우저 보안 경고와는 무관), 도시 단위 정확도가 완벽하지 않을 수 있습니다. `127.0.0.1` 같은 사설 IP는 항상 "위치 확인 불가"로 표시됩니다.
 - **게시판은 회원 전용, 대댓글·첨부파일 미지원** — 비로그인 사용자는 글 목록조차 볼 수 없고, 댓글은 단일 depth(답글 불가)이며 이미지/파일 첨부도 지원하지 않습니다. 회원이 탈퇴해도 작성한 글·댓글은 삭제되지 않고 흔적만 남습니다(감사 로그와 동일한 정책). 새 댓글 알림은 웹소켓이 아니라 폴링(기본 5초, `BOARD_COMMENT_POLL_MS`) 방식입니다. 설계 배경은 [docs/board-comment/02-design-decisions.md](docs/board-comment/02-design-decisions.md) 참고.
 - **게시글 id 순차 조회(스크래핑) 미차단** — 로그인만 하면 다른 회원의 글 id를 하나씩 순차 조회해 게시판 전체를 스크래핑하는 것 자체는 막지 않습니다. 게시판이 "회원 전체 공개" 설계이므로 이는 버그가 아니라 의도된 범위입니다.

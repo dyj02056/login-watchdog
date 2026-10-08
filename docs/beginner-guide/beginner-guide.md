@@ -47,6 +47,7 @@
 38. [38단계 — 관리자 계정 단위 잠금 (분산 브루트포스 대응)](guide38_admin_account_lockout.md)
 39. [39단계 — 로그인·복구 응답으로 계정 존재 여부가 드러나지 않게](guide39_account_enumeration.md)
 40. [40단계 — 이메일 인증 + 이메일 변경 보호](guide40_email_verification.md)
+41. [41단계 — 비밀번호 찾기 (인증된 이메일로 재설정)](guide41_password_reset.md)
 
 ---
 
