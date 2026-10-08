@@ -6,6 +6,7 @@
                   (GET은 토큰을 소비하지 않는다. 실제 소비는 이 폼의 POST에서만 일어난다)
     wrong_device  IP 복구 링크를 요청한 기기가 아닌 곳에서 열었음 — 코드 입력만 안내한다
     code          메일 링크 없이 아이디 + 6자리 코드로 인증하는 화면
+                  (복구를 요청한 기기에서만 동작한다 — guide39)
     invalid       만료되었거나 이미 사용된 링크
 -->
 <!doctype html>
@@ -49,6 +50,7 @@
                 <button type="submit">해제</button>
             </form>
         {% elif mode == "wrong_device" or mode == "code" %}
+            <p class="recovery-note">6자리 코드는 복구를 요청한 기기의 브라우저에서 입력해야 합니다. 다른 기기라면 메일의 링크를 이용해주세요.</p>
             <form method="post" action="{{ url_for('recovery.recovery_verify_submit') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 

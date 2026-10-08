@@ -7,10 +7,12 @@
 # 이 파일은 영구 잠금 기본 stub(autouse)을 꺼야 해서 real_lockdown 마커를 단다.
 # ============================================================================
 
+import re
 import smtplib
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from markupsafe import escape
 
 import alert
 import config
@@ -19,6 +21,8 @@ import detector
 import helpers
 import lockdown
 import mailer
+import routes.auth as routes_auth
+import routes.recovery as routes_recovery
 import soar
 
 from tests.test_app import get_csrf_token  # noqa: E402
@@ -200,10 +204,14 @@ def store(monkeypatch):
         db, "get_pending_recovery_by_token_hash",
         lambda h: next((r for r in s.pending() if r["token_hash"] == h), None),
     )
-    monkeypatch.setattr(
-        db, "get_latest_pending_recovery_for_user",
-        lambda uid: next((r for r in reversed(s.pending()) if r["user_id"] == uid), None),
-    )
+    def latest_pending_for_username(username):
+        # 진짜 함수는 users와 inner join한 한 번의 조회다 — 없는 아이디면 결과도 없다.
+        user = s.users.get(username)
+        if user is None:
+            return None
+        return next((r for r in reversed(s.pending()) if r["user_id"] == user["id"]), None)
+
+    monkeypatch.setattr(db, "get_latest_pending_recovery_for_username", latest_pending_for_username)
 
     def consume(request_id):
         for r in s.requests:
@@ -663,8 +671,8 @@ def test_concurrent_wrong_codes_cannot_exceed_the_attempt_limit(client, store, m
     wrong = "000000" if real_code != "000000" else "111111"
     stale = dict(store.requests[0])
     monkeypatch.setattr(
-        db, "get_latest_pending_recovery_for_user",
-        lambda uid: dict(stale) if store.requests[0]["status"] == "PENDING" else None,
+        db, "get_latest_pending_recovery_for_username",
+        lambda username: dict(stale) if store.requests[0]["status"] == "PENDING" else None,
     )
     # hmac.compare_digest는 CSRF 검증에서도 쓰이므로, 복구 코드 해시와의 비교만 센다.
     compared = []
@@ -701,9 +709,59 @@ def test_code_for_ip_recovery_from_another_device_is_not_checked_and_not_counted
 
     response = _submit_code(other_device, "alice", code)
 
-    assert "요청한 기기" in response.get_data(as_text=True)
+    # 다른 기기에는 "진행 중인 요청이 있다"는 사실조차 알리지 않는다(guide39)
+    assert _code_message(response) == routes_recovery.CODE_GENERIC_FAILURE_MESSAGE
     assert store.requests[0]["code_attempts"] == 0  # 코드가 맞는지 알려주는 창구가 되지 않는다
     assert store.exemptions == []
+
+
+def _code_message(response):
+    """코드 입력 화면 응답에서 안내 문구(flash 한 줄)만 꺼낸다."""
+    html = response.get_data(as_text=True)
+    match = re.search(r'<ul class="flash-list">\s*<li>(.*?)</li>', html, re.S)
+    return match.group(1).strip() if match else None
+
+
+def _without_csrf(response):
+    """세션마다 달라지는 CSRF 토큰 값만 지운 응답 본문 — 나머지가 완전히 같은지 비교할 때 쓴다."""
+    return re.sub(r'name="csrf_token" value="[^"]*"', 'name="csrf_token" value=""', response.get_data(as_text=True))
+
+
+def test_account_recovery_code_from_another_device_is_rejected_without_using_attempts(client, flask_app, store):
+    # 이전에는 계정 복구 코드를 아무 기기에서나 넣을 수 있어서, 공격자가 피해자 아이디로 틀린
+    # 코드를 5번 넣어 피해자의 복구 요청을 취소시킬 수 있었다(guide39).
+    store.lock_account("alice")
+    _request_recovery(client)
+    real_code = store.mails[0][3]
+    wrong = "000000" if real_code != "000000" else "111111"
+    attacker = flask_app.test_client()
+
+    for _ in range(config.RECOVERY_MAX_CODE_ATTEMPTS + 1):
+        response = _submit_code(attacker, "alice", wrong)
+        assert _code_message(response) == routes_recovery.CODE_GENERIC_FAILURE_MESSAGE
+    assert _code_message(_submit_code(attacker, "alice", real_code)) == routes_recovery.CODE_GENERIC_FAILURE_MESSAGE
+
+    assert store.requests[0]["code_attempts"] == 0
+    assert store.requests[0]["status"] == "PENDING"  # 피해자는 그대로 복구를 마칠 수 있다
+    assert store.released_accounts == []
+    assert "복구 완료" in _submit_code(client, "alice", real_code).get_data(as_text=True)
+
+
+def test_code_failures_look_identical_whether_or_not_the_account_exists(client, flask_app, store):
+    # 아이디 없음 / 가입했지만 진행 중인 복구 없음 / 다른 기기의 계정·IP 복구 — 넷 다 같은 화면이다.
+    store.users["bob"] = {**store.users["alice"], "id": 99, "username": "bob", "email": "bob@example.com"}
+    store.lock_account("alice")
+    _request_recovery(client)
+    other = flask_app.test_client()
+
+    bodies = [
+        _without_csrf(_submit_code(other, "ghost", "123456")),
+        _without_csrf(_submit_code(other, "bob", "123456")),
+        _without_csrf(_submit_code(other, "alice", "123456")),
+    ]
+
+    assert bodies[0] == bodies[1] == bodies[2]
+    assert routes_recovery.CODE_GENERIC_FAILURE_MESSAGE in bodies[0]
 
 
 def test_code_for_unknown_user_gives_generic_failure(client, store):
@@ -759,15 +817,29 @@ def test_temporary_lock_keeps_the_original_message_without_recovery_link(client,
     assert "잠긴 계정입니다" in html and "/recovery" not in html
 
 
-def test_permanently_locked_account_shows_recovery_link(client, login_env, monkeypatch):
+@pytest.mark.parametrize("lock_state", ["TEMPORARY", "PERMANENT"])
+def test_account_lock_shows_recovery_link_without_revealing_permanence(client, login_env, monkeypatch, lock_state):
+    # 영구 승격은 가입된 아이디에만 일어나므로 "영구 잠금"이라고 알려주면 가입 여부가 드러난다
+    # (guide39). 임시든 영구든 같은 문구 + 같은 복구 링크를 보여준다.
     monkeypatch.setattr(detector, "is_locked", lambda ip: False)
     monkeypatch.setattr(detector, "is_account_locked", lambda username: True)
-    monkeypatch.setattr(detector, "get_account_lock_state", lambda username: "PERMANENT")
+    monkeypatch.setattr(detector, "get_account_lock_state", lambda username: lock_state)
 
     html = _login(client, "right").get_data(as_text=True)
 
-    assert "영구 잠금된 계정" in html and "/recovery" in html
+    assert str(escape(routes_auth.ACCOUNT_LOCKED_MESSAGE)) in html and 'href="/recovery"' in html
     assert login_env["verify_calls"] == []
+
+
+def test_temporary_and_permanent_account_locks_render_identically(flask_app, login_env, monkeypatch):
+    monkeypatch.setattr(detector, "is_locked", lambda ip: False)
+    monkeypatch.setattr(detector, "is_account_locked", lambda username: True)
+    bodies = []
+    for state in ("TEMPORARY", "PERMANENT"):
+        monkeypatch.setattr(detector, "get_account_lock_state", lambda username, _s=state: _s)
+        bodies.append(_without_csrf(_login(flask_app.test_client(), "right")))
+
+    assert bodies[0] == bodies[1]
 
 
 def test_exempted_user_with_device_cookie_passes_through_the_permanent_ip_lock(client, login_env, monkeypatch):

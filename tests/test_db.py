@@ -1352,3 +1352,24 @@ def test_reserve_recovery_code_attempt_does_not_update_when_already_at_the_limit
 
     assert db.reserve_recovery_code_attempt(1, 5, 5) is None
     assert fake_client.calls == []
+
+
+def test_latest_pending_recovery_for_username_joins_users_in_a_single_query(monkeypatch):
+    # 아이디 → 회원 조회 → 요청 조회로 나누면 없는 아이디만 왕복이 한 번 적어 응답 시간으로
+    # 가입 여부가 드러난다(guide39). users와 inner join한 한 번의 조회여야 한다.
+    row = {"id": 5, "user_id": 7, "status": "PENDING", "users": {"username": "alice"}}
+    fake_client = _ScriptedClient([[row]])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.get_latest_pending_recovery_for_username("alice")
+
+    assert result["id"] == 5 and result["username"] == "alice" and "users" not in result
+    assert ("select", ("*, users!inner(username)",), {}) in fake_client.calls
+    assert ("eq", ("users.username", "alice"), {}) in fake_client.calls
+    assert sum(1 for call in fake_client.calls if call[0] == "table") == 1
+
+
+def test_latest_pending_recovery_for_username_none_for_unknown_or_no_request(monkeypatch):
+    monkeypatch.setattr(db, "get_client", lambda: _ScriptedClient([[]]))
+
+    assert db.get_latest_pending_recovery_for_username("ghost") is None

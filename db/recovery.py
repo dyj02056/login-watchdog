@@ -90,20 +90,25 @@ def get_pending_recovery_by_token_hash(token_hash: str) -> dict | None:
     return res.data[0] if res.data else None
 
 
-def get_latest_pending_recovery_for_user(user_id: int) -> dict | None:
-    """이 사용자의 가장 최근 유효 복구 요청 하나(6자리 코드 입력 경로에서 쓴다)."""
+def get_latest_pending_recovery_for_username(username: str) -> dict | None:
+    """이 아이디의 가장 최근 유효 복구 요청 하나(6자리 코드 입력 경로에서 쓴다).
+
+    users와 inner join해서 아이디로 바로 찾는다(guide39) — 예전처럼 "아이디로 회원 조회 →
+    그 id로 요청 조회" 두 번에 나누면, 없는 아이디는 한 번에 끝나고 있는 아이디는 한 번
+    더 왕복해서 응답 시간 차이로 가입 여부가 드러날 수 있다. 이제 어느 쪽이든 한 번이다.
+    """
     res = (
         db.get_client()
         .table("recovery_requests")
-        .select("*")
-        .eq("user_id", user_id)
+        .select("*, users!inner(username)")
+        .eq("users.username", username)
         .eq("status", "PENDING")
         .gt("expires_at", db._now_iso())
         .order("created_at", desc=True)
         .limit(1)
         .execute()
     )
-    return res.data[0] if res.data else None
+    return _flatten_username(res.data[0]) if res.data else None
 
 
 def consume_recovery_request(request_id: int) -> dict | None:

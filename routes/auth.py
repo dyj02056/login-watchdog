@@ -42,6 +42,15 @@ auth_bp = Blueprint("auth", __name__)
 # 데는 충분하고, 실제 도달 가능 여부는 어차피 별도의 인증 메일 없이는 확인할 수 없다.
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
+# 계정 잠금 안내(guide39) — 임시든 영구든 같은 문구와 같은 복구 링크를 보여준다. 영구 승격은
+# 가입된 아이디에만 일어나서(lockdown.promote_account), "영구 잠금"이라고 따로 알려주면 그
+# 아이디가 실제로 가입돼 있다는 사실이 드러나기 때문이다. 링크도 영구 잠금에만 보여주면
+# 링크 유무로 다시 구분되므로 모든 계정 잠금에 보여준다(복구 화면은 원래 항상 같은 응답).
+ACCOUNT_LOCKED_MESSAGE = (
+    "잠긴 계정입니다. 잠시 후 다시 시도해주세요. 계속 로그인할 수 없다면 아래 "
+    "'본인 인증으로 잠금 해제'를 이용하거나 관리자에게 문의해주세요."
+)
+
 
 # ============================================================================
 # 회원가입 (신규 확장 기능) — 감시 대상 /login에 실제로 로그인할 계정을 만드는 곳
@@ -225,11 +234,8 @@ def login_submit():
         # 예외가 있으면 IP 잠금 안내 없이 아래 계정 잠금 확인과 정상적인 비밀번호 확인으로 계속 진행한다.
 
     if detector.is_account_locked(username):
-        if detector.get_account_lock_state(username) == detector.LOCK_STATE_PERMANENT:
-            flash("영구 잠금된 계정입니다. 아래 '본인 인증으로 잠금 해제'를 이용해보세요. 이메일 인증이 안 되는 경우 관리자에게 문의해주세요.")
-            return _login_form(recovery_link=True)
-        flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
-        return _login_form()
+        flash(ACCOUNT_LOCKED_MESSAGE)
+        return _login_form(recovery_link=True)
 
     success = db.verify_user_credentials(username, password)
     db.log_attempt(ip, username, success)

@@ -49,6 +49,9 @@ GENERIC_SENT_MESSAGE = "등록된 이메일이 있다면 안내 메일을 보냈
 RATE_LIMITED_MESSAGE = "요청이 너무 많습니다. 잠시 후 다시 시도해주세요."
 INVALID_LINK_MESSAGE = "만료되었거나 이미 사용된 링크입니다. 복구를 다시 요청해주세요."
 CODE_EXHAUSTED_MESSAGE = "코드가 올바르지 않습니다. 복구를 다시 요청해주세요."
+# 6자리 코드 경로의 공통 실패 문구(guide39) — 아이디 없음 / 진행 중인 요청 없음 / 요청한 기기가
+# 아님을 구분하지 않는다. 구분하면 "이 아이디에 진행 중인 복구가 있다(= 가입된 아이디)"가 드러난다.
+CODE_GENERIC_FAILURE_MESSAGE = "아이디 또는 코드가 올바르지 않거나 만료되었습니다."
 WRONG_DEVICE_MESSAGE = (
     "이 링크는 복구를 요청한 기기에서만 사용할 수 있습니다. "
     "요청한 기기의 브라우저에서 아래에 아이디와 메일의 6자리 코드를 입력해주세요."
@@ -344,16 +347,18 @@ def recovery_verify_submit():
 
     username = request.form.get("username", "").strip()
     code = request.form.get("code", "").strip()
-    user = db.get_user_by_username(username) if config.USERNAME_PATTERN.match(username) else None
-    req = db.get_latest_pending_recovery_for_user(user["id"]) if user else None
-    if req is None or not code:
-        return render_template(
-            "recovery_verify.html", mode="code", message="아이디 또는 코드가 올바르지 않거나 만료되었습니다."
-        )
+    req = (
+        db.get_latest_pending_recovery_for_username(username)
+        if code and config.USERNAME_PATTERN.match(username)
+        else None
+    )
 
-    # 요청한 기기가 아니면 코드가 맞는지 틀린지 알려주지 않는다(시도 횟수도 올리지 않는다).
-    if req["target_kind"] == "ip" and not _device_matches(req):
-        return render_template("recovery_verify.html", mode="code", message=WRONG_DEVICE_MESSAGE)
+    # 코드는 복구 종류와 무관하게 "복구를 요청한 기기"에서만 받는다(guide39, 이전에는 IP 복구만).
+    # 아이디 없음 / 요청 없음 / 다른 기기를 같은 문구로 답하고 시도권도 쓰지 않는다 — 그래서
+    # 다른 기기에서는 (1) 이 아이디에 복구가 진행 중인지 알 수 없고 (2) 틀린 코드를 넣어 남의
+    # 복구 요청을 취소시킬 수도 없다. 메일 링크(토큰) 경로는 그대로 어느 기기에서나 동작한다.
+    if req is None or not _device_matches(req):
+        return render_template("recovery_verify.html", mode="code", message=CODE_GENERIC_FAILURE_MESSAGE)
 
     # 비교하기 "전에" 시도권부터 예약한다(guide37). 동시에 수백 개를 보내도 한도를 넘는
     # 요청은 코드를 비교조차 하지 못한다 — 예약 실패(None)면 맞는 코드여도 통과시키지 않는다.
