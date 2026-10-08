@@ -68,7 +68,8 @@ export async function fetchStatus() {
     if (pages.securityIncidents > data.security_incidents_total_pages) { pages.securityIncidents = data.security_incidents_total_pages; needsRefetch = true; }
     if (pages.accessRequests > data.access_requests_total_pages) { pages.accessRequests = data.access_requests_total_pages; needsRefetch = true; }
     if (needsRefetch) {
-        fetchStatus();
+        // 기다렸다가 끝내야 폴링(../polling.js)이 "요청은 한 번에 하나"를 지킬 수 있다.
+        await fetchStatus();
         return;
     }
 

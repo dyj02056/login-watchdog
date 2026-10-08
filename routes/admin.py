@@ -218,7 +218,7 @@ def _build_permanent_locks(ip_lockouts: list[dict], account_lockouts: list[dict]
 @admin_bp.route("/api/status", methods=["GET"])
 @login_required
 def api_status():
-    """대시보드가 2~3초마다 호출하는 API. 최신 상태를 JSON으로 돌려준다.
+    """대시보드가 5초마다 호출하는 API(탭이 보일 때만, guide45). 최신 상태를 JSON으로 돌려준다.
 
     JSON이란? 파이썬의 딕셔너리(dict)와 거의 똑같이 생긴, 서버와 브라우저가
     데이터를 주고받을 때 가장 널리 쓰이는 표준 형식이다. jsonify()는 파이썬
@@ -246,10 +246,19 @@ def api_status():
     IP 위치 조회(_attach_locations)는 attempts 결과가 있어야 시작할 수 있는
     후속 작업이라 별도로 남겨뒀지만, 나머지 futures가 백그라운드에서 계속
     돌고 있는 동안 같이 실행되므로 추가 대기 시간은 거의 없다.
+
+    만료된 잠금 정리 3종(IP·회원 계정·관리자 계정)은 서로 무관하므로 동시에 돌린다(guide45).
+    다만 아래 목록 조회보다는 먼저 끝나야 한다 — 같이 돌리면 방금 풀린 잠금이 한 주기(5초)
+    동안 "잠김"으로 보일 수 있다. 예외는 .result()가 그대로 다시 일으킨다(순서대로 부르던 때와 같다).
     """
-    soar.try_release_expired_lockouts()
-    soar.try_release_expired_account_lockouts()
-    soar.try_release_expired_admin_account_lockouts()
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        release_futures = [
+            executor.submit(soar.try_release_expired_lockouts),
+            executor.submit(soar.try_release_expired_account_lockouts),
+            executor.submit(soar.try_release_expired_admin_account_lockouts),
+        ]
+        for future in release_futures:
+            future.result()
 
     attempts_page = _page_param("attempts_page")
     users_page = _page_param("users_page")

@@ -1,6 +1,6 @@
 # 44단계 — 로그 자동 정리와 일별 요약
 
-[◀ 43단계](guide43_recovery_request_limit.md) · [전체 목차](beginner-guide.md)
+[◀ 43단계](guide43_recovery_request_limit.md) · [전체 목차](beginner-guide.md) · [45단계 ▶](guide45_visible_tab_polling.md)
 
 > 페이지 접속, 404, 로그인 시도 같은 기록은 요청마다 한 줄씩 쌓이는데, 지금까지는 지울 방법이 없었습니다(`scripts/delete_security_events.py`는 보안 이벤트만 수동으로 지움). 그래서 Supabase 안의 예약 작업(pg_cron)이 **매일 새벽 3시(한국 시간)** 보관 기간이 지난 기록을 지우게 했습니다. 지우기 전에는 **날짜·종류별 건수**를 요약표에 남겨, 개별 기록이 사라져도 오래된 통계는 계속 볼 수 있습니다. 앱 코드는 바뀌지 않았고, SQL 한 번 실행으로 켜집니다.
 

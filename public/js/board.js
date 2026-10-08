@@ -7,7 +7,13 @@
 // 여기서 폴링하는 건 "댓글이 새로 달렸는지" 신호 하나뿐이고, 배너를 누르면
 // 페이지를 통째로 새로고침해서 최신 댓글까지 포함된 SSR 화면을 다시 받는다 —
 // 부분 갱신(diff 렌더링) 없이 가장 단순한 방식을 택했다.
+//
+// 폴링은 공용 부품(polling.js, guide45)을 쓴다 — 탭이 안 보이면 멈추고, 다시 보이면
+// 즉시 한 번 확인한다(자리를 비운 사이 달린 댓글을 바로 알린다). 그래서 이 파일은
+// type="module"로 불러온다.
 // ============================================================================
+
+import { startPolling } from "./polling.js";
 
 const boardDetailEl = document.getElementById("board-detail");
 const boardPostId = boardDetailEl.getAttribute("data-post-id");
@@ -50,7 +56,8 @@ document.getElementById("new-comment-refresh").addEventListener("click", () => {
     window.location.reload();
 });
 
-setInterval(checkForNewComments, boardPollIntervalMs);
+// 첫 확인은 한 주기 뒤에 한다 — 화면이 방금 서버에서 최신 상태로 그려졌으므로.
+startPolling(checkForNewComments, boardPollIntervalMs, { immediate: false });
 
 // 글/댓글 삭제 폼의 "정말 삭제할까요?" 확인창. 원래는 각 <form>에 직접
 // onsubmit="return confirm(...)"을 붙여뒀지만, 새로 추가한 CSP(script-src 'self')가

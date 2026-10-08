@@ -3,7 +3,8 @@
 //
 // 이 화면이 하는 일은 크게 3가지다.
 // 1) 주기적으로(config.py의 ADMIN_DASHBOARD_POLL_MS, 기본 5초마다) 서버의
-//    /api/status에 "지금 상태 알려줘"라고 물어본다.
+//    /api/status에 "지금 상태 알려줘"라고 물어본다. 탭이 안 보이면 멈추고, 다시 보이면
+//    즉시 갱신한다(../polling.js, guide45).
 //    (원래는 2.5초 → Supabase 무료 쿼터 점검 결과 10초로 늘렸다가 — 9단계
 //    "쿼터 점검" 참고 — 이후 보안 이벤트/공격 대응 상황을 더 빠르게 화면에
 //    반영하기 위해 5초로 다시 줄였다)
@@ -29,9 +30,11 @@
 // docs/refactor/2026-09-15-file-split.md — 이 분리 작업의 배경과 계획 문서.
 // ============================================================================
 
+import { startPolling } from "../polling.js";
 import { fetchStatus } from "./api.js";
 import { pollIntervalMs } from "./state.js";
 import "./events.js"; // 이 줄이 실행되는 순간 버튼 이벤트들이 전부 걸린다 (부수효과 import)
 
-fetchStatus(); // 화면이 열리자마자 한 번 즉시 데이터를 가져온다.
-setInterval(fetchStatus, pollIntervalMs); // 이후로는 pollIntervalMs마다 계속 반복해서 최신 상태로 갱신한다.
+// 화면이 열리자마자 한 번 데이터를 가져오고, 이후로는 응답을 받을 때마다 pollIntervalMs 뒤에
+// 다시 가져온다. 탭이 숨겨져 있는 동안은 멈춘다.
+startPolling(fetchStatus, pollIntervalMs);
