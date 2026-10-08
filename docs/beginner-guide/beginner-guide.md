@@ -50,6 +50,7 @@
 41. [41단계 — 비밀번호 찾기 (인증된 이메일로 재설정)](guide41_password_reset.md)
 42. [42단계 — IPv6는 /64 대역 단위로 세고 잠근다](guide42_ipv6_prefix.md)
 43. [43단계 — 복구 요청 한도와 처리 시간 기록](guide43_recovery_request_limit.md)
+44. [44단계 — 로그 자동 정리와 일별 요약](guide44_log_retention.md)
 
 ---
 

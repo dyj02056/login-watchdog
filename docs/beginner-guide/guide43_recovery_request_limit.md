@@ -1,6 +1,6 @@
 # 43단계 — 복구 요청 한도와 처리 시간 기록
 
-[◀ 42단계](guide42_ipv6_prefix.md) · [전체 목차](beginner-guide.md)
+[◀ 42단계](guide42_ipv6_prefix.md) · [전체 목차](beginner-guide.md) · [44단계 ▶](guide44_log_retention.md)
 
 > 복구 요청(`/recovery/request`)과 비밀번호 찾기 요청(`/password/forgot`)은 가입 여부가 응답 시간으로 드러나지 않도록 **항상 8초 뒤에** 응답합니다([34단계](guide34a_email_recovery.md), [41단계](guide41_password_reset.md)). 이 8초 동안 서버리스 함수 하나가 묶여 있습니다. 그래서 요청이 몰리면 함수 자원이 고갈될 수 있습니다. 이번 단계에서는 **복구 요청에 전용 한도**를 걸고, **실제 처리 시간을 기록**하게 한 뒤, 운영 실측을 근거로 고정 시간을 **8초에서 5초로** 줄였습니다. DB 스키마 변경은 없습니다.
 
