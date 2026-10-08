@@ -210,6 +210,16 @@ section h2 {
     font-family: var(--font-mono);
 }
 
+/* 페이지 버튼을 누른 순간(응답 전)의 표시 — guide46 */
+.admin-pagination-loading {
+    color: var(--ink-faint);
+}
+
+tbody.is-loading {
+    opacity: 0.45;
+    transition: opacity 0.15s ease;
+}
+
 .data-table {
     width: 100%;
     border-collapse: collapse;

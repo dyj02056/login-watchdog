@@ -52,6 +52,7 @@
 43. [43단계 — 복구 요청 한도와 처리 시간 기록](guide43_recovery_request_limit.md)
 44. [44단계 — 로그 자동 정리와 일별 요약](guide44_log_retention.md)
 45. [45단계 — 보이지 않는 탭은 폴링하지 않는다](guide45_visible_tab_polling.md)
+46. [46단계 — 대시보드 즉시 반응](guide46_dashboard_responsiveness.md)
 
 ---
 

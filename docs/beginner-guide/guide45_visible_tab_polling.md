@@ -1,6 +1,6 @@
 # 45단계 — 보이지 않는 탭은 폴링하지 않는다
 
-[◀ 44단계](guide44_log_retention.md) · [전체 목차](beginner-guide.md)
+[◀ 44단계](guide44_log_retention.md) · [전체 목차](beginner-guide.md) · [46단계 ▶](guide46_dashboard_responsiveness.md)
 
 > 관리자 대시보드는 5초마다 `/api/status`를 호출하고, 그 요청 한 번에 DB 조회가 약 21번 일어납니다. 그런데 이 호출은 **탭이 안 보여도** 계속됐습니다. 관리자 탭을 켜 둔 채 다른 일을 하면 분당 약 250번씩 DB를 왕복한 셈입니다. 이제 탭이 숨겨지면 멈추고, 다시 보이면 즉시 갱신합니다. 게시글 화면의 새 댓글 확인도 같은 방식으로 바꿨습니다. DB 스키마 변경은 없습니다.
 

@@ -80,3 +80,21 @@ def test_expired_lock_cleanup_runs_concurrently_and_before_the_listing(client, m
     assert response.status_code == 200
     assert sorted(order[:3]) == ["account", "admin", "ip"]
     assert order[3] == "listing"  # 목록은 정리가 끝난 뒤에 조회한다(방금 풀린 잠금이 "잠김"으로 안 보이게)
+
+
+def test_page_numbers_never_go_below_one():
+    # "이전"을 응답 전에 빠르게 연달아 누르면 0, -1, …까지 내려가 화면에 "-4 / 8"처럼 보였다.
+    events = (JS / "dashboard" / "events.js").read_text(encoding="utf-8")
+    api = (JS / "dashboard" / "api.js").read_text(encoding="utf-8")
+    # 페이지 버튼은 goToPage가 1 ~ 마지막 페이지로 묶고, 전체 갱신도 1 미만이면 1로 보낸다(guide46).
+    assert "goToPage(sectionName, getPage() - 1)" in events
+    assert "pages[section.pageKey] = Math.min(Math.max(1, page), total);" in api
+    assert "if (!(pages[section.pageKey] >= 1)) {" in api
+
+
+def test_only_the_latest_status_response_is_drawn():
+    # 빠르게 누르면 요청 여러 개가 동시에 나가고 응답 순서가 뒤바뀔 수 있다 — 옛 응답은 버린다.
+    api = (JS / "dashboard" / "api.js").read_text(encoding="utf-8")
+    assert "const requestId = ++latestStatusRequest;" in api
+    assert api.count("if (requestId !== latestStatusRequest)") == 2
+    assert "const requestId = ++latestSectionRequest[name];" in api

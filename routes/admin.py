@@ -7,6 +7,8 @@
 
 import ipaddress
 import math
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from flask import Blueprint, flash, g, jsonify, redirect, render_template, request, session, url_for
@@ -177,6 +179,69 @@ def _page_param(name: str) -> int:
     return page if page and page > 0 else 1
 
 
+# 페이지가 있는 표 8개 — 대시보드가 한 표의 페이지만 넘길 때 ?only=<이름>으로 그 표만 받는다(guide46).
+# 이름: (페이지 파라미터, db 조회 함수 이름, 응답의 목록 키, 응답의 전체 페이지 수 키)
+_PAGED_SECTIONS = {
+    "attempts": ("attempts_page", "list_recent_attempts", "recent_attempts", "attempts_total_pages"),
+    "users": ("users_page", "list_users", "users", "users_total_pages"),
+    "posts": ("posts_page", "list_posts", "recent_posts", "posts_total_pages"),
+    "comments": ("comments_page", "list_comments_admin", "recent_comments", "comments_total_pages"),
+    "admin_log": ("admin_log_page", "list_admin_login_log", "admin_login_log", "admin_log_total_pages"),
+    "security_events": (
+        "security_events_page", "list_security_events", "security_events", "security_events_total_pages",
+    ),
+    "security_incidents": (
+        "security_incidents_page", "list_security_incidents", "security_incidents", "security_incidents_total_pages",
+    ),
+    "access_requests": (
+        "access_requests_page", "list_pending_requests", "access_requests", "access_requests_total_pages",
+    ),
+}
+
+
+def _api_status_section(name: str):
+    """표 하나의 이번 페이지만 돌려준다(?only=<이름>). 세션 확인 + 조회 1번(로그인 시도 표는 위치
+    캐시 1번 더)으로 끝난다 — 전체 조회는 약 21번이다. 만료된 잠금 정리는 전체 갱신이 맡는다."""
+    if name not in _PAGED_SECTIONS:
+        return jsonify({"error": "알 수 없는 표입니다."}), 400
+    page_param, query_name, rows_key, total_key = _PAGED_SECTIONS[name]
+    rows, count = getattr(db, query_name)(_page_param(page_param), config.ADMIN_PAGE_SIZE)
+    if name == "attempts":
+        rows = _attach_locations(rows)
+    return jsonify({rows_key: rows, total_key: max(1, math.ceil(count / config.ADMIN_PAGE_SIZE))})
+
+
+# 이 서버 인스턴스가 마지막으로 만료된 잠금을 정리한 시각(time.monotonic). 대시보드 갱신마다 정리하지
+# 않고 ADMIN_STATUS_RELEASE_INTERVAL_SECONDS에 한 번만 한다(guide46). 동시에 들어온 갱신 둘이 함께
+# 정리하지 않게 잠금으로 보호한다.
+_expiry_release_state = {"at": None}
+_expiry_release_lock = threading.Lock()
+
+
+def _release_expired_locks_if_due() -> None:
+    """만료된 잠금 정리 3종(IP·회원 계정·관리자 계정)을 정해진 간격마다 동시에 돌린다.
+
+    서로 무관하므로 동시에 돌리고(guide45), 호출한 쪽의 목록 조회보다는 먼저 끝난다 — 같이 돌리면
+    방금 풀린 잠금이 한 주기 동안 "잠김"으로 보일 수 있다. 예외는 .result()가 그대로 다시 일으킨다.
+    """
+    interval = config.ADMIN_STATUS_RELEASE_INTERVAL_SECONDS
+    now = time.monotonic()
+    with _expiry_release_lock:
+        last = _expiry_release_state["at"]
+        if interval > 0 and last is not None and now - last < interval:
+            return
+        _expiry_release_state["at"] = now
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        release_futures = [
+            executor.submit(soar.try_release_expired_lockouts),
+            executor.submit(soar.try_release_expired_account_lockouts),
+            executor.submit(soar.try_release_expired_admin_account_lockouts),
+        ]
+        for future in release_futures:
+            future.result()
+
+
 def _build_permanent_locks(ip_lockouts: list[dict], account_lockouts: list[dict]) -> list[dict]:
     """active인 잠금 중 영구(PERMANENT)인 것만 골라 대시보드 "영구 잠금" 카드용 한 목록으로 만든다.
 
@@ -247,18 +312,17 @@ def api_status():
     후속 작업이라 별도로 남겨뒀지만, 나머지 futures가 백그라운드에서 계속
     돌고 있는 동안 같이 실행되므로 추가 대기 시간은 거의 없다.
 
-    만료된 잠금 정리 3종(IP·회원 계정·관리자 계정)은 서로 무관하므로 동시에 돌린다(guide45).
-    다만 아래 목록 조회보다는 먼저 끝나야 한다 — 같이 돌리면 방금 풀린 잠금이 한 주기(5초)
-    동안 "잠김"으로 보일 수 있다. 예외는 .result()가 그대로 다시 일으킨다(순서대로 부르던 때와 같다).
+    응답 속도(guide46):
+    - ?only=<표 이름>이면 그 표 하나만 돌려준다(_api_status_section) — 페이지 넘기기용.
+    - 만료된 잠금 정리는 정해진 간격마다만 한다(_release_expired_locks_if_due).
+    - 아래 조회는 전부 한 번에(동시 처리 한도 = 조회 개수) 보낸다. "관리자 계정 관리" 카드의
+      권한 확인과 목록도 같은 배치에 넣고, 권한이 없으면 목록은 버린다(응답에 싣지 않는다).
     """
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        release_futures = [
-            executor.submit(soar.try_release_expired_lockouts),
-            executor.submit(soar.try_release_expired_account_lockouts),
-            executor.submit(soar.try_release_expired_admin_account_lockouts),
-        ]
-        for future in release_futures:
-            future.result()
+    only = request.args.get("only")
+    if only is not None:
+        return _api_status_section(only)
+
+    _release_expired_locks_if_due()
 
     attempts_page = _page_param("attempts_page")
     users_page = _page_param("users_page")
@@ -272,7 +336,7 @@ def api_status():
     # 아래 스레드에서는 g를 쓸 수 없으므로 여기서 먼저 꺼내둔다.
     role = g.admin["role"]
 
-    with ThreadPoolExecutor(max_workers=12) as executor:
+    with ThreadPoolExecutor(max_workers=17) as executor:
         attempts_future = executor.submit(db.list_recent_attempts, attempts_page, config.ADMIN_PAGE_SIZE)
         lockouts_future = executor.submit(db.list_active_lockouts)
         # "현재 잠긴 IP / 계정" 카드의 계정 잠금 목록 — IP 잠금 목록과 같은 배치로 병렬 조회.
@@ -304,6 +368,9 @@ def api_status():
         recovery_future = executor.submit(db.list_recent_recovery_requests, 20)
         exemptions_future = executor.submit(db.list_active_ip_exemptions, 20)
         permissions_future = executor.submit(db.list_role_permissions, role)
+        # "관리자 계정 관리" 카드 — 권한 확인과 목록을 같은 배치로 미리 보낸다(권한이 없으면 목록은 버림).
+        can_manage_admins_future = executor.submit(db.has_permission, role, "manage_admin_users")
+        admin_users_future = executor.submit(db.list_admin_users)
 
         attempts, attempts_count = attempts_future.result()
         recent_attempts = _attach_locations(attempts)  # 다른 future들이 도는 동안 함께 실행됨
@@ -321,6 +388,9 @@ def api_status():
         recovery_requests = recovery_future.result()
         ip_exemptions = exemptions_future.result()
         permissions = permissions_future.result()
+        can_manage_admins = can_manage_admins_future.result()
+        # 권한이 없으면 결과를 꺼내지 않는다 — 실패했더라도 그 관리자의 화면과는 무관하다.
+        admin_users = admin_users_future.result() if can_manage_admins else None
 
     response_data = {
             "recent_attempts": recent_attempts,
@@ -361,8 +431,8 @@ def api_status():
     # "관리자 계정 관리" 카드는 super_admin(manage_admin_users 권한 보유자)에게만
     # 응답에 실어 보낸다 — viewer/security_admin의 화면에는 이 키 자체가 없어서
     # dashboard.js가 카드를 숨긴다(다른 관리자 계정 목록이 노출되지 않음).
-    if db.has_permission(role, "manage_admin_users"):
-        response_data["admin_users"] = db.list_admin_users()
+    if can_manage_admins:
+        response_data["admin_users"] = admin_users
 
     return jsonify(response_data)
 

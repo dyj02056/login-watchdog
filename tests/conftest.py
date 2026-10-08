@@ -63,12 +63,20 @@ def flask_app(monkeypatch):
     # 내 프로필 화면이 "이메일 변경 확인 대기 중"을 보여주려고 조회한다(guide40) — 기본값은 "없음".
     monkeypatch.setattr(db, "get_pending_email_token_for_user", lambda user_id, purpose: None)
 
+    # /api/status가 "관리자 계정 관리" 목록을 권한 확인과 같은 배치로 미리 조회한다(guide46) —
+    # 권한이 없는 테스트에서도 불리므로 기본값은 "빈 목록". 내용이 중요한 테스트만 다시 바꾼다.
+    monkeypatch.setattr(db, "list_admin_users", lambda: [])
+
     # 이전 테스트가 이미 app을 import해둔 상태일 수 있으므로, sys.modules에서
     # 지워서 위의 monkeypatch가 적용된 새 환경으로 app.py가 다시 실행되게 한다.
     sys.modules.pop("app", None)
     import app as app_module
 
     app_module.app.config.update(TESTING=True)
+    # 만료된 잠금 정리 간격(guide46)은 서버 인스턴스(모듈)에 기억된다 — 테스트마다 "아직 정리한 적
+    # 없음"에서 시작해야 /api/status 첫 호출이 항상 정리를 한다.
+    import routes.admin
+    monkeypatch.setitem(routes.admin._expiry_release_state, "at", None)
     yield app_module.app
 
     sys.modules.pop("app", None)

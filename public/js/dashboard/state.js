@@ -44,6 +44,19 @@ export const pages = {
     accessRequests: 1,
 };
 
+// 표마다 마지막으로 받은 전체 페이지 수(guide46). 페이지 버튼을 누른 순간 서버 응답을 기다리지
+// 않고 "4 / 8"처럼 새 번호를 그리고, 마지막 페이지를 넘지 않게 막는 데 쓴다.
+export const totalPages = {
+    attempts: 1,
+    users: 1,
+    posts: 1,
+    comments: 1,
+    adminLog: 1,
+    securityEvents: 1,
+    securityIncidents: 1,
+    accessRequests: 1,
+};
+
 // 회원가입 토글 버튼을 누르면 "지금 상태의 반대"로 바꿔야 하는데, 그러려면
 // "지금 상태가 뭔지"를 어딘가 기억해둬야 한다. render.js의 renderSignupStatus()가
 // 매번 이 값을 최신으로 갱신해둔다.

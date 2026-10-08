@@ -57,6 +57,10 @@ COMMENT_RATE_LIMIT = int(os.environ.get("COMMENT_RATE_LIMIT", 10))
 # 한 곳에 모았다.
 BOARD_COMMENT_POLL_MS = int(os.environ.get("BOARD_COMMENT_POLL_MS", 5000))
 ADMIN_DASHBOARD_POLL_MS = int(os.environ.get("ADMIN_DASHBOARD_POLL_MS", 5000))
+# 대시보드 상태 조회(/api/status)가 "만료된 잠금 정리"를 다시 하기까지의 최소 간격(초, guide46).
+# 매 갱신마다 정리하면 DB 왕복 한 단계가 늘 더해진다. 실제 차단 해제는 /login 요청마다 따로
+# 정리하므로 영향이 없고, 대시보드에 만료된 잠금이 이 시간만큼 더 보일 수 있을 뿐이다. 0이면 매번.
+ADMIN_STATUS_RELEASE_INTERVAL_SECONDS = int(os.environ.get("ADMIN_STATUS_RELEASE_INTERVAL_SECONDS", 15))
 
 # Web Scanning(존재하지 않는 경로 반복 요청) 탐지 임계값 — 같은 IP가
 # DETECTION_WINDOW_SECONDS(기본 60초) 안에 이 횟수를 "초과"해서 404를 유발하면
