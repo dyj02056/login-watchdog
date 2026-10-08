@@ -49,6 +49,7 @@
 40. [40단계 — 이메일 인증 + 이메일 변경 보호](guide40_email_verification.md)
 41. [41단계 — 비밀번호 찾기 (인증된 이메일로 재설정)](guide41_password_reset.md)
 42. [42단계 — IPv6는 /64 대역 단위로 세고 잠근다](guide42_ipv6_prefix.md)
+43. [43단계 — 복구 요청 한도와 처리 시간 기록](guide43_recovery_request_limit.md)
 
 ---
 

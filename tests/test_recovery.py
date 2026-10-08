@@ -716,6 +716,22 @@ def test_verify_submit_has_its_own_rate_limit(client, store, monkeypatch):
     assert _submit_code(client, "ghost", "123456").status_code == 429
 
 
+def test_recovery_request_has_its_own_rate_limit_and_rejects_without_waiting(client, store, monkeypatch):
+    # guide43 — 복구 요청은 응답마다 고정 시간만큼 함수를 붙잡으므로 IP당 분당 한도를 따로 건다.
+    import time
+
+    responses = [_request_recovery(client, "ghost") for _ in range(config.RECOVERY_REQUEST_RATE_LIMIT_PER_MINUTE)]
+    assert all(r.status_code == 200 for r in responses)
+
+    monkeypatch.setattr(soar, "record_rejection", lambda *a, **k: None)
+    monkeypatch.setattr(config, "RECOVERY_MIN_RESPONSE_SECONDS", 2.0)
+    started = time.monotonic()
+    response = _request_recovery(client, "ghost")
+
+    assert response.status_code == 429
+    assert time.monotonic() - started < 1.0  # 한도 초과는 고정 대기 없이 바로 끝난다
+
+
 def test_code_for_ip_recovery_from_another_device_is_not_checked_and_not_counted(client, flask_app, store):
     store.lock_ip("127.0.0.1")
     _request_recovery(client)
@@ -1014,6 +1030,35 @@ def test_default_mode_finishes_the_work_before_responding_even_if_it_is_slow(mon
     recovery.run_with_fixed_response_time(lambda: (time.sleep(0.25), done.append(True)), time.monotonic())
 
     assert done == [True]  # 응답 시점에 이미 끝나 있다
+
+
+def test_work_time_is_logged_without_identifiers(flask_app, monkeypatch, capsys):
+    # guide43 — 고정 시간을 실측으로 조정하려고 실제 처리 시간을 남긴다. 경로와 시간만 남긴다.
+    import time
+
+    from routes import recovery
+
+    monkeypatch.setattr(config, "RECOVERY_MIN_RESPONSE_SECONDS", 0.1)
+    with flask_app.test_request_context("/recovery/request", method="POST"):
+        recovery.run_with_fixed_response_time(lambda: None, time.monotonic())
+    line = capsys.readouterr().out.strip()
+
+    assert line.startswith("[timing] /recovery/request work=") and "target=0.1s" in line
+    assert "overrun" not in line
+
+
+def test_work_slower_than_the_target_is_flagged_as_overrun(flask_app, monkeypatch, capsys):
+    # 처리가 고정 시간을 넘기면 그 요청만 응답이 늦어져 시간 차이가 드러난다 — 로그에 표시한다.
+    import time
+
+    from routes import recovery
+
+    monkeypatch.setattr(config, "RECOVERY_MIN_RESPONSE_SECONDS", 0.05)
+    with flask_app.test_request_context("/password/forgot", method="POST"):
+        recovery.run_with_fixed_response_time(lambda: time.sleep(0.1), time.monotonic())
+    line = capsys.readouterr().out.strip()
+
+    assert line.startswith("[timing] /password/forgot") and line.endswith("overrun")
 
 
 @pytest.mark.parametrize("background", [False, True])

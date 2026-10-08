@@ -1,6 +1,6 @@
 # 42단계 — IPv6는 /64 대역 단위로 세고 잠근다
 
-[◀ 41단계](guide41_password_reset.md) · [전체 목차](beginner-guide.md)
+[◀ 41단계](guide41_password_reset.md) · [전체 목차](beginner-guide.md) · [43단계 ▶](guide43_recovery_request_limit.md)
 
 > 지금까지 IP 잠금·IP 단위 탐지·요청 제한은 모두 **주소 하나**를 단위로 셌습니다. IPv4에서는 문제가 없지만, IPv6 사용자는 주소를 거의 공짜로 바꿀 수 있어서 이 방식이 통째로 우회됩니다. 요청 IP를 한 곳에서 "탐지·잠금 단위"로 정규화해 IPv6는 **/64 대역**을 한 단위로 보게 했습니다. DB 스키마 변경은 없습니다.
 

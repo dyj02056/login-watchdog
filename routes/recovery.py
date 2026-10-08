@@ -26,7 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from flask import Blueprint, make_response, render_template, request
+from flask import Blueprint, has_request_context, make_response, render_template, request
 
 import config
 import db
@@ -69,6 +69,14 @@ def _report_internal_error(error: Exception) -> None:
     mailer.report_failure(mailer.FAIL_INTERNAL, f"복구·재설정 요청 처리 중 오류: {type(error).__name__}")
 
 
+def _log_timing(path: str, work_seconds: float, target: float) -> None:
+    """실제 처리 시간을 한 줄로 남긴다(guide43) — 고정 시간을 실측으로 조정하기 위한 기록.
+    처리가 고정 시간을 넘기면 그 요청만 응답이 늦어져 계정 존재 여부가 드러날 수 있으므로
+    `overrun`을 붙인다. 아이디·IP는 남기지 않는다."""
+    overrun = " overrun" if work_seconds > target else ""
+    print(f"[timing] {path} work={work_seconds:.2f}s target={target:.1f}s{overrun}", flush=True)
+
+
 def run_with_fixed_response_time(work, started: float) -> None:
     """`work()`를 실행하고, 처리가 빨리 끝났든 오래 걸렸든 응답 시점이 항상
     RECOVERY_MIN_RESPONSE_SECONDS로 같아지게 맞춘다(타이밍 사이드채널 방지).
@@ -86,8 +94,11 @@ def run_with_fixed_response_time(work, started: float) -> None:
 
     어느 쪽이든 처리 중 예외는 로그만 남기고 삼킨다 — 예외가 500으로 새면 "이 아이디는
     처리 중 오류가 났다"는 신호가 되어 계정 존재 여부가 드러난다.
+
+    고정 시간이 0보다 크면 처리가 끝난 시점까지 걸린 시간을 `[timing]` 로그로 남긴다(guide43).
     """
     target = config.RECOVERY_MIN_RESPONSE_SECONDS
+    path = request.path if has_request_context() else "-"
 
     def safe_work():
         # 서버리스에서 한동안 쉬던 DB 연결을 재사용하면 첫 요청이 "Server disconnected" 같은
@@ -111,12 +122,16 @@ def run_with_fixed_response_time(work, started: float) -> None:
         safe_work()
         return
 
+    def timed_work():
+        safe_work()
+        _log_timing(path, time.monotonic() - started, target)
+
     if config.RECOVERY_BACKGROUND_WORK:
-        thread = threading.Thread(target=safe_work, daemon=True)
+        thread = threading.Thread(target=timed_work, daemon=True)
         thread.start()
         thread.join(timeout=max(0.0, target - (time.monotonic() - started)))
     else:
-        safe_work()
+        timed_work()
 
     remaining = target - (time.monotonic() - started)
     if remaining > 0:

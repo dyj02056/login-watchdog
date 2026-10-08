@@ -187,6 +187,10 @@ RECOVERY_MAX_CODE_ATTEMPTS = int(os.environ.get("RECOVERY_MAX_CODE_ATTEMPTS", 5)
 # /recovery/verify 제출(POST)의 IP당 분당 한도 — 코드 시도 횟수 제한(RECOVERY_MAX_CODE_ATTEMPTS)
 # 앞단의 2차 방어선. 전역 한도와 같은 인메모리 저장소라 서버리스에서는 인스턴스마다 따로 센다.
 RECOVERY_VERIFY_RATE_LIMIT_PER_MINUTE = int(os.environ.get("RECOVERY_VERIFY_RATE_LIMIT_PER_MINUTE", 10))
+# 복구 요청(POST /recovery/request)의 IP당 분당 한도(guide43) — 이 요청은 응답마다 고정 시간
+# (RECOVERY_MIN_RESPONSE_SECONDS)만큼 함수를 붙잡으므로, IP 하나가 함수를 묶어 둘 수 있는 횟수를
+# 줄인다. 한도를 넘기면 기다림 없이 바로 429 — IP 기준이라 계정 존재 여부와 무관하다.
+RECOVERY_REQUEST_RATE_LIMIT_PER_MINUTE = int(os.environ.get("RECOVERY_REQUEST_RATE_LIMIT_PER_MINUTE", 5))
 RECOVERY_PROBATION_HOURS = int(os.environ.get("RECOVERY_PROBATION_HOURS", 24))
 # 복구 요청 응답에 걸리는 "고정" 시간(초) — 메일을 실제로 보낸 경우(DB 조회 여러 번 + SMTP)와
 # 아무것도 안 한 경우(없는 아이디 등)의 응답 시간 차이로 계정 존재 여부가 새지 않게, 처리가

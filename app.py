@@ -136,6 +136,11 @@ limiter = Limiter(
 app.view_functions["recovery.recovery_verify_submit"] = limiter.limit(
     f"{config.RECOVERY_VERIFY_RATE_LIMIT_PER_MINUTE} per minute"
 )(app.view_functions["recovery.recovery_verify_submit"])
+# 복구 요청(POST /recovery/request, guide43)은 응답마다 고정 시간만큼 함수를 붙잡으므로 좁은 한도를
+# 따로 건다. 한도를 넘긴 요청은 고정 대기 없이 바로 429로 끝난다.
+app.view_functions["recovery.recovery_request_submit"] = limiter.limit(
+    f"{config.RECOVERY_REQUEST_RATE_LIMIT_PER_MINUTE} per minute"
+)(app.view_functions["recovery.recovery_request_submit"])
 # 이메일 확인 링크 제출(POST /email/confirm, guide40)도 같은 이유로 좁은 한도를 따로 건다.
 app.view_functions["email.email_confirm_submit"] = limiter.limit(
     f"{config.EMAIL_CONFIRM_RATE_LIMIT_PER_MINUTE} per minute"
