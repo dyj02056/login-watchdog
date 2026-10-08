@@ -40,7 +40,7 @@ CLEANED = {
 KEPT = {
     "users", "admin_users", "lockouts", "account_lockouts", "admin_account_lockouts",
     "lock_history", "ip_lock_exemptions", "posts", "comments", "app_settings",
-    "roles", "permissions", "log_daily_summary",
+    "roles", "permissions", "log_daily_summary", "log_daily_breakdown", "log_summary_state",
 }
 
 
