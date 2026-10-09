@@ -90,4 +90,4 @@
 ## 이 단계에서 만들어지거나 바뀐 파일
 
 - 신규: [public/js/polling.js](../../public/js/polling.js), `tests/test_polling.py`
-- 수정: [public/js/dashboard/main.js](../../public/js/dashboard/main.js), [public/js/dashboard/api.js](../../public/js/dashboard/api.js), [public/js/board.js](../../public/js/board.js), `templates/board_detail.html`, [routes/admin.py](../../routes/admin.py)(`api_status`), [README.md](../../README.md)
+- 수정: [public/js/dashboard/main.js](../../public/js/dashboard/main.js), [public/js/dashboard/api.js](../../public/js/dashboard/api.js), [public/js/board.js](../../public/js/board.js), `templates/board_detail.html`, [routes/admin.py](../../routes/admin/)(`api_status`), [README.md](../../README.md)

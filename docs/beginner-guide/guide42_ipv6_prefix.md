@@ -82,5 +82,5 @@ IPv4 주소는 32비트라 한 사람이 쓸 수 있는 주소가 보통 하나(
 
 ## 이 단계에서 만들어지거나 바뀐 파일
 
-- 신규: [ip_utils.py](../../ip_utils.py), `tests/test_ipv6_prefix.py`
-- 수정: [helpers.py](../../helpers.py)(`get_request_ip`), [lockdown.py](../../lockdown.py)(`is_ip_allowlisted`), [geoip.py](../../geoip.py), [config.py](../../config.py)(`IPV6_PREFIX_LENGTH`), [scripts/unlock_ip.py](../../scripts/unlock_ip.py)
+- 신규: [ip_utils.py](../../services/ip_utils.py), `tests/test_ipv6_prefix.py`
+- 수정: [helpers.py](../../helpers/)(`get_request_ip`), [lockdown.py](../../security/lockdown.py)(`is_ip_allowlisted`), [geoip.py](../../services/geoip.py), [config.py](../../config.py)(`IPV6_PREFIX_LENGTH`), [scripts/unlock_ip.py](../../scripts/unlock_ip.py)

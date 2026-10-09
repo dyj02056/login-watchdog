@@ -126,7 +126,7 @@ def login_submit():
 
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [app.py](../../app.py) (신규 작성 — 라우트 11개 + 문지기 함수 1개)
-- [alert.py](../../alert.py) (콘솔 출력에 `flush=True` 추가)
+- [alert.py](../../notify/alert.py) (콘솔 출력에 `flush=True` 추가)
 - `.env` (`SECRET_KEY`, `ADMIN_USERNAME`, `ADMIN_PASSWORD` 값 채움)
 - `.claude/launch.json` (신규 — 브라우저 미리보기로 서버를 켜기 위한 설정)
 - Supabase에 실제 관리자 계정(`soung1009`) 1명 생성됨, 테스트용 데이터는 확인 후 정리

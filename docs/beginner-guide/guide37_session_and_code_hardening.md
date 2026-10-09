@@ -123,6 +123,6 @@ Flask 세션은 **서명된 쿠키**입니다. 서버는 "이 쿠키를 내가 �
 
 ## 이 단계에서 만들어지거나 바뀐 파일
 
-- 수정: [db/recovery.py](../../db/recovery.py), [routes/recovery.py](../../routes/recovery.py), [app.py](../../app.py), [helpers.py](../../helpers.py), [routes/admin.py](../../routes/admin.py), [db/admin.py](../../db/admin.py), [db/\_\_init\_\_.py](../../db/__init__.py), [config.py](../../config.py), [.env.example](../../.env.example)
+- 수정: [db/recovery.py](../../db/recovery.py), [routes/recovery.py](../../routes/recovery.py), [app.py](../../app.py), [helpers.py](../../helpers/), [routes/admin.py](../../routes/admin/), [db/admin.py](../../db/admin.py), [db/\_\_init\_\_.py](../../db/__init__.py), [config.py](../../config.py), [.env.example](../../.env.example)
 - 신규: [tests/test_admin_session.py](../../tests/test_admin_session.py), [tests/admin_session.py](../../tests/admin_session.py)
 - 테스트 수정: `tests/conftest.py`, `tests/test_app.py`, `tests/test_db.py`, `tests/test_recovery.py`, `tests/test_password_change.py`, `tests/test_permanent_admin_api.py`

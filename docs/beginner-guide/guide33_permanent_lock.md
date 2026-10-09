@@ -96,8 +96,8 @@
 
 ## 이 단계에서 만들어지거나 바뀐 파일
 
-- 신규: [lockdown.py](../../lockdown.py), [db/lock_history.py](../../db/lock_history.py), [docs/migrations/guide33_permanent_lock.sql](../migrations/guide33_permanent_lock.sql), [tests/test_permanent_lock.py](../../tests/test_permanent_lock.py), [tests/test_permanent_admin_api.py](../../tests/test_permanent_admin_api.py)
-- 수정: [config.py](../../config.py), [soar.py](../../soar.py), [correlate.py](../../correlate.py), [detector.py](../../detector.py), [alert.py](../../alert.py), [db/lockouts.py](../../db/lockouts.py), [db/account_lockouts.py](../../db/account_lockouts.py), [db/incidents.py](../../db/incidents.py), [db/roles.py](../../db/roles.py), [routes/admin.py](../../routes/admin.py), [routes/auth.py](../../routes/auth.py), 대시보드(`templates/admin_dashboard.html`, `public/js/dashboard/*`, `public/css/dashboard.css`), `scripts/unlock_ip.py`, `scripts/unlock_account.py`, `scripts/tune_thresholds.py`(영구 잠금 이벤트는 "조기 해제" 집계에서 제외)
+- 신규: [lockdown.py](../../security/lockdown.py), [db/lock_history.py](../../db/lock_history.py), [docs/migrations/guide33_permanent_lock.sql](../migrations/guide33_permanent_lock.sql), [tests/test_permanent_lock.py](../../tests/test_permanent_lock.py), [tests/test_permanent_admin_api.py](../../tests/test_permanent_admin_api.py)
+- 수정: [config.py](../../config.py), [soar.py](../../security/soar/), [correlate.py](../../security/correlate.py), [detector.py](../../security/detector.py), [alert.py](../../notify/alert.py), [db/lockouts.py](../../db/lockouts.py), [db/account_lockouts.py](../../db/account_lockouts.py), [db/incidents.py](../../db/incidents.py), [db/roles.py](../../db/roles.py), [routes/admin.py](../../routes/admin/), [routes/auth.py](../../routes/auth.py), 대시보드(`templates/admin_dashboard.html`, `public/js/dashboard/*`, `public/css/dashboard.css`), `scripts/unlock_ip.py`, `scripts/unlock_account.py`, `scripts/tune_thresholds.py`(영구 잠금 이벤트는 "조기 해제" 집계에서 제외)
 - 스키마: [docs/schema.sql](../schema.sql) 맨 아래 + 같은 내용의 마이그레이션 파일. 여러 번 실행해도 안전합니다.
 
 ## 알려진 제한

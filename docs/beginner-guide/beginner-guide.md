@@ -1,7 +1,9 @@
 # 로그인 워치독 — 비전공자용 진행 해설서
 
 > 이 문서는 `plan.md`의 각 단계를 진행할 때마다, "우리가 방금 무엇을 했고 왜 했는지"를 개발 지식이 없어도 이해할 수 있게 풀어서 기록합니다.
-> 단계가 끝날 때마다 새 섹션이 추가됩니다.
+> 단계가 끝날 때마다 아래 목차에 새 단계 파일(`guideNN_*.md`)이 추가됩니다. 1~25단계는 이 파일 본문에도 같은 내용이 남아 있고, 26단계부터는 단계별 파일에만 있습니다.
+>
+> 각 단계 문서는 **그 단계를 진행한 시점의 기록**입니다. 문서에 나오는 파일 이름(`soar.py`, `helpers.py`, `routes/admin.py`, `dashboard.js` 등)은 이후 리팩터링으로 위치가 바뀌었을 수 있습니다 — 코드 링크는 지금 위치로 고쳐 두었고, 현재 구조는 [README의 "프로젝트 구조"](../../README.md#프로젝트-구조)를 참고하세요.
 
 ---
 
@@ -54,6 +56,11 @@
 45. [45단계 — 보이지 않는 탭은 폴링하지 않는다](guide45_visible_tab_polling.md)
 46. [46단계 — 대시보드 즉시 반응](guide46_dashboard_responsiveness.md)
 47. [47단계 — 매일 어제 하루치를 요약한다(시각화용 요약표)](guide47_daily_log_summary.md)
+
+**단계 사이의 리팩터링 기록** (기능 변화 없이 파일 구조만 바꾼 작업)
+
+- [2026-09-15 — `app.py` / `db.py` / `dashboard.js` 파일 분리](../refactor/2026-09-15-file-split.md) — `routes/` Blueprint, `db/` 패키지, `public/js/dashboard/` ES 모듈로
+- [2026-10-09 — 모듈 정리](../refactor/2026-10-09-module-plan.md) — 루트 모듈을 `security/`·`notify/`·`services/`·`helpers/`로 묶고 `routes/admin.py`·`soar.py` 등 큰 파일을 나눔
 
 ---
 
@@ -155,7 +162,7 @@ Supabase는 열쇠를 2종류로 나눠줍니다.
 ## 3단계 — `db.py` (데이터베이스와 대화하는 창구 만들기)
 
 ### 우리가 한 일
-1. [db.py](../../db.py) 파일에 "Supabase와 주고받는 모든 대화"를 함수 단위로 정리
+1. [db.py](../../db/) 파일에 "Supabase와 주고받는 모든 대화"를 함수 단위로 정리
 2. 실제 데이터를 넣었다 빼면서(스모크 테스트) 함수들이 진짜로 작동하는지 확인
 3. 테스트에 쓴 가짜 데이터를 다시 삭제해서 표를 깨끗한 상태로 되돌림
 
@@ -181,7 +188,7 @@ Supabase는 열쇠를 2종류로 나눠줍니다.
 
 ### 실제 코드 함께 보기
 
-아래는 [db.py](../../db.py)에 실제로 들어있는 코드입니다. 코드 안의 `#`으로 시작하는 줄은 "주석"이라고 부르는데, 프로그램이 실행할 때는 무시되고 오직 사람이 읽으라고 남겨둔 설명글입니다. 함수별로 어떤 일을 하는지 주석과 함께 보면, 앞서 말로 풀어쓴 설명이 코드의 어느 줄에 대응하는지 알 수 있습니다.
+아래는 [db.py](../../db/)에 실제로 들어있는 코드입니다. 코드 안의 `#`으로 시작하는 줄은 "주석"이라고 부르는데, 프로그램이 실행할 때는 무시되고 오직 사람이 읽으라고 남겨둔 설명글입니다. 함수별로 어떤 일을 하는지 주석과 함께 보면, 앞서 말로 풀어쓴 설명이 코드의 어느 줄에 대응하는지 알 수 있습니다.
 
 **로그인 시도 기록 (log_attempt, count_recent_failures, list_recent_attempts)**
 ```python
@@ -311,7 +318,7 @@ def verify_user_credentials(username: str, password: str) -> bool:
 `if ... return False` 처럼 "만약 ~라면, 여기서 함수를 끝내고 False를 돌려줘라"는 문장이 코드 곳곳에 반복되는데, 이게 바로 "중복 아이디면 가입 거부", "가입 안 한 아이디면 로그인 거부" 같은 규칙이 실제 코드로 옮겨진 모습입니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [db.py](../../db.py) (신규 작성 — 13개 함수)
+- [db.py](../../db/) (신규 작성 — 13개 함수)
 - Supabase 표 데이터는 테스트 후 전부 원상 복구(0건)되어 실제로는 코드 파일만 변경됨
 
 ---
@@ -319,9 +326,9 @@ def verify_user_credentials(username: str, password: str) -> bool:
 ## 4단계 — `detector.py` / `soar.py` / `alert.py` (판정 → 조치 → 알림)
 
 ### 우리가 한 일
-1. [detector.py](../../detector.py) — "지금 이 IP가 수상한가? 지금 잠겨있는가?"만 **판단**하는 파일
-2. [soar.py](../../soar.py) — 판단 결과를 받아서 실제로 **잠그고, 알림을 보내고, 풀어주는 실행** 파일
-3. [alert.py](../../alert.py) — Slack으로 **메시지를 실제로 전송**하는 파일
+1. [detector.py](../../security/detector.py) — "지금 이 IP가 수상한가? 지금 잠겨있는가?"만 **판단**하는 파일
+2. [soar.py](../../security/soar/) — 판단 결과를 받아서 실제로 **잠그고, 알림을 보내고, 풀어주는 실행** 파일
+3. [alert.py](../../notify/alert.py) — Slack으로 **메시지를 실제로 전송**하는 파일
 4. 세 파일을 실제 데이터로 이어붙여서(수상 판정 → 잠금 → 알림 → 수동 해제) 전체 흐름이 맞물려 돌아가는지 확인
 
 ### 왜 했는가 (쉬운 설명)
@@ -356,7 +363,7 @@ def verify_user_credentials(username: str, password: str) -> bool:
 
 ### 실제 코드 함께 보기
 
-**[detector.py](../../detector.py) 전체 — "판사"는 코드도 짧습니다 (딱 2개 함수, 아무것도 저장하지 않음)**
+**[detector.py](../../security/detector.py) 전체 — "판사"는 코드도 짧습니다 (딱 2개 함수, 아무것도 저장하지 않음)**
 ```python
 import db
 from config import FAILURE_THRESHOLD
@@ -382,7 +389,7 @@ def is_locked(ip: str) -> bool:
 ```
 `failure_count > FAILURE_THRESHOLD`는 "실패 횟수가 기준치보다 크다"는 부등호 비교를 그대로 코드로 옮긴 것입니다. 이 한 줄이 "5번까지는 봐주고, 6번째부터 수상하다고 판단한다"는 규칙 전체를 담당합니다 — `config.py`에서 `FAILURE_THRESHOLD` 값만 바꾸면 이 규칙도 자동으로 같이 바뀝니다(1단계에서 설명한 "숫자를 한 곳에 모아두는" 설계가 여기서 실제로 힘을 발휘하는 지점입니다).
 
-**[soar.py](../../soar.py) 전체 — 판정 결과를 실제 조치로 옮기는 3개 함수**
+**[soar.py](../../security/soar/) 전체 — 판정 결과를 실제 조치로 옮기는 3개 함수**
 ```python
 from datetime import datetime, timezone
 
@@ -425,7 +432,7 @@ def manual_release(ip: str) -> bool:
 ```
 `for lockout in db.list_expired_active_lockouts():` 부분은 "만료된 잠금 목록을 하나씩 꺼내면서, 그때마다 아래 줄(`db.release_lockout(...)`)을 반복 실행해라"는 뜻의 "반복문"입니다. 목록에 3개가 들어있으면 3번, 0개면 0번(즉 아무 일도 안 함) 실행됩니다.
 
-**[alert.py](../../alert.py) 전체 — Slack에 실제로 메시지를 보내는 함수 1개**
+**[alert.py](../../notify/alert.py) 전체 — Slack에 실제로 메시지를 보내는 함수 1개**
 ```python
 def send_lockout_alert(ip: str, failure_count: int, locked_at: datetime) -> None:
     minutes = config.LOCKOUT_DURATION_SECONDS // 60
@@ -457,9 +464,9 @@ def send_lockout_alert(ip: str, failure_count: int, locked_at: datetime) -> None
 `try:` ~ `except requests.RequestException as e:` 부분이 "일단 시도해보고(try), 만약 도중에 문제(네트워크 오류 등)가 생기면(except) 프로그램이 멈추지 않고 이 블록 안의 코드로 넘어가라"는 안전장치입니다. 한국어로 풀면 "Slack에 메시지 보내기를 시도하되, 혹시 실패하면 에러로 프로그램을 죽이지 말고 그냥 콘솔에 '실패했다'고만 적고 넘어가라"는 뜻입니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [detector.py](../../detector.py) (신규 작성 — 판정 함수 2개)
-- [soar.py](../../soar.py) (신규 작성 — 조치 함수 3개)
-- [alert.py](../../alert.py) (신규 작성 — Slack 알림 함수 1개)
+- [detector.py](../../security/detector.py) (신규 작성 — 판정 함수 2개)
+- [soar.py](../../security/soar/) (신규 작성 — 조치 함수 3개)
+- [alert.py](../../notify/alert.py) (신규 작성 — Slack 알림 함수 1개)
 - Supabase 표 데이터는 테스트 후 전부 원상 복구(0건)
 
 ---
@@ -589,7 +596,7 @@ def login_submit():
 
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [app.py](../../app.py) (신규 작성 — 라우트 11개 + 문지기 함수 1개)
-- [alert.py](../../alert.py) (콘솔 출력에 `flush=True` 추가)
+- [alert.py](../../notify/alert.py) (콘솔 출력에 `flush=True` 추가)
 - `.env` (`SECRET_KEY`, `ADMIN_USERNAME`, `ADMIN_PASSWORD` 값 채움)
 - `.claude/launch.json` (신규 — 브라우저 미리보기로 서버를 켜기 위한 설정)
 - Supabase에 실제 관리자 계정(`soung1009`) 1명 생성됨, 테스트용 데이터는 확인 후 정리
@@ -599,9 +606,9 @@ def login_submit():
 ## 6단계 — 화면(템플릿/스타일/스크립트) 만들기
 
 ### 우리가 한 일
-1. [templates/login.html](../../templates/login.html), [signup.html](../../templates/signup.html), [admin_login.html](../../templates/admin_login.html), [dashboard.html](../../templates/dashboard.html) — 4개 화면의 HTML
+1. [templates/login.html](../../templates/login_form.html), [signup.html](../../templates/signup.html), [admin_login.html](../../templates/login_form.html), [dashboard.html](../../templates/admin_dashboard.html) — 4개 화면의 HTML
 2. [static/css/auth.css](../../public/css/auth.css), [static/css/dashboard.css](../../public/css/dashboard.css) — 화면 스타일
-3. [static/js/dashboard.js](../../public/js/dashboard.js) — 대시보드를 실시간으로 갱신시키는 자바스크립트
+3. [static/js/dashboard.js](../../public/js/dashboard/) — 대시보드를 실시간으로 갱신시키는 자바스크립트
 
 ### 왜 했는가 (쉬운 설명)
 
@@ -683,9 +690,9 @@ document.getElementById("lockout-list").addEventListener("click", (event) => {
 `app.py`의 `flash("잠긴 계정입니다...")`처럼 서버가 남겨둔 메시지를, 이 부분이 화면에 노란 박스로 꺼내 보여줍니다. 실제로 브루트포스 테스트 중 "잠긴 계정입니다" 문구가 정확히 이 코드를 통해 화면에 나타나는 것을 확인했습니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [templates/login.html](../../templates/login.html), [templates/signup.html](../../templates/signup.html), [templates/admin_login.html](../../templates/admin_login.html), [templates/dashboard.html](../../templates/dashboard.html) (신규 작성)
+- [templates/login.html](../../templates/login_form.html), [templates/signup.html](../../templates/signup.html), [templates/admin_login.html](../../templates/login_form.html), [templates/dashboard.html](../../templates/admin_dashboard.html) (신규 작성)
 - [static/css/auth.css](../../public/css/auth.css), [static/css/dashboard.css](../../public/css/dashboard.css) (신규 작성)
-- [static/js/dashboard.js](../../public/js/dashboard.js) (신규 작성)
+- [static/js/dashboard.js](../../public/js/dashboard/) (신규 작성)
 - 브라우저로 전체 화면 흐름(회원가입~로그아웃)을 직접 클릭하며 검증 완료
 
 ---
@@ -859,7 +866,7 @@ E   assert 6 == 5
 Supabase 같은 외부 서비스는 무료로 봐주는 사용량에 한도를 둡니다. 이 프로젝트가 쓰는 무료 요금제는 한 달에 API 요청 약 5만 건까지만 무료입니다. 이 한도를 넘기면 서비스가 막히거나 유료 결제가 필요해집니다. 마치 통신사의 "무료 데이터 5GB"와 비슷한 개념입니다 — 다 쓰면 느려지거나 추가 요금이 붙는 것처럼요.
 
 **왜 우리 프로젝트가 이 한도에 걸릴 위험이 있었나?**
-대시보드([dashboard.js](../../public/js/dashboard.js))는 화면이 열려있는 동안 계속 `/api/status`를 자동으로 반복 호출합니다. 그런데 `/api/status` 한 번을 처리할 때마다 서버([app.py](../../app.py))는 Supabase에 **4번** 따로 요청을 보냅니다(만료 잠금 정리 1번 + 최근 로그인 시도 조회 1번 + 현재 잠금 목록 조회 1번 + 관리자 로그인 기록 조회 1번). 대시보드를 오래 켜놓을수록 이 요청이 계속 쌓이기 때문에, "이걸 그냥 계속 켜놔도 괜찮은가?"를 실제로 재봐야 했습니다.
+대시보드([dashboard.js](../../public/js/dashboard/))는 화면이 열려있는 동안 계속 `/api/status`를 자동으로 반복 호출합니다. 그런데 `/api/status` 한 번을 처리할 때마다 서버([app.py](../../app.py))는 Supabase에 **4번** 따로 요청을 보냅니다(만료 잠금 정리 1번 + 최근 로그인 시도 조회 1번 + 현재 잠금 목록 조회 1번 + 관리자 로그인 기록 조회 1번). 대시보드를 오래 켜놓을수록 이 요청이 계속 쌓이기 때문에, "이걸 그냥 계속 켜놔도 괜찮은가?"를 실제로 재봐야 했습니다.
 
 **측정하면서 발견한 뜻밖의 사실 — "브라우저 탭 스로틀링(throttling)"**
 2.5분 동안 실제로 재보니, 원래 2.5초 간격이면 나와야 할 약 73번보다 훨씬 적은 26번만 발생했습니다. 이건 코드 버그가 아니라, **브라우저가 화면에 보이지 않는(백그라운드) 탭의 타이머 실행 속도를 자동으로 늦추는 절전 기능** 때문이었습니다. 사람이 실수로 대시보드 탭을 다른 창 뒤에 방치해두면 오히려 요청이 줄어드는 셈입니다. 하지만 관리자가 실제로 화면을 보면서 작업 중이라면(탭이 활성 상태) 원래 설정한 간격 그대로 동작하므로, 안전하게 계산할 때는 "최선의 경우"가 아니라 "관리자가 계속 지켜보고 있는 최악의 경우"를 기준으로 삼아야 합니다.
@@ -902,7 +909,7 @@ setInterval(fetchStatus, 10000); // 10초마다
 10초는 "평소 개발/데모 중 오래 켜놔도 쿼터가 안전한" 값으로 정한 것이지, 절대 바꾸면 안 되는 고정값이 아닙니다. **실제 시연(데모) 당일처럼 "화면 반응이 빠르게 보이는 게 더 중요한 짧은 시간 동안"**은 오히려 주기를 짧게 줄이는 게 낫습니다 — 시연은 보통 몇 분 안에 끝나기 때문에, 그 짧은 시간 동안은 쿼터를 걱정할 필요가 거의 없습니다.
 
 **바꾸는 방법 (매우 간단합니다)**
-1. [static/js/dashboard.js](../../public/js/dashboard.js) 파일을 엽니다.
+1. [static/js/dashboard.js](../../public/js/dashboard/) 파일을 엽니다.
 2. 맨 아래쪽 `setInterval(fetchStatus, 10000);` 줄을 찾습니다.
 3. 괄호 안의 숫자(밀리초 단위 — 1000이 1초)만 원하는 값으로 바꿉니다. 예를 들어 시연 중 "즉각 반응하는 것처럼" 보이게 하려면:
    ```javascript
@@ -916,7 +923,7 @@ setInterval(fetchStatus, 10000); // 10초마다
 - 팀원 여러 명이 각자 다른 값으로 테스트하고 있다면, 시연 전에 "지금 몇 초로 되어 있는지" 서로 확인하고 맞추는 게 좋습니다 — 이 값은 `.env`가 아니라 코드(`dashboard.js`) 안에 직접 적혀 있어서, 깃에 커밋하면 팀원 전체에게 그대로 반영됩니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [static/js/dashboard.js](../../public/js/dashboard.js) (폴링 주기 2.5초 → 10초로 변경, 이후 10단계에서 `public/js/dashboard.js`로 폴더명이 바뀜)
+- [static/js/dashboard.js](../../public/js/dashboard/) (폴링 주기 2.5초 → 10초로 변경, 이후 10단계에서 `public/js/dashboard.js`로 폴더명이 바뀜)
 - 새 파일을 만드는 단계는 아니었지만, "실측 → 계산 → 근거 있는 설계 변경"으로 이어진 사례
 
 ---
@@ -1079,7 +1086,7 @@ def admin_login():
 
 ### 우리가 한 일
 1. Supabase에 `app_settings`라는 표를 하나 새로 추가 (딱 1행만 쓰는 "전역 설정" 표)
-2. [db.py](../../db.py)에 `list_users`, `delete_user`, `get_signup_enabled`, `set_signup_enabled` 4개 함수 추가
+2. [db.py](../../db/)에 `list_users`, `delete_user`, `get_signup_enabled`, `set_signup_enabled` 4개 함수 추가
 3. 대시보드에 "등록된 회원" 목록(삭제 버튼 포함)과 "회원가입 설정"(켜기/끄기 토글) 두 섹션 추가
 4. `/signup` 화면이 회원가입이 꺼져있을 때는 폼 대신 안내 문구만 보여주도록 수정
 5. 새 기능들을 실제로 브라우저와 자동 테스트로 검증하고, 도중에 발견한 실수 하나를 바로 고침
@@ -1155,11 +1162,11 @@ async function deleteUser(userId, username) {
 
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [docs/schema.sql](../schema.sql) (`app_settings` 표 추가, Supabase에 실제 실행됨)
-- [db.py](../../db.py) (`list_users`, `delete_user`, `get_signup_enabled`, `set_signup_enabled` 4개 함수 추가)
+- [db.py](../../db/) (`list_users`, `delete_user`, `get_signup_enabled`, `set_signup_enabled` 4개 함수 추가)
 - [app.py](../../app.py) (`/signup` GET·POST에 On/Off 검사 추가, `/api/status`에 `users`·`signup_enabled` 포함, `/api/users/delete`·`/api/settings/signup` 라우트 신규 추가)
-- [templates/dashboard.html](../../templates/dashboard.html) ("회원가입 설정", "등록된 회원" 섹션 추가)
+- [templates/dashboard.html](../../templates/admin_dashboard.html) ("회원가입 설정", "등록된 회원" 섹션 추가)
 - [templates/signup.html](../../templates/signup.html) (회원가입 꺼짐 상태일 때의 안내 문구 추가)
-- [public/js/dashboard.js](../../public/js/dashboard.js) (`renderUsersTable`, `renderSignupStatus`, `deleteUser`, `toggleSignup` 추가)
+- [public/js/dashboard.js](../../public/js/dashboard/) (`renderUsersTable`, `renderSignupStatus`, `deleteUser`, `toggleSignup` 추가)
 - [public/css/dashboard.css](../../public/css/dashboard.css), [public/css/auth.css](../../public/css/auth.css) (새 버튼/안내 문구 스타일 추가)
 - [tests/test_db.py](../../tests/test_db.py) (새 함수 4개에 대한 단위 테스트 7개 추가, 총 22개 통과)
 
@@ -1172,7 +1179,7 @@ async function deleteUser(userId, username) {
 2. `/dashboard` 주소를 **회원 전용** 화면으로 새로 만듦 — 인사말 + "최근 로그인 기록" · "프로필 보기·수정" 두 버튼
 3. `users` 표에 `name`(표시 이름) 칸을 새로 추가
 4. `/login` 로그인 성공 시 이제 실제로 "로그인 상태"가 만들어지도록 회원용 세션을 도입 (예전엔 성공해도 그냥 메시지만 보여주고 끝이었음)
-5. [db.py](../../db.py)에 `get_user_by_id`, `update_user_profile`, `list_attempts_by_username` 3개 함수 추가
+5. [db.py](../../db/)에 `get_user_by_id`, `update_user_profile`, `list_attempts_by_username` 3개 함수 추가
 
 ### 왜 했는가 (쉬운 설명)
 
@@ -1272,7 +1279,7 @@ app.jinja_env.filters["kr_time"] = format_kr_time
 
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [docs/schema.sql](../schema.sql) (`users` 표에 `name` 칸 추가, Supabase에는 `alter table`로 반영)
-- [db.py](../../db.py) (`get_user_by_id`, `update_user_profile`, `list_attempts_by_username` 3개 함수 추가)
+- [db.py](../../db/) (`get_user_by_id`, `update_user_profile`, `list_attempts_by_username` 3개 함수 추가)
 - [app.py](../../app.py) (`member_login_required` 신규, `/login` 성공 시 세션 생성, `/admin/dashboard`로 관리자 대시보드 이전, `/dashboard`·`/dashboard/history`·`/dashboard/profile`·`/dashboard/logout` 회원 라우트 신규, `kr_time` Jinja 필터 추가)
 - [templates/admin_dashboard.html](../../templates/admin_dashboard.html) (`dashboard.html`에서 이름 변경 + 제목을 "관리자 대시보드"로 명확화)
 - [templates/member_dashboard.html](../../templates/member_dashboard.html), [templates/member_history.html](../../templates/member_history.html), [templates/member_profile.html](../../templates/member_profile.html) (신규)
@@ -1334,7 +1341,7 @@ def _logout_missing_member():
 
 ### 우리가 한 일
 1. Supabase에 `ip_locations`라는 "IP 위치 조회 결과 캐시" 표를 새로 추가
-2. [geoip.py](../../geoip.py)라는 새 파일을 만들어 ip-api.com(무료 IP 위치 조회 서비스)과의 통신을 전담시킴
+2. [geoip.py](../../services/geoip.py)라는 새 파일을 만들어 ip-api.com(무료 IP 위치 조회 서비스)과의 통신을 전담시킴
 3. 회원 본인의 로그인 기록(`/dashboard/history`), 관리자 대시보드의 "최근 로그인 시도" 표 양쪽에 **위치** 칸 추가
 
 ### 왜 했는가 (쉬운 설명)
@@ -1393,11 +1400,11 @@ def _attach_locations(attempts: list[dict]) -> list[dict]:
 
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [docs/schema.sql](../schema.sql) (`ip_locations` 표 추가, Supabase에 실제 실행됨)
-- [geoip.py](../../geoip.py) (신규 — ip-api.com 연동 전담 파일)
-- [db.py](../../db.py) (`get_cached_ip_locations`, `save_ip_location` 2개 함수 추가)
+- [geoip.py](../../services/geoip.py) (신규 — ip-api.com 연동 전담 파일)
+- [db.py](../../db/) (`get_cached_ip_locations`, `save_ip_location` 2개 함수 추가)
 - [app.py](../../app.py) (`_attach_locations()` 신규, `member_history()`·`api_status()`에 적용)
 - [templates/member_history.html](../../templates/member_history.html), [templates/admin_dashboard.html](../../templates/admin_dashboard.html) (위치 칸 추가)
-- [public/js/dashboard.js](../../public/js/dashboard.js) (`renderAttemptsTable`에 위치 칸 추가)
+- [public/js/dashboard.js](../../public/js/dashboard/) (`renderAttemptsTable`에 위치 칸 추가)
 - [public/css/member.css](../../public/css/member.css) (표가 카드보다 넓어질 경우를 위한 가로 스크롤 처리 추가)
 - [tests/test_geoip.py](../../tests/test_geoip.py) (신규 — 캐시 활용 여부, 문자열 조립 검증), [tests/test_db.py](../../tests/test_db.py) (캐시 조회/저장 함수 테스트 추가)
 
@@ -1445,7 +1452,7 @@ def _attach_locations(attempts: list[dict]) -> list[dict]:
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [public/css/tokens.css](../../public/css/tokens.css) (신규 — 색상·글꼴·전환 효과 토큰)
 - [public/css/auth.css](../../public/css/auth.css), [public/css/dashboard.css](../../public/css/dashboard.css), [public/css/member.css](../../public/css/member.css) (하드코딩된 색 → `var(--이름)`으로 전환)
-- [public/js/dashboard.js](../../public/js/dashboard.js) (IP·시각 칸에 `.mono` 클래스 추가)
+- [public/js/dashboard.js](../../public/js/dashboard/) (IP·시각 칸에 `.mono` 클래스 추가)
 - [templates/login_form.html](../../templates/login_form.html), [templates/signup.html](../../templates/signup.html), [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [templates/member_dashboard.html](../../templates/member_dashboard.html), [templates/member_history.html](../../templates/member_history.html), [templates/member_profile.html](../../templates/member_profile.html) (`tokens.css` 링크 추가, `member_history.html`은 `.mono` 클래스도 추가)
 - Supabase `app_settings.signup_enabled`를 다시 `true`로 되돌림 (이번 작업과 무관한 발견)
 
@@ -1600,7 +1607,7 @@ document.addEventListener("DOMContentLoaded", function () {
 ### 1. Stored XSS — 관리자 대시보드에서 스크립트가 실행되는 문제
 
 #### 무엇이 문제였는가
-[public/js/dashboard.js](../../public/js/dashboard.js)의 `renderAttemptsTable`, `renderUsersTable` 같은 함수들이 서버에서 받아온 값(로그인 시도의 `username`, 회원 목록의 `username`/`email`)을 아무 가공 없이 `innerHTML`에 문자열 그대로 끼워넣고 있었습니다.
+[public/js/dashboard.js](../../public/js/dashboard/)의 `renderAttemptsTable`, `renderUsersTable` 같은 함수들이 서버에서 받아온 값(로그인 시도의 `username`, 회원 목록의 `username`/`email`)을 아무 가공 없이 `innerHTML`에 문자열 그대로 끼워넣고 있었습니다.
 
 ```js
 // 수정 전
@@ -1637,7 +1644,7 @@ function escapeHtml(value) {
 2. 관리자로 로그인해서 대시보드를 열어보니, "최근 로그인 시도" 표에 그 문자열이 **글자 그대로** 나타났습니다. 브라우저 개발자 도구로 `document.querySelectorAll('#attempts-table-body img').length`를 확인해보니 `0`— 실제 `<img>` 태그는 단 하나도 만들어지지 않았고, 얼럿(alert) 창도 뜨지 않았습니다.
 
 #### 이 단계에서 만들어지거나 바뀐 파일
-- [public/js/dashboard.js](../../public/js/dashboard.js) (`escapeHtml()` 신규 추가, 4개 렌더 함수의 모든 사용자 데이터 삽입 지점에 적용)
+- [public/js/dashboard.js](../../public/js/dashboard/) (`escapeHtml()` 신규 추가, 4개 렌더 함수의 모든 사용자 데이터 삽입 지점에 적용)
 
 ---
 
@@ -1711,7 +1718,7 @@ def handle_csrf_error(error):
 - [requirements.txt](../../requirements.txt) (`flask-wtf` 추가)
 - [app.py](../../app.py) (`CSRFProtect` 등록, `CSRFError` 처리기 추가)
 - [templates/login_form.html](../../templates/login_form.html), [templates/signup.html](../../templates/signup.html), [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [templates/member_dashboard.html](../../templates/member_dashboard.html), [templates/member_history.html](../../templates/member_history.html), [templates/member_profile.html](../../templates/member_profile.html) (폼 7개에 `csrf_token` 숨김 필드 추가, 대시보드에는 `<meta>` 태그 추가)
-- [public/js/dashboard.js](../../public/js/dashboard.js) (`fetch()` 3곳에 `X-CSRFToken` 헤더 추가)
+- [public/js/dashboard.js](../../public/js/dashboard/) (`fetch()` 3곳에 `X-CSRFToken` 헤더 추가)
 
 ---
 
@@ -1770,7 +1777,7 @@ def list_attempts_since(hours: int = 24) -> list[dict]:
 #### 이 단계에서 만들어지거나 바뀐 파일
 - [scripts/bruteforce_sim.py](../../scripts/bruteforce_sim.py) (신규 구현)
 - [scripts/daily_report.py](../../scripts/daily_report.py) (신규 구현 — 숫자 집계 버전)
-- [db.py](../../db.py) (`list_attempts_since`, `list_lockouts_since` 추가)
+- [db.py](../../db/) (`list_attempts_since`, `list_lockouts_since` 추가)
 - [tests/test_db.py](../../tests/test_db.py) (위 두 함수에 대한 단위 테스트 추가)
 
 ---
@@ -1919,7 +1926,7 @@ jobs:
 이런 연쇄는 "고쳤다고 끝이 아니라, 고친 뒤 실제로 다시 돌려봐야 한다"는 걸 잘 보여줍니다. 이번 단계의 모든 수정은 전부 로컬 서버를 실제로 띄우고, 브라우저로 관리자 대시보드를 열어보고, `pytest`와 각 스크립트를 직접 실행해서 확인을 마쳤습니다.
 
 #### 이 단계 전체에서 바뀐 파일 모음
-- [app.py](../../app.py), [db.py](../../db.py), [public/js/dashboard.js](../../public/js/dashboard.js)
+- [app.py](../../app.py), [db.py](../../db/), [public/js/dashboard.js](../../public/js/dashboard/)
 - [templates/login_form.html](../../templates/login_form.html), [templates/signup.html](../../templates/signup.html), [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [templates/member_dashboard.html](../../templates/member_dashboard.html), [templates/member_history.html](../../templates/member_history.html), [templates/member_profile.html](../../templates/member_profile.html)
 - [scripts/bruteforce_sim.py](../../scripts/bruteforce_sim.py), [scripts/daily_report.py](../../scripts/daily_report.py)
 - [tests/conftest.py](../../tests/conftest.py), [tests/test_app.py](../../tests/test_app.py), [tests/test_db.py](../../tests/test_db.py)
@@ -2024,8 +2031,8 @@ def is_admin_suspicious(ip: str) -> tuple[bool, int]:
 `pytest tests/ -v` 전체(59개)를 돌려 전부 통과하는 것도 확인했습니다.
 
 #### 이 단계에서 만들어지거나 바뀐 파일
-- [db.py](../../db.py) (`count_recent_admin_failures` 신규 추가)
-- [detector.py](../../detector.py) (`is_admin_suspicious` 신규 추가)
+- [db.py](../../db/) (`count_recent_admin_failures` 신규 추가)
+- [detector.py](../../security/detector.py) (`is_admin_suspicious` 신규 추가)
 - [app.py](../../app.py) (`admin_login_submit()`에 잠금 판정·실행 로직 추가)
 - [tests/test_app.py](../../tests/test_app.py), [tests/test_detector.py](../../tests/test_detector.py) (관련 테스트 추가)
 
@@ -2148,8 +2155,8 @@ username = request.form.get("username", "").strip()
 #### 이 단계에서 만들어지거나 바뀐 파일
 - [docs/schema.sql](../schema.sql) (`signup_attempts` 표 추가, Supabase 프로젝트에도 SQL Editor로 직접 반영 완료)
 - [config.py](../../config.py) (`SIGNUP_RATE_LIMIT` 추가)
-- [db.py](../../db.py) (`log_signup_attempt`, `count_recent_signup_attempts` 추가)
-- [detector.py](../../detector.py) (`is_signup_rate_limited` 추가)
+- [db.py](../../db/) (`log_signup_attempt`, `count_recent_signup_attempts` 추가)
+- [detector.py](../../security/detector.py) (`is_signup_rate_limited` 추가)
 - [app.py](../../app.py) (`signup_submit()`에 빈도 제한 체크 추가)
 - [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py) (관련 테스트 추가)
 
@@ -2162,7 +2169,7 @@ username = request.form.get("username", "").strip()
 또한 3번 항목에서는 "코드를 고쳤다고 끝이 아니라, 그 코드가 의존하는 데이터베이스 표까지 실제 운영 환경에 반영해야 완성"이라는 2단계의 교훈을 다시 한번 확인했습니다.
 
 #### 이 단계 전체에서 바뀐 파일 모음
-- [app.py](../../app.py), [config.py](../../config.py), [db.py](../../db.py), [detector.py](../../detector.py)
+- [app.py](../../app.py), [config.py](../../config.py), [db.py](../../db/), [detector.py](../../security/detector.py)
 - [docs/schema.sql](../schema.sql)
 - [requirements.txt](../../requirements.txt)
 - [tests/test_app.py](../../tests/test_app.py), [tests/test_detector.py](../../tests/test_detector.py)
@@ -2179,7 +2186,7 @@ username = request.form.get("username", "").strip()
 2. [docs/board-comment/02-design-decisions.md](../board-comment/02-design-decisions.md) — 접근 범위, 삭제 권한, 대댓글 여부 등 모호한 질문 11개에 대한 답을 확정
 3. [docs/board-comment/plan_board.md](../board-comment/plan_board.md) — 스키마·라우트·함수 설계를 담은 구현 계획 수립
 4. [docs/schema.sql](../schema.sql)에 `posts`, `comments`, `post_attempts`, `comment_attempts` 표 4개 추가
-5. [db.py](../../db.py)에 게시글/댓글 CRUD + 빈도 제한 함수 17개, [detector.py](../../detector.py)에 판정 함수 2개, [app.py](../../app.py)에 라우트 12개 추가
+5. [db.py](../../db/)에 게시글/댓글 CRUD + 빈도 제한 함수 17개, [detector.py](../../security/detector.py)에 판정 함수 2개, [app.py](../../app.py)에 라우트 12개 추가
 6. 게시글 목록(`board_list.html`), 상세(`board_detail.html`), 작성/수정 폼(`board_form.html`) 화면과 전용 스타일(`board.css`) 신규 제작
 7. 관리자 대시보드에 "게시판 관리" 섹션(임의 게시글·댓글 삭제) 추가
 8. `pytest` 94개 + 실제 브라우저 검증까지 마친 뒤, 검증 중 발견한 버그 2건 수정
@@ -2316,13 +2323,13 @@ setInterval(checkForNewComments, boardPollIntervalMs);
 #### 이 단계에서 만들어지거나 바뀐 파일
 - [docs/schema.sql](../schema.sql) (`posts`, `comments`, `post_attempts`, `comment_attempts` 4개 표 추가, Supabase에도 SQL Editor로 직접 반영 완료)
 - [config.py](../../config.py) (`BOARD_PAGE_SIZE`, `POST_RATE_LIMIT`, `COMMENT_RATE_LIMIT` 추가)
-- [db.py](../../db.py) (게시글/댓글/빈도제한 함수 17개 추가)
-- [detector.py](../../detector.py) (`is_post_rate_limited`, `is_comment_rate_limited` 추가)
+- [db.py](../../db/) (게시글/댓글/빈도제한 함수 17개 추가)
+- [detector.py](../../security/detector.py) (`is_post_rate_limited`, `is_comment_rate_limited` 추가)
 - [app.py](../../app.py) (게시판 라우트 10개 + 관리자용 게시글/댓글 관리 API 2개 추가, `api_status()` 확장)
 - [templates/board_list.html](../../templates/board_list.html), [templates/board_detail.html](../../templates/board_detail.html), [templates/board_form.html](../../templates/board_form.html) (신규)
 - [templates/admin_dashboard.html](../../templates/admin_dashboard.html) ("게시판 관리" 섹션 추가), [templates/member_dashboard.html](../../templates/member_dashboard.html) ("게시판 바로가기" 링크 추가)
 - [public/css/board.css](../../public/css/board.css) (신규), [public/js/board.js](../../public/js/board.js) (신규)
-- [public/js/dashboard.js](../../public/js/dashboard.js) (게시글/댓글 관리용 렌더링·삭제 함수 추가)
+- [public/js/dashboard.js](../../public/js/dashboard/) (게시글/댓글 관리용 렌더링·삭제 함수 추가)
 - [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py) (게시판 관련 테스트 추가, 총 94개 통과)
 - [docs/board-comment/](../board-comment) (구현 전 분석 → 설계 결정 → 구현 계획 → 결과 정리, 문서 4종 신규)
 
@@ -2392,7 +2399,7 @@ CSS 선택자를 콤마로 나열하면 "이 중 아무 클래스나 가진 요�
 - [app.py](../../app.py) (`board_detail()`, `admin_dashboard()`가 폴링 주기 값을 템플릿에 전달)
 - [templates/board_detail.html](../../templates/board_detail.html) (`data-poll-interval-ms` 속성 추가)
 - [templates/admin_dashboard.html](../../templates/admin_dashboard.html) (`poll-interval-ms` meta 태그 추가)
-- [public/js/board.js](../../public/js/board.js), [public/js/dashboard.js](../../public/js/dashboard.js) (하드코딩된 숫자 제거, 화면에서 값을 읽어오도록 변경)
+- [public/js/board.js](../../public/js/board.js), [public/js/dashboard.js](../../public/js/dashboard/) (하드코딩된 숫자 제거, 화면에서 값을 읽어오도록 변경)
 - [public/css/dashboard.css](../../public/css/dashboard.css) (`.delete-user-btn` 규칙에 `.delete-post-btn`/`.delete-comment-btn` 통합)
 
 ---
@@ -2404,10 +2411,10 @@ CSS 선택자를 콤마로 나열하면 "이 중 아무 클래스나 가진 요�
 또한 실사용 검증(브라우저로 직접 눌러보기)이 자동화 테스트만으로는 못 잡는 문제를 잡아낸다는 걸 다시 확인했습니다 — `null`과 `""`을 다르게 취급하는 버그도, CSS 상세도 충돌 버그도 `pytest`로는 절대 걸리지 않는 종류의 문제였습니다(전자는 브라우저의 JS 실행이, 후자는 실제 렌더링된 화면을 봐야만 드러납니다). 13단계에서도 똑같은 패턴(실사용 중 버그 2개 발견)이 있었는데, 이번에도 같은 교훈이 반복됐습니다.
 
 #### 이 단계 전체에서 바뀐 파일 모음
-- [app.py](../../app.py), [config.py](../../config.py), [db.py](../../db.py), [detector.py](../../detector.py)
+- [app.py](../../app.py), [config.py](../../config.py), [db.py](../../db/), [detector.py](../../security/detector.py)
 - [docs/schema.sql](../schema.sql)
 - [templates/board_list.html](../../templates/board_list.html), [templates/board_detail.html](../../templates/board_detail.html), [templates/board_form.html](../../templates/board_form.html), [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [templates/member_dashboard.html](../../templates/member_dashboard.html)
-- [public/css/board.css](../../public/css/board.css), [public/css/dashboard.css](../../public/css/dashboard.css), [public/js/board.js](../../public/js/board.js), [public/js/dashboard.js](../../public/js/dashboard.js)
+- [public/css/board.css](../../public/css/board.css), [public/css/dashboard.css](../../public/css/dashboard.css), [public/js/board.js](../../public/js/board.js), [public/js/dashboard.js](../../public/js/dashboard/)
 - [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py)
 - [docs/board-comment/](../board-comment) (문서 4종)
 
@@ -2466,7 +2473,7 @@ else:
 
 **실제로 확인한 것**: dedup 로직(db), 단순 전달(detector), 매개변수가 끝까지 전달되는지(soar/app) 각각 테스트를 추가하고 기존 잠금 테스트 4개도 새 매개변수에 맞게 수정, `pytest tests/ -v` 전체(100개) 통과 확인.
 
-**이 단계에서 만들어지거나 바뀐 파일**: [db.py](../../db.py), [detector.py](../../detector.py), [soar.py](../../soar.py), [alert.py](../../alert.py), [app.py](../../app.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_soar.py](../../tests/test_soar.py), [tests/test_app.py](../../tests/test_app.py)
+**이 단계에서 만들어지거나 바뀐 파일**: [db.py](../../db/), [detector.py](../../security/detector.py), [soar.py](../../security/soar/), [alert.py](../../notify/alert.py), [app.py](../../app.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_soar.py](../../tests/test_soar.py), [tests/test_app.py](../../tests/test_app.py)
 
 ### 3. 존재하지 않는 경로(404) 반복 요청을 전혀 기록/탐지하지 않았다
 
@@ -2490,7 +2497,7 @@ def handle_not_found(error):
 
 **Supabase 반영 필요**: 19·20단계와 같은 이유로, 실제 배포 환경에서 동작하려면 Supabase SQL Editor에서 `docs/schema.sql`에 새로 추가된 `not_found_attempts` 표 생성 SQL을 직접 실행해야 합니다.
 
-**이 단계에서 만들어지거나 바뀐 파일**: [docs/schema.sql](../schema.sql), [config.py](../../config.py), [db.py](../../db.py), [detector.py](../../detector.py), [alert.py](../../alert.py), [soar.py](../../soar.py), [app.py](../../app.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py)
+**이 단계에서 만들어지거나 바뀐 파일**: [docs/schema.sql](../schema.sql), [config.py](../../config.py), [db.py](../../db/), [detector.py](../../security/detector.py), [alert.py](../../notify/alert.py), [soar.py](../../security/soar/), [app.py](../../app.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py)
 
 ### 4. 관리자 API에 세션 없이 반복 접근(401)해도 기록/알림이 없었다
 
@@ -2515,7 +2522,7 @@ if request.path.startswith("/api/"):
 
 **Supabase 반영 필요**: `docs/schema.sql`에 새로 추가된 `unauthorized_attempts` 표 생성 SQL을 Supabase SQL Editor에서 직접 실행해야 합니다.
 
-**이 단계에서 만들어지거나 바뀐 파일**: [docs/schema.sql](../schema.sql), [config.py](../../config.py), [db.py](../../db.py), [detector.py](../../detector.py), [alert.py](../../alert.py), [soar.py](../../soar.py), [app.py](../../app.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py)
+**이 단계에서 만들어지거나 바뀐 파일**: [docs/schema.sql](../schema.sql), [config.py](../../config.py), [db.py](../../db/), [detector.py](../../security/detector.py), [alert.py](../../notify/alert.py), [soar.py](../../security/soar/), [app.py](../../app.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py)
 
 ### 5. 같은 페이지를 반복 요청하는 패턴을 전혀 관찰하지 않았다
 
@@ -2546,7 +2553,7 @@ def track_page_access():
 
 **Supabase 반영 필요**: `docs/schema.sql`에 새로 추가된 `page_access_attempts` 표 생성 SQL을 Supabase SQL Editor에서 직접 실행해야 합니다.
 
-**이 단계에서 만들어지거나 바뀐 파일**: [docs/schema.sql](../schema.sql), [config.py](../../config.py), [db.py](../../db.py), [detector.py](../../detector.py), [alert.py](../../alert.py), [soar.py](../../soar.py), [app.py](../../app.py), [tests/conftest.py](../../tests/conftest.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py)
+**이 단계에서 만들어지거나 바뀐 파일**: [docs/schema.sql](../schema.sql), [config.py](../../config.py), [db.py](../../db/), [detector.py](../../security/detector.py), [alert.py](../../notify/alert.py), [soar.py](../../security/soar/), [app.py](../../app.py), [tests/conftest.py](../../tests/conftest.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py)
 
 ---
 
@@ -2656,7 +2663,7 @@ HIGH/MEDIUM용으로는 새 API `POST /api/security-events/resolve`와 `db.resol
 
 **범위 밖으로 남겨둔 것**: Automated Scraping 탐지 로직 자체(`security-risk-response-summary.md` 6절)와 이벤트별 필터/IP별 이력 화면은 이번 범위에 포함하지 않았습니다 — 이번 작업은 "이미 있는 탐지기에 등급을 붙이고 통합 조회 기능을 만드는 것"까지였습니다.
 
-**이 단계에서 만들어지거나 바뀐 파일**: [docs/schema.sql](../schema.sql), [db.py](../../db.py), [detector.py](../../detector.py), [soar.py](../../soar.py), [alert.py](../../alert.py), [app.py](../../app.py), [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [public/js/dashboard.js](../../public/js/dashboard.js), [public/css/tokens.css](../../public/css/tokens.css), [public/css/dashboard.css](../../public/css/dashboard.css), [tests/conftest.py](../../tests/conftest.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_soar.py](../../tests/test_soar.py), [tests/test_app.py](../../tests/test_app.py)
+**이 단계에서 만들어지거나 바뀐 파일**: [docs/schema.sql](../schema.sql), [db.py](../../db/), [detector.py](../../security/detector.py), [soar.py](../../security/soar/), [alert.py](../../notify/alert.py), [app.py](../../app.py), [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [public/js/dashboard.js](../../public/js/dashboard/), [public/css/tokens.css](../../public/css/tokens.css), [public/css/dashboard.css](../../public/css/dashboard.css), [tests/conftest.py](../../tests/conftest.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_soar.py](../../tests/test_soar.py), [tests/test_app.py](../../tests/test_app.py)
 
 ---
 
@@ -2696,7 +2703,7 @@ HIGH/MEDIUM용으로는 새 API `POST /api/security-events/resolve`와 `db.resol
 
 **실제로 확인한 것**: `tests/test_db.py`에 검증 테스트 추가. IP가 아직 잠긴 상태에서 그 CRITICAL 이벤트 id로 API를 직접 호출해봤더니 `{"success": false}`, 미해결 상태 유지를 로컬·배포 사이트 양쪽에서 확인.
 
-**이 단계에서 만들어지거나 바뀐 파일**: [db.py](../../db.py), [tests/test_db.py](../../tests/test_db.py)
+**이 단계에서 만들어지거나 바뀐 파일**: [db.py](../../db/), [tests/test_db.py](../../tests/test_db.py)
 
 ### 3. HIGH 이벤트의 count가 최초 값에 고정됐다
 
@@ -2706,7 +2713,7 @@ HIGH/MEDIUM용으로는 새 API `POST /api/security-events/resolve`와 `db.resol
 
 **실제로 확인한 것**: `/signup`을 여러 차례 나눠 총 13번 추가로 거부시켰더니, 새 행 없이 같은 행의 count가 5 → 17로 정확히 누적되는 것을 확인(5 + 6 + 6 = 17).
 
-**이 단계에서 만들어지거나 바뀐 파일**: [db.py](../../db.py), [soar.py](../../soar.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_soar.py](../../tests/test_soar.py)
+**이 단계에서 만들어지거나 바뀐 파일**: [db.py](../../db/), [soar.py](../../security/soar/), [tests/test_db.py](../../tests/test_db.py), [tests/test_soar.py](../../tests/test_soar.py)
 
 ### 4. 동시 요청이 겹치면 중복 행이 생길 수 있었다 — DB 제약으로 원천 차단
 
@@ -2724,7 +2731,7 @@ create unique index idx_security_events_high_open_incident
 
 **Supabase 반영 필요**: 위 인덱스 생성 SQL을 Supabase SQL Editor에서 직접 실행해야 합니다. (실행 완료 및 실제 충돌 상황까지 재현해 확인함)
 
-**이 단계에서 만들어지거나 바뀐 파일**: [docs/schema.sql](../schema.sql), [db.py](../../db.py), [soar.py](../../soar.py), [tests/test_db.py](../../tests/test_db.py)
+**이 단계에서 만들어지거나 바뀐 파일**: [docs/schema.sql](../schema.sql), [db.py](../../db/), [soar.py](../../security/soar/), [tests/test_db.py](../../tests/test_db.py)
 
 **배포까지 확인한 것**: 네 가지 수정 모두 `main`과 나머지 5개 브랜치에 반영하고(강제 푸시 없이 병합), 1·2번 항목을 실제 배포 사이트에서도 재현해 로컬과 동일하게 동작하는 것을 확인했습니다.
 

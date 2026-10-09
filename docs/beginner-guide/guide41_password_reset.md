@@ -90,4 +90,4 @@
 ## 이 단계에서 만들어지거나 바뀐 파일
 
 - 신규: [routes/password.py](../../routes/password.py), `templates/password_forgot.html`, `templates/password_reset.html`, `tests/test_password_reset.py`
-- 수정: [email_verification.py](../../email_verification.py), [mailer.py](../../mailer.py), [db/email_tokens.py](../../db/email_tokens.py)(`count_email_tokens_by_ip`), [db/\_\_init\_\_.py](../../db/__init__.py), [routes/email.py](../../routes/email.py), [routes/recovery.py](../../routes/recovery.py)(`run_with_fixed_response_time` 공개), [app.py](../../app.py), [config.py](../../config.py), `templates/login_form.html`, `templates/member_profile.html`, `tests/test_recovery.py`
+- 수정: [email_verification.py](../../services/email_verification.py), [mailer.py](../../notify/mailer.py), [db/email_tokens.py](../../db/email_tokens.py)(`count_email_tokens_by_ip`), [db/\_\_init\_\_.py](../../db/__init__.py), [routes/email.py](../../routes/email.py), [routes/recovery.py](../../routes/recovery.py)(`run_with_fixed_response_time` 공개), [app.py](../../app.py), [config.py](../../config.py), `templates/login_form.html`, `templates/member_profile.html`, `tests/test_recovery.py`

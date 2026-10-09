@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2890 1668" width="2890" height="1668" font-family="Consolas, 'SFMono-Regular', Menlo, monospace">
-<rect x="0" y="0" width="2890" height="1668" fill="#f8fafc"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2890 2023" width="2890" height="2023" font-family="Consolas, 'SFMono-Regular', Menlo, monospace">
+<rect x="0" y="0" width="2890" height="2023" fill="#f8fafc"/>
 <text x="60" y="46" font-size="26" font-weight="700" fill="#0f172a">login-watchdog &#8212; Supabase DB ERD</text>
-<text x="60" y="70" font-size="13.5" fill="#475569">테이블 25개(22개 + 아래 33~35단계 추가 3개) · 실선 = 실제 FK 제약 · 점선 = 컬럼 값으로만 연결되는 논리적 관계(FK 없음)</text>
+<text x="60" y="70" font-size="13.5" fill="#475569">테이블 30개(22개 + 33~35단계 추가 3개 + 38·40·44·47단계 추가 5개) · 실선 = 실제 FK 제약 · 점선 = 컬럼 값으로만 연결되는 논리적 관계(FK 없음)</text>
 <rect x="0" y="74" width="2890" height="40" fill="#eef2f7"/>
 <g font-size="12" fill="#334155">
 <rect x="60" y="98" width="14" height="14" rx="3" fill="#2563eb"/>
@@ -14,6 +14,8 @@
 <text x="634.0799999999999" y="109.5">FK 제약</text>
 <line x1="725.92" y1="105" x2="755.92" y2="105" stroke="#64748b" stroke-width="2" stroke-dasharray="5,4"/>
 <text x="761.92" y="109.5">논리적 연결(비FK, 컬럼 값 매칭)</text>
+<rect x="1000" y="98" width="14" height="14" rx="3" fill="#7c3aed"/>
+<text x="1020" y="109.5">요약 (통계, 영구 보관)</text>
 </g>
 <g>
 <line x1="310.0" y1="244.5" x2="480.0" y2="236.0" stroke="#64748b" stroke-width="2" stroke-dasharray="5,4"/>
@@ -494,7 +496,7 @@
 <text x="102" y="1392" font-size="10.5" font-weight="700" fill="#0f172a">id</text>
 <text x="350" y="1392" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
 <text x="102" y="1409" font-size="10.5" font-weight="400" fill="#0f172a">target_kind</text>
-<text x="350" y="1409" font-size="9.5" text-anchor="end" fill="#94a3b8">ip/account</text>
+<text x="350" y="1409" font-size="9.5" text-anchor="end" fill="#94a3b8">ip/account/admin_account</text>
 <text x="102" y="1426" font-size="10.5" font-weight="400" fill="#0f172a">target_value</text>
 <text x="350" y="1426" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
 <text x="102" y="1443" font-size="10.5" font-weight="400" fill="#0f172a">lock_type</text>
@@ -610,10 +612,121 @@
 <rect x="1150" y="1552" width="8" height="12" rx="2" fill="#2563eb"/>
 <text x="1164" y="1562" font-size="11" font-weight="700" fill="#0f172a">users</text>
 <text x="1174" y="1579" font-size="10.5" fill="#0f172a">+ email_status</text>
-<text x="1510" y="1579" font-size="9.5" text-anchor="end" fill="#94a3b8">UNKNOWN/UNDELIVERABLE</text>
+<text x="1510" y="1579" font-size="9.5" text-anchor="end" fill="#94a3b8">UNKNOWN/VERIFIED/UNDELIVERABLE</text>
 <text x="1174" y="1596" font-size="10.5" fill="#0f172a">+ email_status_checked_at</text>
 <text x="1510" y="1596" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
 <text x="1174" y="1613" font-size="10.5" fill="#0f172a">+ session_version</text>
 <text x="1510" y="1613" font-size="9.5" text-anchor="end" fill="#94a3b8">int (guide35)</text>
+</g>
+<line x1="0" y1="1690" x2="2890" y2="1690" stroke="#cbd5e1" stroke-width="1.5"/>
+<text x="60" y="1722" font-size="18" font-weight="700" fill="#0f172a">38·40·44·47단계 추가 — 관리자 계정 잠금 · 이메일 인증/재설정 링크 · 로그 일별 요약</text>
+<text x="60" y="1744" font-size="12.5" fill="#475569">email_tokens.user_id → users.id (on delete cascade). 요약표 3개는 다른 표와 FK 없이 원본 표 이름(source)으로만 연결되고, 매일 새벽 pg_cron 작업이 채운다. 정의: docs/migrations/guide38_admin_account_lockout.sql, guide40_email_verification.sql, guide44_log_retention.sql, guide47_daily_log_summary.sql</text>
+<g>
+<rect x="60" y="1764" width="300" height="134" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="60" y="1764" width="300" height="30" rx="7" fill="#047857"/>
+<rect x="60" y="1787" width="300" height="7" fill="#047857"/>
+<text x="72" y="1784" font-size="13.5" font-weight="700" fill="#ffffff">admin_account_lockouts</text>
+<rect x="70" y="1803" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="82" y="1814" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="102" y="1814" font-size="10.5" font-weight="700" fill="#0f172a">username</text>
+<text x="350" y="1814" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="102" y="1831" font-size="10.5" font-weight="400" fill="#0f172a">locked_at</text>
+<text x="350" y="1831" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+<text x="102" y="1848" font-size="10.5" font-weight="400" fill="#0f172a">unlock_at</text>
+<text x="350" y="1848" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+<text x="102" y="1865" font-size="10.5" font-weight="400" fill="#0f172a">failure_count</text>
+<text x="350" y="1865" font-size="9.5" text-anchor="end" fill="#94a3b8">int</text>
+<text x="102" y="1882" font-size="10.5" font-weight="400" fill="#0f172a">active</text>
+<text x="350" y="1882" font-size="9.5" text-anchor="end" fill="#94a3b8">bool</text>
+</g>
+<g>
+<rect x="420" y="1764" width="300" height="219" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="420" y="1764" width="300" height="30" rx="7" fill="#047857"/>
+<rect x="420" y="1787" width="300" height="7" fill="#047857"/>
+<text x="432" y="1784" font-size="13.5" font-weight="700" fill="#ffffff">email_tokens</text>
+<rect x="430" y="1803" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="442" y="1814" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="462" y="1814" font-size="10.5" font-weight="700" fill="#0f172a">id</text>
+<text x="710" y="1814" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+<rect x="430" y="1820" width="24" height="14" rx="3" fill="#dbeafe" stroke="#3b82f6" stroke-width="0.8"/>
+<text x="442" y="1831" font-size="9" text-anchor="middle" fill="#1e40af" font-weight="700">FK</text>
+<text x="462" y="1831" font-size="10.5" font-weight="400" fill="#0f172a">user_id</text>
+<text x="710" y="1831" font-size="9.5" text-anchor="end" fill="#94a3b8">→ users</text>
+<text x="462" y="1848" font-size="10.5" font-weight="400" fill="#0f172a">purpose</text>
+<text x="710" y="1848" font-size="9.5" text-anchor="end" fill="#94a3b8">VERIFY/CHANGE/RESET</text>
+<text x="462" y="1865" font-size="10.5" font-weight="400" fill="#0f172a">email</text>
+<text x="710" y="1865" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="462" y="1882" font-size="10.5" font-weight="400" fill="#0f172a">token_hash</text>
+<text x="710" y="1882" font-size="9.5" text-anchor="end" fill="#94a3b8">text (unique)</text>
+<text x="462" y="1899" font-size="10.5" font-weight="400" fill="#0f172a">requested_ip</text>
+<text x="710" y="1899" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="462" y="1916" font-size="10.5" font-weight="400" fill="#0f172a">status</text>
+<text x="710" y="1916" font-size="9.5" text-anchor="end" fill="#94a3b8">PENDING/USED/…</text>
+<text x="462" y="1933" font-size="10.5" font-weight="400" fill="#0f172a">expires_at</text>
+<text x="710" y="1933" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+<text x="462" y="1950" font-size="10.5" font-weight="400" fill="#0f172a">created_at</text>
+<text x="710" y="1950" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+<text x="462" y="1967" font-size="10.5" font-weight="400" fill="#0f172a">used_at</text>
+<text x="710" y="1967" font-size="9.5" text-anchor="end" fill="#94a3b8">ts</text>
+</g>
+<g>
+<rect x="780" y="1764" width="300" height="134" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="780" y="1764" width="300" height="30" rx="7" fill="#7c3aed"/>
+<rect x="780" y="1787" width="300" height="7" fill="#7c3aed"/>
+<text x="792" y="1784" font-size="13.5" font-weight="700" fill="#ffffff">log_daily_summary</text>
+<rect x="790" y="1803" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="802" y="1814" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="822" y="1814" font-size="10.5" font-weight="700" fill="#0f172a">day</text>
+<text x="1070" y="1814" font-size="9.5" text-anchor="end" fill="#94a3b8">date</text>
+<rect x="790" y="1820" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="802" y="1831" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="822" y="1831" font-size="10.5" font-weight="700" fill="#0f172a">hour</text>
+<text x="1070" y="1831" font-size="9.5" text-anchor="end" fill="#94a3b8">smallint (-1~23)</text>
+<rect x="790" y="1837" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="802" y="1848" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="822" y="1848" font-size="10.5" font-weight="700" fill="#0f172a">source</text>
+<text x="1070" y="1848" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<rect x="790" y="1854" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="802" y="1865" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="822" y="1865" font-size="10.5" font-weight="700" fill="#0f172a">category</text>
+<text x="1070" y="1865" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="822" y="1882" font-size="10.5" font-weight="400" fill="#0f172a">count</text>
+<text x="1070" y="1882" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+</g>
+<g>
+<rect x="1140" y="1764" width="300" height="134" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="1140" y="1764" width="300" height="30" rx="7" fill="#7c3aed"/>
+<rect x="1140" y="1787" width="300" height="7" fill="#7c3aed"/>
+<text x="1152" y="1784" font-size="13.5" font-weight="700" fill="#ffffff">log_daily_breakdown</text>
+<rect x="1150" y="1803" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="1162" y="1814" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="1182" y="1814" font-size="10.5" font-weight="700" fill="#0f172a">day</text>
+<text x="1430" y="1814" font-size="9.5" text-anchor="end" fill="#94a3b8">date</text>
+<rect x="1150" y="1820" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="1162" y="1831" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="1182" y="1831" font-size="10.5" font-weight="700" fill="#0f172a">source</text>
+<text x="1430" y="1831" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<rect x="1150" y="1837" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="1162" y="1848" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="1182" y="1848" font-size="10.5" font-weight="700" fill="#0f172a">dimension</text>
+<text x="1430" y="1848" font-size="9.5" text-anchor="end" fill="#94a3b8">ips/usernames/path/country</text>
+<rect x="1150" y="1854" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="1162" y="1865" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="1182" y="1865" font-size="10.5" font-weight="700" fill="#0f172a">value</text>
+<text x="1430" y="1865" font-size="9.5" text-anchor="end" fill="#94a3b8">text</text>
+<text x="1182" y="1882" font-size="10.5" font-weight="400" fill="#0f172a">count</text>
+<text x="1430" y="1882" font-size="9.5" text-anchor="end" fill="#94a3b8">bigint</text>
+</g>
+<g>
+<rect x="1500" y="1764" width="300" height="83" rx="7" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.3"/>
+<rect x="1500" y="1764" width="300" height="30" rx="7" fill="#7c3aed"/>
+<rect x="1500" y="1787" width="300" height="7" fill="#7c3aed"/>
+<text x="1512" y="1784" font-size="13.5" font-weight="700" fill="#ffffff">log_summary_state</text>
+<rect x="1510" y="1803" width="24" height="14" rx="3" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+<text x="1522" y="1814" font-size="9" text-anchor="middle" fill="#92400e" font-weight="700">PK</text>
+<text x="1542" y="1814" font-size="10.5" font-weight="700" fill="#0f172a">id</text>
+<text x="1790" y="1814" font-size="9.5" text-anchor="end" fill="#94a3b8">int (항상 1)</text>
+<text x="1542" y="1831" font-size="10.5" font-weight="400" fill="#0f172a">last_summarized_day</text>
+<text x="1790" y="1831" font-size="9.5" text-anchor="end" fill="#94a3b8">date</text>
 </g>
 </svg>

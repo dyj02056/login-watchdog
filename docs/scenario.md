@@ -8,10 +8,11 @@
 |---|---|
 | 서버 | 로컬: `python app.py` (http://127.0.0.1:5000) / 배포: https://login-watchdog.vercel.app |
 | 가짜 공격 IP | 로컬 시연에서는 `.env`에 `TRUST_FORWARDED_FOR=true`, 시뮬레이터에 `--ip`로 지정. **배포에서는 절대 켜지 않습니다** |
-| 메일 | 로컬은 Mailpit(`docker compose -f docker-compose.mailpit.yml up -d`, 메일함 http://127.0.0.1:8025) 또는 `MAIL_BACKEND=console`. 배포는 Brevo SMTP |
+| 메일 | 로컬은 Mailpit(`docker compose -f docker-compose.mailpit.yml up -d`, 메일함 http://127.0.0.1:8025) 또는 `MAIL_BACKEND=console`. 배포는 Gmail SMTP(앱 비밀번호, guide34a) |
 | 관리자 | `super_admin` 계정 1개, 가능하면 `security_admin` 계정 1개(권한 차이 시연용) |
 | 테스트 회원 | 받을 수 있는 이메일로 가입한 회원 1개(복구 메일 시연용) |
-| 화면 배치 | 관리자 대시보드(`/admin/dashboard`)를 한쪽에 띄워 두면 5초마다 결과가 갱신됨 |
+| 화면 배치 | 관리자 대시보드(`/admin/dashboard`)를 한쪽에 띄워 두면 5초마다 결과가 갱신됨(대시보드 탭이 **보이는 상태**여야 갱신됨 — 다른 탭으로 가면 폴링이 멈췄다가 돌아오면 즉시 갱신) |
+| AI 조기 경보(1-1) | `.env`에 `GROQ_API_KEY`가 있어야 동작. 없으면 조기 경보 단계만 조용히 건너뛰고 나머지 시연은 그대로 됨 |
 | 허용 목록 | 시연자 PC의 IP를 `PERMANENT_LOCK_IP_ALLOWLIST`에 넣어 두기(본인이 잠기는 사고 방지). 가짜 IP(`--ip`)는 넣지 않음 |
 
 ## 1. 브루트포스 → 자동 잠금 (3분)
@@ -20,6 +21,14 @@
 2. 6번째 실패에서 "잠긴 계정입니다" — IP가 5분 잠김
 3. **보여줄 곳**: 대시보드 "현재 잠긴 IP / 계정" 카드, "보안 이벤트"의 `BRUTE_FORCE`(CRITICAL), Slack 알림
 4. 같은 아이디를 여러 개로 바꿔 시도하면 `PASSWORD_SPRAYING`으로 구분되는 것도 보여줄 수 있음(`scripts/password_spraying_sim.py`)
+
+## 1-1. 임계값 코앞 → AI 조기 경보 (2분, 선택)
+
+1. 새 가짜 IP로 기준(5회 초과) **바로 아래까지만** 실패: `python scripts/bruteforce_sim.py --username demo --attempts 4 --ip 203.0.113.30`
+2. 3~5회째 구간(기준 − `EARLY_WARNING_BAND`)에서 LLM(Groq)에게 "지켜볼 필요가 있는지" 묻고, 위험하다고 판단하면 승인 대기로 등록
+3. **보여줄 곳**: 대시보드 맨 위쪽 "AI 조기 경보" 표(유형·현재/기준·AI 판단 근거), Slack "[AI 조기 경보]" 알림 — 아직 잠기지 않은 상태라는 점
+4. "승인"을 누르면 원래 기준을 넘었을 때 하던 조치(IP 잠금)가 지금 실행되고, "반려"하면 아무 일도 일어나지 않음
+5. LLM이 위험하지 않다고 판단하면 표에 아무것도 생기지 않음 — 그것도 정상 동작(같은 입력이면 같은 결론이 나오도록 temperature를 낮게 고정)
 
 ## 2. 여러 공격이 겹치면 사건으로 묶임 (2분)
 
@@ -83,11 +92,19 @@
 3. 메일 링크 → 7자 비밀번호로 시도 → "최소 8자" (링크는 아직 유효) → 올바른 비밀번호로 재설정
 4. 다른 브라우저에 로그인해 둔 같은 회원이 다음 화면 이동에서 로그아웃되는 것, 재설정 알림 메일, 같은 링크 재사용 불가
 
+## 6-3. (선택) 로그 정리 · 일별 요약 확인 (1분)
+
+앱 화면이 아니라 Supabase **SQL Editor**에서 보여줍니다(guide44/47 SQL을 실행해 둔 경우).
+
+1. `select last_summarized_day from log_summary_state;` — 매일 새벽 3시(한국 시간) 어제까지 요약됨
+2. `select day, sum(count) from log_daily_summary where source = 'login_attempts' and category = 'failure' group by day order by day;` — 날짜별 로그인 실패 추이(원본이 지워진 날짜도 남음)
+3. `select * from cleanup_old_logs(true) where deleted_rows > 0;` — 지금 정리하면 몇 건이 지워질지 미리 보기(아무것도 지우지 않음)
+
 ## 7. 정리
 
 - `python scripts/unlock_ip.py --all --permanent --note "시연 정리"` — 시연에서 만든 잠금 전부 해제
 - `python scripts/unlock_account.py --admin --all` — 시연에서 잠근 관리자 계정 해제
-- 대시보드에서 시연용 사건 "해결", 시연용 IP 예외 "회수"
+- 대시보드에서 시연용 사건 "해결", 시연용 IP 예외 "회수", 남은 "AI 조기 경보" 반려
 - `TRUST_FORWARDED_FOR`를 다시 `false`로 되돌리기
 
 ## 시연 시 주의

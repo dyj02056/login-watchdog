@@ -1,6 +1,6 @@
 # Supabase DB 스키마 가이드 (비전공자용)
 
-이 문서는 [docs/schema.sql](../schema.sql)에 정의된 Supabase 테이블 25개를 "이게 왜 있고, 어떤 값이 들어가는지" 비전공자도 알 수 있게 정리한 문서입니다.
+이 문서는 [docs/schema.sql](../schema.sql)에 정의된 Supabase 테이블 30개를 "이게 왜 있고, 어떤 값이 들어가는지" 비전공자도 알 수 있게 정리한 문서입니다.
 
 > 실제 스키마 정의(SQL)는 [docs/schema.sql](../schema.sql)이 원본입니다. 이 문서는 그걸 읽기 쉽게 풀어 쓴 참고 자료이며, 스키마가 바뀌면 이 문서도 함께 업데이트해야 합니다.
 
@@ -12,7 +12,8 @@
 |---|---|---|
 | **자산 / 콘텐츠** | 앱이 다루는 "진짜 데이터" (사람이 직접 만든 것) | `users`, `admin_users`, `posts`, `comments`, `roles`, `permissions`, `app_settings` |
 | **과거 기록 (로그)** | "언제 무슨 일이 있었는지" 계속 쌓이기만 하는 표 | `login_attempts`, `admin_login_log`, `signup_attempts`, `post_attempts`, `comment_attempts`, `not_found_attempts`, `unauthorized_attempts`, `page_access_attempts`, `api_access_log`, `lock_history` |
-| **현재 상태 / 판정 결과** | "지금 이 순간 어떤 상태인지"를 나타내는 표 | `lockouts`, `account_lockouts`, `security_events`, `security_incidents`, `access_requests`, `recovery_requests`, `ip_lock_exemptions`, `ip_locations`(캐시) |
+| **현재 상태 / 판정 결과** | "지금 이 순간 어떤 상태인지"를 나타내는 표 | `lockouts`, `account_lockouts`, `admin_account_lockouts`, `security_events`, `security_incidents`, `access_requests`, `recovery_requests`, `ip_lock_exemptions`, `email_tokens`, `ip_locations`(캐시) |
+| **요약 (통계)** | 원본 기록을 하루 단위로 요약해 영구히 남기는 표 — 원본은 보관 기간이 지나면 지워짐 | `log_daily_summary`, `log_daily_breakdown`, `log_summary_state` |
 
 **로그와 상태 표의 차이가 헷갈릴 수 있는데**, 예를 들어 `login_attempts`(로그)는 "10시에 실패, 10시 1분에 실패, 10시 2분에 성공"처럼 있었던 일을 전부 쌓아두는 표이고, `lockouts`(상태)는 "지금 이 IP가 잠겨있다/아니다"라는 딱 하나의 결론만 담아두는 표입니다.
 
@@ -30,7 +31,7 @@
 | `name` | 글자 | 화면에 보여줄 표시 이름. 가입 직후엔 빈 값이고, 나중에 프로필 수정에서 채움 |
 | `password_hash` | 글자 | 비밀번호를 그대로 저장하지 않고 암호화(해시)한 값 — 원문 비밀번호는 DB 어디에도 없음 |
 | `created_at` | 날짜/시각 | 가입한 시각 |
-| `email_status` | 글자 | `UNKNOWN` / `UNDELIVERABLE`(복구 메일을 메일 서버가 영구 거부 — 이 계정의 영구 잠금은 관리자만 해제) |
+| `email_status` | 글자 | `UNKNOWN`(미인증) / `VERIFIED`(메일 링크를 눌러 메일함 주인임이 확인됨, guide40) / `UNDELIVERABLE`(메일 서버가 수신자를 영구 거부 — 이 계정의 영구 잠금은 관리자만 해제). 비밀번호 재설정 메일은 `VERIFIED`에만 감 |
 | `email_status_checked_at` | 날짜/시각 (없을 수 있음) | `email_status`를 마지막으로 확인한 시각 |
 | `session_version` | 숫자 | 로그인 세션 "세대 번호". 비밀번호를 바꾸면 1 올라가서 다른 기기의 로그인 세션이 모두 끊김(guide35) |
 
@@ -350,7 +351,7 @@ IP로 국가/도시를 알아내주는 외부 서비스(`ip-api.com`)는 분당 
 | 컬럼 | 값 종류 | 설명 |
 |---|---|---|
 | `id` | 숫자 | 이력 번호 |
-| `target_kind` / `target_value` | 글자 | 대상이 IP인지 계정인지(`ip`/`account`)와 그 값 |
+| `target_kind` / `target_value` | 글자 | 대상이 IP인지 회원 계정인지 관리자 계정인지(`ip`/`account`/`admin_account`, 관리자는 guide38)와 그 값 |
 | `lock_type` | 글자 | `TEMPORARY` / `PERMANENT` |
 | `trigger_reason` | 글자 | `THRESHOLD`(임계값 초과) / `REPEAT_OFFENDER`(반복 위반) / `SIEM_CRITICAL` / `SIEM_HIGH` / `NETWORK_IDS` / `ADMIN_MANUAL` |
 | `source_event_type` | 글자 (없을 수 있음) | 어떤 공격 유형 때문에 잠겼는지 (`BRUTE_FORCE`, `ADMIN_BRUTE_FORCE` 등) |
@@ -399,10 +400,85 @@ IP가 영구 잠금되어도, 이메일 인증을 마친 **그 회원이 그 기
 
 ---
 
+## 26. `admin_account_lockouts` — 관리자 계정 단위 잠금의 "현재 상태" (guide38)
+
+`account_lockouts`의 관리자 버전입니다. 회원 표를 같이 쓰면 회원 `alice`와 관리자 `alice`가 같은 줄을 쓰게 되어(아이디가 기본키) 따로 만들었습니다. IP와 무관하게 한 관리자 아이디가 15분 안에 8회를 넘게 실패하면 5분간 잠깁니다. 영구 잠금으로는 올리지 않습니다.
+
+| 컬럼 | 값 종류 | 설명 |
+|---|---|---|
+| `username` | 글자 (기본키) | 잠긴 관리자 아이디 (실제로 없는 아이디여도 똑같이 잠김 — 존재 여부를 숨기기 위해) |
+| `locked_at` | 날짜/시각 | 잠긴 시각 |
+| `unlock_at` | 날짜/시각 | 자동으로 풀릴 시각 |
+| `failure_count` | 숫자 | 잠길 때까지의 실패 횟수 |
+| `active` | 참/거짓 | 지금 잠겨 있는가 |
+
+---
+
+## 27. `email_tokens` — 이메일 인증·이메일 변경 확인·비밀번호 재설정 링크 (guide40/41)
+
+메일로 보내는 1회용 링크 한 건 한 건입니다. 영구 잠금 복구(`recovery_requests`)와 원칙은 같지만(토큰은 해시만 저장, 조건부 UPDATE로 한 번만 소비) 표를 나눴습니다 — 복구의 하루 한도·대시보드 카드·기기 쿠키·6자리 코드와 섞이지 않게 하기 위해서입니다.
+
+| 컬럼 | 값 종류 | 설명 |
+|---|---|---|
+| `id` | 숫자 | 토큰 번호 |
+| `user_id` | 숫자 | 대상 회원 (회원이 삭제되면 함께 삭제) |
+| `purpose` | 글자 | `EMAIL_VERIFY`(이메일 인증) / `EMAIL_CHANGE`(이메일 변경 확인) / `PASSWORD_RESET`(비밀번호 재설정) |
+| `email` | 글자 | 이 토큰이 확인하는 주소 — 변경이면 **새 주소**. 보낸 뒤 회원 이메일이 바뀌면 옛 링크는 무효 |
+| `token_hash` | 글자 | 링크 토큰의 SHA-256 해시 (중복 불가) |
+| `requested_ip` | 글자 | 요청한 IP (비밀번호 재설정의 IP당 한도 계산에 씀) |
+| `status` | 글자 | `PENDING`(대기) → `USED`(사용) / `EXPIRED`(만료) / `REVOKED`(취소 — 새로 요청했거나 메일 발송 실패) |
+| `expires_at` / `created_at` / `used_at` | 날짜/시각 | 만료(15분)·발급·사용 시각 |
+
+같은 (회원, 용도)에 `PENDING`은 동시에 1건만 존재할 수 있습니다(부분 유니크 인덱스) — 새로 보내면 이전 링크는 `REVOKED`가 됩니다.
+
+---
+
+## 28. `log_daily_summary` — 하루·시간대별 기록 건수 요약 (guide44/47)
+
+매일 새벽 3시(한국 시간) Supabase 예약 작업이 **어제 하루치** 원본 기록을 세어 여기에 적습니다. 원본은 보관 기간(30·90일)이 지나면 지워지지만 이 요약은 지우지 않아서, 처음 기록된 날부터 어제까지의 추이를 그래프로 그릴 수 있습니다. IP·아이디 같은 개인 정보는 남지 않고 건수만 남습니다.
+
+| 컬럼 | 값 종류 | 설명 |
+|---|---|---|
+| `day` | 날짜 | 날짜 (한국 시간 기준) |
+| `hour` | 숫자 | 시간대 0~23 (한국 시간). 예전 방식(guide44)으로 요약된 줄은 `-1`(시간 미상) |
+| `source` | 글자 | 원본 표 이름 (`login_attempts`, `not_found_attempts`, `security_events` 등) |
+| `category` | 글자 | 종류 — 로그인은 `success`/`failure`, API는 요청 방식(`GET`/`POST`), 보안 이벤트는 유형(`HTTP_FLOOD` 등), 단순 접속 기록은 `all` |
+| `count` | 숫자 | 건수 |
+
+기본키는 (`day`, `hour`, `source`, `category`)입니다. 같은 날을 다시 요약하면 더하지 않고 **덮어씁니다**.
+
+---
+
+## 29. `log_daily_breakdown` — 하루 상세 (IP 수·노린 주소·나라) (guide47)
+
+`log_daily_summary`가 "몇 건"이라면, 이 표는 "어떤 모양의 하루였는지"를 남깁니다. 공격 유형을 구분하는 데 씁니다(IP 1개·아이디 1개면 브루트포스, IP 1개·아이디 여러 개면 패스워드 스프레이, IP 여러 개·아이디 1개면 분산 공격).
+
+| 컬럼 | 값 종류 | 설명 |
+|---|---|---|
+| `day` | 날짜 | 날짜 (한국 시간) |
+| `source` | 글자 | 원본 표 이름 |
+| `dimension` | 글자 | `distinct_ips`(서로 다른 IP 수) / `failed_usernames`(로그인 실패에서 노린 서로 다른 아이디 수, 로그인 기록만) / `top_path`(많이 노린 주소 상위 5개 + 나머지 합계 `(그 외)`) / `country`(나라별 건수, 로그인 기록만) |
+| `value` | 글자 | `top_path`는 주소, `country`는 나라 이름(모르면 `알 수 없음`), 나머지는 빈칸 |
+| `count` | 숫자 | 그 값의 건수 |
+
+---
+
+## 30. `log_summary_state` — 어디까지 요약했는지 (guide47)
+
+줄이 딱 하나뿐인 표입니다(`id = 1`). 마지막으로 요약을 마친 날짜(`last_summarized_day`)를 적어 두고, 다음 날 새벽 작업이 그 다음 날부터 어제까지를 채웁니다. 하루 이틀 작업이 실패해도 다음 실행 때 빠진 날을 모두 채웁니다. 원본 삭제는 이 날짜를 넘지 않아서, **요약하지 않은 기록은 절대 지우지 않습니다**.
+
+| 컬럼 | 값 종류 | 설명 |
+|---|---|---|
+| `id` | 숫자 | 항상 1 |
+| `last_summarized_day` | 날짜 (없을 수 있음) | 마지막으로 요약한 날 |
+
+---
+
 ## 용어가 낯설다면
 
 - **참/거짓(boolean)**: "예/아니오"만 담는 값. 예를 들어 `active`가 참이면 "지금 잠겨있다", 거짓이면 "잠겨있지 않다".
 - **null(비어있음)**: 그 칸에 해당 사항이 없어서 값이 아예 안 들어간 상태. "0"이나 "빈 글자"와는 다릅니다.
 - **기본키(Primary Key)**: 그 표에서 각 줄을 서로 구별해주는 "고유한 값" — 같은 값이 두 번 나올 수 없습니다.
 - **해시(hash)**: 원래 값을 알아볼 수 없게 암호화한 값. 비밀번호를 그대로 저장하지 않고 해시로 저장하면, DB가 유출되어도 실제 비밀번호는 알 수 없습니다.
+- **pg_cron(예약 작업)**: Supabase(Postgres) 안에서 정해진 시각에 SQL을 실행하는 기능. 로그 요약·정리(28~30번)가 이걸로 매일 새벽 돈다.
 - **캐시(cache)**: 나중에 또 쓸 걸 대비해서 미리 계산/조회한 결과를 저장해두는 것 — 매번 새로 조회하는 수고를 덜어줍니다.
