@@ -1,0 +1,64 @@
+.empty {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: var(--s-1);
+  height: 100%;
+  min-height: 5rem;
+  padding: var(--s-3);
+}
+.emptyTitle {
+  font-size: var(--fs-sm);
+  color: var(--ink-1);
+}
+.hint {
+  max-width: 42ch;
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--sev-critical);
+}
+.error button {
+  padding: 0.25rem var(--s-3);
+  color: var(--ink-0);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-1);
+}
+.error button:hover {
+  border-color: var(--cyan);
+}
+
+.skeleton {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3);
+}
+.bar {
+  height: 0.75rem;
+  border-radius: 1px;
+  background: linear-gradient(90deg, var(--bg-2), var(--bg-3), var(--bg-2));
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+.bar:nth-child(odd) {
+  width: 92%;
+}
+.bar:nth-child(3n) {
+  width: 64%;
+}
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}

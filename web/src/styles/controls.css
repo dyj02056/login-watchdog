@@ -1,0 +1,168 @@
+/*
+  controls.css — 모든 화면이 같이 쓰는 입력·버튼. 화면마다 따로 만들지 않고 여기 클래스만 쓴다.
+  버튼은 세 가지: 기본(.btn), 위험한 처리(.btn-danger), 눈에 덜 띄는 보조(.btn-quiet).
+*/
+.btn,
+.btn-danger,
+.btn-quiet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-2);
+  min-height: 1.875rem;
+  padding: 0.25rem var(--s-3);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-decoration: none;
+  border: 1px solid var(--tone, var(--cyan-dim));
+  border-radius: var(--r-1);
+  color: var(--ink-0);
+  background: color-mix(in srgb, var(--tone, var(--cyan)) 14%, transparent);
+  transition:
+    background-color var(--t-fast),
+    border-color var(--t-fast),
+    transform var(--t-fast) var(--ease-out);
+}
+.btn:hover:not(:disabled),
+.btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--tone, var(--cyan)) 26%, transparent);
+  border-color: var(--tone, var(--cyan));
+  color: var(--ink-0);
+}
+.btn:active:not(:disabled),
+.btn-danger:active:not(:disabled),
+.btn-quiet:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.btn:disabled,
+.btn-danger:disabled,
+.btn-quiet:disabled {
+  opacity: 0.55;
+}
+
+.btn-danger {
+  --tone: var(--sev-critical);
+}
+
+.btn-quiet {
+  color: var(--ink-1);
+  background: transparent;
+  border-color: var(--line-strong);
+}
+.btn-quiet:hover:not(:disabled) {
+  color: var(--ink-0);
+  border-color: var(--cyan);
+}
+
+.btn-small {
+  min-height: 1.5rem;
+  padding: 0.125rem var(--s-2);
+  font-size: var(--fs-xs);
+}
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  min-height: 2.125rem;
+  padding: 0.375rem var(--s-3);
+  font-size: var(--fs-base);
+  color: var(--ink-0);
+  background: var(--bg-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-1);
+  transition: border-color var(--t-fast);
+}
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--ink-2);
+}
+.input:hover,
+.select:hover,
+.textarea:hover {
+  border-color: var(--cyan-dim);
+}
+.input:focus-visible,
+.select:focus-visible,
+.textarea:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 0;
+  border-color: var(--cyan);
+}
+.input[aria-invalid="true"] {
+  border-color: var(--sev-critical);
+}
+.textarea {
+  min-height: 7rem;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+/* 라벨은 입력 위, 도움말·오류는 아래 */
+.field {
+  display: grid;
+  gap: var(--s-1);
+}
+.field > label,
+.field-label {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--ink-1);
+}
+.field-hint {
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+}
+.field-error {
+  font-size: var(--fs-xs);
+  color: var(--sev-critical);
+}
+
+.form-stack {
+  display: grid;
+  gap: var(--s-4);
+}
+
+/* 서버가 flash로 돌려준 문장 */
+.notice {
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-sm);
+  list-style: none;
+  color: var(--ink-0);
+  background: color-mix(in srgb, var(--cyan) 10%, transparent);
+  border: 1px solid var(--cyan-dim);
+  border-radius: var(--r-1);
+}
+.notice li + li {
+  margin-top: var(--s-1);
+}
+.notice-error {
+  background: color-mix(in srgb, var(--sev-critical) 10%, transparent);
+  border-color: color-mix(in srgb, var(--sev-critical) 55%, transparent);
+}
+
+/* 회원 화면의 단순 표 */
+.plain-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+.plain-table th {
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  text-align: left;
+  color: var(--ink-1);
+  background: color-mix(in srgb, var(--bg-3) 55%, transparent);
+  border-bottom: 1px solid var(--line-strong);
+}
+.plain-table td {
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--line);
+}
+.plain-table tbody tr:last-child td {
+  border-bottom: 0;
+}

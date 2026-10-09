@@ -56,6 +56,7 @@
 45. [45단계 — 보이지 않는 탭은 폴링하지 않는다](guide45_visible_tab_polling.md)
 46. [46단계 — 대시보드 즉시 반응](guide46_dashboard_responsiveness.md)
 47. [47단계 — 매일 어제 하루치를 요약한다(시각화용 요약표)](guide47_daily_log_summary.md)
+48. [48단계 — Next.js 관제 화면으로 바꾸기](guide48_nextjs_dashboard.md)
 
 **단계 사이의 리팩터링 기록** (기능 변화 없이 파일 구조만 바꾼 작업)
 

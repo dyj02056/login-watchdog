@@ -4,7 +4,9 @@
     {
       "name": "login-watchdog",
       "runtimeExecutable": "venv/Scripts/python.exe",
-      "runtimeArgs": ["app.py"],
+      "runtimeArgs": [
+        "app.py"
+      ],
       "port": 5000,
       "autoPort": true
     },
@@ -16,6 +18,15 @@
         "import os, runpy; os.environ.update(FLASK_ENV='development', MAIL_BACKEND='console', PUBLIC_BASE_URL='http://127.0.0.1:5055', PORT='5055', PYTHONIOENCODING='utf-8'); runpy.run_path('app.py', run_name='__main__')"
       ],
       "port": 5055,
+      "autoPort": false
+    },
+    {
+      "name": "login-watchdog-demo",
+      "runtimeExecutable": "venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "scripts/demo_server.py"
+      ],
+      "port": 5077,
       "autoPort": false
     }
   ]

@@ -8,6 +8,7 @@
 
 ## 주요 기능
 
+- **Next.js 관제 화면** — 모든 화면(관리자 3개 + 로그인·가입·회원·게시판·복구)이 Next.js(React) 정적 빌드로 그려지고, 기존처럼 `python app.py`가 서빙합니다. 관리자는 벽 모니터형 관제 보드 3개 — **위협 현황**(`/admin/dashboard`, 시간대별 추이·7일 로그량·공격자 히트맵·공격 흐름도·신규/지속/미처리/복합 공격 표), **공격 상세**(`/admin/attack`, Top 5·국가별 흐름·실시간 이벤트), **처리 작업대**(`/admin/ops`, 기존 처리 기능 전부)를 씁니다. L3/L4 공격은 아직 수집하지 않아 "수집 전" 빈 상태로 표시합니다. 구조·개발 방법은 [guide48_nextjs_dashboard.md](docs/beginner-guide/guide48_nextjs_dashboard.md) 참고
 - **회원가입 / 로그인** — Supabase에 저장된 실제 계정으로 로그인하는 감시 대상 화면 (`/signup`, `/login`)
 - **브루트포스 탐지 + 자동 잠금** — 같은 IP가 60초 안에 5회 초과 로그인 실패 시 해당 IP를 5분간 자동 잠금
 - **Slack 알림** — 잠금이 발생하는 순간 Slack 채널에 시각·IP·실패 횟수·조치 내용을 전송 (웹훅 미설정 시 콘솔 로그로 자동 대체)
@@ -48,7 +49,7 @@
 | AI | Groq API (LLM 조기 경보, 일일 리포트 AI 총평) — `services/llm_client.py` |
 | IP 위치 | ip-api.com (결과는 Supabase `ip_locations`에 캐시) |
 | 인증 | Flask 세션 + `werkzeug.security` (비밀번호 해시) |
-| 프런트엔드 | Jinja2 템플릿 + 바닐라 JS(ES 모듈) |
+| 프런트엔드 | Next.js(React, TypeScript) 정적 내보내기 + Apache ECharts — 소스는 `web/`, 빌드 결과는 `spa/`·`public/_next/`. 빌드가 없으면 예전 Jinja 화면(`templates/`)으로 자동 폴백 |
 | 테스트 | pytest |
 
 ## 시작하기 (Getting Started)
@@ -103,6 +104,14 @@ cp .env.example .env
 ```bash
 python app.py
 ```
+Next.js 화면의 빌드 결과(`spa/`, `public/_next/`)는 저장소에 들어 있어서 따로 빌드하지 않아도 그대로 뜹니다. 화면 소스(`web/`)를 고쳤다면 먼저 빌드하세요.
+```bash
+cd web
+npm ci          # 처음 한 번
+npm run build   # 빌드 후 spa/ 와 public/_next/ 를 갱신
+```
+가짜 데이터로 관제 화면만 확인하려면(Supabase 접속 없음) `python scripts/demo_server.py` 후 http://127.0.0.1:5077/__demo_login 을 엽니다.
+
 기본적으로 `http://localhost:5000`에서 실행됩니다. 해당 포트가 이미 사용 중이면 `PORT` 환경변수로 다른 포트를 지정할 수 있습니다(`PORT=5050 python app.py`).
 
 ### 6. 접속 주소
@@ -117,7 +126,9 @@ python app.py
 | `/password/forgot` | 비밀번호 찾기(인증된 이메일로 재설정 링크) |
 | `/email/confirm` | 메일 링크가 여는 이메일 인증·변경 확인 화면 |
 | `/admin/login` | 관리자 로그인 |
-| `/admin/dashboard` | 관리자 대시보드 — 보안 이벤트·연관 사건·AI 조기 경보·잠금(임시/영구) 관리·회원·게시판·관리자 계정 관리 (관리자 로그인 필요) |
+| `/admin/dashboard` | 관제 보드 ① 위협 현황 — KPI·차트·히트맵·공격 흐름·공격자 표 (관리자 로그인 필요) |
+| `/admin/attack` | 관제 보드 ② 공격 상세 모니터링 — Top 5·국가별 흐름·최근 보안 이벤트 |
+| `/admin/ops` | 관제 보드 ③ 처리 작업대 — 보안 이벤트·연관 사건·AI 조기 경보·잠금(임시/영구) 관리·회원·게시판·관리자 계정 관리 |
 | `/board` | 게시판 목록 (회원 로그인 필요) |
 | `/board/new` | 새 게시글 작성 (회원 로그인 필요) |
 | `/board/<id>` | 게시글 상세 · 댓글 (회원 로그인 필요) |
@@ -308,7 +319,7 @@ login-watchdog/
 ## 더 자세히 알고 싶다면
 
 - [plan.md](plan.md) — 각 파일을 왜 이렇게 설계했는지에 대한 상세 근거
-- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide47_daily_log_summary.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
+- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide48_nextjs_dashboard.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
 - [docs/feature-reference/01-feature-order.md](docs/feature-reference/01-feature-order.md) · [02-layer-order.md](docs/feature-reference/02-layer-order.md) — 기능별로 "어떤 코드가 어떤 순서로 실행되는지"를 실제 코드·줄번호와 함께 따라가는 가이드(기능 순서 / 계층 순서)
 - [docs/feature-reference/db-schema-guide.md](docs/feature-reference/db-schema-guide.md) · [ERD.svg](docs/feature-reference/ERD.svg) — 테이블 30개의 쓰임새와 관계도
 - [docs/architecture-map.html](docs/architecture-map.html) — 폴더·파일이 탐지 → 대응 → 알림 파이프라인의 어느 단계를 맡는지 색으로 묶은 지도

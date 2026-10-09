@@ -68,6 +68,12 @@ ADMIN_DASHBOARD_POLL_MS = int(os.environ.get("ADMIN_DASHBOARD_POLL_MS", 5000))
 # 정리하므로 영향이 없고, 대시보드에 만료된 잠금이 이 시간만큼 더 보일 수 있을 뿐이다. 0이면 매번.
 ADMIN_STATUS_RELEASE_INTERVAL_SECONDS = int(os.environ.get("ADMIN_STATUS_RELEASE_INTERVAL_SECONDS", 15))
 
+# 관리자 화면 탭을 여러 개 열어 두면 탭마다 5초(처리 작업대)·15~30초(관제 보드)마다 같은 조회를 따로 보내
+# DB 조회가 탭 수만큼 곱해진다(처리 작업대 한 번에 약 21번, 관제 보드 한 번에 약 12번). 같은 내용을
+# 이 시간(초) 안에는 한 번만 조회해서 모든 탭이 나눠 쓴다. 0이면 캐시를 끈다.
+ADMIN_STATUS_CACHE_SECONDS = float(os.environ.get("ADMIN_STATUS_CACHE_SECONDS", 3))
+ADMIN_STATS_CACHE_SECONDS = float(os.environ.get("ADMIN_STATS_CACHE_SECONDS", 10))
+
 # Web Scanning(존재하지 않는 경로 반복 요청) 탐지 임계값 — 같은 IP가
 # DETECTION_WINDOW_SECONDS(기본 60초) 안에 이 횟수를 "초과"해서 404를 유발하면
 # 관리자에게 Slack 알림을 보낸다. is_suspicious()와 같은 "초과" 기준을 쓰는 이유는

@@ -1,0 +1,65 @@
+/* 공격 상세 보드 — 위에서 아래로 "언제 → 어디서 → 무엇을 → 개별 이벤트" 순서로 좁혀 들어간다. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--s-3);
+}
+
+.hourly {
+  grid-column: span 8;
+  height: 18rem;
+}
+.network {
+  grid-column: span 4;
+  height: 18rem;
+}
+
+.country {
+  grid-column: span 6;
+  height: 19rem;
+}
+.sources {
+  grid-column: span 3;
+  height: 19rem;
+}
+.types {
+  grid-column: span 3;
+  height: 19rem;
+}
+
+.paths {
+  grid-column: span 3;
+  height: 22rem;
+}
+.events {
+  grid-column: span 9;
+  height: 22rem;
+}
+
+.scroll {
+  height: 100%;
+  overflow-y: auto;
+}
+
+@media (max-width: 1280px) {
+  .hourly,
+  .network,
+  .country {
+    grid-column: 1 / -1;
+  }
+  .sources,
+  .types {
+    grid-column: span 6;
+  }
+  .paths,
+  .events {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 800px) {
+  .sources,
+  .types {
+    grid-column: 1 / -1;
+  }
+}

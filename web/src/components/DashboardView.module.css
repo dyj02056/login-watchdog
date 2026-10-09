@@ -1,0 +1,73 @@
+/*
+  위협 현황 보드. 12칸 격자에서 칸마다 폭이 다르다 — 추이가 가장 넓고, 표는 내용 길이에 맞춰 3·3·4·2칸.
+  차트 칸은 높이를 고정해서(불러오기 전후에 레이아웃이 밀리지 않게) 모니터 크기에 따라 함께 커진다.
+*/
+.grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--s-3);
+}
+
+.kpi {
+  grid-column: 1 / -1;
+}
+
+.stale {
+  margin-top: var(--s-1);
+  font-size: var(--fs-xs);
+  color: var(--warn);
+}
+
+.trend {
+  grid-column: span 7;
+  height: 19rem;
+}
+.volume {
+  grid-column: span 5;
+  height: 19rem;
+}
+.heat {
+  grid-column: span 5;
+  height: 20rem;
+}
+.flow {
+  grid-column: span 7;
+  height: 20rem;
+}
+
+.newIps,
+.repeat {
+  grid-column: span 3;
+}
+.open {
+  grid-column: span 4;
+}
+.compound {
+  grid-column: span 2;
+}
+
+@media (max-width: 1440px) {
+  .newIps,
+  .repeat {
+    grid-column: span 6;
+  }
+  .open {
+    grid-column: span 7;
+  }
+  .compound {
+    grid-column: span 5;
+  }
+}
+
+@media (max-width: 1100px) {
+  .trend,
+  .volume,
+  .heat,
+  .flow,
+  .newIps,
+  .repeat,
+  .open,
+  .compound {
+    grid-column: 1 / -1;
+  }
+}
