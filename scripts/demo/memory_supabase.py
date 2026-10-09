@@ -13,10 +13,41 @@ import itertools
 import threading
 from datetime import datetime, timezone
 
-# 진짜 DB가 default now()로 채워주는 시각 칸. insert할 때 값이 없으면 지금 시각을 넣는다.
-_AUTO_TIME_COLUMNS = (
+# 진짜 DB가 default now()로 채워주는 시각 칸 — 표마다 실제로 있는 칸만 채운다(없는 칸까지 채우면 진짜 DB에 넣을 때 오류가 난다).
+_AUTO_TIME_COLUMNS = {
+    "login_attempts": ("attempted_at",), "signup_attempts": ("attempted_at",), "not_found_attempts": ("attempted_at",),
+    "unauthorized_attempts": ("attempted_at",), "page_access_attempts": ("attempted_at",), "admin_login_log": ("attempted_at",),
+    "post_attempts": ("attempted_at",), "comment_attempts": ("attempted_at",), "api_access_log": ("requested_at",),
+    "users": ("created_at",), "admin_users": ("created_at",), "posts": ("created_at", "updated_at"), "comments": ("created_at",),
+    "security_events": ("detected_at",), "access_requests": ("requested_at",), "lockouts": ("locked_at",),
+    "account_lockouts": ("locked_at",), "admin_account_lockouts": ("locked_at",), "lock_history": ("locked_at",),
+    "recovery_requests": ("created_at",), "email_tokens": ("created_at",), "ip_lock_exemptions": ("granted_at",),
+    "ip_locations": ("looked_up_at",), "security_incidents": (),
+}
+_ALL_TIME_COLUMNS = (
     "attempted_at", "created_at", "detected_at", "logged_at", "accessed_at", "locked_at", "requested_at",
 )
+
+
+# 기본키 칸 이름이 id가 아닌 표 (진짜 DB에서 identity로 채워지는 칸)
+_PRIMARY_KEY = {"access_requests": "request_id"}
+
+
+# 진짜 DB가 default로 채워주는 칸 (insert 때 값이 없으면 이 값을 넣는다)
+_TABLE_DEFAULTS = {
+    "users": {"name": "", "email_status": "UNKNOWN", "email_status_checked_at": None, "session_version": 0},
+    "admin_users": {"role": "security_admin"},
+    "security_events": {"path": None, "username": None, "resolved_at": None},
+    "lockouts": {"lock_type": "TEMPORARY", "recoverable": "EXEMPTION", "active": True, "permanent_reason": None, "promoted_at": None},
+    "account_lockouts": {"lock_type": "TEMPORARY", "recoverable": "SELF", "active": True, "permanent_reason": None,
+                         "promoted_at": None, "probation_until": None},
+    "admin_account_lockouts": {"active": True},
+    "lock_history": {"source_event_type": None, "incident_id": None, "trigger_note": None, "released_at": None,
+                     "released_by": None, "release_note": None},
+    "security_incidents": {"status": "OPEN", "escalated": False, "resolved_at": None, "resolved_by": None},
+    "access_requests": {"status": "PENDING", "path": None, "context_count": None, "context_ip": None,
+                        "decided_by_admin_id": None, "decided_at": None},
+}
 
 
 class Result:
@@ -105,14 +136,16 @@ class Query:
         self._payload = None
         self._on_conflict = None
         self._count = False
+        self._columns = "*"
         self._filters = []   # (column, op, value, negate) 또는 ("__or__", None, [조건...], False)
         self._order = None
         self._limit = None
         self._range = None
 
     # --- 동작 선택 ---
-    def select(self, _columns="*", count=None):
+    def select(self, _columns="*", count=None, **_kwargs):  # head=True 같은 옵션은 무시한다(개수만 세는 호출도 그대로 동작)
         self._action = "select"
+        self._columns = _columns
         self._count = bool(count)
         return self
 
@@ -211,9 +244,12 @@ class Query:
 
     def _fill_defaults(self, row):
         row = dict(row)
-        if "id" not in row:
-            row["id"] = self._store.next_id(self._name)
-        for column in _AUTO_TIME_COLUMNS:
+        for column, value in _TABLE_DEFAULTS.get(self._name, {}).items():
+            row.setdefault(column, value)
+        key = _PRIMARY_KEY.get(self._name, "id")
+        if key not in row:
+            row[key] = self._store.next_id(self._name)
+        for column in _AUTO_TIME_COLUMNS.get(self._name, _ALL_TIME_COLUMNS):
             row.setdefault(column, _now_iso())
         return row
 
@@ -244,7 +280,12 @@ class Query:
             matched = matched[self._range[0]:self._range[1] + 1]
         if self._limit is not None:
             matched = matched[:self._limit]
-        return Result([dict(row) for row in matched], count=total if self._count else None)
+        rows = [dict(row) for row in matched]
+        if "users(username)" in str(self._columns):   # PostgREST의 연결 조회: user_id → users.username
+            names = {user["id"]: user["username"] for user in self._store.rows("users")}
+            for row in rows:
+                row["users"] = {"username": names.get(row.get("user_id"))}
+        return Result(rows, count=total if self._count else None)
 
 
 class MemoryClient:

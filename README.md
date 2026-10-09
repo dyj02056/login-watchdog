@@ -113,7 +113,7 @@ cd web
 npm ci          # 처음 한 번
 npm run build   # 빌드 후 spa/ 와 public/_next/ 를 갱신
 ```
-가짜 데이터로 관제 화면만 확인하려면(Supabase 접속 없음) `python scripts/demo/demo_server.py` 후 http://127.0.0.1:5077/__demo_login 을 엽니다.
+7일치 샘플 로그로 관제 화면만 확인하려면(Supabase 접속 없음) `python scripts/demo/generate_demo_logs.py`(처음 한 번) → `python scripts/demo/demo_server.py` 후 http://127.0.0.1:5077/__demo_login 을 엽니다.
 
 기본적으로 `http://localhost:5000`에서 실행됩니다. 해당 포트가 이미 사용 중이면 `PORT` 환경변수로 다른 포트를 지정할 수 있습니다(`PORT=5050 python app.py`).
 
@@ -205,7 +205,7 @@ npm run build   # 빌드 후 spa/ 와 public/_next/ 를 갱신
 </tr>
 </table>
 
-> 관리자 화면 스크린샷은 실제 접속 로그가 아니라 데모 서버(`scripts/demo/demo_server.py`)의 가짜 데이터로 찍었습니다. IP는 문서용 대역(RFC 5737)만 쓰므로 민감 정보가 없습니다.
+> 관리자 화면 스크린샷은 실제 접속 로그가 아니라 데모 서버(`scripts/demo/demo_server.py`)의 가짜 데이터로 찍었습니다. IP는 여러 나라에 실제 할당된 대역에서 무작위로 뽑은 값이며 어떤 접속에도 쓰이지 않고 서버 요청 헤더·DB 값으로만 들어갑니다(스크린샷의 "공격자"는 실제 공격자가 아닙니다).
 
 ## 테스트 실행
 
@@ -236,7 +236,10 @@ GET 11회를 보내 재현할 수 있습니다. [실행 조건과 알림 확인 
 | `scripts/simulation/critical/` 신규 5종 | `distributed_bruteforce_sim`(IP를 바꿔 한 계정을 노리는 계정 단위 잠금) · `admin_bruteforce_sim`(`/admin/login` IP 잠금) · `admin_distributed_bruteforce_sim`(관리자 계정 단위 잠금) · `permanent_lock_sim`(임시 잠금 2회 → 영구 잠금, 기본 305초 대기) · `incident_correlation_sim`(정찰→침투→브루트포스 다단계 → 사건화·영구 차단). 가짜 IP는 서버 `TRUST_FORWARDED_FOR=true`일 때만 반영 |
 | `scripts/simulation/high/` 신규 3종 | `http_flood_sim`(전역 요청 한도 429) · `comment_spam_sim`(댓글 도배, 테스트 계정 필요) · `recovery_flood_sim --target recovery\|recovery-verify\|password-forgot\|password-reset\|email-confirm`(엔드포인트별 좁은 한도 429) |
 | `scripts/simulation/medium/honeypot_bot_sim.py` | 숨김 `website` 칸을 채워 `/login`·`/signup`에 제출하는 봇을 흉내 내 `BOT_DETECTED`로 걸러지는지 검증 |
-| `scripts/demo/demo_server.py` | Supabase·Slack·메일 없이 가짜 데이터로 관제 화면(`/admin/*`)·회원 화면만 띄우는 데모 서버(포트 5077). `/__demo_login`(관리자)·`/__demo_member`(회원)으로 로그인. 화면 디자인 확인용 |
+| `scripts/demo/generate_demo_logs.py` | **7일치 샘플 로그 생성기.** 로컬 서버를 켜고 가짜 회원을 실제 `/signup`으로 가입시킨 뒤, 정상 접속과 공격 시뮬레이션 21종을 시각 순서대로 돌려 `scripts/demo/output/demo_logs.json`에 저장한다(진짜 Supabase·Slack·메일·Groq 미접속). 공격자 IP는 17개국의 실제 할당 대역에서 뽑고, AI 조기경보는 기본적으로 로컬 판정기로 만들고, `--use-groq`를 주면 진짜 Groq API로 판정한다(`.env`의 `GROQ_API_KEY` 필요, 샘플 데이터가 Groq로 전송됨). `--seed 숫자`(같은 숫자 = 같은 결과), `--days`, `--members` |
+| `scripts/demo/demo_server.py` | 위 JSON을 읽어 Supabase·Slack·메일 없이 관제 화면(`/admin/*`)·회원 화면을 띄우는 데모 서버(포트 5077). 열 때마다 기록 시각을 "지금" 기준으로 옮겨 항상 최근 7일처럼 보인다. `/__demo_login`(관리자)·`/__demo_member`(회원)으로 로그인 |
+| `scripts/demo/load_demo_to_supabase.py` | (선택) 같은 샘플 로그를 **실제 Supabase**에 넣는다. 기본은 미리보기, `--apply`로 적재(DB 주소 입력 확인), `--purge`로 넣은 행만 삭제. 회원 비밀번호는 로그인 불가 값으로 넣고 관리자 계정은 넣지 않는다. 별도의 빈 프로젝트에 넣는 것을 권장 |
+| `scripts/demo/demo_data.py` | 위 세 스크립트가 같이 쓰는 재료(나라별 IP 대역, 가짜 회원 이름, 시각 이동 규칙) |
 | `scripts/demo/memory_supabase.py` | 메모리에 사는 가짜 Supabase(`MemoryClient`). 표를 리스트로 들고 있어 insert한 행을 기억하고 조건으로 걸러 세므로 "5번 틀리면 잠금" 같은 탐지가 진짜처럼 동작합니다. `check_simulations.py`가 씀 |
 | `scripts/demo/check_simulations.py` | 시뮬레이션 전체를 한 번에 점검. 메모리 DB(`memory_supabase.py`)를 붙인 서버를 127.0.0.1:5000에 띄워 시뮬레이션을 실행하고, 서버가 기대한 보안 이벤트를 실제로 기록했는지 대조한다(진짜 Supabase·Slack·메일 미접속). `python scripts/demo/check_simulations.py [이름 일부]` |
 
@@ -347,7 +350,7 @@ login-watchdog/
 ├── scripts/                       # 터미널 도구 — 위 "유지보수 스크립트" 참고
 │   ├── simulation/                #   공격 시뮬레이터: critical/(브루트포스·분산·관리자·영구 잠금·사건화) · high/(도배·HTTP 플러딩·복구 폭주) · medium/(웹 스캐닝·허니팟·매크로 등), _sim_common.py(공용 부품)
 │   ├── management/                #   운영 도구: unlock_ip/unlock_account, create_admin, daily_report, tune_thresholds, delete_security_events, send_test_mail
-│   └── demo/                      #   demo_server.py(가짜 데이터 화면), check_simulations.py + memory_supabase.py(시뮬레이션 일괄 점검)
+│   └── demo/                      #   generate_demo_logs.py(7일치 샘플 로그 생성) + demo_server.py(그 로그로 화면 확인) + load_demo_to_supabase.py(선택: 실제 DB 적재), check_simulations.py + memory_supabase.py(시뮬레이션 일괄 점검)
 ├── docs/schema.sql                # Supabase 테이블 정의
 ├── docs/migrations/               # 기존 DB에 추가로 실행할 SQL (guide33 영구 잠금, guide35 비밀번호 변경, guide38 관리자 계정 잠금, guide40 이메일 인증, guide44 로그 자동 정리, guide47 일별 요약)
 ├── .github/workflows/             # tests.yml(push/PR마다 pytest + Next.js 타입 검사·빌드 결과 일치 확인), supabase-keep-alive.yml(무료 Supabase가 멈추지 않게 매일 호출)
