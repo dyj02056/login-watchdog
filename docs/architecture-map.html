@@ -185,11 +185,11 @@
   <header class="head">
     <span class="eyebrow">Project Architecture · Login Watchdog</span>
     <h1>폴더·파일이 파이프라인의 어느 단계를 맡는지 한눈에</h1>
-    <p class="sub">로그인 시도가 들어온 순간부터 관리자가 잠금을 해제하는 순간까지 요청이 어떤 파일을 거쳐 가는지, 그리고 회원 화면·게시판·영구 잠금·이메일 인증·로그 요약처럼 47단계에 걸쳐 늘어난 기능까지 각 폴더·파일의 역할과 핵심 함수를 색으로 묶어 정리했습니다.</p>
+    <p class="sub">로그인 시도가 들어온 순간부터 관리자가 잠금을 해제하는 순간까지 요청이 어떤 파일을 거쳐 가는지, 그리고 회원 화면·게시판·영구 잠금·이메일 인증·로그 요약처럼 49단계에 걸쳐 늘어난 기능까지 각 폴더·파일의 역할과 핵심 함수를 색으로 묶어 정리했습니다.</p>
     <div class="meta-row">
-      <span><b>근거</b> 현재 코드(2026-10-09 모듈 정리 이후) · docs/beginner-guide 1~47단계 기록</span>
-      <span><b>스택</b> Flask · Supabase(PostgreSQL, pg_cron) · Slack Webhook · SMTP · Groq · ip-api.com · Vercel</span>
-      <span><b>정리한 항목</b> 39개 (서버 9 · 데이터 3 · 탐지 3 · 대응 2 · 알림·관리자 화면 6 · 외부 연동 4 · 회원 화면 4 · 디자인 3 · 스크립트·테스트·문서 5)</span>
+      <span><b>근거</b> 현재 코드(2026-10-09 모듈 정리 이후) · docs/beginner-guide 1~49단계 기록</span>
+      <span><b>스택</b> Flask · Next.js(정적 빌드) · Supabase(PostgreSQL, pg_cron) · Slack Webhook · SMTP · Groq · ip-api.com · Vercel</span>
+      <span><b>정리한 항목</b> 44개 (서버 9 · 데이터 3 · 탐지 3 · 대응 2 · 알림·관리자 화면 6 · 외부 연동 4 · 회원 화면 4 · Next.js 화면·집계 4 · 디자인 3 · 스크립트·테스트·문서 6)</span>
     </div>
     <p class="sub" style="margin-top:14px"><b>구조 한 줄 요약</b> — 루트에는 <code>app.py</code>(Vercel 진입점)와 <code>config.py</code>만 있고, 나머지는 역할별 폴더에 있습니다: 화면 주소 <code>routes/</code>, 라우트 공용 <code>helpers/</code>, 보안 엔진 <code>security/</code>(탐지 → 상관분석 → 대응), 밖으로 알리기 <code>notify/</code>, 외부 연동 <code>services/</code>, DB <code>db/</code>. 정리 배경은 <a href="refactor/2026-10-09-module-plan.md" style="color:var(--accent)">docs/refactor/2026-10-09-module-plan.md</a>.</p>
   </header>
@@ -296,7 +296,7 @@
 
   <section id="files">
     <span class="eyebrow">03 · 폴더·파일별 역할</span>
-    <h2>스테이지별로 묶은 39개 항목</h2>
+    <h2>스테이지별로 묶은 44개 항목</h2>
     <p class="lead">각 카드의 왼쪽은 경로·처음 만들어진 단계, 오른쪽은 하는 일과 핵심 함수입니다. "GUIDE NN" 태그는 <a href="beginner-guide/beginner-guide.md" style="color:var(--accent)">docs/beginner-guide</a>에서 그 파일이 처음 만들어지거나 크게 바뀐 단계를 가리킵니다.</p>
 
     <div class="stage-groups">
@@ -562,6 +562,34 @@
         </div>
       </div>
 
+      <div class="stage-group" data-stage="output">
+        <div class="stage-head"><span class="name">Next.js 화면 · 집계</span><span class="count">4개 항목</span></div>
+
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">web/</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 48</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">Next.js(React, TypeScript) 화면 소스. <code>src/app</code>(화면 주소 19개), <code>src/components</code>(관제 보드·표·차트·로그인/회원/게시판 화면), <code>src/lib</code>(api·폴링·타입), <code>src/styles</code>(디자인 토큰). <code>npm run build</code>가 <code>spa/</code>와 <code>public/_next/</code>를 만든다.</p></div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">spa/ · public/_next/</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 48</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">커밋된 빌드 결과. <code>spa/*.html</code>은 화면 껍데기, <code>public/_next/</code>는 해시 이름의 JS·CSS·폰트(길게 캐시). 없으면 <code>templates/</code>의 예전 Jinja 화면으로 폴백한다.</p></div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">helpers/spa.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 48</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">기존 라우트를 JSON으로 바꿔 주는 어댑터. 일반 이동에는 껍데기 HTML(인라인 스크립트 해시를 CSP에 추가)을, 어댑터 헤더가 붙은 요청에는 <code>{page, data, csrf}</code> 봉투를 돌려준다. 비밀 칸(password·hash·token 등)은 내보내기 전에 지운다.</p></div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">db/stats.py · /api/stats</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 48</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">위협 현황·공격 상세의 차트 숫자(시간대별 추이, 7일 로그량, 공격자 히트맵, 신규·반복 공격자, 국가별 흐름, 공격 흐름)를 기존 표에서 계산한다. 새 표 없음. <code>routes/admin/status.py</code>의 <code>/api/stats</code>가 돌려준다.</p></div>
+        </div>
+      </div>
+
       <div class="stage-group" data-stage="support">
         <div class="stage-head"><span class="name">공통 · 디자인 시스템</span><span class="count">3개 항목</span></div>
 
@@ -585,30 +613,36 @@
       </div>
 
       <div class="stage-group" data-stage="support">
-        <div class="stage-head"><span class="name">스크립트 · 테스트 · 문서</span><span class="count">5개 항목</span></div>
+        <div class="stage-head"><span class="name">스크립트 · 테스트 · 문서</span><span class="count">6개 항목</span></div>
 
         <div class="file-row">
-          <div class="file-id"><span class="file-path">scripts/ (공격 시뮬레이션)</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 21~29</span><span class="tag status-core">핵심</span></div></div>
-          <div class="file-body"><p class="file-role">브루트포스·패스워드 스프레이·가입 도배·글 도배·웹 스캐닝·미인증 접근·반복 접근·API 매크로를 로컬 서버에 재현하는 검증 스크립트 8개. 공용 부품은 <code>_sim_common.py</code>. 로컬이 아닌 주소는 <code>--i-know-what-im-doing</code> 없이 거부한다.</p></div>
+          <div class="file-id"><span class="file-path">scripts/simulation/ (공격 시뮬레이션)</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 21~29 · 49</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role"><code>scripts/simulation/</code>의 위험등급별 폴더 <code>critical/</code>(브루트포스·패스워드 스프레이·분산·관리자·영구 잠금·사건화) · <code>high/</code>(가입·글·댓글 도배, HTTP 플러딩, 복구 폭주) · <code>medium/</code>(웹 스캐닝·미인증 접근·반복 접근·API 매크로·허니팟)에 시뮬레이터 21개. 공용 부품은 <code>simulation/_sim_common.py</code>. 로컬이 아닌 주소는 <code>--i-know-what-im-doing</code> 없이 거부한다.</p></div>
         </div>
 
         <div class="file-row">
-          <div class="file-id"><span class="file-path">scripts/ (운영 도구)</span>
+          <div class="file-id"><span class="file-path">scripts/management/ (운영 도구)</span>
             <div class="tag-row"><span class="tag owner">GUIDE 22~34</span><span class="tag status-core">핵심</span></div></div>
           <div class="file-body"><p class="file-role">서버 없이 터미널에서 쓰는 도구 — 잠금 해제(unlock_ip / unlock_account, 영구 잠금은 <code>--permanent --note</code>), 관리자 생성, 보안 이벤트 정리, 일일 리포트(AI 총평), 임계값 튜닝 리포트, 메일 설정 점검.</p></div>
         </div>
 
         <div class="file-row">
+          <div class="file-id"><span class="file-path">scripts/demo/ (시연 · 점검)</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 48 · 49</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role"><code>demo_server.py</code>는 가짜 데이터로 관제 화면만 띄우고, <code>check_simulations.py</code>는 메모리 DB(<code>memory_supabase.py</code>)를 붙인 서버에서 시뮬레이션 전부를 실행해 기대한 보안 이벤트가 기록됐는지 PASS/FAIL로 대조한다. 진짜 Supabase·Slack·메일에는 접속하지 않는다.</p></div>
+        </div>
+
+        <div class="file-row">
           <div class="file-id"><span class="file-path">tests/</span>
             <div class="tag-row"><span class="tag owner">GUIDE 08</span><span class="tag status-core">핵심</span></div></div>
-          <div class="file-body"><p class="file-role">pytest 693개. 실제 Supabase 없이 가짜 클라이언트와 monkeypatch로 판정·조치·라우트·SQL 규칙(표 분류, 칸 이름, 권한)까지 검증하며 몇 초 안에 끝난다.</p></div>
+          <div class="file-body"><p class="file-role">pytest 718개. 실제 Supabase 없이 가짜 클라이언트와 monkeypatch로 판정·조치·라우트·SQL 규칙(표 분류, 칸 이름, 권한)까지 검증하며 몇 초 안에 끝난다.</p></div>
         </div>
 
         <div class="file-row">
           <div class="file-id"><span class="file-path">docs/beginner-guide/</span>
             <div class="tag-row"><span class="tag owner">공통</span><span class="tag status-core">핵심</span></div></div>
-          <div class="file-body"><p class="file-role">비전공자용 단계별 해설서 47단계. 각 단계에서 무엇을 왜 했는지와 확인 결과를 기록한다.</p></div>
+          <div class="file-body"><p class="file-role">비전공자용 단계별 해설서 49단계. 각 단계에서 무엇을 왜 했는지와 확인 결과를 기록한다.</p></div>
         </div>
 
         <div class="file-row">
@@ -622,7 +656,7 @@
   </section>
 
   <section id="extension">
-    <span class="eyebrow">04 · 반복 공격 대응 (33~47단계)</span>
+    <span class="eyebrow">04 · 반복 공격 대응 (33~49단계)</span>
     <h2>영구 잠금과 이메일 복구는 어느 파일을 거쳐 가는가</h2>
     <p class="lead">위쪽 줄은 반복해서 잠긴 IP·계정이 영구 잠금으로 올라가는 경로, 아래쪽 줄은 잠긴 사용자가 이메일 인증으로 스스로 푸는 경로입니다. 승격·해제·복구 반영은 모두 <b>security/lockdown.py</b> 한 곳에서 처리합니다 — security/soar/가 이미 security/correlate.py를 import하고 있어서, 서로를 부르는 순환을 피하려고 따로 뺐습니다.</p>
     <figure class="flow">
@@ -688,7 +722,7 @@
 
     <div class="stage-groups" style="margin-top:24px">
       <div class="stage-group" data-stage="support">
-        <div class="stage-head"><span class="name">33~47단계에서 더해진 것과 담당 위치</span><span class="count">14단계</span></div>
+        <div class="stage-head"><span class="name">33~49단계에서 더해진 것과 담당 위치</span><span class="count">17단계</span></div>
         <div class="file-row"><div class="file-id"><span class="file-path">GUIDE 33 · 34</span></div>
           <div class="file-body"><p class="file-role">영구 잠금 + 이메일 복구 — security/lockdown.py, routes/recovery.py, notify/mailer.py, db/lock_history.py · recovery.py · ip_exemptions.py</p></div></div>
         <div class="file-row"><div class="file-id"><span class="file-path">GUIDE 35 · 36 · 37</span></div>
@@ -701,6 +735,8 @@
           <div class="file-body"><p class="file-role">IPv6 /64 대역 단위(services/ip_utils.py, helpers/request_utils.py), 복구 요청 한도·처리 시간 기록(app.py, helpers/timing.py)</p></div></div>
         <div class="file-row"><div class="file-id"><span class="file-path">GUIDE 44 · 47</span></div>
           <div class="file-body"><p class="file-role">로그 자동 정리 + 일별 요약 — DB 예약 작업(docs/migrations/guide44_log_retention.sql, guide47_daily_log_summary.sql)</p></div></div>
+        <div class="file-row"><div class="file-id"><span class="file-path">GUIDE 48 · 49</span></div>
+          <div class="file-body"><p class="file-role">Next.js 관제 화면(web/, spa/, helpers/spa.py, db/stats.py), scripts/ 용도별 폴더 분리와 시뮬레이션 일괄 점검(scripts/demo/check_simulations.py)</p></div></div>
         <div class="file-row"><div class="file-id"><span class="file-path">GUIDE 45 · 46</span></div>
           <div class="file-body"><p class="file-role">보이지 않는 탭 폴링 중지(public/js/polling.js), 대시보드 즉시 반응(routes/admin/status.py의 ?only=, public/js/dashboard/api.js · actions.js)</p></div></div>
       </div>
@@ -710,11 +746,11 @@
   <footer>
     <span>login-watchdog</span>
     <span>·</span>
-    <span>39 items across 7 stages</span>
+    <span>44 items across 8 stages</span>
     <span>·</span>
     <span>배포: login-watchdog.vercel.app</span>
     <span>·</span>
-    <span>근거: 현재 코드(2026-10-09) + docs/beginner-guide guide01~guide47</span>
+    <span>근거: 현재 코드(2026-10-09) + docs/beginner-guide guide01~guide49</span>
   </footer>
 
 </div>

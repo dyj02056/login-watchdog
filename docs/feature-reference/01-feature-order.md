@@ -38,7 +38,9 @@
 27. [보이지 않는 탭은 폴링하지 않음](#27-보이지-않는-탭은-폴링하지-않음)
 28. [대시보드 즉시 반응](#28-대시보드-즉시-반응)
 29. [IPv6 /64 대역 단위 정규화](#29-ipv6-64-대역-단위-정규화)
-30. [부록](#30-부록)
+30. [Next.js 관제 화면과 집계 API](#30-nextjs-관제-화면과-집계-api)
+31. [시뮬레이션 일괄 점검](#31-시뮬레이션-일괄-점검)
+32. [부록](#32-부록)
 
 ---
 
@@ -67,6 +69,9 @@
 | [security/correlate.py](../../security/correlate.py) | 형사 — 흩어진 사건들을 하나로 엮음 | 형사 |
 | [services/llm_client.py](../../services/llm_client.py) | 외부 자문 — AI(Groq)에게 애매한 판단을 물어봄 | 외부 전문가 |
 | [services/geoip.py](../../services/geoip.py) | 통역 — IP를 국가/도시로 변환 | 통역사 |
+| [web/](../../web) · [spa/](../../spa) | 간판 — Next.js로 그리는 화면(소스 `web/`, 빌드 결과 `spa/`·`public/_next/`) | 안내 데스크 화면 |
+| [helpers/spa.py](../../helpers/spa.py) | 통역 창구 — 기존 라우트 결과를 화면용 JSON으로 바꿔 줌 | 접수처 번역기 |
+| [db/stats.py](../../db/stats.py) | 통계 담당 — 관제 화면의 차트 숫자를 기존 표에서 계산 | 상황판 집계원 |
 
 ### 2. 실행 흐름
 ```
@@ -304,9 +309,9 @@ Slack 메시지 예 — [notify/alert.py:91-98](../../notify/alert.py#L91):
 
 **방법 A — 화면으로 직접 확인**: `/login`에서 일부러 틀린 비밀번호로 6번 연속 시도 → 6번째부터 "잠긴 계정입니다"로 바뀌는지 확인 → `/admin/dashboard`에서 잠긴 IP·CRITICAL 이벤트 확인
 
-**방법 B — 준비된 스크립트** ([scripts/bruteforce_sim.py](../../scripts/bruteforce_sim.py))
+**방법 B — 준비된 스크립트** ([scripts/simulation/critical/bruteforce_sim.py](../../scripts/simulation/critical/bruteforce_sim.py))
 ```bash
-python scripts/bruteforce_sim.py
+python scripts/simulation/critical/bruteforce_sim.py
 ```
 로컬 서버(`127.0.0.1:5000`)에만 실행되도록 안전장치가 걸려 있으며, 5회 실패 후 6번째 요청에서 잠금 문구가 뜨는지 자동으로 검증합니다.
 
@@ -383,6 +388,8 @@ result = email_verification.request_email_change(user, new_email, ip)   # 새 �
 ---
 
 ## 5. 관리자 대시보드
+
+> **화면 구성 변경(48단계)**: 관리자 화면은 지금 보드 3개로 나뉘어 있습니다 — `/admin/dashboard`(위협 현황: KPI·차트·히트맵), `/admin/attack`(공격 상세), `/admin/ops`(처리 작업대). 아래에 적힌 카드·표·버튼은 모두 **`/admin/ops`** 에 있고, 화면은 Next.js 정적 빌드(`web/` → `spa/`)로 그려집니다([30번](01-feature-order.md#30-nextjs-관제-화면과-집계-api)). 코드 줄번호 일부는 예전 Jinja 화면(`templates/`, `public/js/dashboard/`) 기준이며 이 화면은 `SPA_ENABLED=false`일 때 폴백으로 쓰입니다.
 
 ### 0. 왜 필요한가
 자동 탐지·자동 잠금이 전부 자동으로만 돌아가면, 사람이 "지금 무슨 일이 일어나고 있는지"
@@ -684,7 +691,7 @@ if lookup_ip is None:
 
 ### 4. 시현 방법
 관리자 대시보드에서 "최근 로그인 시도" 표의 위치 칸을 확인 — 로컬 테스트 환경이면 전부
-"위치 확인 불가"로 보이는 게 정상입니다. `scripts/bruteforce_sim.py --ip` 옵션으로 가짜 공인 IP를
+"위치 확인 불가"로 보이는 게 정상입니다. `scripts/simulation/critical/bruteforce_sim.py --ip` 옵션으로 가짜 공인 IP를
 흉내내면(단 `TRUST_FORWARDED_FOR=true`일 때만) 실제 국가/도시가 표시되는지 확인할 수 있습니다.
 
 ### 5. 결과 화면
@@ -1197,24 +1204,24 @@ return len({row["path"] for row in res.data})   # set으로 중복 제거 후 �
 
 ### 2. 실행 흐름
 ```bash
-python scripts/tune_thresholds.py --days 7
+python scripts/management/tune_thresholds.py --days 7
 ```
 ```
-[scripts/tune_thresholds.py:106] main()
+[scripts/management/tune_thresholds.py:106] main()
    │
    ▼
 [db/security_events.py:67] list_resolved_critical_events_since(hours)
    │  (해결된 CRITICAL 이벤트만, detected_at~resolved_at 둘 다 있는 것만)
    ▼
-[scripts/tune_thresholds.py:59] build_report()
+[scripts/management/tune_thresholds.py:59] build_report()
    │
-   ├─ [scripts/tune_thresholds.py:52] elapsed_seconds() — 잠긴 시각과 풀린 시각의 차이 계산
+   ├─ [scripts/management/tune_thresholds.py:52] elapsed_seconds() — 잠긴 시각과 풀린 시각의 차이 계산
    └─ 그 차이가 LOCKOUT_DURATION_SECONDS의 50%(기본값) 미만이면 "조기 해제"로 분류
 ```
 
 핵심 코드:
 
-**"조기 해제" 판단 기준** — [scripts/tune_thresholds.py:63-72](../../scripts/tune_thresholds.py#L63)
+**"조기 해제" 판단 기준** — [scripts/management/tune_thresholds.py:63-72](../../scripts/management/tune_thresholds.py#L63)
 ```python
 early_release_cutoff = config.LOCKOUT_DURATION_SECONDS * early_release_ratio  # 300 * 0.5 = 150초
 for event in events:
@@ -1224,7 +1231,7 @@ for event in events:
         stats["early"] += 1
 ```
 
-**30% 이상이면 재검토 권장 표시** — [scripts/tune_thresholds.py:95-97](../../scripts/tune_thresholds.py#L95)
+**30% 이상이면 재검토 권장 표시** — [scripts/management/tune_thresholds.py:95-97](../../scripts/management/tune_thresholds.py#L95)
 ```python
 ratio = early / total if total else 0
 flag = " <- 기준 재검토 권장" if ratio >= REVIEW_RECOMMENDATION_RATIO else ""
@@ -1241,8 +1248,8 @@ BRUTE_FORCE 조기 해제 비율이 30%를 넘으면 "FAILURE_THRESHOLD(5회)가
 
 ### 4. 시현 방법
 ```bash
-python scripts/tune_thresholds.py --days 7
-python scripts/tune_thresholds.py --days 30 --early-release-ratio 0.3
+python scripts/management/tune_thresholds.py --days 7
+python scripts/management/tune_thresholds.py --days 30 --early-release-ratio 0.3
 ```
 잠금이 몇 건 쌓인 뒤(3번 섹션 시뮬레이션 반복 + 매번 "즉시 해제" 클릭) 실행하면 실제 숫자가 나옵니다.
 
@@ -1446,9 +1453,9 @@ released = lockdown.release(kind, value, f"admin:{session['admin_username']}", n
 
 ### 4. 시현 방법
 1. 로컬에서는 `.env`에 `TRUST_FORWARDED_FOR=true`, `bruteforce_sim.py --ip 1.2.3.4`로 가짜 IP를 6회 실패
-2. `python scripts/unlock_ip.py --ip 1.2.3.4`로 임시 잠금만 해제한 뒤 다시 실패 → 영구 잠금으로 승격
+2. `python scripts/management/unlock_ip.py --ip 1.2.3.4`로 임시 잠금만 해제한 뒤 다시 실패 → 영구 잠금으로 승격
 3. 관리자 대시보드 "영구 잠금" 카드에 "영구" 배지가 뜨는지, super_admin에게만 "영구 해제" 버튼이 보이는지 확인
-4. 해제는 사유 입력창에 사유를 적어야만 진행됨. 터미널은 `python scripts/unlock_ip.py --ip 1.2.3.4 --permanent --note "사유"`
+4. 해제는 사유 입력창에 사유를 적어야만 진행됨. 터미널은 `python scripts/management/unlock_ip.py --ip 1.2.3.4 --permanent --note "사유"`
 
 ### 5. 결과 화면
 관리자 대시보드 "영구 잠금" 카드(구분·대상·승격 사유·복구 방식·승격 시각·처리), 사유 입력 모달.
@@ -1540,7 +1547,7 @@ if detector.is_locked(ip):
 2. 16번 방법으로 영구 잠금을 만든 뒤 로그인 화면의 "본인 인증으로 잠금 해제" → 아이디 입력
 3. http://127.0.0.1:8025 에서 메일 확인 → 같은 브라우저에서 링크 열고 [해제]
 4. 다른 브라우저(쿠키 없음)에서 같은 링크를 열면 "요청한 기기에서만" 안내가 뜨는지 확인
-5. 배포 환경은 Gmail SMTP(앱 비밀번호)로 실제 메일이 갑니다. 설정 확인은 `python scripts/send_test_mail.py --to 주소`
+5. 배포 환경은 Gmail SMTP(앱 비밀번호)로 실제 메일이 갑니다. 설정 확인은 `python scripts/management/send_test_mail.py --to 주소`
 
 ### 5. 결과 화면
 복구 요청 화면, 확인 화면(가려진 아이디·요청 IP·시각), 완료 화면, 관리자 대시보드 "복구 요청"·"IP 예외" 카드.
@@ -1797,13 +1804,13 @@ if account_locked and not lockdown.is_ip_allowlisted(ip):
 ### 4. 시현 방법
 `.env`에 `TRUST_FORWARDED_FOR=true`를 켜고 IP를 바꿔가며 IP당 4회씩 보냅니다.
 ```bash
-python scripts/bruteforce_sim.py --admin --username demo_admin --attempts 4 --ip 203.0.113.21
-python scripts/bruteforce_sim.py --admin --username demo_admin --attempts 4 --ip 203.0.113.22
-python scripts/bruteforce_sim.py --admin --username demo_admin --attempts 4 --ip 203.0.113.23
+python scripts/simulation/critical/bruteforce_sim.py --admin --username demo_admin --attempts 4 --ip 203.0.113.21
+python scripts/simulation/critical/bruteforce_sim.py --admin --username demo_admin --attempts 4 --ip 203.0.113.22
+python scripts/simulation/critical/bruteforce_sim.py --admin --username demo_admin --attempts 4 --ip 203.0.113.23
 ```
 
 ### 5. 결과 화면
-관리자 대시보드 "현재 잠긴 IP / 계정" 카드에 **관리자 계정 잠금** 카드가 생깁니다. "즉시 해제"는 super_admin만 보이고(`unlock_admin_account` 권한, [routes/admin/locks.py:66](../../routes/admin/locks.py#L66)), 터미널에서는 `python scripts/unlock_account.py --admin --username <아이디>`로 풉니다.
+관리자 대시보드 "현재 잠긴 IP / 계정" 카드에 **관리자 계정 잠금** 카드가 생깁니다. "즉시 해제"는 super_admin만 보이고(`unlock_admin_account` 권한, [routes/admin/locks.py:66](../../routes/admin/locks.py#L66)), 터미널에서는 `python scripts/management/unlock_account.py --admin --username <아이디>`로 풉니다.
 
 ### 6. 용어 풀이 / 한계
 - 허용 목록 IP가 뚫리면 그 IP에서는 IP 잠금만 남는다. 허용 목록에는 실제 관리자 PC만 넣는다.
@@ -2241,9 +2248,101 @@ IPv6 사용자는 보통 /64 대역(2⁶⁴개 주소)을 통째로 받아 주�
 
 ---
 
-## 30. 부록
+## 30. Next.js 관제 화면과 집계 API
 
-### 30.1 테스트 커버리지 매핑
+### 0. 왜 필요한가
+운영자가 큰 모니터 앞에서 "지금 무엇을 해야 하는가"를 몇 초 안에 알아보려면, 표만 길게 늘어선 한 화면보다 요약(KPI·차트·히트맵)과 처리 버튼을 나눈 관제 보드가 낫습니다. 그런데 서버의 로그인·잠금·요청 한도·CSRF·권한 검사는 이미 검증된 코드라 다시 쓰고 싶지 않았습니다.
+
+### 1. 기능
+- 화면을 Next.js(React, TypeScript) **정적 빌드**로 바꿨다. 소스는 `web/`, 빌드 결과는 `spa/`(HTML 껍데기)와 `public/_next/`(JS·CSS·폰트)이고 저장소에 커밋한다. 서버 실행(`python app.py`)과 Vercel 배포 방식은 그대로다.
+- 관리자 화면이 보드 3개로 나뉜다 — **위협 현황**(`/admin/dashboard`), **공격 상세**(`/admin/attack`), **처리 작업대**(`/admin/ops`, 기존 처리 기능 전부).
+- 차트용 숫자는 `GET /api/stats`가 한 번에 돌려준다(`db/stats.py`가 기존 표에서 계산, 새 표·마이그레이션 없음). L3/L4 공격은 아직 수집하지 않아 "수집 전" 빈 상태로 보인다.
+- `spa/`가 없거나 `SPA_ENABLED=false`면 예전 Jinja 화면(`templates/`)이 그대로 나온다.
+
+### 2. 실행 흐름
+```
+브라우저가 /admin/dashboard 를 연다
+   │
+   ▼
+[helpers/spa.py] serve_shell()      spa/admin/dashboard.html 을 그대로 내려줌 (DB·잠금 판정 없음)
+   │
+   ▼
+화면(React)이 같은 주소를 어댑터 헤더(X-Requested-With)와 함께 다시 요청
+   │
+   ▼
+기존 라우트가 평소대로 실행 → convert_response()가 {page, data, csrf} JSON 봉투로 변환
+   │
+   ▼
+[routes/admin/status.py] GET /api/stats → db/stats.get_threat_stats() → 차트·히트맵
+```
+
+### 3. 예시 데이터
+`/api/stats` 응답에는 시간대별 건수, 7일 로그량, 공격자 히트맵, 신규·반복 공격자, 국가별 흐름, 미처리 이벤트 정렬, 복합 공격 흐름 링크가 들어 있다. 템플릿에 넘기던 값 중 `password`·`hash`·`token`·`secret`·`session_version`이 들어간 칸은 JSON으로 내보내기 전에 지운다.
+
+### 4. 시현 방법
+- Supabase 없이 화면만: `python scripts/demo/demo_server.py` → http://127.0.0.1:5077/__demo_login (관리자) / `__demo_member` (회원). 아무 데도 접속하지 않는다.
+- 화면 소스를 고친 뒤: `cd web && npm ci && npm run build`로 `spa/`·`public/_next/`를 다시 만들어 함께 커밋한다.
+
+### 5. 결과 화면
+위협 현황: KPI 띠, 시간대별 추이, 7일 로그량, 공격자 히트맵, 공격 흐름도, 신규 공격자·잠금 현황·미처리 이벤트·연관 사건 표. 공격 상세: Top 5·국가별 흐름·실시간 이벤트. 처리 작업대: 잠금 해제, 보안 이벤트/사건 처리, AI 조기 경보 승인, 회원·게시판·관리자 계정 관리.
+
+### 6. 용어 풀이 / 한계
+- `next/link`·라우터는 쓰지 않는다 — 정적 내보내기의 클라이언트 이동이 `/login.txt` 같은 조각을 요청해 404로 기록되고 **웹 스캐닝 탐지가 오탐**하기 때문이다. 항상 일반 주소 이동(`<a>`)을 쓴다.
+- 인라인 `style`·`onclick`은 CSP가 막는다. 색은 `web/src/styles/tokens.css` 변수로만 바꾼다.
+- CI(`.github/workflows/tests.yml`의 `web` 작업)가 타입 검사·빌드를 하고 커밋된 결과와 다르면 경고한다.
+- 자세한 내용: [guide48_nextjs_dashboard.md](../beginner-guide/guide48_nextjs_dashboard.md), 테스트 [tests/test_spa.py](../../tests/test_spa.py), [tests/test_stats.py](../../tests/test_stats.py)
+
+---
+
+## 31. 시뮬레이션 일괄 점검
+
+### 0. 왜 필요한가
+탐지 기능을 고칠 때마다 "다른 공격은 아직 잡히는가"를 시뮬레이터 20여 개로 손수 확인하기는 어렵습니다. 그래서 위험등급 CRITICAL/HIGH/MEDIUM 전부에 시뮬레이터를 갖추고, 한 번에 돌려 결과를 대조하는 도구를 만들었습니다.
+
+### 1. 기능
+- `scripts/simulation/`을 위험등급별(`critical/`·`high/`·`medium/`) 폴더로 나누고 빠져 있던 시뮬레이터 9종(분산·관리자 브루트포스, 영구 잠금, 사건화, HTTP 플러딩, 댓글 도배, 복구 폭주, 허니팟 등)을 채웠다.
+- `scripts/demo/check_simulations.py`가 메모리 DB(`memory_supabase.py`)를 붙인 서버를 `127.0.0.1:5000`에 띄우고, 시뮬레이터를 하나씩 실행한 뒤 ① 종료 코드 0 ② 기대한 `(event_type, severity)` 기록 여부를 `PASS`/`FAIL`로 보여준다. 진짜 Supabase·Slack·메일에는 접속하지 않는다.
+- 운영 도구는 `scripts/management/`, 데모·점검은 `scripts/demo/`로 갈라 두었다.
+
+### 2. 실행 흐름
+```
+check_simulations.py
+   │  환경 고정(.env 값 무시, 임시 잠금 3초, 복구 대기 0초) → MemoryClient를 db에 주입
+   ▼
+시뮬레이터 실행 (subprocess) ──▶ 로컬 서버(5000) ──▶ security_events(메모리)
+   │
+   ▼
+기대 이벤트 목록과 대조 → PASS / FAIL(누락 이벤트 + 출력 끝 15줄)
+```
+
+### 3. 예시 데이터
+| 시뮬레이터 | 기대 이벤트 |
+|---|---|
+| `critical/bruteforce_sim.py` | `BRUTE_FORCE` (CRITICAL) |
+| `critical/incident_correlation_sim.py` | `WEB_SCANNING`·`UNAUTHORIZED_ACCESS`(MEDIUM) → `BRUTE_FORCE`·`PERMANENT_LOCK`(CRITICAL) |
+| `high/http_flood_sim.py` | `HTTP_FLOOD` (HIGH) |
+| `medium/honeypot_bot_sim.py` | `BOT_DETECTED` (MEDIUM) |
+
+### 4. 시현 방법
+```bash
+python scripts/demo/check_simulations.py              # 전부
+python scripts/demo/check_simulations.py honeypot     # 이름에 honeypot이 들어간 것만
+```
+`python app.py`로 띄운 개발 서버가 5000번을 쓰고 있으면 먼저 끈다.
+
+### 5. 결과 화면
+`[PASS] critical  critical/bruteforce_sim.py  종료코드=0  1.2s` 형태의 줄과 마지막 합계(`N PASS / M FAIL / 총 K건`).
+
+### 6. 용어 풀이 / 한계
+- 메모리 DB는 `db` 패키지가 실제로 쓰는 연산만 흉내 낸다. 운영 DB 고유의 동작(pg_cron, 제약 조건 등)은 검증하지 못한다.
+- 가짜 공격자 IP는 서버가 `TRUST_FORWARDED_FOR=true`일 때만 반영된다(점검기는 이 값을 켠 채로 서버를 띄운다).
+- 자세한 내용: [guide49_scripts_reorganization.md](../beginner-guide/guide49_scripts_reorganization.md)
+
+---
+
+## 32. 부록
+
+### 32.1 테스트 커버리지 매핑
 
 | 테스트 파일 | 대상 기능 |
 |---|---|
@@ -2256,7 +2355,7 @@ IPv6 사용자는 보통 /64 대역(2⁶⁴개 주소)을 통째로 받아 주�
 | [tests/test_early_warning.py](../../tests/test_early_warning.py) | LLM 조기 경보(15번 섹션) |
 | [tests/test_password_spraying_sim.py](../../tests/test_password_spraying_sim.py) | Password Spraying 시나리오 |
 | [tests/test_tune_thresholds.py](../../tests/test_tune_thresholds.py) | 임계값 튜닝 리포트(14번 섹션) |
-| [tests/test_unlock_ip.py](../../tests/test_unlock_ip.py) | scripts/unlock_ip.py |
+| [tests/test_unlock_ip.py](../../tests/test_unlock_ip.py) | scripts/management/unlock_ip.py |
 | [tests/test_helpers.py](../../tests/test_helpers.py) | helpers/ 공용 함수 |
 | [tests/test_config.py](../../tests/test_config.py) | config.py 값 로딩 |
 | [tests/test_permanent_lock.py](../../tests/test_permanent_lock.py) | 영구 잠금 승격·해제·DB 보호(16번) |
@@ -2274,35 +2373,48 @@ IPv6 사용자는 보통 /64 대역(2⁶⁴개 주소)을 통째로 받아 주�
 | [tests/test_polling.py](../../tests/test_polling.py) | 보이지 않는 탭 폴링 중지(27번) |
 | [tests/test_dashboard_speed.py](../../tests/test_dashboard_speed.py) | 대시보드 즉시 반응(28번) |
 | [tests/test_ipv6_prefix.py](../../tests/test_ipv6_prefix.py) | IPv6 /64 대역 정규화(29번) |
+| [tests/test_spa.py](../../tests/test_spa.py) | Next.js 껍데기 서빙·CSP 해시·JSON 변환·폴백(30번) |
+| [tests/test_stats.py](../../tests/test_stats.py) | 관제 화면 집계 `db/stats.py`(30번) |
 
-실행 방법(현재 693개, 몇 초 안에 끝남):
+실행 방법(현재 718개, 몇 초 안에 끝남):
 ```bash
 pytest
 ```
 
-### 30.2 시뮬레이션 스크립트 전체 목록
+### 32.2 시뮬레이션 스크립트 전체 목록
 
 | 스크립트 | 대상 |
 |---|---|
-| [scripts/bruteforce_sim.py](../../scripts/bruteforce_sim.py) | 브루트포스(3번) |
-| [scripts/password_spraying_sim.py](../../scripts/password_spraying_sim.py) | Password Spraying(3번) |
-| [scripts/signup_abuse_sim.py](../../scripts/signup_abuse_sim.py) | 가입 도배(6-A) |
-| [scripts/spam_sim.py](../../scripts/spam_sim.py) | 게시글/댓글 도배(6-A, 8번) |
-| [scripts/web_scanning_sim.py](../../scripts/web_scanning_sim.py) | Web Scanning(6-A) |
-| [scripts/unauthorized_access_sim.py](../../scripts/unauthorized_access_sim.py) | Unauthorized Access(6-A) |
-| [scripts/repeated_access_sim.py](../../scripts/repeated_access_sim.py) | 반복 페이지 접근(6-A) |
-| [scripts/macro_bot_sim.py](../../scripts/macro_bot_sim.py) | API 매크로/봇(13번) |
-| [scripts/tune_thresholds.py](../../scripts/tune_thresholds.py) | 임계값 튜닝(14번) |
-| [scripts/daily_report.py](../../scripts/daily_report.py) | 일일 리포트(AI 요약 포함) |
-| [scripts/unlock_ip.py](../../scripts/unlock_ip.py) / [scripts/unlock_account.py](../../scripts/unlock_account.py) | 터미널에서 수동 잠금 해제 (영구 잠금은 `--permanent --note "사유"`) |
-| [scripts/send_test_mail.py](../../scripts/send_test_mail.py) | 메일 발송 설정 점검(17번) |
-| [scripts/create_admin.py](../../scripts/create_admin.py) | 관리자 계정 생성 |
-| [scripts/delete_security_events.py](../../scripts/delete_security_events.py) | 보안 이벤트 정리 |
+| [scripts/simulation/critical/bruteforce_sim.py](../../scripts/simulation/critical/bruteforce_sim.py) | 브루트포스(3번) |
+| [scripts/simulation/critical/password_spraying_sim.py](../../scripts/simulation/critical/password_spraying_sim.py) | Password Spraying(3번) |
+| [scripts/simulation/high/signup_abuse_sim.py](../../scripts/simulation/high/signup_abuse_sim.py) | 가입 도배(6-A) |
+| [scripts/simulation/high/spam_sim.py](../../scripts/simulation/high/spam_sim.py) | 게시글/댓글 도배(6-A, 8번) |
+| [scripts/simulation/medium/web_scanning_sim.py](../../scripts/simulation/medium/web_scanning_sim.py) | Web Scanning(6-A) |
+| [scripts/simulation/medium/unauthorized_access_sim.py](../../scripts/simulation/medium/unauthorized_access_sim.py) | Unauthorized Access(6-A) |
+| [scripts/simulation/medium/repeated_access_sim.py](../../scripts/simulation/medium/repeated_access_sim.py) | 반복 페이지 접근(6-A) |
+| [scripts/simulation/medium/macro_bot_sim.py](../../scripts/simulation/medium/macro_bot_sim.py) | API 매크로/봇(13번) |
+| [scripts/management/tune_thresholds.py](../../scripts/management/tune_thresholds.py) | 임계값 튜닝(14번) |
+| [scripts/management/daily_report.py](../../scripts/management/daily_report.py) | 일일 리포트(AI 요약 포함) |
+| [scripts/management/unlock_ip.py](../../scripts/management/unlock_ip.py) / [scripts/management/unlock_account.py](../../scripts/management/unlock_account.py) | 터미널에서 수동 잠금 해제 (영구 잠금은 `--permanent --note "사유"`) |
+| [scripts/management/send_test_mail.py](../../scripts/management/send_test_mail.py) | 메일 발송 설정 점검(17번) |
+| [scripts/management/create_admin.py](../../scripts/management/create_admin.py) | 관리자 계정 생성 |
+| [scripts/management/delete_security_events.py](../../scripts/management/delete_security_events.py) | 보안 이벤트 정리 |
+| [scripts/simulation/critical/distributed_bruteforce_sim.py](../../scripts/simulation/critical/distributed_bruteforce_sim.py) | 분산 브루트포스(계정 단위 잠금) |
+| [scripts/simulation/critical/admin_bruteforce_sim.py](../../scripts/simulation/critical/admin_bruteforce_sim.py) | 관리자 로그인 무차별 대입(IP 잠금) |
+| [scripts/simulation/critical/admin_distributed_bruteforce_sim.py](../../scripts/simulation/critical/admin_distributed_bruteforce_sim.py) | 관리자 분산 브루트포스(21번) |
+| [scripts/simulation/critical/permanent_lock_sim.py](../../scripts/simulation/critical/permanent_lock_sim.py) | 영구 잠금 승격(16번) |
+| [scripts/simulation/critical/incident_correlation_sim.py](../../scripts/simulation/critical/incident_correlation_sim.py) | 다단계 공격 사건화·영구 차단 |
+| [scripts/simulation/high/http_flood_sim.py](../../scripts/simulation/high/http_flood_sim.py) | HTTP 플러딩(전역 요청 한도) |
+| [scripts/simulation/high/comment_spam_sim.py](../../scripts/simulation/high/comment_spam_sim.py) | 댓글 도배 |
+| [scripts/simulation/high/recovery_flood_sim.py](../../scripts/simulation/high/recovery_flood_sim.py) | 복구·비밀번호 찾기·이메일 확인 폭주(25번) |
+| [scripts/simulation/medium/honeypot_bot_sim.py](../../scripts/simulation/medium/honeypot_bot_sim.py) | 허니팟 봇 차단 |
+| [scripts/demo/check_simulations.py](../../scripts/demo/check_simulations.py) | 위 시뮬레이터 전부를 메모리 DB 서버에서 한 번에 점검(31번) |
+| [scripts/demo/demo_server.py](../../scripts/demo/demo_server.py) | 가짜 데이터로 관제 화면만 띄우는 데모 서버(30번) |
 
-### 30.3 DB 스키마
+### 32.3 DB 스키마
 전체 테이블 정의는 [docs/schema.sql](../../docs/schema.sql) 참고. 처음 19개 테이블에 RBAC·상관분석·조기 경보 등으로 표가 늘었고, 영구 잠금으로 `lock_history`·`recovery_requests`·`ip_lock_exemptions`, 관리자 계정 잠금으로 `admin_account_lockouts`, 이메일 인증으로 `email_tokens`, 로그 요약으로 `log_daily_summary`·`log_daily_breakdown`·`log_summary_state`가 추가되어 지금은 30개입니다. 기존 DB에 추가로 실행할 SQL은 [docs/migrations/](../../docs/migrations)에 있습니다. 표별 설명은 [db-schema-guide.md](db-schema-guide.md).
 
-### 30.4 알려진 제한사항 (의도된 미구현 범위)
+### 32.4 알려진 제한사항 (의도된 미구현 범위)
 전체 목록은 [README.md의 "알려진 제한사항"](../../README.md#알려진-제한사항) 절 참고. 이 문서와 관련된 주요 항목:
 
 - **Automated Scraping (게시글 id 순차 조회) 미차단** — 게시판이 "회원 전체 공개" 설계이므로 버그가 아니라 의도된 범위 (8번 섹션 참고).

@@ -4,7 +4,7 @@
 Python 표준 라이브러리만 사용하므로 이 스크립트 자체는 패키지 설치와 로그인이 필요 없다.
 
 ```powershell
-py scripts/web_scanning_sim.py --host http://127.0.0.1:5000
+py scripts/simulation/medium/web_scanning_sim.py --host http://127.0.0.1:5000
 ```
 
 `--host`를 테스트 서버 주소로 바꿀 수 있다. 경로를 제외한 기본 URL을 입력한다.
@@ -14,6 +14,8 @@ py scripts/web_scanning_sim.py --host http://127.0.0.1:5000
 서버의 포괄 라우팅이나 프록시 설정에 따라 404가 아닌 응답이 올 수도 있다.
 정상 완료 시 GET은 정확히 11회이며, 리다이렉트 추적·자동 재시도·사전 확인 요청은 없다.
 통신 오류 시 요청 도달 여부를 알 수 없으므로 즉시 중단한다.
+
+> 시뮬레이터 전체를 가짜 DB 서버에서 한 번에 점검하려면 `python scripts/demo/check_simulations.py web_scanning`을 쓴다([guide49](beginner-guide/guide49_scripts_reorganization.md)).
 
 ## 재현 전제
 

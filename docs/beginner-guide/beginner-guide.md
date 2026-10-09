@@ -57,6 +57,7 @@
 46. [46단계 — 대시보드 즉시 반응](guide46_dashboard_responsiveness.md)
 47. [47단계 — 매일 어제 하루치를 요약한다(시각화용 요약표)](guide47_daily_log_summary.md)
 48. [48단계 — Next.js 관제 화면으로 바꾸기](guide48_nextjs_dashboard.md)
+49. [49단계 — scripts/ 정리와 시뮬레이션 일괄 점검](guide49_scripts_reorganization.md)
 
 **단계 사이의 리팩터링 기록** (기능 변화 없이 파일 구조만 바꾼 작업)
 
@@ -1726,7 +1727,7 @@ def handle_csrf_error(error):
 ### 3. 검증 스크립트 미구현 (신규 주제)
 
 #### 무엇이 문제였는가
-`plan.md`는 "`bruteforce_sim.py`로 6번째 시도에서 계정이 잠기는지 검증한다"는 절차를 명시하고 있었지만, [scripts/bruteforce_sim.py](../../scripts/bruteforce_sim.py)와 [scripts/daily_report.py](../../scripts/daily_report.py) 둘 다 실제로는 **0바이트(빈 파일)**였습니다. 즉 문서에는 "이렇게 검증한다"고 적혀있는데 실제로 그 검증을 자동으로 돌려볼 방법이 없었고, 데모 시나리오를 재현하려면 매번 사람이 로그인 폼에 직접 6번 틀린 비밀번호를 입력해야 했습니다.
+`plan.md`는 "`bruteforce_sim.py`로 6번째 시도에서 계정이 잠기는지 검증한다"는 절차를 명시하고 있었지만, [scripts/simulation/critical/bruteforce_sim.py](../../scripts/simulation/critical/bruteforce_sim.py)와 [scripts/management/daily_report.py](../../scripts/management/daily_report.py) 둘 다 실제로는 **0바이트(빈 파일)**였습니다. 즉 문서에는 "이렇게 검증한다"고 적혀있는데 실제로 그 검증을 자동으로 돌려볼 방법이 없었고, 데모 시나리오를 재현하려면 매번 사람이 로그인 폼에 직접 6번 틀린 비밀번호를 입력해야 했습니다.
 
 #### 왜 필요한가
 사람이 직접 6번 클릭해서 확인하는 건 매번 번거롭고, 무엇보다 "정말 6번째에 잠기는지" 같은 **경계값**은 사람이 셀 때 실수하기 쉽습니다. 자동화된 스크립트가 있으면 코드를 수정할 때마다(예: `FAILURE_THRESHOLD` 값을 바꾸거나, `login_submit()` 로직을 리팩터링할 때) 매번 똑같은 조건으로 빠르게 재검증할 수 있습니다.
@@ -1776,8 +1777,8 @@ def list_attempts_since(hours: int = 24) -> list[dict]:
 3. `daily_report.py`를 처음 실행했을 때 `ModuleNotFoundError: No module named 'db'`가 발생하는 것도 발견했습니다 — `scripts/` 폴더 안에서 실행하면 파이썬이 프로젝트 루트에 있는 `db.py`를 못 찾기 때문이었습니다. 스크립트 맨 위에서 프로젝트 루트를 `sys.path`에 직접 추가하도록 고쳐서 해결했고, 이후 재실행하니 실제 Supabase 데이터를 정상적으로 집계해서 리포트를 출력하는 것을 확인했습니다.
 
 #### 이 단계에서 만들어지거나 바뀐 파일
-- [scripts/bruteforce_sim.py](../../scripts/bruteforce_sim.py) (신규 구현)
-- [scripts/daily_report.py](../../scripts/daily_report.py) (신규 구현 — 숫자 집계 버전)
+- [scripts/simulation/critical/bruteforce_sim.py](../../scripts/simulation/critical/bruteforce_sim.py) (신규 구현)
+- [scripts/management/daily_report.py](../../scripts/management/daily_report.py) (신규 구현 — 숫자 집계 버전)
 - [db.py](../../db/) (`list_attempts_since`, `list_lockouts_since` 추가)
 - [tests/test_db.py](../../tests/test_db.py) (위 두 함수에 대한 단위 테스트 추가)
 
@@ -1929,7 +1930,7 @@ jobs:
 #### 이 단계 전체에서 바뀐 파일 모음
 - [app.py](../../app.py), [db.py](../../db/), [public/js/dashboard.js](../../public/js/dashboard/)
 - [templates/login_form.html](../../templates/login_form.html), [templates/signup.html](../../templates/signup.html), [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [templates/member_dashboard.html](../../templates/member_dashboard.html), [templates/member_history.html](../../templates/member_history.html), [templates/member_profile.html](../../templates/member_profile.html)
-- [scripts/bruteforce_sim.py](../../scripts/bruteforce_sim.py), [scripts/daily_report.py](../../scripts/daily_report.py)
+- [scripts/simulation/critical/bruteforce_sim.py](../../scripts/simulation/critical/bruteforce_sim.py), [scripts/management/daily_report.py](../../scripts/management/daily_report.py)
 - [tests/conftest.py](../../tests/conftest.py), [tests/test_app.py](../../tests/test_app.py), [tests/test_db.py](../../tests/test_db.py)
 - [.github/workflows/tests.yml](../../.github/workflows/tests.yml)
 - [requirements.txt](../../requirements.txt)
@@ -2676,20 +2677,20 @@ HIGH/MEDIUM용으로는 새 API `POST /api/security-events/resolve`와 `db.resol
 
 | # | 문제 | 성격 |
 |---|---|---|
-| 1 | `scripts/unlock_ip.py`로 풀면 CRITICAL 보안 이벤트가 영원히 "자동 해제 대기"로 남음 | 기존 결함 보완 |
+| 1 | `scripts/management/unlock_ip.py`로 풀면 CRITICAL 보안 이벤트가 영원히 "자동 해제 대기"로 남음 | 기존 결함 보완 |
 | 2 | CRITICAL 이벤트를 API로 직접 "처리 완료" 처리할 수 있었음 | 기존 결함 보완 |
 | 3 | HIGH 이벤트의 count가 최초 거부 시점 값에 영원히 고정됨 | 설계 개선 |
 | 4 | 동시 요청이 겹치면 미해결 이벤트가 중복 생성될 수 있는 경쟁 조건 | 신규 설계(DB 제약) |
 
 ### 1. `unlock_ip.py`가 잠금만 풀고 보안 이벤트는 방치했다
 
-**무엇이 문제였는가**: 관리자 본인 IP가 잠겨 대시보드 접속이 막혔을 때 쓰는 뒷문 스크립트 `scripts/unlock_ip.py`가 `db.release_lockout()`만 호출했습니다. 대시보드의 "즉시 해제" 버튼과 자동 만료는 잠금을 풀 때 그 IP의 CRITICAL 보안 이벤트도 함께 "처리 완료"로 표시하는데, 이 스크립트만 그 절차를 빠뜨리고 있었습니다.
+**무엇이 문제였는가**: 관리자 본인 IP가 잠겨 대시보드 접속이 막혔을 때 쓰는 뒷문 스크립트 `scripts/management/unlock_ip.py`가 `db.release_lockout()`만 호출했습니다. 대시보드의 "즉시 해제" 버튼과 자동 만료는 잠금을 풀 때 그 IP의 CRITICAL 보안 이벤트도 함께 "처리 완료"로 표시하는데, 이 스크립트만 그 절차를 빠뜨리고 있었습니다.
 
 **어떻게 고쳤는가**: `unlock_one()`, `unlock_all()` 두 곳 모두 `db.release_lockout()` 다음 줄에 `db.resolve_security_events_for_ip()`를 추가했습니다.
 
 **실제로 확인한 것**: `tests/test_unlock_ip.py`에 검증 추가. 실제로 잠근 뒤 이 스크립트로 풀어봤더니 해당 CRITICAL 이벤트가 즉시 "처리 완료"로 바뀌는 것을 로컬·배포 사이트 양쪽에서 확인. `pytest tests/ -v` 전체(160개) 통과.
 
-**이 단계에서 만들어지거나 바뀐 파일**: [scripts/unlock_ip.py](../../scripts/unlock_ip.py), [tests/test_unlock_ip.py](../../tests/test_unlock_ip.py)
+**이 단계에서 만들어지거나 바뀐 파일**: [scripts/management/unlock_ip.py](../../scripts/management/unlock_ip.py), [tests/test_unlock_ip.py](../../tests/test_unlock_ip.py)
 
 ### 2. CRITICAL 이벤트를 API로 직접 "처리 완료" 처리할 수 있었다
 
@@ -2812,7 +2813,7 @@ create unique index idx_security_events_high_open_incident
 **어떻게 고쳤는가**: 1·2번은 `db/__init__.py` 등록과 `db/lockouts.py`의 `list_lockouts_between()` 신규 구현으로 해결했습니다. 3번은 `main()`에 실행 전 검증(짝 확인, ISO 형식 확인, 순서 확인, 양수 확인)을 추가해 잘못된 입력을 이해하기 쉬운 한국어 메시지로 즉시 막도록 했습니다. 4번은 별도 구글 SDK 없이 기존 `requests`로 Gemini REST API를 직접 호출하는 `generate_ai_summary()`를 구현하고 `--ai` 옵션으로 연결했습니다. API 키는 `.env`의 `GEMINI_API_KEY`에서만 읽고, 키가 없거나 호출이 실패해도 `[WARN]` 메시지만 남긴 뒤 숫자 집계 리포트는 정상 출력되도록 했습니다.
 
 ```python
-# scripts/daily_report.py
+# scripts/management/daily_report.py
 def generate_ai_summary(report_text: str) -> str:
     api_key = os.environ.get("GEMINI_API_KEY")
     ...
@@ -2821,6 +2822,6 @@ def generate_ai_summary(report_text: str) -> str:
                               timeout=GEMINI_REQUEST_TIMEOUT)
 ```
 
-**실제로 확인한 것**: 로컬에서 `python scripts/daily_report.py --ai`를 실행해 Gemini가 실제 리포트 데이터를 근거로("반복 실패했지만 자동 차단됨", "출처가 내부 IP라 테스트일 가능성도 있음") 맥락 있는 한국어 요약을 만들어주는 것을 확인했습니다. 처음엔 모델명(`gemini-2.0-flash`)이 단종되어 404가 났었고, 구글이 안내한 대체 모델(`gemini-3.6-flash`)로 교체한 뒤 정상 동작을 확인했습니다. `main`/`seunghoon`/`yoojieun` 세 브랜치를 병합하기 전 `git merge-tree`로 충돌 가능성을 미리 점검했고, 실제 병합도 충돌 없이 완료됐습니다. `pytest tests/` 전체 232개 테스트 통과.
+**실제로 확인한 것**: 로컬에서 `python scripts/management/daily_report.py --ai`를 실행해 Gemini가 실제 리포트 데이터를 근거로("반복 실패했지만 자동 차단됨", "출처가 내부 IP라 테스트일 가능성도 있음") 맥락 있는 한국어 요약을 만들어주는 것을 확인했습니다. 처음엔 모델명(`gemini-2.0-flash`)이 단종되어 404가 났었고, 구글이 안내한 대체 모델(`gemini-3.6-flash`)로 교체한 뒤 정상 동작을 확인했습니다. `main`/`seunghoon`/`yoojieun` 세 브랜치를 병합하기 전 `git merge-tree`로 충돌 가능성을 미리 점검했고, 실제 병합도 충돌 없이 완료됐습니다. `pytest tests/` 전체 232개 테스트 통과.
 
-**이 단계에서 만들어지거나 바뀐 파일**: [scripts/web_scanning_sim.py](../../scripts/web_scanning_sim.py), [scripts/unauthorized_access_sim.py](../../scripts/unauthorized_access_sim.py), [scripts/password_spraying_sim.py](../../scripts/password_spraying_sim.py), [scripts/repeated_access_sim.py](../../scripts/repeated_access_sim.py), [scripts/signup_abuse_sim.py](../../scripts/signup_abuse_sim.py), [scripts/spam_sim.py](../../scripts/spam_sim.py), [db/__init__.py](../../db/__init__.py), [db/lockouts.py](../../db/lockouts.py), [scripts/daily_report.py](../../scripts/daily_report.py), [.env.example](../../.env.example)
+**이 단계에서 만들어지거나 바뀐 파일**: [scripts/simulation/medium/web_scanning_sim.py](../../scripts/simulation/medium/web_scanning_sim.py), [scripts/simulation/medium/unauthorized_access_sim.py](../../scripts/simulation/medium/unauthorized_access_sim.py), [scripts/simulation/critical/password_spraying_sim.py](../../scripts/simulation/critical/password_spraying_sim.py), [scripts/simulation/medium/repeated_access_sim.py](../../scripts/simulation/medium/repeated_access_sim.py), [scripts/simulation/high/signup_abuse_sim.py](../../scripts/simulation/high/signup_abuse_sim.py), [scripts/simulation/high/spam_sim.py](../../scripts/simulation/high/spam_sim.py), [db/__init__.py](../../db/__init__.py), [db/lockouts.py](../../db/lockouts.py), [scripts/management/daily_report.py](../../scripts/management/daily_report.py), [.env.example](../../.env.example)

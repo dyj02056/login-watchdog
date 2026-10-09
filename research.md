@@ -1,5 +1,7 @@
 # 로그인 워치독 — 구현 전 리서치 노트
 
+> **읽기 전에**: 이 문서는 2026-09-02 분석 시점의 기록입니다. 이후 리팩터링으로 파일 위치가 바뀌었습니다 — `soar.py`→`security/soar/`, `detector.py`·`correlate.py`·`lockdown.py`→`security/`, `alert.py`·`mailer.py`→`notify/`, `geoip.py`·`llm_client.py`·`email_verification.py`→`services/`, `routes/admin.py`→`routes/admin/`, `helpers.py`→`helpers/`, `scripts/*.py`→`scripts/{simulation,management,demo}/`. 코드 링크는 지금 위치로 고쳐 두었고, 현재 구조는 [README의 "프로젝트 구조"](README.md#프로젝트-구조)를 참고하세요.
+
 > 작성일: 2026-09-02
 > 근거 문서:
 > - `login_watchdog_supabase.md` (종합 기획서)

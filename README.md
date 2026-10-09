@@ -13,7 +13,7 @@
 - **브루트포스 탐지 + 자동 잠금** — 같은 IP가 60초 안에 5회 초과 로그인 실패 시 해당 IP를 5분간 자동 잠금
 - **Slack 알림** — 잠금이 발생하는 순간 Slack 채널에 시각·IP·실패 횟수·조치 내용을 전송 (웹훅 미설정 시 콘솔 로그로 자동 대체)
 - **회원 대시보드** (`/dashboard`) — 로그인한 회원 본인의 인사말 화면. 최근 로그인 기록(접속 국가/도시 포함) 조회, 표시 이름·이메일 프로필 수정, 비밀번호 변경(바꾸면 다른 기기의 로그인은 모두 해제) 가능
-- **관리자 대시보드** (`/admin/dashboard`) — 세션 로그인으로 보호되는 별도 화면. 회원가입 On/Off, AI 조기 경보(승인/반려), 보안 이벤트, 연관 사건, 현재 잠긴 IP·계정(회원·관리자 계정 포함, "즉시 해제"), 영구 잠금 / 복구 요청 / IP 예외 카드(완전 해제는 `super_admin`만, 사유 필수), 최근 로그인 시도(접속 위치 포함), 등록된 회원(이메일 인증 배지, 삭제), 게시글·댓글 관리, 관리자 계정 관리(`super_admin`만), 관리자 로그인 기록을 5초 폴링으로 확인합니다. 버튼마다 역할별 권한을 서버가 확인합니다(RBAC).
+- **관리자 처리 작업대** (`/admin/ops`) — 세션 로그인으로 보호되는 별도 화면(위 관제 보드 ③, 이전의 "관리자 대시보드"가 이 화면입니다). 회원가입 On/Off, AI 조기 경보(승인/반려), 보안 이벤트, 연관 사건, 현재 잠긴 IP·계정(회원·관리자 계정 포함, "즉시 해제"), 영구 잠금 / 복구 요청 / IP 예외 카드(완전 해제는 `super_admin`만, 사유 필수), 최근 로그인 시도(접속 위치 포함), 등록된 회원(이메일 인증 배지, 삭제), 게시글·댓글 관리, 관리자 계정 관리(`super_admin`만), 관리자 로그인 기록을 5초 폴링으로 확인합니다. 버튼마다 역할별 권한을 서버가 확인합니다(RBAC).
 - **통합 보안 위험등급** — Brute Force/Password Spraying/관리자 로그인 무차별 대입(CRITICAL), 가입·게시글·댓글 도배 거부(HIGH), Web Scanning·Unauthorized Access·반복 페이지 접근 관찰(MEDIUM)을 공통 `security_events` 표에 등급과 함께 기록. 관리자 대시보드 맨 위 "보안 이벤트" 표에서 등급 배지와 함께 조회하고, HIGH/MEDIUM은 "처리 완료" 버튼으로 처리(CRITICAL은 잠금 해제 시 자동 처리). Slack 메시지 첫 줄에도 등급 표시
 - **IP 위치 조회** — [ip-api.com](https://ip-api.com)으로 접속 IP의 국가·도시를 조회해 회원/관리자 대시보드에 표시. 조회 결과는 Supabase(`ip_locations`)에 캐시되어 같은 IP를 반복 조회하지 않음(무료 API의 분당 45건 한도 대응)
 - **게시판·댓글** (`/board`) — 로그인한 회원 전용 게시판. 글 작성/수정/삭제(본인 글만), 댓글 작성/삭제(본인 댓글만), 페이지 번호 방식 목록, 새 댓글이 달리면 알림 배너 표시. 관리자 대시보드에서는 별도로 전체 게시글·댓글을 조회·삭제 가능. 자세한 설계 배경은 [docs/board-comment/](docs/board-comment) 참고
@@ -97,6 +97,9 @@ cp .env.example .env
 | (선택) `ADMIN_SESSION_MAX_HOURS` | 관리자 세션 최대 수명(시간, 기본 8). 로그인 시각부터 세며, 지나면 다시 로그인해야 합니다(guide37) |
 | (선택) `RECOVERY_*`, `IP_EXEMPTION_*`, `SMTP_USE_SSL`, `SMTP_TIMEOUT_SECONDS`, `MAIL_FAILURE_ALERT_COOLDOWN_SECONDS` | 복구 정책(토큰 유효 15분, 요청 한도, 응답 고정 5초, 보호관찰 24시간 등)과 메일 세부 설정. 기본값으로 충분하며 전체 목록은 [.env.example](.env.example)과 [guide34a](docs/beginner-guide/guide34a_email_recovery.md) 참고 |
 | (선택) `GROQ_API_KEY` | LLM 조기 경보와 `daily_report.py --ai`의 AI 총평에 쓰는 Groq API 키. 비워두면 조기 경보만 조용히 건너뛰고 나머지 기능은 그대로 동작 |
+| (선택) `SPA_ENABLED` | `false`로 두면 Next.js 화면 대신 예전 Jinja 화면(`templates/`)을 씁니다(기본은 빌드가 있으면 켜짐, guide48). 문제가 생겼을 때 되돌리는 스위치 |
+| (선택) `ADMIN_STATUS_CACHE_SECONDS` / `ADMIN_STATS_CACHE_SECONDS` | `/api/status`(기본 3초)·`/api/stats`(기본 10초) 조회 결과를 이 시간 안에는 한 번만 만들어 모든 탭이 나눠 씁니다. 0이면 캐시를 끕니다 |
+| (선택) `RECOVERY_BACKGROUND_WORK` | 복구 메일을 응답 뒤 백그라운드에서 보낼지(기본 `false` — 서버리스는 응답 뒤에 멈추므로 요청 안에서 끝냄). 상시 실행 서버(로컬·gunicorn)에서만 `true` |
 | (선택) 탐지 임계값·폴링 주기 | `FAILURE_THRESHOLD`(5), `ACCOUNT_FAILURE_THRESHOLD`(8), `DETECTION_WINDOW_SECONDS`(60), `LOCKOUT_DURATION_SECONDS`(300), `EARLY_WARNING_BAND`(2), `ADMIN_DASHBOARD_POLL_MS`(5000) 등 — 전체 목록과 기본값은 [config.py](config.py) 참고 |
 | `VERCEL_AUTOMATION_BYPASS_SECRET` | Vercel Authentication(프리뷰 배포 보호)을 우회하는 Protection Bypass Secret. `scripts/simulation/critical/bruteforce_sim.py`로 Vercel 프리뷰 배포를 대상으로 테스트할 때만 필요, 로컬 서버·운영 배포에는 불필요 |
 
@@ -122,8 +125,8 @@ npm run build   # 빌드 후 spa/ 와 public/_next/ 를 갱신
 | `/login` | 감시 대상 로그인 — 이 화면에서의 실패 시도가 탐지 대상. 로그인 성공 시 `/dashboard`로 이동 |
 | `/dashboard` | 회원 대시보드 — 인사말, 이메일 인증 안내 (회원 로그인 필요) |
 | `/dashboard/history` · `/dashboard/profile` | 본인 로그인 기록 · 프로필(표시 이름, 이메일 변경, 비밀번호 변경) |
-| `/recovery` | 잠긴 계정·IP를 이메일 인증으로 푸는 복구 요청 화면 |
-| `/password/forgot` | 비밀번호 찾기(인증된 이메일로 재설정 링크) |
+| `/recovery` · `/recovery/verify` | 잠긴 계정·IP를 이메일 인증으로 푸는 복구 요청 화면 · 6자리 코드 입력 화면 |
+| `/password/forgot` · `/password/reset` | 비밀번호 찾기(인증된 이메일로 재설정 링크) · 메일 링크가 여는 새 비밀번호 입력 화면 |
 | `/email/confirm` | 메일 링크가 여는 이메일 인증·변경 확인 화면 |
 | `/admin/login` | 관리자 로그인 |
 | `/admin/dashboard` | 관제 보드 ① 위협 현황 — KPI·차트·히트맵·공격 흐름·공격자 표 (관리자 로그인 필요) |
@@ -131,7 +134,8 @@ npm run build   # 빌드 후 spa/ 와 public/_next/ 를 갱신
 | `/admin/ops` | 관제 보드 ③ 처리 작업대 — 보안 이벤트·연관 사건·AI 조기 경보·잠금(임시/영구) 관리·회원·게시판·관리자 계정 관리 |
 | `/board` | 게시판 목록 (회원 로그인 필요) |
 | `/board/new` | 새 게시글 작성 (회원 로그인 필요) |
-| `/board/<id>` | 게시글 상세 · 댓글 (회원 로그인 필요) |
+| `/board/<id>` · `/board/<id>/edit` | 게시글 상세 · 댓글 / 글 수정 (회원 로그인 필요, 수정은 본인 글만) |
+| `/api/status` · `/api/stats` | 관리자 화면이 폴링하는 JSON — `status`는 처리 작업대용 표 묶음, `stats`는 위협 현황·공격 상세의 차트·히트맵 집계(`db/stats.py`). 관리자 로그인 필요 |
 
 ## 화면 미리보기
 
@@ -185,14 +189,14 @@ npm run build   # 빌드 후 spa/ 와 public/_next/ 를 갱신
 ```bash
 pytest tests/
 ```
-실제 Supabase에 접속하지 않고 가짜 데이터(monkeypatch)로 판정 로직만 검증하므로 몇 초 안에 끝납니다. 현재 총 693개 테스트가 모두 통과합니다.
+실제 Supabase에 접속하지 않고 가짜 데이터(monkeypatch)로 판정 로직만 검증하므로 몇 초 안에 끝납니다. 현재 총 718개 테스트가 모두 통과합니다.
 
 ## 유지보수 스크립트
-(김재호)
+
 Web Scanning 탐지는 `py scripts/simulation/medium/web_scanning_sim.py --host http://127.0.0.1:5000`으로
 GET 11회를 보내 재현할 수 있습니다. [실행 조건과 알림 확인 방법](docs/web-scanning-demo.md)을 참고하세요.
 
-`scripts/` 아래에 있으며, 웹 서버(`app.py`)와 별개로 터미널에서 직접 실행하는 도구들입니다. 실행 전 가상환경 활성화가 필요합니다(`.\venv\Scripts\Activate.ps1` 등).
+`scripts/` 아래에 있으며, 웹 서버(`app.py`)와 별개로 터미널에서 직접 실행하는 도구들입니다. 용도별로 폴더가 나뉩니다 — `scripts/simulation/`(공격 시뮬레이터, 위험등급 `critical/`·`high/`·`medium/`별 폴더 + 공용 부품 `_sim_common.py`), `scripts/management/`(운영 도구: 잠금 해제·계정 생성·리포트 등), `scripts/demo/`(가짜 데이터 데모 서버·시뮬레이션 일괄 점검). 실행 전 가상환경 활성화가 필요합니다(`.\venv\Scripts\Activate.ps1` 등).
 
 | 스크립트 | 역할 |
 |---|---|
@@ -204,11 +208,13 @@ GET 11회를 보내 재현할 수 있습니다. [실행 조건과 알림 확인 
 | `scripts/management/create_admin.py` | `security_viewer`/`security_admin`/`super_admin` 역할을 가진 새 관리자 계정을 생성. 대시보드 "관리자 계정 관리" 카드는 `super_admin`이 `security_viewer`/`security_admin`만 만들 수 있는 것과 달리, 이 스크립트는 터미널 접근 자체가 신뢰된 작업이라는 전제로 `super_admin`도 만들 수 있음(예: 최초 팀원 온보딩) |
 | `scripts/simulation/medium/macro_bot_sim.py` | 이미 만들어진 관리자 계정으로 로그인한 뒤, 서로 다른 관리자 API 6개를 순서대로 호출해 매크로/봇 탐지가 실제로 알림을 울리는지 검증. `security_viewer`(무권한) 계정으로 실행하면 6번 모두 403으로 안전하게 거절되면서도 탐지 로그는 정상적으로 남음 |
 | `scripts/management/delete_security_events.py` | 보안 이벤트를 터미널에서 영구 삭제(`--id` 한 건 / `--resolved` 처리 완료된 것 전부 / `--all` 전부). 옵션 없이 실행하면 건수만 조회 |
-| `scripts/simulation/critical/password_spraying_sim.py` · `signup_abuse_sim.py` · `spam_sim.py` · `repeated_access_sim.py` · `unauthorized_access_sim.py` · `web_scanning_sim.py` | 패스워드 스프레이·가입 도배·글 도배·반복 페이지 접근·미인증 API 접근·웹 스캐닝을 로컬 서버에 재현해 탐지·알림을 확인하는 시뮬레이터(공용 부품은 `scripts/simulation/_sim_common.py`). 기본 대상은 로컬 서버이며, 본인 소유·허가된 서버에만 사용(일부는 로컬이 아닌 주소를 `--i-know-what-im-doing` 없이 거부) |
+| `scripts/simulation/critical/password_spraying_sim.py` · `high/signup_abuse_sim.py` · `high/spam_sim.py` · `medium/repeated_access_sim.py` · `medium/unauthorized_access_sim.py` · `medium/web_scanning_sim.py` | 패스워드 스프레이·가입 도배·글 도배·반복 페이지 접근·미인증 API 접근·웹 스캐닝을 로컬 서버에 재현해 탐지·알림을 확인하는 시뮬레이터(공용 부품은 `scripts/simulation/_sim_common.py`). 기본 대상은 로컬 서버이며, 본인 소유·허가된 서버에만 사용(일부는 로컬이 아닌 주소를 `--i-know-what-im-doing` 없이 거부) |
 | `scripts/management/tune_thresholds.py` | 최근 N일(기본 7일)간 CRITICAL 잠금 중 자동 만료 전에 수동으로 조기 해제된 비율을 event_type별로 집계하는 완전한 읽기 전용 리포트. 비율이 높으면 임계값이 너무 예민할 수 있다는 신호 |
 | `scripts/simulation/critical/` 신규 5종 | `distributed_bruteforce_sim`(IP를 바꿔 한 계정을 노리는 계정 단위 잠금) · `admin_bruteforce_sim`(`/admin/login` IP 잠금) · `admin_distributed_bruteforce_sim`(관리자 계정 단위 잠금) · `permanent_lock_sim`(임시 잠금 2회 → 영구 잠금, 기본 305초 대기) · `incident_correlation_sim`(정찰→침투→브루트포스 다단계 → 사건화·영구 차단). 가짜 IP는 서버 `TRUST_FORWARDED_FOR=true`일 때만 반영 |
 | `scripts/simulation/high/` 신규 3종 | `http_flood_sim`(전역 요청 한도 429) · `comment_spam_sim`(댓글 도배, 테스트 계정 필요) · `recovery_flood_sim --target recovery\|recovery-verify\|password-forgot\|password-reset\|email-confirm`(엔드포인트별 좁은 한도 429) |
 | `scripts/simulation/medium/honeypot_bot_sim.py` | 숨김 `website` 칸을 채워 `/login`·`/signup`에 제출하는 봇을 흉내 내 `BOT_DETECTED`로 걸러지는지 검증 |
+| `scripts/demo/demo_server.py` | Supabase·Slack·메일 없이 가짜 데이터로 관제 화면(`/admin/*`)·회원 화면만 띄우는 데모 서버(포트 5077). `/__demo_login`(관리자)·`/__demo_member`(회원)으로 로그인. 화면 디자인 확인용 |
+| `scripts/demo/memory_supabase.py` | 메모리에 사는 가짜 Supabase(`MemoryClient`). 표를 리스트로 들고 있어 insert한 행을 기억하고 조건으로 걸러 세므로 "5번 틀리면 잠금" 같은 탐지가 진짜처럼 동작합니다. `check_simulations.py`가 씀 |
 | `scripts/demo/check_simulations.py` | 시뮬레이션 전체를 한 번에 점검. 메모리 DB(`memory_supabase.py`)를 붙인 서버를 127.0.0.1:5000에 띄워 시뮬레이션을 실행하고, 서버가 기대한 보안 이벤트를 실제로 기록했는지 대조한다(진짜 Supabase·Slack·메일 미접속). `python scripts/demo/check_simulations.py [이름 일부]` |
 
 `bruteforce_sim.py`의 `--ip` 옵션: 로컬 환경에서는 팀원 전원이 다 같은 `127.0.0.1`로 접속하게 되어 "서로 다른 공격자 IP에서 왔다"는 상황을 재현할 수 없다. `--ip 1.2.3.4`를 주면 그 값을 `X-Forwarded-For` 헤더에 실어 보내는데, 이 헤더는 대상 서버의 `.env`에서 `TRUST_FORWARDED_FOR=true`로 켜뒀을 때만 실제 접속 IP처럼 반영된다(운영 환경 기본값인 `false`에서는 서버가 헤더를 무시하고 진짜 접속 IP를 그대로 씀 — 배포 사이트에서 이 옵션이 안전하게 아무 효과가 없는 이유).
@@ -247,6 +253,7 @@ python scripts/management/create_admin.py --username sktadmin123 --password <비
 
 ```
 login-watchdog/
+├── PRODUCT.md                     # 관제 화면 디자인 기준(사용자·톤·원칙)
 ├── app.py                         # Flask 진입점(Vercel이 루트의 app을 찾음) — 앱 생성, 세션/CSRF/요청 한도 설정, Blueprint 등록
 ├── config.py                      # 임계값·윈도우·잠금시간·입력 형식 규칙 등 상수
 ├── security/                      # 보안 엔진: 탐지 → 상관분석 → 대응
@@ -297,6 +304,7 @@ login-watchdog/
 │   ├── admin.py                   #   admin_users, admin_login_log (관리자 계정/로그인 기록/역할)
 │   ├── admin_lockouts.py          #   admin_account_lockouts (관리자 계정 단위 잠금)
 │   ├── roles.py                   #   roles, permissions (RBAC — 역할별 허용 액션)
+│   ├── stats.py                   #   관제 화면(/api/stats) 집계 — 시간대별·7일 로그량·히트맵·신규 공격자 (새 표 없음)
 │   ├── users.py                   #   users (회원 계정)
 │   ├── settings.py                #   app_settings, signup_attempts (설정값, 가입 빈도 제한)
 │   ├── geoip_cache.py             #   ip_locations (IP 위치 조회 캐시)
@@ -307,23 +315,33 @@ login-watchdog/
 │   ├── access_requests.py         #   access_requests (AI 조기 경보 승인 대기)
 │   ├── email_tokens.py            #   email_tokens (이메일 인증·변경·비밀번호 재설정 링크)
 │   └── api_access_log.py          #   api_access_log (매크로/봇 탐지)
-├── templates/                     # Jinja2 HTML 템플릿 (admin_dashboard/ — 관리자 대시보드 표 영역 조각)
-├── public/css, public/js/dashboard/ # 스타일 및 대시보드 자바스크립트(ES 모듈 — api.js 조회, actions.js 변경, render/ 표 그리기)
+├── web/                           # Next.js(React, TypeScript) 화면 소스 — src/app(화면 주소), src/components, src/lib(api·폴링), src/styles. `npm run build`가 spa/·public/_next/를 만든다 (web/README.md, guide48)
+├── spa/                           # Next.js 빌드 결과 HTML(화면 껍데기) — Flask가 helpers/spa.py로 서빙, 저장소에 커밋
+├── templates/                     # 예전 Jinja2 화면 — spa/가 없거나 SPA_ENABLED=false일 때 폴백 (admin_dashboard/ — 대시보드 표 조각)
+├── public/_next/                  # Next.js 빌드 결과 JS·CSS·폰트(해시 이름, 길게 캐시) — 커밋 대상
+├── public/css, public/js/dashboard/ # 폴백용 Jinja 화면의 스타일 및 대시보드 자바스크립트(ES 모듈 — api.js 조회, actions.js 변경, render/ 표 그리기)
 ├── tests/                         # pytest 단위 테스트
-├── scripts/                       # 유지보수 스크립트 (bruteforce_sim.py, daily_report.py, unlock_ip.py, create_admin.py 등 — 위 "유지보수 스크립트" 참고, _sim_common.py는 시뮬레이션 공용 부품)
+├── scripts/                       # 터미널 도구 — 위 "유지보수 스크립트" 참고
+│   ├── simulation/                #   공격 시뮬레이터: critical/(브루트포스·분산·관리자·영구 잠금·사건화) · high/(도배·HTTP 플러딩·복구 폭주) · medium/(웹 스캐닝·허니팟·매크로 등), _sim_common.py(공용 부품)
+│   ├── management/                #   운영 도구: unlock_ip/unlock_account, create_admin, daily_report, tune_thresholds, delete_security_events, send_test_mail
+│   └── demo/                      #   demo_server.py(가짜 데이터 화면), check_simulations.py + memory_supabase.py(시뮬레이션 일괄 점검)
 ├── docs/schema.sql                # Supabase 테이블 정의
-├── docs/migrations/               # 기존 DB에 추가로 실행할 SQL (guide33 영구 잠금, guide35 비밀번호 변경, guide38 관리자 계정 잠금, guide40 이메일 인증)
+├── docs/migrations/               # 기존 DB에 추가로 실행할 SQL (guide33 영구 잠금, guide35 비밀번호 변경, guide38 관리자 계정 잠금, guide40 이메일 인증, guide44 로그 자동 정리, guide47 일별 요약)
+├── .github/workflows/             # tests.yml(push/PR마다 pytest + Next.js 타입 검사·빌드 결과 일치 확인), supabase-keep-alive.yml(무료 Supabase가 멈추지 않게 매일 호출)
+├── vercel.json                    # Vercel 설정 — spa/ 포함, _next 정적 파일 장기 캐시
 ├── docker-compose.mailpit.yml     # 개발용 가짜 메일 서버(Mailpit) — 실제 발송 없이 메일 흐름 확인
 ├── docs/beginner-guide/           # 비전공자용 단계별 구현 해설서 (단계별 파일로 분리)
 ├── docs/board-comment/            # 게시판·댓글 기능 설계 문서(분석 → 결정 → 계획 → 결과)
+├── docs/scenario.md, vpn-demo-guide.md, web-scanning-demo.md # 시연 대본 · VPN으로 서로 다른 IP를 쓰는 시연 · 웹 스캐닝 재현
 ├── docs/refactor/                 # 파일 분리·모듈화 리팩터링 배경 기록
 └── plan.md, research.md           # 설계 근거 문서
 ```
 
 ## 더 자세히 알고 싶다면
 
+- [PRODUCT.md](PRODUCT.md) — 관제 화면(Next.js)의 사용자·톤·디자인 원칙. [web/README.md](web/README.md)는 화면 소스를 빌드하는 방법
 - [plan.md](plan.md) — 각 파일을 왜 이렇게 설계했는지에 대한 상세 근거
-- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide48_nextjs_dashboard.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
+- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide49_scripts_reorganization.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
 - [docs/feature-reference/01-feature-order.md](docs/feature-reference/01-feature-order.md) · [02-layer-order.md](docs/feature-reference/02-layer-order.md) — 기능별로 "어떤 코드가 어떤 순서로 실행되는지"를 실제 코드·줄번호와 함께 따라가는 가이드(기능 순서 / 계층 순서)
 - [docs/feature-reference/db-schema-guide.md](docs/feature-reference/db-schema-guide.md) · [ERD.svg](docs/feature-reference/ERD.svg) — 테이블 30개의 쓰임새와 관계도
 - [docs/architecture-map.html](docs/architecture-map.html) — 폴더·파일이 탐지 → 대응 → 알림 파이프라인의 어느 단계를 맡는지 색으로 묶은 지도
@@ -339,6 +357,7 @@ login-watchdog/
 - **자동 해제는 "정시"가 아니라 "다음 요청 시"** — 백그라운드 타이머 없이, `/login` 요청이나 대시보드 폴링이 들어올 때 만료된 잠금을 정리합니다. 한동안 요청이 없으면 5분이 지나도 실제 해제가 늦어질 수 있습니다.
 - **`TRUST_FORWARDED_FOR`는 데모 전용** — 켜두면 요청 헤더의 IP를 신뢰합니다(형식이 올바른 IP인지는 검증하지만, 그 값 자체가 진짜 요청자의 IP인지는 확인할 수 없습니다). 운영 환경에서 켜두면 공격자가 헤더에 임의의(형식은 유효한) IP를 넣는 것만으로 IP 잠금을 우회할 수 있어 위험합니다.
 - **동시 실행 시 경쟁 조건(race condition) 가능성** — 여러 사람이 동시에 같은 IP로 브루트포스를 시뮬레이션하면 Slack 알림이 중복 발송되거나 잠금 처리가 겹칠 수 있습니다. 시연 시 한 명만 시뮬레이션 실행을 권장합니다.
+- **Next.js 빌드 결과를 함께 커밋해야 함** — Vercel의 파이썬 빌드는 `npm`을 돌리지 않아서, `web/`을 고치면 `npm run build`로 만든 `spa/`·`public/_next/`를 같이 커밋해야 배포에 반영됩니다(CI `web` 작업이 최신 여부를 점검). 문제가 생기면 `SPA_ENABLED=false`로 예전 Jinja 화면으로 되돌릴 수 있습니다. 위협 현황·공격 상세의 L3/L4 영역은 수집 전이라 빈 상태로 표시됩니다.
 - **대시보드는 실시간이 아니라 폴링 방식** — 웹소켓 기반 실시간 스트리밍이 아니라 일정 주기(기본 5초, `ADMIN_DASHBOARD_POLL_MS`)로 새로고침합니다. 최대 그 주기만큼 화면이 실제 상태보다 늦게 보일 수 있습니다. 원래는 Supabase 무료 쿼터 보호를 위해 10초로 늘렸었지만, 공격 대응 상황을 더 빠르게 확인할 수 있도록 5초로 다시 줄였습니다 — 오래 켜두는 환경에서 쿼터가 걱정되면 `.env`에서 다시 늘릴 수 있습니다. 주기 조절 방법은 [docs/beginner-guide/guide09_quota.md](docs/beginner-guide/guide09_quota.md)를 참고하세요. 탭이 안 보일 때는 갱신하지 않습니다(guide45). 만료된 잠금이 대시보드에서 풀린 것으로 보이기까지는 최대 15초(`ADMIN_STATUS_RELEASE_INTERVAL_SECONDS`)가 더 걸릴 수 있습니다 — 실제 차단 해제는 로그인 요청마다 따로 처리되므로 늦어지지 않습니다(guide46).
 - **계정 단위 잠금 해제는 관리자 수동 또는 5분 자동** — 대시보드 "현재 잠긴 IP / 계정" 카드의 "즉시 해제"(임시 잠금)나 `scripts/management/unlock_account.py`로 풀 수 있습니다. 영구 잠금은 이 버튼으로 풀리지 않고 "영구 잠금" 카드의 "영구 해제"(super_admin) 또는 회원 본인의 이메일 인증으로 풉니다.
 - **대시보드 화면은 일부만 역할을 반영** — "관리자 계정 관리" 카드는 서버가 role에 따라 데이터를 아예 보내지 않고, 영구 잠금·복구 요청·IP 예외 카드는 `/api/status`가 내려주는 권한 목록(`permissions`)에 따라 버튼을 숨깁니다(guide33). 그 외 기존 버튼(회원 삭제, 게시글·댓글 삭제, 회원가입 토글, IP 해제 등)은 역할과 무관하게 보이고, 권한이 없는 역할이 눌러도 서버가 403으로 막을 뿐 화면에 "권한 없음" 안내는 뜨지 않습니다.
