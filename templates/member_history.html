@@ -47,8 +47,8 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <!-- attempts : app.py의 member_history()가 넘겨준, 이미 "본인 것만"
-                             걸러진 목록. app.py의 _attach_locations()가 각 줄에 location
+                        <!-- attempts : routes/member.py의 member_history()가 넘겨준, 이미 "본인 것만"
+                             걸러진 목록. helpers의 _attach_locations()가 각 줄에 location
                              칸을 미리 붙여서 넘겨주므로, 여기서는 그냥 하나씩 꺼내 <tr>로
                              그리기만 하면 된다. -->
                         {% for attempt in attempts %}

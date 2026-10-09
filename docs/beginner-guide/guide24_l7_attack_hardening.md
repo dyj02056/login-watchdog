@@ -53,7 +53,7 @@ if account_suspicious:
 - [db/account_lockouts.py](../../db/account_lockouts.py) (신규)
 - [db/attempts.py](../../db/attempts.py), [db/security_events.py](../../db/security_events.py)
 - [config.py](../../config.py) (`ACCOUNT_FAILURE_THRESHOLD`)
-- [detector.py](../../detector.py), [soar.py](../../soar.py), [alert.py](../../alert.py)
+- [detector.py](../../security/detector.py), [soar.py](../../security/soar/), [alert.py](../../notify/alert.py)
 - [routes/auth.py](../../routes/auth.py) (`login_submit`)
 - [tests/test_detector.py](../../tests/test_detector.py), [tests/test_soar.py](../../tests/test_soar.py), [tests/test_db.py](../../tests/test_db.py), [tests/test_app.py](../../tests/test_app.py)
 
@@ -107,12 +107,12 @@ reCAPTCHA 같은 외부 서비스는 API 키가 필요해 데모 프로젝트 �
 
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [db/users.py](../../db/users.py), [db/admin.py](../../db/admin.py) (`_DUMMY_PASSWORD_HASH`)
-- [helpers.py](../../helpers.py) (`is_bot_submission`, `get_request_ip` SSRF 검증)
-- [geoip.py](../../geoip.py)
-- [soar.py](../../soar.py) (`notify_bot_detected`)
+- [helpers.py](../../helpers/) (`is_bot_submission`, `get_request_ip` SSRF 검증)
+- [geoip.py](../../services/geoip.py)
+- [soar.py](../../security/soar/) (`notify_bot_detected`)
 - [public/css/tokens.css](../../public/css/tokens.css) (`.hp-field`)
 - [templates/login_form.html](../../templates/login_form.html), [signup.html](../../templates/signup.html), [board_form.html](../../templates/board_form.html), [board_detail.html](../../templates/board_detail.html)
-- [routes/auth.py](../../routes/auth.py), [routes/admin.py](../../routes/admin.py), [routes/board.py](../../routes/board.py)
+- [routes/auth.py](../../routes/auth.py), [routes/admin.py](../../routes/admin/), [routes/board.py](../../routes/board.py)
 - [tests/test_helpers.py](../../tests/test_helpers.py) (신규), [tests/test_db.py](../../tests/test_db.py), [tests/test_geoip.py](../../tests/test_geoip.py), [tests/test_app.py](../../tests/test_app.py)
 
 ---

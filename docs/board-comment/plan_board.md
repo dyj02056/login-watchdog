@@ -25,12 +25,12 @@
 | 파일 | 변경 종류 |
 |---|---|
 | [app.py](../../app.py) | 게시판 라우트 8개 + 관리자용 게시글 관리 API 2개 추가 |
-| [db.py](../../db.py) | 게시글/댓글/빈도제한 관련 함수 약 14개 추가 |
-| [detector.py](../../detector.py) | `is_post_rate_limited`, `is_comment_rate_limited` 판정 함수 2개 추가 |
+| [db.py](../../db/) | 게시글/댓글/빈도제한 관련 함수 약 14개 추가 |
+| [detector.py](../../security/detector.py) | `is_post_rate_limited`, `is_comment_rate_limited` 판정 함수 2개 추가 |
 | [config.py](../../config.py) | `POST_RATE_LIMIT`, `COMMENT_RATE_LIMIT`, `BOARD_PAGE_SIZE` 상수 3개 추가 |
 | [docs/schema.sql](../schema.sql) | `posts`, `comments`, `post_attempts`, `comment_attempts` 테이블 4개 추가 (문서 기록용 — 실제 반영은 Supabase SQL Editor에서 별도 실행) |
 | [templates/admin_dashboard.html](../../templates/admin_dashboard.html) | "게시글 관리" 섹션(표 2개: 최근 게시글, 최근 댓글) 추가 |
-| [public/js/dashboard.js](../../public/js/dashboard.js) | `renderPostsTable`, `renderCommentsTable`, `deletePost`, `deleteComment` 함수 추가, `fetchStatus()`가 새 데이터도 반영하도록 확장 |
+| [public/js/dashboard.js](../../public/js/dashboard/) | `renderPostsTable`, `renderCommentsTable`, `deletePost`, `deleteComment` 함수 추가, `fetchStatus()`가 새 데이터도 반영하도록 확장 |
 | [tests/test_app.py](../../tests/test_app.py) | 게시판 라우트 통합 테스트 추가 |
 | [tests/test_db.py](../../tests/test_db.py) | 게시글/댓글 DB 함수 단위 테스트 추가 |
 | [tests/test_detector.py](../../tests/test_detector.py) | 빈도 제한 판정 경계값 테스트 추가 |

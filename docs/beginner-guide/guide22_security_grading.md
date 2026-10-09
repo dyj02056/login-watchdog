@@ -49,7 +49,7 @@ create table security_events (
 
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [docs/schema.sql](../schema.sql) (`security_events` 표 추가)
-- [db.py](../../db.py) (5개 함수 신규 추가)
+- [db.py](../../db/) (5개 함수 신규 추가)
 - [tests/test_db.py](../../tests/test_db.py)
 
 ---
@@ -84,7 +84,7 @@ CRITICAL(로그인 잠금)의 중복 방지는 `is_locked()` 상태 확인이라
 반환값이 바뀌면서 `tests/conftest.py`의 공용 fixture(`is_page_access_suspicious` 기본 stub)와 `tests/test_app.py`의 기존 16곳, `tests/test_detector.py`의 기존 6개 테스트를 전부 3-tuple에 맞게 고쳐야 했습니다. 이 중 `conftest.py`는 Plan 서브에이전트가 설계 검토 단계에서 미리 잡아준 부분입니다 — 여기를 놓치면 이 fixture를 쓰는 테스트 전체가 깨질 뻔했습니다. 경계값 테스트(정확히 임계값+1일 때만 `True`, 그보다 한참 지난 뒤에는 `False`)도 함수별로 추가했습니다. `pytest tests/ -v` 전체(155개) 통과.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [detector.py](../../detector.py) (`is_web_scanning`/`is_unauthorized_access_suspicious`/`is_page_access_suspicious` 반환값 확장)
+- [detector.py](../../security/detector.py) (`is_web_scanning`/`is_unauthorized_access_suspicious`/`is_page_access_suspicious` 반환값 확장)
 - [app.py](../../app.py) (세 호출부 수정)
 - [tests/conftest.py](../../tests/conftest.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py)
 
@@ -115,7 +115,7 @@ def record_rejection(event_type: str, ip: str, path: str, count: int) -> None:
 `tests/test_soar.py`에 dedup 동작(미해결 이벤트가 있으면 삽입 안 함 / 없으면 삽입함) 테스트를, `tests/test_app.py`에 4개 호출부 각각이 `soar.record_rejection`을 올바른 값으로 부르는지 테스트를 추가했습니다. 실제 서버를 띄워서도 확인했습니다 — `/signup`에 6회 연속 요청을 보내 6번째에 이벤트 1건이 생기는 것, 처리 완료 후 같은 창 안에서 다시 6회를 보내도 새 이벤트가 딱 1건만 더 생기는 것(나머지 5건은 중복 삽입되지 않음)을 직접 확인했습니다. `pytest tests/ -v` 전체(155개) 통과.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [soar.py](../../soar.py) (`record_rejection` 신규 추가)
+- [soar.py](../../security/soar/) (`record_rejection` 신규 추가)
 - [app.py](../../app.py) (`signup_submit`/`board_new_submit`/`board_edit_submit`/`board_comment_submit` 4곳)
 - [tests/test_soar.py](../../tests/test_soar.py), [tests/test_app.py](../../tests/test_app.py)
 
@@ -146,7 +146,7 @@ HIGH/MEDIUM용으로는 새 API(`POST /api/security-events/resolve`)와 `db.reso
 `tests/test_soar.py`의 기존 해제 테스트 3개에 `resolve_security_events_for_ip` 호출 검증을 추가했고, `/api/security-events/resolve`에는 `/api/unlock`과 동일한 3가지 테스트(event_id 누락 시 400, 성공 시 처리, CSRF 헤더 없으면 거부)를 추가했습니다. 실 서버 테스트에서 브루트포스 잠금 → "즉시 해제" → 해당 CRITICAL 이벤트가 자동으로 "처리 완료"로 바뀌는 것, 그리고 HIGH 이벤트는 대시보드의 실제 버튼을 직접 클릭해(이벤트 위임 코드 경로까지 포함) 처리 완료로 바뀌는 것 둘 다 확인했습니다. `pytest tests/ -v` 전체(155개) 통과.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [soar.py](../../soar.py) (`try_release_expired_lockouts`, `manual_release`에 한 줄씩 추가)
+- [soar.py](../../security/soar/) (`try_release_expired_lockouts`, `manual_release`에 한 줄씩 추가)
 - [app.py](../../app.py) (`/api/security-events/resolve` 신규 라우트)
 - [tests/test_soar.py](../../tests/test_soar.py), [tests/test_app.py](../../tests/test_app.py)
 
@@ -167,7 +167,7 @@ HIGH/MEDIUM용으로는 새 API(`POST /api/security-events/resolve`)와 `db.reso
 
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [templates/admin_dashboard.html](../../templates/admin_dashboard.html) ("보안 이벤트" 섹션 추가)
-- [public/js/dashboard.js](../../public/js/dashboard.js) (`renderSecurityEventsTable`, `resolveEvent` 등 추가)
+- [public/js/dashboard.js](../../public/js/dashboard/) (`renderSecurityEventsTable`, `resolveEvent` 등 추가)
 - [public/css/tokens.css](../../public/css/tokens.css) (`--warning`/`--warning-soft` 추가)
 - [public/css/dashboard.css](../../public/css/dashboard.css) (`.severity-badge`, `.resolve-event-btn` 스타일 추가)
 - [app.py](../../app.py) (`/api/status`에 보안 이벤트 목록 추가)
@@ -191,8 +191,8 @@ message = (
 `alert.py`의 메시지 문자열을 직접 검증하는 기존 테스트는 없었지만(테스트는 `soar.py`가 `alert.py`를 올바른 인자로 부르는지만 확인), `tests/test_soar.py`의 잠금 테스트를 `is_admin` 매개변수까지 포함해 검증하도록 보강했습니다. `pytest tests/ -v` 전체(155개) 통과.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [alert.py](../../alert.py) (`send_lockout_alert`에 `is_admin` 매개변수 추가, 4개 함수 모두 등급 라벨 추가)
-- [soar.py](../../soar.py) (`enforce_lockout`이 `is_admin`을 그대로 전달)
+- [alert.py](../../notify/alert.py) (`send_lockout_alert`에 `is_admin` 매개변수 추가, 4개 함수 모두 등급 라벨 추가)
+- [soar.py](../../security/soar/) (`enforce_lockout`이 `is_admin`을 그대로 전달)
 - [app.py](../../app.py) (`admin_login_submit()`에서 `is_admin=True`로 호출)
 - [tests/test_soar.py](../../tests/test_soar.py)
 

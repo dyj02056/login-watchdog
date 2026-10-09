@@ -44,6 +44,6 @@
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [public/css/tokens.css](../../public/css/tokens.css) (신규 — 색상·글꼴·전환 효과 토큰)
 - [public/css/auth.css](../../public/css/auth.css), [public/css/dashboard.css](../../public/css/dashboard.css), [public/css/member.css](../../public/css/member.css) (하드코딩된 색 → `var(--이름)`으로 전환)
-- [public/js/dashboard.js](../../public/js/dashboard.js) (IP·시각 칸에 `.mono` 클래스 추가)
+- [public/js/dashboard.js](../../public/js/dashboard/) (IP·시각 칸에 `.mono` 클래스 추가)
 - [templates/login_form.html](../../templates/login_form.html), [templates/signup.html](../../templates/signup.html), [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [templates/member_dashboard.html](../../templates/member_dashboard.html), [templates/member_history.html](../../templates/member_history.html), [templates/member_profile.html](../../templates/member_profile.html) (`tokens.css` 링크 추가, `member_history.html`은 `.mono` 클래스도 추가)
 - Supabase `app_settings.signup_enabled`를 다시 `true`로 되돌림 (이번 작업과 무관한 발견)
