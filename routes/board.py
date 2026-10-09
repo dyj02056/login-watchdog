@@ -3,7 +3,7 @@
 #
 # login_required/member_login_required는 "로그인 여부"만 확인하고 "이 글/댓글이
 # 내 것인지"는 확인하지 않으므로, 수정/삭제 라우트마다 _is_post_owner() 등으로
-# 직접 소유권을 검사한다 — 관리자는 routes/admin.py의 /api/board/*/delete를 통해
+# 직접 소유권을 검사한다 — 관리자는 routes/admin/manage.py의 /api/board/*/delete를 통해
 # 별도로 전체 글/댓글을 삭제할 수 있다(docs/board-comment/plan_board.md 5-3절 참고).
 #
 # 원래 app.py의 "게시판" 섹션을 그대로 옮겨왔다. 배경은
@@ -16,9 +16,8 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 
 import config
 import db
-import detector
-import soar
 from helpers import get_request_ip, is_bot_submission, member_login_required
+from security import detector, soar
 
 board_bp = Blueprint("board", __name__)
 
@@ -265,7 +264,8 @@ def board_comment_delete(post_id, comment_id):
 @board_bp.route("/api/board/<int:post_id>/comments/latest", methods=["GET"])
 @member_login_required
 def api_board_comments_latest(post_id):
-    """board.js가 짧은 주기(15초)로 폴링하는 API. 댓글 개수/최신 시각만 가볍게
+    """board.js가 짧은 주기(config.BOARD_COMMENT_POLL_MS, 기본 5초 — 탭이 보일 때만, guide45)로
+    폴링하는 API. 댓글 개수/최신 시각만 가볍게
     돌려준다 — 표 전체를 다시 그리는 관리자 대시보드(/api/status)와 달리,
     "값이 바뀌었으니 배너를 띄워라"는 신호로만 쓰인다(결정 #6).
     """

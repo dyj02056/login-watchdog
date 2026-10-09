@@ -4,9 +4,12 @@
 # security_incidents가 "여러 이벤트를 하나의 사건으로 묶는" 표라면, 이 표는
 # "규칙이 아직 발동하지 않은 임계값 코앞 구간에서 LLM이 위험하다고 판단한
 # 건들을 관리자 승인 대기 목록으로 쌓아두는" 표다. soar.consider_early_warning()이
-# 판단(위험한가?) 결과를 여기 등록하고, 실제 승인/반려 실행은 soar.py의
+# 판단(위험한가?) 결과를 여기 등록하고, 실제 승인/반려 실행은 security/soar/의
 # execute_approved_request()/reject_pending_request()가 이 파일의 함수를
-# 통해서만 상태를 바꾼다 (detector.py/soar.py와 동일한 판단·실행 분리 원칙).
+# 통해서만 상태를 바꾼다 (security/detector.py·security/soar/와 동일한 판단·실행 분리 원칙).
+# guide33 이후로는 LLM 판단이 아닌 항목도 하나 들어온다 — SIEM 상관분석 사건이 HIGH에
+# 도달했을 때의 영구 잠금 후보(SIEM_HIGH_INCIDENT, security/lockdown.py의
+# consider_incident_promotion 참고)도 같은 승인 대기 목록에 쌓인다.
 #
 # db.get_client() 호출 이유는 db/attempts.py 상단 설명 참고.
 # ============================================================================
@@ -28,7 +31,7 @@ def count_recent_requests_for_target(
     기준치를 피해 가려는 반복 패턴인지"를 판단할 근거가 없다는 문제
     (login_watchdog_expansion_plan.md 논의)를 메우려고 추가했다.
 
-    다만 이 표는 LLM이 risky=True로 판단했을 때만 행이 생긴다
+    다만 조기 경보 유형의 행은 LLM이 risky=True로 판단했을 때만 생긴다
     (soar.consider_early_warning 참고) — risky=False로 넘어간 근처 구간
     진입은 어디에도 기록되지 않으므로, 이 값은 "완전한 이력"이 아니라
     "과거에 이미 위험하다고 판단된 적이 있는 횟수"까지만 알려주는 부분적인
@@ -151,7 +154,7 @@ def decide_request(request_id: int, decision: str, admin_id: int) -> bool:
     함께 걸어둔다 — 이미 처리된 요청이거나(관리자 두 명이 거의 동시에 같은
     버튼을 눌렀거나, 화면이 새로고침되지 않아 이미 없어진 요청을 다시 누른
     경우) 존재하지 않는 request_id면 res.data가 비어있으므로 False를 돌려주고,
-    호출한 쪽(soar.py)이 실제 조치를 실행하지 않도록 막는다.
+    호출한 쪽(security/soar/)이 실제 조치를 실행하지 않도록 막는다.
     """
     res = (
         db.get_client()

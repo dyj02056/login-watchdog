@@ -45,7 +45,7 @@
             {% endwith %}
 
             {% if posts %}
-                <!-- posts : app.py의 board_list()가 db.list_posts(page, config.BOARD_PAGE_SIZE)로
+                <!-- posts : routes/board.py의 board_list()가 db.list_posts(page, config.BOARD_PAGE_SIZE)로
                      한 페이지 분량만 미리 잘라서 넘겨준다(결정 #9 — 페이지 번호 방식). -->
                 <ul class="board-post-list">
                     {% for post in posts %}

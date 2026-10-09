@@ -1,5 +1,5 @@
 # ============================================================================
-# test_geoip.py — geoip.py가 캐시를 올바르게 활용하는지, 문자열을 올바르게
+# test_geoip.py — services/geoip.py가 캐시를 올바르게 활용하는지, 문자열을 올바르게
 # 조립하는지 확인하는 단위 테스트
 #
 # 여기서는 진짜 ip-api.com에 접속하지 않는다. requests.get 자체를 가짜로
@@ -11,7 +11,7 @@
 import requests
 
 import db
-import geoip
+from services import geoip
 
 
 class _FakeResponse:

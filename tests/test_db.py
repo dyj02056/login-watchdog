@@ -1,11 +1,11 @@
 # ============================================================================
-# test_db.py — db.py의 verify_admin_credentials()가 비밀번호를 정확히
+# test_db.py — db 패키지(db/admin.py)의 verify_admin_credentials()가 비밀번호를 정확히
 # 구분해내는지 확인하는 단위 테스트
 #
 # 이 함수는 내부에서 Supabase에 접속(get_client())해야 하는데, 테스트에서는
 # 진짜로 접속하고 싶지 않다. 그래서 "Supabase 클라이언트인 척하는 가짜 객체
 # (FakeSupabaseClient)"를 만들어서 db.get_client()가 그 가짜 객체를 돌려주도록
-# 바꿔치기한다. 진짜 db.py 코드(verify_admin_credentials 자체)는 손대지 않고
+# 바꿔치기한다. 진짜 db 코드(verify_admin_credentials 자체)는 손대지 않고
 # 그대로 실행시키면서, 그 코드가 딛고 서는 "바닥(Supabase 연결)"만 가짜로
 # 깔아주는 방식이다.
 # ============================================================================
@@ -18,7 +18,7 @@ import db
 
 
 class _FakeQuery:
-    """db.py가 .table().select().eq().limit().execute() 순서로 체이닝(연쇄 호출)하는
+    """db 함수가 .table().select().eq().limit().execute() 순서로 체이닝(연쇄 호출)하는
     Supabase 문법을 흉내내는 가짜 객체. 어떤 메서드를 불러도 그냥 자기 자신을
     돌려주다가(체이닝을 이어가기 위해), execute()에서만 미리 정해둔 결과를 내놓는다.
 
@@ -31,7 +31,7 @@ class _FakeQuery:
     raise_error : insert_security_event_or_bump()의 "삽입이 DB 제약에 걸려 실패하는"
     경로를 흉내낼 때만 넘겨준다. execute()가 처음 한 번만 이 예외를 던지고(진짜
     Supabase도 실패한 요청 자체는 재시도하지 않으므로), 그 다음부터는 평소처럼
-    rows/count를 돌려준다 — 실패 이후 db.py가 이어서 하는 조회/갱신 호출은
+    rows/count를 돌려준다 — 실패 이후 db 함수가 이어서 하는 조회/갱신 호출은
     정상적으로 응답받아야 하기 때문이다.
     """
 
@@ -169,22 +169,23 @@ def test_verify_admin_credentials_hashes_even_when_username_not_found(monkeypatc
     assert calls[0][0] == admin_module._DUMMY_PASSWORD_HASH
 
 
-def test_get_admin_role_returns_stored_role(monkeypatch):
-    fake_client = _FakeQuery(rows=[{"role": "super_admin"}])
+def test_get_admin_by_id_returns_id_username_and_role(monkeypatch):
+    row = {"id": 3, "username": "sktmaster123", "role": "super_admin"}
+    fake_client = _FakeQuery(rows=[row])
     monkeypatch.setattr(db, "get_client", lambda: fake_client)
 
-    result = db.get_admin_role("sktmaster123")
+    result = db.get_admin_by_id(3)
 
-    assert result == "super_admin"
+    assert result == row
+    assert ("select", ("id, username, role",), {}) in fake_client.calls  # password_hash는 조회하지 않는다
+    assert ("eq", ("id", 3), {}) in fake_client.calls
 
 
-def test_get_admin_role_none_when_username_not_found(monkeypatch):
+def test_get_admin_by_id_none_when_admin_was_deleted(monkeypatch):
     fake_client = _FakeQuery(rows=[])
     monkeypatch.setattr(db, "get_client", lambda: fake_client)
 
-    result = db.get_admin_role("no_such_admin")
-
-    assert result is None
+    assert db.get_admin_by_id(3) is None
 
 
 def test_has_permission_true_when_row_exists(monkeypatch):
@@ -505,27 +506,14 @@ def test_get_user_by_id_none_when_not_found(monkeypatch):
     assert db.get_user_by_id(999) is None
 
 
-def test_update_user_profile_true_when_email_not_taken(monkeypatch):
-    # 이메일 중복 검사 쿼리가 빈 목록을 돌려주는 상황 = "다른 사람은 안 쓰고 있다"
+def test_update_user_name_only_updates_the_name(monkeypatch):
+    # 이메일은 더 이상 프로필 폼에서 바로 바뀌지 않는다(guide40) — 이름만 고친다.
     fake_client = _FakeQuery(rows=[])
     monkeypatch.setattr(db, "get_client", lambda: fake_client)
 
-    result = db.update_user_profile(3, "새 이름", "new@example.com")
+    db.update_user_name(3, "새 이름")
 
-    assert result is True
-    assert ("update", ({"name": "새 이름", "email": "new@example.com"},), {}) in fake_client.calls
-
-
-def test_update_user_profile_false_when_email_taken_by_someone_else(monkeypatch):
-    # 이메일 중복 검사 쿼리가 "다른 사람의" 행을 하나라도 돌려주면 실패해야 한다
-    fake_client = _FakeQuery(rows=[{"id": 99}])
-    monkeypatch.setattr(db, "get_client", lambda: fake_client)
-
-    result = db.update_user_profile(3, "새 이름", "taken@example.com")
-
-    assert result is False
-    # 중복이 확인된 즉시 되돌아가야 하므로, update()는 아예 호출되면 안 된다.
-    assert not any(call[0] == "update" for call in fake_client.calls)
+    assert ("update", ({"name": "새 이름"},), {}) in fake_client.calls
 
 
 def test_list_attempts_by_username_filters_by_username(monkeypatch):
@@ -1272,3 +1260,103 @@ def test_count_recent_distinct_api_paths_returns_number_of_unique_paths(monkeypa
     result = db.count_recent_distinct_api_paths("9.9.9.9")
 
     assert result == 2
+
+
+# ============================================================================
+# recovery_requests 코드 시도권 예약 (guide37) — 비교 전에 조건부 UPDATE로 시도권을 받는다
+# ============================================================================
+
+class _ScriptedClient:
+    """execute()마다 미리 정해둔 결과를 순서대로 돌려주는 가짜 클라이언트. 조건부 UPDATE가
+    0행(경쟁에서 짐) → 다시 읽기 → 재시도로 이어지는 흐름을 한 줄씩 재현할 때 쓴다."""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls = []
+
+    def table(self, name):
+        self.calls.append(("table", (name,), {}))
+        return self
+
+    def __getattr__(self, method):
+        def call(*args, **kwargs):
+            self.calls.append((method, args, kwargs))
+            return self
+
+        return call
+
+    def execute(self):
+        return _FakeResult(self._responses.pop(0), None)
+
+
+def test_reserve_recovery_code_attempt_updates_only_from_the_value_it_read(monkeypatch):
+    fake_client = _ScriptedClient([[{"id": 1, "code_attempts": 3}]])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.reserve_recovery_code_attempt(1, 2, 5) == 3
+
+    assert ("update", ({"code_attempts": 3},), {}) in fake_client.calls
+    assert ("eq", ("code_attempts", 2), {}) in fake_client.calls  # 읽은 값 그대로일 때만
+    assert ("eq", ("status", "PENDING"), {}) in fake_client.calls
+
+
+def test_reserve_recovery_code_attempt_rereads_and_retries_after_losing_a_race(monkeypatch):
+    # 0행(다른 요청이 먼저 올림) → 다시 읽으니 3 → 3에서 4로 예약 성공
+    fake_client = _ScriptedClient([[], [{"code_attempts": 3, "status": "PENDING"}], [{"id": 1}]])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.reserve_recovery_code_attempt(1, 0, 5) == 4
+
+
+def test_reserve_recovery_code_attempt_returns_none_when_the_limit_is_reached(monkeypatch):
+    fake_client = _ScriptedClient([[], [{"code_attempts": 5, "status": "PENDING"}]])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.reserve_recovery_code_attempt(1, 4, 5) is None
+    assert sum(1 for call in fake_client.calls if call[0] == "update") == 1  # 한도에서는 더 시도하지 않는다
+
+
+def test_reserve_recovery_code_attempt_returns_none_when_request_is_no_longer_pending(monkeypatch):
+    fake_client = _ScriptedClient([[], [{"code_attempts": 1, "status": "REVOKED"}]])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.reserve_recovery_code_attempt(1, 0, 5) is None
+
+
+def test_reserve_recovery_code_attempt_gives_up_after_repeated_races(monkeypatch):
+    responses = []
+    for attempts in (1, 2, 3):
+        responses += [[], [{"code_attempts": attempts, "status": "PENDING"}]]
+    fake_client = _ScriptedClient(responses)
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.reserve_recovery_code_attempt(1, 0, 5) is None  # 실패 쪽으로 닫힌다
+
+
+def test_reserve_recovery_code_attempt_does_not_update_when_already_at_the_limit(monkeypatch):
+    fake_client = _ScriptedClient([])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    assert db.reserve_recovery_code_attempt(1, 5, 5) is None
+    assert fake_client.calls == []
+
+
+def test_latest_pending_recovery_for_username_joins_users_in_a_single_query(monkeypatch):
+    # 아이디 → 회원 조회 → 요청 조회로 나누면 없는 아이디만 왕복이 한 번 적어 응답 시간으로
+    # 가입 여부가 드러난다(guide39). users와 inner join한 한 번의 조회여야 한다.
+    row = {"id": 5, "user_id": 7, "status": "PENDING", "users": {"username": "alice"}}
+    fake_client = _ScriptedClient([[row]])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+
+    result = db.get_latest_pending_recovery_for_username("alice")
+
+    assert result["id"] == 5 and result["username"] == "alice" and "users" not in result
+    assert ("select", ("*, users!inner(username)",), {}) in fake_client.calls
+    assert ("eq", ("users.username", "alice"), {}) in fake_client.calls
+    assert sum(1 for call in fake_client.calls if call[0] == "table") == 1
+
+
+def test_latest_pending_recovery_for_username_none_for_unknown_or_no_request(monkeypatch):
+    monkeypatch.setattr(db, "get_client", lambda: _ScriptedClient([[]]))
+
+    assert db.get_latest_pending_recovery_for_username("ghost") is None

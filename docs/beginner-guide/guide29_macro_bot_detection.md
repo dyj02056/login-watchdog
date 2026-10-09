@@ -86,9 +86,9 @@ def notify_macro_pattern(ip: str, count: int) -> None:
 - [config.py](../../config.py) — `MACRO_DISTINCT_API_THRESHOLD` 추가
 - [db/api_access_log.py](../../db/api_access_log.py) — 신규, `log_api_access()`, `count_recent_distinct_api_paths()`
 - [db/__init__.py](../../db/__init__.py)
-- [detector.py](../../detector.py) — `is_macro_pattern_suspicious()` 추가
-- [alert.py](../../alert.py) — `send_macro_pattern_alert()` 신규
-- [soar.py](../../soar.py) — `notify_macro_pattern()` 신규
+- [detector.py](../../security/detector.py) — `is_macro_pattern_suspicious()` 추가
+- [alert.py](../../notify/alert.py) — `send_macro_pattern_alert()` 신규
+- [soar.py](../../security/soar/) — `notify_macro_pattern()` 신규
 - [app.py](../../app.py) — `track_api_access()` 훅 신규
 - [scripts/macro_bot_sim.py](../../scripts/macro_bot_sim.py) — 신규 검증 스크립트
 - [tests/conftest.py](../../tests/conftest.py) — `flask_app` 기본 mock에 `log_api_access`/`is_macro_pattern_suspicious` 추가

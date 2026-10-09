@@ -1,0 +1,27 @@
+# ============================================================================
+# docker-compose.mailpit.yml — 개발용 가짜 메일 서버(Mailpit) (guide34-a)
+#
+# 실제로 메일을 발송하지 않고, 앱이 보낸 모든 메일을 가로채서 웹 화면에 보여준다.
+# 그래서 팀원이 메일 계정 없이도 "잠금 → 복구 메일 → 링크 클릭 → 해제" 전체 흐름을
+# 직접 확인할 수 있다. 개발·테스트 전용이다(운영 배포에 쓰지 않는다).
+#
+# 실행:   docker compose -f docker-compose.mailpit.yml up -d
+# 종료:   docker compose -f docker-compose.mailpit.yml down
+# 메일함: http://127.0.0.1:8025  (보낸 메일이 여기 쌓인다)
+#
+# .env 설정(앱이 이 SMTP 서버로 보내게 한다):
+#   MAIL_BACKEND=smtp
+#   SMTP_HOST=127.0.0.1
+#   SMTP_PORT=1025
+#   SMTP_STARTTLS=false      # Mailpit은 TLS/인증 없이 받는다
+#   PUBLIC_BASE_URL=http://127.0.0.1:5000
+# ============================================================================
+
+services:
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: login-watchdog-mailpit
+    ports:
+      - "127.0.0.1:1025:1025"   # SMTP — 앱이 메일을 보내는 곳(로컬에서만 접근 가능)
+      - "127.0.0.1:8025:8025"   # 웹 UI — 받은 메일을 보는 곳
+    restart: unless-stopped

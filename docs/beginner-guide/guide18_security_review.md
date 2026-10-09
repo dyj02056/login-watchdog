@@ -26,7 +26,7 @@
 ## 1. Stored XSS — 관리자 대시보드에서 스크립트가 실행되는 문제
 
 ### 무엇이 문제였는가
-[public/js/dashboard.js](../../public/js/dashboard.js)의 `renderAttemptsTable`, `renderUsersTable` 같은 함수들이 서버에서 받아온 값(로그인 시도의 `username`, 회원 목록의 `username`/`email`)을 아무 가공 없이 `innerHTML`에 문자열 그대로 끼워넣고 있었습니다.
+[public/js/dashboard.js](../../public/js/dashboard/)의 `renderAttemptsTable`, `renderUsersTable` 같은 함수들이 서버에서 받아온 값(로그인 시도의 `username`, 회원 목록의 `username`/`email`)을 아무 가공 없이 `innerHTML`에 문자열 그대로 끼워넣고 있었습니다.
 
 ```js
 // 수정 전
@@ -63,7 +63,7 @@ function escapeHtml(value) {
 2. 관리자로 로그인해서 대시보드를 열어보니, "최근 로그인 시도" 표에 그 문자열이 **글자 그대로** 나타났습니다. 브라우저 개발자 도구로 `document.querySelectorAll('#attempts-table-body img').length`를 확인해보니 `0`— 실제 `<img>` 태그는 단 하나도 만들어지지 않았고, 얼럿(alert) 창도 뜨지 않았습니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [public/js/dashboard.js](../../public/js/dashboard.js) (`escapeHtml()` 신규 추가, 4개 렌더 함수의 모든 사용자 데이터 삽입 지점에 적용)
+- [public/js/dashboard.js](../../public/js/dashboard/) (`escapeHtml()` 신규 추가, 4개 렌더 함수의 모든 사용자 데이터 삽입 지점에 적용)
 
 ---
 
@@ -137,7 +137,7 @@ def handle_csrf_error(error):
 - [requirements.txt](../../requirements.txt) (`flask-wtf` 추가)
 - [app.py](../../app.py) (`CSRFProtect` 등록, `CSRFError` 처리기 추가)
 - [templates/login_form.html](../../templates/login_form.html), [templates/signup.html](../../templates/signup.html), [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [templates/member_dashboard.html](../../templates/member_dashboard.html), [templates/member_history.html](../../templates/member_history.html), [templates/member_profile.html](../../templates/member_profile.html) (폼 7개에 `csrf_token` 숨김 필드 추가, 대시보드에는 `<meta>` 태그 추가)
-- [public/js/dashboard.js](../../public/js/dashboard.js) (`fetch()` 3곳에 `X-CSRFToken` 헤더 추가)
+- [public/js/dashboard.js](../../public/js/dashboard/) (`fetch()` 3곳에 `X-CSRFToken` 헤더 추가)
 
 ---
 
@@ -196,7 +196,7 @@ def list_attempts_since(hours: int = 24) -> list[dict]:
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [scripts/bruteforce_sim.py](../../scripts/bruteforce_sim.py) (신규 구현)
 - [scripts/daily_report.py](../../scripts/daily_report.py) (신규 구현 — 숫자 집계 버전)
-- [db.py](../../db.py) (`list_attempts_since`, `list_lockouts_since` 추가)
+- [db.py](../../db/) (`list_attempts_since`, `list_lockouts_since` 추가)
 - [tests/test_db.py](../../tests/test_db.py) (위 두 함수에 대한 단위 테스트 추가)
 
 ---
@@ -345,7 +345,7 @@ jobs:
 이런 연쇄는 "고쳤다고 끝이 아니라, 고친 뒤 실제로 다시 돌려봐야 한다"는 걸 잘 보여줍니다. 이번 단계의 모든 수정은 전부 로컬 서버를 실제로 띄우고, 브라우저로 관리자 대시보드를 열어보고, `pytest`와 각 스크립트를 직접 실행해서 확인을 마쳤습니다.
 
 ### 이 단계 전체에서 바뀐 파일 모음
-- [app.py](../../app.py), [db.py](../../db.py), [public/js/dashboard.js](../../public/js/dashboard.js)
+- [app.py](../../app.py), [db.py](../../db/), [public/js/dashboard.js](../../public/js/dashboard/)
 - [templates/login_form.html](../../templates/login_form.html), [templates/signup.html](../../templates/signup.html), [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [templates/member_dashboard.html](../../templates/member_dashboard.html), [templates/member_history.html](../../templates/member_history.html), [templates/member_profile.html](../../templates/member_profile.html)
 - [scripts/bruteforce_sim.py](../../scripts/bruteforce_sim.py), [scripts/daily_report.py](../../scripts/daily_report.py)
 - [tests/conftest.py](../../tests/conftest.py), [tests/test_app.py](../../tests/test_app.py), [tests/test_db.py](../../tests/test_db.py)

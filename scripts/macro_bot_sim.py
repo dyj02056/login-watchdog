@@ -12,7 +12,7 @@
 # 안전 원칙: 실제로 뭔가를 삭제/변경하지 않는 것을 목표로 한다. --username/--password로
 # security_viewer 역할 계정(대시보드 조회 말고는 아무 권한도 없음, guide26 참고)을
 # 넘기면 서버가 6번의 호출을 전부 403(권한 없음)으로 거절한다 — before_request
-# 훅(app.py의 track_api_access())은 실제 뷰 함수가 실행되기 훨씬 전에 먼저
+# 훅(helpers/hooks.py의 track_api_access())은 실제 뷰 함수가 실행되기 훨씬 전에 먼저
 # 실행되므로, 403으로 거절되는 요청도 매크로/봇 탐지 로그에는 정상적으로
 # 기록된다. 계정이 없다면 먼저 다음처럼 만든다:
 #   python scripts/create_admin.py --username macro_test --password <비밀번호> --role security_viewer
@@ -23,14 +23,15 @@
 
 import argparse
 import sys
-from urllib.parse import urlparse
 
 import requests
+
+from _sim_common import is_local_host
 
 # 매크로/봇 탐지 대상인 /api/* 경로 중, 아무 권한도 없는 계정으로 호출해도
 # 안전하게 403으로 거절되는 관리자 API 6개. admin.api_status는 대시보드가
 # 스스로 반복 호출하는 폴링 API라 매크로/봇 탐지 대상에서 제외되므로
-# (app.py의 _PAGE_ACCESS_EXCLUDED_ENDPOINTS) 이 목록에는 넣지 않는다.
+# (helpers/hooks.py의 PAGE_ACCESS_EXCLUDED_ENDPOINTS) 이 목록에는 넣지 않는다.
 TARGET_ENDPOINTS = [
     ("/api/unlock", {"ip": "203.0.113.1"}),  # 203.0.113.0/24는 예시 전용 대역(RFC 5737) — 실재 접속자와 무관
     ("/api/security-events/resolve", {"event_id": 999999999}),
@@ -39,12 +40,6 @@ TARGET_ENDPOINTS = [
     ("/api/board/posts/delete", {"post_id": 999999999}),
     ("/api/board/comments/delete", {"comment_id": 999999999}),
 ]
-
-
-def is_local_host(host: str) -> bool:
-    """--host로 받은 주소가 로컬(내 컴퓨터) 서버인지 확인한다."""
-    hostname = urlparse(host).hostname or ""
-    return hostname in ("127.0.0.1", "localhost", "::1")
 
 
 def fetch_csrf_token(html: str) -> str:

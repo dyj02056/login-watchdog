@@ -4,9 +4,9 @@
 
 
 ### 우리가 한 일
-1. [templates/login.html](../../templates/login.html), [signup.html](../../templates/signup.html), [admin_login.html](../../templates/admin_login.html), [dashboard.html](../../templates/dashboard.html) — 4개 화면의 HTML
+1. [templates/login.html](../../templates/login_form.html), [signup.html](../../templates/signup.html), [admin_login.html](../../templates/login_form.html), [dashboard.html](../../templates/admin_dashboard.html) — 4개 화면의 HTML
 2. [static/css/auth.css](../../public/css/auth.css), [static/css/dashboard.css](../../public/css/dashboard.css) — 화면 스타일
-3. [static/js/dashboard.js](../../public/js/dashboard.js) — 대시보드를 실시간으로 갱신시키는 자바스크립트
+3. [static/js/dashboard.js](../../public/js/dashboard/) — 대시보드를 실시간으로 갱신시키는 자바스크립트
 
 ### 왜 했는가 (쉬운 설명)
 
@@ -88,7 +88,7 @@ document.getElementById("lockout-list").addEventListener("click", (event) => {
 `app.py`의 `flash("잠긴 계정입니다...")`처럼 서버가 남겨둔 메시지를, 이 부분이 화면에 노란 박스로 꺼내 보여줍니다. 실제로 브루트포스 테스트 중 "잠긴 계정입니다" 문구가 정확히 이 코드를 통해 화면에 나타나는 것을 확인했습니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [templates/login.html](../../templates/login.html), [templates/signup.html](../../templates/signup.html), [templates/admin_login.html](../../templates/admin_login.html), [templates/dashboard.html](../../templates/dashboard.html) (신규 작성)
+- [templates/login.html](../../templates/login_form.html), [templates/signup.html](../../templates/signup.html), [templates/admin_login.html](../../templates/login_form.html), [templates/dashboard.html](../../templates/admin_dashboard.html) (신규 작성)
 - [static/css/auth.css](../../public/css/auth.css), [static/css/dashboard.css](../../public/css/dashboard.css) (신규 작성)
-- [static/js/dashboard.js](../../public/js/dashboard.js) (신규 작성)
+- [static/js/dashboard.js](../../public/js/dashboard/) (신규 작성)
 - 브라우저로 전체 화면 흐름(회원가입~로그아웃)을 직접 클릭하며 검증 완료

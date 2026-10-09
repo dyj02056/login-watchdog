@@ -13,10 +13,26 @@
 
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
+import config
 import db
-from helpers import _attach_locations, member_login_required
+from helpers import (
+    _attach_locations,
+    clear_member_session,
+    get_request_ip,
+    is_bot_submission,
+    member_login_required,
+)
+from notify import mailer
+from security import detector, soar
+from services import email_verification
 
 member_bp = Blueprint("member", __name__)
+
+_EMAIL_CHANGE_SENT_MESSAGE = "새 이메일로 확인 메일을 보냈습니다. 메일의 링크를 눌러야 변경됩니다(15분 안에)."
+_EMAIL_REQUEST_MESSAGES = {
+    email_verification.RATE_LIMITED: "요청이 너무 잦습니다. 잠시 후 다시 시도해주세요.",
+    email_verification.UNAVAILABLE: "지금은 메일을 보낼 수 없습니다. 잠시 후 다시 시도해주세요.",
+}
 
 
 def _logout_missing_member():
@@ -24,12 +40,11 @@ def _logout_missing_member():
     눌렀는데 그 회원이 다른 탭에서 아직 로그인 상태였던 경우) 세션을 정리하고
     로그인 화면으로 돌려보낸다.
 
-    member_login_required는 "세션에 값이 있는지"만 확인하지, 그 값이 가리키는
-    회원이 지금도 실제로 존재하는지는 확인하지 않는다 — 그래서 회원용 화면들이
-    db.get_user_by_id()로 다시 한번 확인하고, 없으면 이 함수를 부른다.
+    member_login_required도 요청 시작 때 세션 세대 번호를 조회하면서 회원이 삭제됐으면
+    세션을 끊지만(guide35), 그 확인과 화면 처리 사이에 삭제되는 경우까지 대비해 회원용
+    화면들이 db.get_user_by_id()로 다시 한번 확인하고, 없으면 이 함수를 부른다.
     """
-    session.pop("username", None)
-    session.pop("user_id", None)
+    clear_member_session()
     flash("계정 정보를 찾을 수 없습니다. 다시 로그인해주세요.")
     return redirect(url_for("auth.login"))
 
@@ -37,7 +52,8 @@ def _logout_missing_member():
 @member_bp.route("/dashboard", methods=["GET"])
 @member_login_required
 def member_dashboard():
-    """로그인한 회원 본인을 위한 첫 화면. 인사말과 이동 버튼 2개만 보여준다.
+    """로그인한 회원 본인을 위한 첫 화면. 인사말, 이동 링크 3개(로그인 기록·프로필·게시판),
+    그리고 이메일이 아직 인증되지 않았으면 인증 안내 배너(guide40)를 보여준다.
 
     인사말에는 "표시 이름"(user.name)이 설정돼 있으면 그걸 쓰고, 아직 프로필을
     한 번도 안 고쳐서 비어있으면(기본값 '') 로그인 아이디로 대신 보여준다.
@@ -48,7 +64,9 @@ def member_dashboard():
     if user is None:
         return _logout_missing_member()
     display_name = user["name"] if user["name"] else session["username"]
-    return render_template("member_dashboard.html", display_name=display_name)
+    return render_template(
+        "member_dashboard.html", display_name=display_name, email_status=user.get("email_status")
+    )
 
 
 @member_bp.route("/dashboard/history", methods=["GET"])
@@ -72,33 +90,175 @@ def member_profile():
     user = db.get_user_by_id(session["user_id"])
     if user is None:
         return _logout_missing_member()
-    return render_template("member_profile.html", user=user)
+    # 이메일 변경 확인 대기 중이면 새 주소(가린 형태)를 보여준다(guide40).
+    pending = db.get_pending_email_token_for_user(user["id"], db.email_tokens.PURPOSE_EMAIL_CHANGE)
+    pending_email = email_verification.mask_email(pending["email"]) if pending else None
+    return render_template("member_profile.html", user=user, pending_email=pending_email)
 
 
 @member_bp.route("/dashboard/profile", methods=["POST"])
 @member_login_required
 def member_profile_submit():
-    """프로필 수정 폼 제출을 처리한다.
+    """프로필(표시 이름) 수정 폼 제출을 처리한다.
+
+    이메일은 더 이상 이 폼에서 바꾸지 않는다(guide40) — 세션만 있으면 바로 바뀌던 구조라 세션을
+    탈취한 사람이 이메일을 자기 주소로 바꿔 계정을 가져갈 수 있었다. 이메일 변경은 아래
+    member_email_change_submit()이 현재 비밀번호 확인 + 새 주소 확인 링크로 처리한다.
 
     처리가 끝나면 render_template으로 바로 화면을 그리지 않고 redirect()로
-    /dashboard/profile을 "다시 방문"하게 만든다. 이렇게 하면 사용자가 수정 후
-    브라우저를 새로고침해도 폼이 다시 제출되며 오류가 나는 대신, 그냥 최신
-    프로필을 다시 보여준다("Post-Redirect-Get" 패턴이라고 부른다).
+    /dashboard/profile을 "다시 방문"하게 만든다("Post-Redirect-Get" 패턴).
     """
     name = request.form.get("name", "").strip()
-    email = request.form.get("email", "").strip()
-
-    if not email:
-        flash("이메일을 입력해주세요.")
-        return redirect(url_for("member.member_profile"))
-
-    updated = db.update_user_profile(session["user_id"], name, email)
-    if not updated:
-        flash("이미 다른 회원이 사용 중인 이메일입니다.")
-        return redirect(url_for("member.member_profile"))
-
+    db.update_user_name(session["user_id"], name)
     flash("프로필이 수정되었습니다.")
     return redirect(url_for("member.member_profile"))
+
+
+@member_bp.route("/dashboard/email/change", methods=["POST"])
+@member_login_required
+def member_email_change_submit():
+    """이메일 변경 요청(guide40). 현재 비밀번호를 확인한 뒤 새 주소로 확인 링크를 보낸다 —
+    링크를 눌러야(routes/email.py) 실제로 바뀌고, 바뀌면 기존 주소로 알림이 간다.
+
+    현재 비밀번호를 틀리면 비밀번호 변경(guide35)과 똑같이 로그인 실패로 기록하고 같은 기준으로
+    잠근다. 그 주소를 다른 계정이 쓰고 있어도 화면 응답은 똑같다(email_verification 참고).
+    """
+    ip = get_request_ip()
+    username = session["username"]
+
+    if is_bot_submission():
+        soar.notify_bot_detected(ip, request.path)
+        flash("일시적인 오류가 발생했습니다. 다시 시도해주세요.")
+        return redirect(url_for("member.member_profile"))
+
+    user = db.get_user_by_id(session["user_id"])
+    if user is None:
+        return _logout_missing_member()
+
+    new_email = request.form.get("new_email", "").strip()
+    current_password = request.form.get("current_password", "")
+    if not new_email or not current_password:
+        flash("새 이메일과 현재 비밀번호를 모두 입력해주세요.")
+        return redirect(url_for("member.member_profile"))
+    if not config.EMAIL_PATTERN.match(new_email):
+        flash("올바른 이메일 형식이 아닙니다.")
+        return redirect(url_for("member.member_profile"))
+    if new_email.lower() == user["email"].lower():
+        flash("지금 쓰고 있는 이메일과 같습니다.")
+        return redirect(url_for("member.member_profile"))
+
+    if not db.verify_user_credentials(username, current_password):
+        db.log_attempt(ip, username, False)
+        if _lock_if_suspicious(ip, username):
+            clear_member_session()
+            flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
+            return redirect(url_for("auth.login"))
+        flash("현재 비밀번호가 올바르지 않습니다.")
+        return redirect(url_for("member.member_profile"))
+
+    result = email_verification.request_email_change(user, new_email, ip)
+    flash(_EMAIL_REQUEST_MESSAGES.get(result, _EMAIL_CHANGE_SENT_MESSAGE))
+    return redirect(url_for("member.member_profile"))
+
+
+@member_bp.route("/dashboard/email/verify/resend", methods=["POST"])
+@member_login_required
+def member_email_verify_resend():
+    """대시보드·프로필의 "인증 메일 다시 보내기"(guide40). 쿨다운·하루 한도는 email_verification이 본다."""
+    user = db.get_user_by_id(session["user_id"])
+    if user is None:
+        return _logout_missing_member()
+    result = email_verification.send_verification(user, get_request_ip())
+    if result == email_verification.SENT:
+        flash(f"{email_verification.mask_email(user['email'])}(으)로 인증 메일을 보냈습니다. 메일의 링크를 눌러주세요.")
+    elif result == email_verification.ALREADY_VERIFIED:
+        flash("이미 인증된 이메일입니다.")
+    else:
+        flash(_EMAIL_REQUEST_MESSAGES[result])
+    # 대시보드 배너에서 눌렀으면 대시보드로, 프로필에서 눌렀으면 프로필로 돌아간다.
+    if request.form.get("next") == "dashboard":
+        return redirect(url_for("member.member_dashboard"))
+    return redirect(url_for("member.member_profile"))
+
+
+@member_bp.route("/dashboard/password", methods=["POST"])
+@member_login_required
+def member_password_submit():
+    """비밀번호 변경 폼 제출을 처리한다(guide35).
+
+    1) 새 비밀번호 형식을 먼저 확인한다 — 여기서 걸리는 건 본인 확인과 무관한 입력 실수라서
+       실패 횟수에 넣지 않는다.
+    2) 현재 비밀번호를 확인한다 — 세션만 탈취한 사람이 비밀번호를 바꾸지 못하게 하는 장치다.
+       틀리면 로그인 실패와 똑같이 기록하고 같은 임계값으로 잠근다. 그러지 않으면 이 화면이
+       "로그인 잠금 없이 비밀번호를 무한히 맞춰보는" 우회로가 된다.
+    3) 바꾸면 세션 세대 번호가 올라가 다른 기기의 로그인이 모두 끊긴다(이 기기는 유지).
+       계정 이메일로 변경 알림을 보내서, 본인이 한 일이 아니면 바로 알 수 있게 한다.
+    """
+    ip = get_request_ip()
+    username = session["username"]
+
+    if is_bot_submission():
+        soar.notify_bot_detected(ip, request.path)
+        flash("일시적인 오류가 발생했습니다. 다시 시도해주세요.")
+        return redirect(url_for("member.member_profile"))
+
+    user = db.get_user_by_id(session["user_id"])
+    if user is None:
+        return _logout_missing_member()
+    if detector.is_account_locked(username):
+        clear_member_session()
+        flash("잠긴 계정입니다. 잠시 후 다시 로그인해주세요.")
+        return redirect(url_for("auth.login"))
+
+    current_password = request.form.get("current_password", "")
+    new_password = request.form.get("new_password", "")
+    new_password_confirm = request.form.get("new_password_confirm", "")
+
+    if not current_password or not new_password:
+        flash("현재 비밀번호와 새 비밀번호를 모두 입력해주세요.")
+        return redirect(url_for("member.member_profile"))
+    if len(new_password) < config.MIN_PASSWORD_LENGTH:
+        flash(f"새 비밀번호는 최소 {config.MIN_PASSWORD_LENGTH}자 이상이어야 합니다.")
+        return redirect(url_for("member.member_profile"))
+    if new_password != new_password_confirm:
+        flash("새 비밀번호와 확인이 일치하지 않습니다.")
+        return redirect(url_for("member.member_profile"))
+    if new_password == current_password:
+        flash("새 비밀번호가 현재 비밀번호와 같습니다.")
+        return redirect(url_for("member.member_profile"))
+
+    if not db.verify_user_credentials(username, current_password):
+        db.log_attempt(ip, username, False)
+        if _lock_if_suspicious(ip, username):
+            clear_member_session()
+            flash("잠긴 계정입니다. 잠시 후 다시 시도해주세요.")
+            return redirect(url_for("auth.login"))
+        flash("현재 비밀번호가 올바르지 않습니다.")
+        return redirect(url_for("member.member_profile"))
+
+    session["session_version"] = db.update_user_password(user["id"], new_password)
+    mailer.send_password_changed_notice(user["email"])
+    flash("비밀번호가 변경되었습니다. 다른 기기의 로그인은 모두 해제되었습니다.")
+    return redirect(url_for("member.member_profile"))
+
+
+def _lock_if_suspicious(ip: str, username: str) -> bool:
+    """비밀번호 변경·이메일 변경 화면에서 현재 비밀번호를 틀렸을 때, 로그인 실패와 같은 기준으로 잠근다.
+    이번 실패로 잠금이 걸렸으면 True. 이미 잠긴 IP(예: 영구 잠금 예외로 들어온 회원)는 다시
+    잠그지 않는다 — 같은 IP에 5분 잠금 알림이 중복으로 나가지 않게 하기 위해서다."""
+    locked = False
+    if not detector.is_locked(ip):
+        suspicious, failure_count = detector.is_suspicious(ip)
+        if suspicious:
+            soar.enforce_lockout(ip, failure_count, detector.count_distinct_usernames(ip))
+            locked = True
+    account_suspicious, account_failure_count = detector.is_account_suspicious(username)
+    if account_suspicious:
+        soar.enforce_account_lockout(
+            username, account_failure_count, detector.count_distinct_ips_by_username(username), ip
+        )
+        locked = True
+    return locked
 
 
 @member_bp.route("/dashboard/logout", methods=["POST"])
@@ -106,10 +266,9 @@ def member_profile_submit():
 def member_logout():
     """회원 로그아웃 처리.
 
-    admin_logout()과 달리 session.clear()를 쓰지 않고 회원 관련 키(username,
-    user_id)만 콕 집어 지운다 — 만약 같은 브라우저에서 관리자로도 로그인되어
+    admin_logout()처럼 session.clear()를 쓰지 않고 회원 관련 키(username,
+    user_id, session_version)만 콕 집어 지운다 — 만약 같은 브라우저에서 관리자로도 로그인되어
     있었다면, 회원만 로그아웃하고 관리자 세션은 그대로 유지하기 위해서다.
     """
-    session.pop("username", None)
-    session.pop("user_id", None)
+    clear_member_session()
     return redirect(url_for("auth.login"))
