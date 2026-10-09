@@ -5,12 +5,12 @@
 import { useEffect, useRef } from "react";
 import * as echarts from "echarts/core";
 import { BarChart, HeatmapChart, LineChart, PieChart, SankeyChart } from "echarts/charts";
-import { GridComponent, TooltipComponent, VisualMapComponent } from "echarts/components";
+import { GraphicComponent, GridComponent, TooltipComponent, VisualMapComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import type { EChartsCoreOption } from "echarts/core";
 import styles from "./Chart.module.css";
 
-echarts.use([BarChart, HeatmapChart, LineChart, PieChart, SankeyChart, GridComponent, TooltipComponent, VisualMapComponent, CanvasRenderer]);
+echarts.use([BarChart, HeatmapChart, LineChart, PieChart, SankeyChart, GraphicComponent, GridComponent, TooltipComponent, VisualMapComponent, CanvasRenderer]);
 
 export type Theme = ReturnType<typeof readTheme>;
 

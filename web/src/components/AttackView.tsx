@@ -92,7 +92,11 @@ export function AttackView() {
 
         <Panel className={styles.paths} title="대상 경로 비중">
           {body((s) =>
-            s.top_paths.length ? <PathDonut items={s.top_paths} /> : <EmptyState title="기록이 없습니다." />,
+            s.top_paths.length || s.pathless_total ? (
+              <PathDonut items={s.top_paths} pathless={s.pathless_types} pathlessTotal={s.pathless_total} />
+            ) : (
+              <EmptyState title="기록이 없습니다." />
+            ),
           )}
         </Panel>
 
@@ -103,16 +107,17 @@ export function AttackView() {
                 caption="최근 보안 이벤트 30건"
                 rows={s.events}
                 rowKey={(r) => r.id}
+                alignTop
                 empty={{ title: "보안 이벤트가 없습니다." }}
                 columns={[
                   { header: "발생 시각", cell: (r) => formatDateTime(r.detected_at), num: true },
                   { header: "등급", cell: (r) => <SeverityBadge severity={r.severity} /> },
-                  { header: "유형", cell: (r) => eventTypeLabel(r.event_type) },
+                  { header: "유형", cell: (r) => eventTypeLabel(r.event_type), wrap: true, maxWidth: "9rem" },
                   { header: "출발지 IP", cell: (r) => r.ip, num: true },
                   { header: "국가", cell: (r) => r.country ?? "-" },
-                  { header: "대상 경로", cell: (r) => r.path ?? "-", grow: true },
+                  { header: "대상 경로", cell: (r) => r.path ?? "-", wrap: true, maxWidth: "13rem" },
                   { header: "건수", cell: (r) => r.count, num: true, align: "right" },
-                  { header: "조치", cell: (r) => actionLabel(r.action) },
+                  { header: "조치", cell: (r) => actionLabel(r.action), wrap: true, maxWidth: "6rem" },
                   { header: "상태", cell: (r) => (r.resolved ? "처리됨" : "미처리") },
                 ]}
               />

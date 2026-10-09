@@ -1,6 +1,7 @@
 "use client";
 
 // charts.tsx — 관제 화면에서 쓰는 차트 6종. 값이 비었을 때의 안내는 부르는 쪽(화면)이 정한다.
+import { useEffect, useState } from "react";
 import { Chart, tooltipBase } from "./Chart";
 import type { Theme } from "./Chart";
 import { actionLabel, eventTypeLabel } from "@/lib/labels";
@@ -310,29 +311,141 @@ export function TopBars({ items, tone, format, label }: { items: Named; tone: "c
   );
 }
 
-/** 도넛: 대상 경로 비중 */
-export function PathDonut({ items }: { items: Named }) {
+const PATH_COLORS = ["#3cc8f0", "#e9568f", "#34e08c", "#ff9a3c", "#a78bfa"];
+// 경로 없음 쪽 도넛은 큰 도넛과 색이 겹쳐 보이지 않게 옅은 색을 쓴다. "기타"는 마지막에 회색으로.
+const PATHLESS_COLORS = ["#7dd3fc", "#fda4af", "#fcd34d", "#c4b5fd"];
+const PATHLESS_OTHER = "기타";
+
+/** 화면이 좁으면(휴대폰 등) 두 도넛을 위아래로 쌓는다. */
+function useNarrow(maxWidth: number): boolean {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia(`(max-width: ${maxWidth}px)`);
+    const update = () => setNarrow(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, [maxWidth]);
+  return narrow;
+}
+
+/**
+ * 도넛: 대상 경로 비중. 경로가 기록되지 않은 이벤트는 큰 도넛의 한 조각("경로 없음")으로 두고,
+ * 화살표로 이어진 작은 도넛(큰 도넛의 75%)에서 공격 유형별로 쪼개 보여준다.
+ */
+export function PathDonut({ items, pathless, pathlessTotal }: { items: Named; pathless: Named; pathlessTotal: number }) {
+  const narrow = useNarrow(800);
   return (
     <Chart
-      label="공격 대상 경로별 비중 도넛 차트"
-      deps={[items]}
-      build={(t) => ({
-        animationDuration: 500,
-        color: [t.cyan, t.yesterday, t.signal, t.high, t.week],
-        tooltip: { trigger: "item", ...tooltipBase(t) },
-        series: [
-          {
-            type: "pie",
-            radius: ["46%", "72%"],
-            center: ["50%", "52%"],
-            minAngle: 6,
-            itemStyle: { borderColor: t.bg1, borderWidth: 2 },
-            label: { color: t.ink1, fontFamily: t.font, fontSize: 11, formatter: "{b}" },
-            labelLine: { lineStyle: { color: t.lineStrong } },
-            data: items.map((i) => ({ name: i.name, value: i.count })),
+      label="공격 대상 경로별 비중 도넛 차트와, 경로가 없는 이벤트의 공격 유형별 도넛 차트"
+      deps={[items, pathless, pathlessTotal, narrow]}
+      build={(t) => {
+        const pathTotal = items.reduce((sum, item) => sum + item.count, 0);
+        const hasPaths = items.length > 0;
+        const hasPathless = pathlessTotal > 0;
+        const both = hasPaths && hasPathless;
+
+        // 크기는 px로 고정한다: 작은 도넛은 큰 도넛의 75%.
+        const big = narrow ? { outer: 58, inner: 36 } : { outer: 96, inner: 58 };
+        const small = { outer: Math.round(big.outer * 0.75), inner: Math.round(big.inner * 0.75) };
+
+        // 가로 배치: 큰 도넛 왼쪽, 작은 도넛 오른쪽. 세로 배치(좁은 화면): 큰 도넛 위, 작은 도넛 아래.
+        const bigCenter = both ? (narrow ? ["50%", "27%"] : ["30%", "52%"]) : ["50%", "52%"];
+        const smallCenter = hasPaths ? (narrow ? ["50%", "77%"] : ["79%", "52%"]) : ["50%", "52%"];
+
+        // "경로 없음" 조각이 큰 도넛의 오른쪽(가로) 또는 아래쪽(세로) 한가운데에 오도록 시작 각도를 맞춰 화살표가 똑바로 나간다.
+        const share = both ? pathlessTotal / (pathTotal + pathlessTotal) : 0;
+        const startAngle = (narrow ? -90 : 0) + share * 180;
+
+        const bigData = [
+          ...(both
+            ? [{ name: "경로 없음", value: pathlessTotal, itemStyle: { color: t.week }, label: { show: false }, labelLine: { show: false } }]
+            : []),
+          ...items.map((item, index) => ({ name: item.name, value: item.count, itemStyle: { color: PATH_COLORS[index % PATH_COLORS.length] } })),
+        ];
+        const smallData = pathless.map((item, index) => ({
+          name: eventTypeLabel(item.name),
+          value: item.count,
+          itemStyle: { color: item.name === PATHLESS_OTHER ? t.week : PATHLESS_COLORS[index % PATHLESS_COLORS.length] },
+        }));
+
+        const pieBase = { type: "pie" as const, minAngle: 6, itemStyle: { borderColor: t.bg1, borderWidth: 2 }, labelLine: { lineStyle: { color: t.lineStrong } } };
+        const labelBase = { color: t.ink1, fontFamily: t.font, fontSize: 11 };
+
+        // 화살표(큰 도넛의 "경로 없음" 조각 → 작은 도넛). 가로면 →, 세로면 ↓.
+        const arrow = narrow
+          ? { line: [[0, 0], [0, 34]], head: [[0, 38], [-4, 30], [4, 30]], left: "50%", top: "47%" }
+          : { line: [[0, 0], [40, 0]], head: [[46, 0], [38, -4], [38, 4]], left: "52%", top: "52%" };
+
+        return {
+          animationDuration: 500,
+          tooltip: { trigger: "item", ...tooltipBase(t) },
+          series: [
+            ...(hasPaths
+              ? [
+                  {
+                    ...pieBase,
+                    name: "대상 경로",
+                    radius: [big.inner, big.outer],
+                    center: bigCenter,
+                    startAngle,
+                    label: { ...labelBase, formatter: "{b}" },
+                    data: bigData,
+                  },
+                ]
+              : []),
+            ...(hasPathless
+              ? [
+                  {
+                    ...pieBase,
+                    name: "경로 없음",
+                    radius: [small.inner, small.outer],
+                    center: smallCenter,
+                    label: { ...labelBase, formatter: "{b}\n{c}건" },
+                    tooltip: { formatter: (p: { name: string; value: number; percent: number }) => `${p.name}<br/>${p.value}건 · 경로 없음 중 ${p.percent}%` },
+                    data: smallData,
+                  },
+                ]
+              : []),
+          ],
+          graphic: {
+            elements: [
+            ...(both
+              ? [
+                  {
+                    type: "group",
+                    left: arrow.left,
+                    top: arrow.top,
+                    silent: true,
+                    children: [
+                      { type: "polyline", shape: { points: arrow.line }, style: { stroke: t.ink1, lineWidth: 1.5, fill: "none" } },
+                      { type: "polygon", shape: { points: arrow.head }, style: { fill: t.ink1 } },
+                    ],
+                  },
+                ]
+              : []),
+            ...(hasPathless
+              ? [
+                  {
+                    type: "text",
+                    silent: true,
+                    left: smallCenter[0],
+                    top: smallCenter[1],
+                    style: {
+                      text: `경로 없음\n${formatCount(pathlessTotal)}건`,
+                      textAlign: "center",
+                      textVerticalAlign: "middle",
+                      fill: t.ink1,
+                      font: `600 11px ${t.font}`,
+                      lineHeight: 15,
+                    },
+                  },
+                ]
+              : []),
+            ],
           },
-        ],
-      })}
+        };
+      }}
     />
   );
 }

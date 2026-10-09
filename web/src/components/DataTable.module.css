@@ -48,3 +48,13 @@
   white-space: normal;
   overflow-wrap: anywhere;
 }
+
+.table.top td {
+  vertical-align: top;
+}
+
+/* 열 최대 너비를 넘는 내용만 줄바꿈한다. 공백 없는 긴 경로도 끊어서 표가 옆으로 밀리지 않게 한다. */
+.wrapText {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

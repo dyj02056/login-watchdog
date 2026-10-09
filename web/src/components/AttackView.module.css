@@ -28,11 +28,11 @@
 }
 
 .paths {
-  grid-column: span 3;
+  grid-column: span 5;
   height: 22rem;
 }
 .events {
-  grid-column: span 9;
+  grid-column: span 7;
   height: 22rem;
 }
 

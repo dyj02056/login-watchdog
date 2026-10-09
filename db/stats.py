@@ -44,6 +44,7 @@ _PAGE = 1000  # Supabase 한 번에 가져올 수 있는 최대 줄 수
 _MAX_ROWS = 20000  # 한 표에서 가져올 최대 줄 수(폭주 시 응답이 무한정 느려지지 않게)
 
 SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2}
+PATHLESS_TYPE_LIMIT = 4  # 경로 없는 이벤트를 유형별로 보여줄 때 따로 세는 유형 수(나머지는 "기타")
 
 # "연관 사건" 표에 올리는 상태. OPEN은 아직 처리 중, IDLE은 새 이벤트가 끊겼는데도 관리자가 "해결"을 안 누른 것.
 # CLOSED여도 시스템이 자동으로 닫은 것(resolved_by가 "system:"으로 시작)은 사람이 확인하지 않았으므로 함께 보여준다.
@@ -325,7 +326,14 @@ def build_threat_stats(raw: dict, *, active_locks: int, pending_ai: int, locatio
     yesterday_events = [e for e in events if e["_d"] == today - timedelta(days=1)]
     top_sources = _top(Counter(e["ip_address"] for e in recent_events), 5)
     top_types = _top(Counter(e["event_type"] for e in recent_events), 5)
-    top_paths = _top(Counter(e["path"] or "(경로 없음)" for e in recent_events), 5)
+    # 경로가 있는 이벤트만 경로별로 센다. 경로가 없는 이벤트(브루트포스·스프레이 등 계정·행위 단위 탐지)는
+    # 한 덩어리로 섞이면 도넛을 지배하므로 공격 유형별로 따로 센다.
+    top_paths = _top(Counter(e["path"] for e in recent_events if e["path"]), 5)
+    pathless_by_type = Counter(e["event_type"] for e in recent_events if not e["path"])
+    pathless_types = _top(pathless_by_type, PATHLESS_TYPE_LIMIT)
+    pathless_rest = sum(pathless_by_type.values()) - sum(item["count"] for item in pathless_types)
+    if pathless_rest > 0:
+        pathless_types.append({"name": "기타", "count": pathless_rest})
     severity_counts = Counter(e["severity"] for e in recent_events)
 
     country_flow: Counter = Counter()
@@ -405,6 +413,8 @@ def build_threat_stats(raw: dict, *, active_locks: int, pending_ai: int, locatio
         "top_sources": top_sources,
         "top_types": top_types,
         "top_paths": top_paths,
+        "pathless_types": pathless_types,
+        "pathless_total": sum(pathless_by_type.values()),
         "country_flow": {"links": country_links},
         "events": live_events,
         # L3/L4 센서는 아직 없다 — 화면은 이 빈 목록을 "수집 전" 상태로 그린다.

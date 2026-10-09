@@ -145,3 +145,26 @@ def test_build_locks_merges_ip_account_admin_with_permanent_first():
     assert [(l["kind"], l["target"], l["permanent"]) for l in locks["locks"]] == [
         ("account", "kim", True), ("admin", "root", False), ("ip", "1.1.1.1", False)]
     assert locks["locks_total"] == 3 and locks["locks_permanent"] == 1
+
+
+def test_pathless_events_are_split_by_type_and_kept_out_of_top_paths():
+    def ev(i, event_type, path):
+        stamp = (NOW - timedelta(minutes=i)).isoformat()
+        return {"id": i, "event_type": event_type, "severity": "MEDIUM", "ip_address": "9.9.9.9", "path": path, "count": 1,
+                "action": "ALERTED", "username": None, "detected_at": stamp, "resolved_at": None}
+
+    events = [ev(1, "WEB_SCANNING", "/.env"), ev(2, "WEB_SCANNING", "/.env"), ev(3, "BRUTE_FORCE", None), ev(4, "BRUTE_FORCE", None),
+              ev(5, "BRUTE_FORCE", None), ev(6, "API_MACRO_PATTERN", None), ev(7, "PASSWORD_SPRAYING", None),
+              ev(8, "DISTRIBUTED_BRUTE_FORCE", None), ev(9, "UNAUTHORIZED_ACCESS", None), ev(10, "UNAUTHORIZED_ACCESS", None)]
+    result = build(_raw(events=events))
+    assert result["top_paths"] == [{"name": "/.env", "count": 2}]
+    assert result["pathless_total"] == 8
+    names = [t["name"] for t in result["pathless_types"]]
+    assert names[:2] == ["BRUTE_FORCE", "UNAUTHORIZED_ACCESS"] and names[-1] == "기타"
+    assert len(result["pathless_types"]) == stats.PATHLESS_TYPE_LIMIT + 1
+    assert sum(t["count"] for t in result["pathless_types"]) == 8
+
+
+def test_no_pathless_events_means_no_other_bucket():
+    result = build(_raw())
+    assert result["pathless_types"] == [] and result["pathless_total"] == 0

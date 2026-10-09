@@ -82,9 +82,10 @@ _SEVERITY = {
     "API_MACRO_PATTERN": "MEDIUM",
 }
 _ACTION = {"CRITICAL": "LOCKED", "HIGH": "REJECTED", "MEDIUM": "ALERTED"}
-_PATHS = {"BRUTE_FORCE": "/login", "DISTRIBUTED_BRUTE_FORCE": "/login", "PASSWORD_SPRAYING": "/login", "SIGNUP_RATE_LIMIT": "/signup",
+# 실제 운영 기록처럼 계정·행위 단위 탐지(브루트포스·스프레이·API 매크로)는 경로가 비어 있다. 웹 스캐닝은 긴 경로를 남긴다.
+_PATHS = {"BRUTE_FORCE": None, "DISTRIBUTED_BRUTE_FORCE": None, "PASSWORD_SPRAYING": None, "SIGNUP_RATE_LIMIT": "/signup",
           "HTTP_FLOOD": "/board", "POST_RATE_LIMIT": "/board/new", "COMMENT_RATE_LIMIT": "/board/12/comments",
-          "WEB_SCANNING": "/wp-login.php", "UNAUTHORIZED_ACCESS": "/admin/dashboard", "PAGE_ACCESS": "/board", "API_MACRO_PATTERN": None}
+          "WEB_SCANNING": "/.env/__scan_678ea07229d5453ba9624d2ea8f6c221", "UNAUTHORIZED_ACCESS": "/admin/dashboard", "PAGE_ACCESS": "/board", "API_MACRO_PATTERN": None}
 
 
 def _times(now: datetime):

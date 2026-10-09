@@ -41,6 +41,9 @@ export type Stats = {
   top_sources: { name: string; count: number }[];
   top_types: { name: string; count: number }[];
   top_paths: { name: string; count: number }[];
+  /** 경로가 기록되지 않은 이벤트를 공격 유형별로 센 것(상위 몇 개 + "기타") */
+  pathless_types: { name: string; count: number }[];
+  pathless_total: number;
   country_flow: { links: { source: string; target: string; value: number }[] };
   events: {
     id: number;
