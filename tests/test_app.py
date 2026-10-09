@@ -21,10 +21,10 @@
 # ============================================================================
 
 import config
-import detector
-import soar
-import geoip
 import db
+from security import detector, soar
+from services import email_verification, geoip
+from tests.admin_session import login_admin_session, stub_admin_role  # noqa: E402
 
 
 def get_csrf_token(client, path: str) -> str:
@@ -292,6 +292,7 @@ def test_admin_login_success_still_creates_session_when_not_suspicious(client, m
     monkeypatch.setattr(detector, "is_locked", lambda ip: False)
     monkeypatch.setattr(db, "verify_admin_credentials", lambda username, password: True)
     monkeypatch.setattr(db, "log_admin_attempt", lambda username, success, ip: None)
+    monkeypatch.setattr(db, "get_admin_id_by_username", lambda username: 7)
 
     token = get_csrf_token(client, "/admin/login")
     response = client.post(
@@ -303,6 +304,9 @@ def test_admin_login_success_still_creates_session_when_not_suspicious(client, m
     assert response.headers["Location"] == "/admin/dashboard"
     with client.session_transaction() as sess:
         assert sess["admin_username"] == "test-admin"
+        # 요청마다 DB 계정과 대조할 기본키와 수명 계산용 로그인 시각도 함께 저장된다(guide37)
+        assert sess["admin_id"] == 7
+        assert isinstance(sess["admin_login_at"], int)
 
 
 # ============================================================================
@@ -394,8 +398,10 @@ def test_signup_accepts_valid_input(client, monkeypatch):
     monkeypatch.setattr(
         db,
         "create_user",
-        lambda username, email, password: created_with.append((username, email, password)) or True,
+        lambda username, email, password: created_with.append((username, email, password))
+        or {"id": 1, "username": username, "email": email, "email_status": "UNKNOWN"},
     )
+    monkeypatch.setattr(email_verification, "send_verification", lambda user, ip: email_verification.SENT)
 
     token = get_csrf_token(client, "/signup")
     response = client.post(
@@ -640,7 +646,7 @@ def test_api_access_logs_request_to_api_path(client, monkeypatch):
     # /api/status는 admin.api_status로, 자동 폴링 API라 track_api_access()
     # 관찰 대상에서 제외된다 — 실제로 관찰되는 경로(/api/unlock)로 확인한다.
     # 로그인 없이 부르면 login_required가 먼저 401을 돌려주면서 별도로
-    # unauthorized_attempts도 기록하는데(helpers.py 참고), 이 테스트가 확인하려는
+    # unauthorized_attempts도 기록하는데(helpers/auth.py 참고), 이 테스트가 확인하려는
     # 건 그게 아니므로 조용히 통과하게 막아둔다. CSRF도 통과해야 이 훅까지
     # 도달하므로 /login에서 진짜 토큰을 받아온다.
     monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
@@ -728,11 +734,11 @@ def test_api_access_ignores_nonexistent_api_paths(client, monkeypatch):
 
 def test_api_unlock_requires_ip_in_body(client, monkeypatch):
     monkeypatch.setattr(soar, "try_release_expired_lockouts", lambda: None)
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    stub_admin_role(monkeypatch, "security_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: True)
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "test-admin"
+        login_admin_session(sess, "test-admin")
 
     token = get_csrf_token(client, "/admin/dashboard")
     response = client.post(
@@ -746,11 +752,11 @@ def test_api_unlock_requires_ip_in_body(client, monkeypatch):
 
 def test_api_unlock_releases_ip_when_authenticated(client, monkeypatch):
     monkeypatch.setattr(soar, "manual_release", lambda ip: ip == "1.2.3.4")
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    stub_admin_role(monkeypatch, "security_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: True)
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "test-admin"
+        login_admin_session(sess, "test-admin")
 
     token = get_csrf_token(client, "/admin/dashboard")
     response = client.post(
@@ -766,11 +772,11 @@ def test_api_unlock_releases_ip_when_authenticated(client, monkeypatch):
 def test_api_unlock_returns_403_when_role_lacks_permission(client, monkeypatch):
     # security_viewer는 unlock_ip 권한이 없다(guide26 시드 데이터) — require_permission이
     # login_required와 별개로 이 경우까지 막아주는지 확인한다.
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_viewer")
+    stub_admin_role(monkeypatch, "security_viewer")
     monkeypatch.setattr(db, "has_permission", lambda role, action: False)
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "test-viewer"
+        login_admin_session(sess, "test-viewer")
 
     token = get_csrf_token(client, "/admin/dashboard")
     response = client.post(
@@ -784,7 +790,7 @@ def test_api_unlock_returns_403_when_role_lacks_permission(client, monkeypatch):
 
 def test_api_unlock_without_csrf_header_is_rejected(client, monkeypatch):
     with client.session_transaction() as sess:
-        sess["admin_username"] = "test-admin"
+        login_admin_session(sess, "test-admin")
 
     response = client.post("/api/unlock", json={"ip": "1.2.3.4"})
 
@@ -792,11 +798,11 @@ def test_api_unlock_without_csrf_header_is_rejected(client, monkeypatch):
 
 
 def test_api_unlock_account_requires_username_in_body(client, monkeypatch):
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    stub_admin_role(monkeypatch, "security_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: True)
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "test-admin"
+        login_admin_session(sess, "test-admin")
 
     token = get_csrf_token(client, "/admin/dashboard")
     response = client.post("/api/unlock-account", json={}, headers={"X-CSRFToken": token})
@@ -806,11 +812,11 @@ def test_api_unlock_account_requires_username_in_body(client, monkeypatch):
 
 def test_api_unlock_account_releases_account_when_authenticated(client, monkeypatch):
     monkeypatch.setattr(soar, "manual_release_account", lambda username: username == "alice")
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    stub_admin_role(monkeypatch, "security_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: True)
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "test-admin"
+        login_admin_session(sess, "test-admin")
 
     token = get_csrf_token(client, "/admin/dashboard")
     response = client.post(
@@ -822,11 +828,11 @@ def test_api_unlock_account_releases_account_when_authenticated(client, monkeypa
 
 
 def test_api_unlock_account_returns_403_when_role_lacks_permission(client, monkeypatch):
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_viewer")
+    stub_admin_role(monkeypatch, "security_viewer")
     monkeypatch.setattr(db, "has_permission", lambda role, action: False)
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "test-viewer"
+        login_admin_session(sess, "test-viewer")
 
     token = get_csrf_token(client, "/admin/dashboard")
     response = client.post(
@@ -838,13 +844,13 @@ def test_api_unlock_account_returns_403_when_role_lacks_permission(client, monke
 
 def test_api_status_includes_active_account_lockouts(client, monkeypatch):
     _mock_full_status(monkeypatch)
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    stub_admin_role(monkeypatch, "security_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: False)
     lockouts = [{"username": "alice", "failure_count": 12, "locked_at": "x", "unlock_at": "y"}]
     monkeypatch.setattr(db, "list_active_account_lockouts", lambda: lockouts)
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "test-admin"
+        login_admin_session(sess, "test-admin")
 
     response = client.get("/api/status")
 
@@ -852,11 +858,11 @@ def test_api_status_includes_active_account_lockouts(client, monkeypatch):
 
 
 def test_api_security_events_resolve_requires_event_id_in_body(client, monkeypatch):
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    stub_admin_role(monkeypatch, "security_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: True)
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "test-admin"
+        login_admin_session(sess, "test-admin")
 
     token = get_csrf_token(client, "/admin/dashboard")
     response = client.post(
@@ -870,11 +876,11 @@ def test_api_security_events_resolve_requires_event_id_in_body(client, monkeypat
 
 def test_api_security_events_resolve_marks_event_resolved_when_authenticated(client, monkeypatch):
     monkeypatch.setattr(db, "resolve_security_event", lambda event_id: event_id == 42)
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    stub_admin_role(monkeypatch, "security_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: True)
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "test-admin"
+        login_admin_session(sess, "test-admin")
 
     token = get_csrf_token(client, "/admin/dashboard")
     response = client.post(
@@ -889,7 +895,7 @@ def test_api_security_events_resolve_marks_event_resolved_when_authenticated(cli
 
 def test_api_security_events_resolve_without_csrf_header_is_rejected(client, monkeypatch):
     with client.session_transaction() as sess:
-        sess["admin_username"] = "test-admin"
+        login_admin_session(sess, "test-admin")
 
     response = client.post("/api/security-events/resolve", json={"event_id": 42})
 
@@ -901,10 +907,10 @@ def test_api_security_events_resolve_without_csrf_header_is_rejected(client, mon
 # ============================================================================
 
 def _post_incident_resolve(client, monkeypatch, body, permitted=True, username="test-admin"):
-    monkeypatch.setattr(db, "get_admin_role", lambda u: "security_admin")
+    stub_admin_role(monkeypatch, "security_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: permitted)
     with client.session_transaction() as sess:
-        sess["admin_username"] = username
+        login_admin_session(sess, username)
     token = get_csrf_token(client, "/admin/dashboard")
     return client.post(
         "/api/security-incidents/resolve", json=body, headers={"X-CSRFToken": token}
@@ -1336,7 +1342,7 @@ def test_board_comment_delete_rejected_when_not_owner(client, monkeypatch):
 def test_api_board_comments_latest_requires_login(client):
     # 이 API는 member_login_required로 보호된다 — login_required(관리자용)와
     # 달리 "/api/" 경로 특례가 없어, 미인증 시에도 401 JSON이 아니라 로그인
-    # 화면으로 리다이렉트된다(app.py의 member_login_required 정의 참고).
+    # 화면으로 리다이렉트된다(helpers/auth.py의 member_login_required 정의 참고).
     response = client.get("/api/board/1/comments/latest")
 
     assert response.status_code == 302
@@ -1377,9 +1383,9 @@ def test_api_board_posts_delete_requires_admin(client, monkeypatch):
 
 def test_api_board_posts_delete_succeeds_for_admin(client, monkeypatch):
     with client.session_transaction() as sess:
-        sess["admin_username"] = "test-admin"
+        login_admin_session(sess, "test-admin")
     monkeypatch.setattr(db, "delete_post", lambda post_id: post_id == 1)
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    stub_admin_role(monkeypatch, "super_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: True)
 
     token = get_csrf_token(client, "/admin/dashboard")
@@ -1395,11 +1401,11 @@ def test_api_board_posts_delete_succeeds_for_admin(client, monkeypatch):
 def test_api_board_posts_delete_returns_403_for_security_admin(client, monkeypatch):
     # delete_post는 super_admin 전용 액션이다(guide26 시드 데이터) — security_admin이
     # unlock_ip/resolve_security_event는 할 수 있어도 삭제는 못 해야 한다.
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    stub_admin_role(monkeypatch, "security_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: False)
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "test-admin"
+        login_admin_session(sess, "test-admin")
 
     token = get_csrf_token(client, "/admin/dashboard")
     response = client.post(
@@ -1437,12 +1443,12 @@ def _mock_full_status(monkeypatch):
 
 def test_api_status_includes_admin_users_for_super_admin(client, monkeypatch):
     _mock_full_status(monkeypatch)
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    stub_admin_role(monkeypatch, "super_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: True)
     monkeypatch.setattr(db, "list_admin_users", lambda: [{"id": 1, "username": "sktmaster123", "role": "super_admin", "created_at": "x"}])
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "sktmaster123"
+        login_admin_session(sess, "sktmaster123")
 
     response = client.get("/api/status")
 
@@ -1452,11 +1458,11 @@ def test_api_status_includes_admin_users_for_super_admin(client, monkeypatch):
 
 def test_api_status_omits_admin_users_for_security_admin(client, monkeypatch):
     _mock_full_status(monkeypatch)
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    stub_admin_role(monkeypatch, "security_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: False)
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "test-admin"
+        login_admin_session(sess, "test-admin")
 
     response = client.get("/api/status")
 
@@ -1465,11 +1471,11 @@ def test_api_status_omits_admin_users_for_security_admin(client, monkeypatch):
 
 
 def test_api_admin_users_create_returns_403_when_role_lacks_permission(client, monkeypatch):
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "security_admin")
+    stub_admin_role(monkeypatch, "security_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: False)
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "test-admin"
+        login_admin_session(sess, "test-admin")
 
     token = get_csrf_token(client, "/admin/dashboard")
     response = client.post(
@@ -1484,11 +1490,11 @@ def test_api_admin_users_create_returns_403_when_role_lacks_permission(client, m
 def test_api_admin_users_create_rejects_super_admin_role(client, monkeypatch):
     # 폼(select 옵션)에는 super_admin이 아예 없지만, 요청을 직접 조작해서
     # role=super_admin을 보내는 경우까지 서버가 한 번 더 막아야 한다.
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    stub_admin_role(monkeypatch, "super_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: True)
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "sktmaster123"
+        login_admin_session(sess, "sktmaster123")
 
     token = get_csrf_token(client, "/admin/dashboard")
     response = client.post(
@@ -1501,11 +1507,11 @@ def test_api_admin_users_create_rejects_super_admin_role(client, monkeypatch):
 
 
 def test_api_admin_users_create_rejects_short_password(client, monkeypatch):
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    stub_admin_role(monkeypatch, "super_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: True)
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "sktmaster123"
+        login_admin_session(sess, "sktmaster123")
 
     token = get_csrf_token(client, "/admin/dashboard")
     response = client.post(
@@ -1518,12 +1524,12 @@ def test_api_admin_users_create_rejects_short_password(client, monkeypatch):
 
 
 def test_api_admin_users_create_succeeds_for_super_admin(client, monkeypatch):
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    stub_admin_role(monkeypatch, "super_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: True)
     monkeypatch.setattr(db, "create_admin_user", lambda username, password, role: True)
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "sktmaster123"
+        login_admin_session(sess, "sktmaster123")
 
     token = get_csrf_token(client, "/admin/dashboard")
     response = client.post(
@@ -1537,7 +1543,7 @@ def test_api_admin_users_create_succeeds_for_super_admin(client, monkeypatch):
 
 
 def test_api_admin_users_delete_rejects_super_admin_target(client, monkeypatch):
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    stub_admin_role(monkeypatch, "super_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: True)
     monkeypatch.setattr(db, "get_admin_role_by_id", lambda admin_id: "super_admin")
 
@@ -1547,7 +1553,7 @@ def test_api_admin_users_delete_rejects_super_admin_target(client, monkeypatch):
     monkeypatch.setattr(db, "delete_admin_user", _fail_if_called)
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "sktmaster123"
+        login_admin_session(sess, "sktmaster123")
 
     token = get_csrf_token(client, "/admin/dashboard")
     response = client.post(
@@ -1560,13 +1566,13 @@ def test_api_admin_users_delete_rejects_super_admin_target(client, monkeypatch):
 
 
 def test_api_admin_users_delete_succeeds_for_non_super_admin_target(client, monkeypatch):
-    monkeypatch.setattr(db, "get_admin_role", lambda username: "super_admin")
+    stub_admin_role(monkeypatch, "super_admin")
     monkeypatch.setattr(db, "has_permission", lambda role, action: True)
     monkeypatch.setattr(db, "get_admin_role_by_id", lambda admin_id: "security_viewer")
     monkeypatch.setattr(db, "delete_admin_user", lambda admin_id: admin_id == 2)
 
     with client.session_transaction() as sess:
-        sess["admin_username"] = "sktmaster123"
+        login_admin_session(sess, "sktmaster123")
 
     token = get_csrf_token(client, "/admin/dashboard")
     response = client.post(

@@ -5,7 +5,7 @@
 
 ### 우리가 한 일
 1. Supabase에 `ip_locations`라는 "IP 위치 조회 결과 캐시" 표를 새로 추가
-2. [geoip.py](../../geoip.py)라는 새 파일을 만들어 ip-api.com(무료 IP 위치 조회 서비스)과의 통신을 전담시킴
+2. [geoip.py](../../services/geoip.py)라는 새 파일을 만들어 ip-api.com(무료 IP 위치 조회 서비스)과의 통신을 전담시킴
 3. 회원 본인의 로그인 기록(`/dashboard/history`), 관리자 대시보드의 "최근 로그인 시도" 표 양쪽에 **위치** 칸 추가
 
 ### 왜 했는가 (쉬운 설명)
@@ -64,10 +64,10 @@ def _attach_locations(attempts: list[dict]) -> list[dict]:
 
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [docs/schema.sql](../schema.sql) (`ip_locations` 표 추가, Supabase에 실제 실행됨)
-- [geoip.py](../../geoip.py) (신규 — ip-api.com 연동 전담 파일)
-- [db.py](../../db.py) (`get_cached_ip_locations`, `save_ip_location` 2개 함수 추가)
+- [geoip.py](../../services/geoip.py) (신규 — ip-api.com 연동 전담 파일)
+- [db.py](../../db/) (`get_cached_ip_locations`, `save_ip_location` 2개 함수 추가)
 - [app.py](../../app.py) (`_attach_locations()` 신규, `member_history()`·`api_status()`에 적용)
 - [templates/member_history.html](../../templates/member_history.html), [templates/admin_dashboard.html](../../templates/admin_dashboard.html) (위치 칸 추가)
-- [public/js/dashboard.js](../../public/js/dashboard.js) (`renderAttemptsTable`에 위치 칸 추가)
+- [public/js/dashboard.js](../../public/js/dashboard/) (`renderAttemptsTable`에 위치 칸 추가)
 - [public/css/member.css](../../public/css/member.css) (표가 카드보다 넓어질 경우를 위한 가로 스크롤 처리 추가)
 - [tests/test_geoip.py](../../tests/test_geoip.py) (신규 — 캐시 활용 여부, 문자열 조립 검증), [tests/test_db.py](../../tests/test_db.py) (캐시 조회/저장 함수 테스트 추가)

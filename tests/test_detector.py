@@ -1,16 +1,16 @@
 # ============================================================================
-# test_detector.py — detector.py(판사 역할)가 진짜 Supabase 없이도
+# test_detector.py — security/detector.py(판사 역할)가 진짜 Supabase 없이도
 # 올바르게 판단하는지 확인하는 단위 테스트
 #
 # monkeypatch란? pytest가 기본으로 제공하는 도구로, 테스트가 끝나면 자동으로
 # 원래 상태로 되돌려주는 "임시 부품 교체"다. 여기서는 db.count_recent_failures와
 # db.get_active_lockout을 "내가 정해준 값을 그대로 돌려주는 가짜 함수"로 잠깐
-# 바꿔치기해서, 진짜 데이터베이스에 접속하지 않고도 detector.py의 판정
+# 바꿔치기해서, 진짜 데이터베이스에 접속하지 않고도 security/detector.py의 판정
 # 로직(부등호 비교, None 여부 확인)만 순수하게 확인한다.
 # ============================================================================
 
 import db
-import detector
+from security import detector
 
 
 def test_is_suspicious_false_when_failures_below_threshold(monkeypatch):
@@ -65,7 +65,7 @@ def test_is_admin_suspicious_true_when_failures_exceed_threshold(monkeypatch):
 
 
 def test_count_distinct_usernames_passes_through_db_value(monkeypatch):
-    # count_distinct_usernames는 판정을 하지 않고 db.py가 센 값을 그대로 전달만 한다.
+    # count_distinct_usernames는 판정을 하지 않고 db가 센 값을 그대로 전달만 한다.
     monkeypatch.setattr(db, "count_recent_distinct_usernames", lambda ip: 3)
 
     assert detector.count_distinct_usernames("1.2.3.4") == 3
@@ -274,7 +274,7 @@ def test_is_account_suspicious_true_when_failures_exceed_threshold(monkeypatch):
 
 
 def test_count_distinct_ips_by_username_passes_through_db_value(monkeypatch):
-    # count_distinct_ips_by_username은 판정을 하지 않고 db.py가 센 값을 그대로 전달만 한다.
+    # count_distinct_ips_by_username은 판정을 하지 않고 db가 센 값을 그대로 전달만 한다.
     monkeypatch.setattr(db, "count_recent_distinct_ips_by_username", lambda username: 4)
 
     assert detector.count_distinct_ips_by_username("victim") == 4

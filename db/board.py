@@ -17,7 +17,7 @@ import db
 def create_post(author_username: str, title: str, body: str) -> dict:
     """새 게시글을 만든다. 생성된 행(id 포함)을 그대로 돌려준다.
 
-    상세 화면으로 바로 이동시키려면(app.py의 post_new_submit) 새로 생긴 글의
+    상세 화면으로 바로 이동시키려면(routes/board.py의 board_new_submit) 새로 생긴 글의
     id가 필요하므로, insert 결과를 그대로 반환한다.
     """
     res = (
@@ -85,7 +85,7 @@ def create_comment(post_id: int, author_username: str, body: str) -> None:
 def get_comment(comment_id: int) -> dict | None:
     """댓글 번호(id)로 댓글 한 건을 찾는다. 없으면 None을 돌려준다.
 
-    댓글 삭제 라우트(app.py의 board_comment_delete)가 "이 댓글이 정말 본인
+    댓글 삭제 라우트(routes/board.py의 board_comment_delete)가 "이 댓글이 정말 본인
     것인지" 확인할 때 쓴다 — get_post()와 대칭되는 함수.
     """
     res = db.get_client().table("comments").select("*").eq("id", comment_id).limit(1).execute()
@@ -117,7 +117,8 @@ def delete_comment(comment_id: int) -> bool:
 def get_latest_comment_info(post_id: int) -> dict:
     """이 글에 지금까지 달린 댓글 개수와, 가장 최근 댓글이 달린 시각을 돌려준다.
 
-    board.js의 "새로운 댓글이 추가되었습니다" 배너가 15초마다 이 함수를 통해
+    board.js의 "새로운 댓글이 추가되었습니다" 배너가 정해진 주기(config.BOARD_COMMENT_POLL_MS,
+    기본 5초)마다 이 함수를 통해
     받은 값을 페이지 로드 시점 값과 비교한다 — 값이 달라졌을 때만 배너를
     띄우면 되므로, 댓글 내용 전체가 아니라 이 두 값만 가볍게 돌려준다.
     """

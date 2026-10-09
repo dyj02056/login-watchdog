@@ -1,7 +1,7 @@
 # ============================================================================
 # db/api_access_log.py — api_access_log 표 관련 함수 (Track C guide29, 매크로/봇 탐지)
 #
-# not_found_attempts/unauthorized_attempts/page_access_attempts(db/security_events.py)와
+# not_found_attempts/unauthorized_attempts/page_access_attempts(db/access_logs.py)와
 # 같은 목적의 요청 로그다. 다만 이 표는 "/api/*" 요청 전체(POST 포함)를 메서드와
 # 함께 기록해서, 같은 IP가 짧은 시간에 서로 다른 API 여러 개를 옮겨 다니는
 # 패턴(매크로/봇 의심)을 잡는다.

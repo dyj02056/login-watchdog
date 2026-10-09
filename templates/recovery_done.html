@@ -1,0 +1,40 @@
+<!--
+  recovery_done.html — 복구 완료/실패 화면 (guide34-a)
+  success가 True면 kind(account/ip)에 맞는 완료 안내를, False면 message를 보여준다.
+-->
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <title>로그인 워치독 — 복구 결과</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+    <script src="{{ url_for('static', filename='js/theme.js') }}"></script>
+</head>
+<body>
+    <button id="theme-toggle" type="button" class="theme-toggle theme-toggle--floating">다크 모드</button>
+
+    <div class="auth-card">
+        <h1>{% if success %}복구 완료{% else %}복구할 수 없습니다{% endif %}</h1>
+
+        {% if success %}
+            <ul class="flash-list">
+                {% if kind == "account" %}
+                    <li>계정의 영구 잠금이 해제되었습니다. 이제 로그인할 수 있습니다.</li>
+                {% else %}
+                    <li>이 기기에서의 접속이 허용되었습니다. 이 IP의 다른 기기는 계속 차단됩니다.</li>
+                {% endif %}
+            </ul>
+            <p class="recovery-note">본인이 한 일이 아니라면 즉시 비밀번호를 변경하고 관리자에게 알려주세요.</p>
+        {% else %}
+            <ul class="flash-list">
+                <li>{{ message }}</li>
+            </ul>
+        {% endif %}
+
+        <div class="auth-links">
+            <a href="{{ url_for('auth.login') }}">로그인으로 이동</a>
+        </div>
+    </div>
+</body>
+</html>

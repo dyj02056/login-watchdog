@@ -4,9 +4,9 @@
 
 
 ### 우리가 한 일
-1. [detector.py](../../detector.py) — "지금 이 IP가 수상한가? 지금 잠겨있는가?"만 **판단**하는 파일
-2. [soar.py](../../soar.py) — 판단 결과를 받아서 실제로 **잠그고, 알림을 보내고, 풀어주는 실행** 파일
-3. [alert.py](../../alert.py) — Slack으로 **메시지를 실제로 전송**하는 파일
+1. [detector.py](../../security/detector.py) — "지금 이 IP가 수상한가? 지금 잠겨있는가?"만 **판단**하는 파일
+2. [soar.py](../../security/soar/) — 판단 결과를 받아서 실제로 **잠그고, 알림을 보내고, 풀어주는 실행** 파일
+3. [alert.py](../../notify/alert.py) — Slack으로 **메시지를 실제로 전송**하는 파일
 4. 세 파일을 실제 데이터로 이어붙여서(수상 판정 → 잠금 → 알림 → 수동 해제) 전체 흐름이 맞물려 돌아가는지 확인
 
 ### 왜 했는가 (쉬운 설명)
@@ -41,7 +41,7 @@
 
 ### 실제 코드 함께 보기
 
-**[detector.py](../../detector.py) 전체 — "판사"는 코드도 짧습니다 (딱 2개 함수, 아무것도 저장하지 않음)**
+**[detector.py](../../security/detector.py) 전체 — "판사"는 코드도 짧습니다 (딱 2개 함수, 아무것도 저장하지 않음)**
 ```python
 import db
 from config import FAILURE_THRESHOLD
@@ -67,7 +67,7 @@ def is_locked(ip: str) -> bool:
 ```
 `failure_count > FAILURE_THRESHOLD`는 "실패 횟수가 기준치보다 크다"는 부등호 비교를 그대로 코드로 옮긴 것입니다. 이 한 줄이 "5번까지는 봐주고, 6번째부터 수상하다고 판단한다"는 규칙 전체를 담당합니다 — `config.py`에서 `FAILURE_THRESHOLD` 값만 바꾸면 이 규칙도 자동으로 같이 바뀝니다(1단계에서 설명한 "숫자를 한 곳에 모아두는" 설계가 여기서 실제로 힘을 발휘하는 지점입니다).
 
-**[soar.py](../../soar.py) 전체 — 판정 결과를 실제 조치로 옮기는 3개 함수**
+**[soar.py](../../security/soar/) 전체 — 판정 결과를 실제 조치로 옮기는 3개 함수**
 ```python
 from datetime import datetime, timezone
 
@@ -110,7 +110,7 @@ def manual_release(ip: str) -> bool:
 ```
 `for lockout in db.list_expired_active_lockouts():` 부분은 "만료된 잠금 목록을 하나씩 꺼내면서, 그때마다 아래 줄(`db.release_lockout(...)`)을 반복 실행해라"는 뜻의 "반복문"입니다. 목록에 3개가 들어있으면 3번, 0개면 0번(즉 아무 일도 안 함) 실행됩니다.
 
-**[alert.py](../../alert.py) 전체 — Slack에 실제로 메시지를 보내는 함수 1개**
+**[alert.py](../../notify/alert.py) 전체 — Slack에 실제로 메시지를 보내는 함수 1개**
 ```python
 def send_lockout_alert(ip: str, failure_count: int, locked_at: datetime) -> None:
     minutes = config.LOCKOUT_DURATION_SECONDS // 60
@@ -142,7 +142,7 @@ def send_lockout_alert(ip: str, failure_count: int, locked_at: datetime) -> None
 `try:` ~ `except requests.RequestException as e:` 부분이 "일단 시도해보고(try), 만약 도중에 문제(네트워크 오류 등)가 생기면(except) 프로그램이 멈추지 않고 이 블록 안의 코드로 넘어가라"는 안전장치입니다. 한국어로 풀면 "Slack에 메시지 보내기를 시도하되, 혹시 실패하면 에러로 프로그램을 죽이지 말고 그냥 콘솔에 '실패했다'고만 적고 넘어가라"는 뜻입니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [detector.py](../../detector.py) (신규 작성 — 판정 함수 2개)
-- [soar.py](../../soar.py) (신규 작성 — 조치 함수 3개)
-- [alert.py](../../alert.py) (신규 작성 — Slack 알림 함수 1개)
+- [detector.py](../../security/detector.py) (신규 작성 — 판정 함수 2개)
+- [soar.py](../../security/soar/) (신규 작성 — 조치 함수 3개)
+- [alert.py](../../notify/alert.py) (신규 작성 — Slack 알림 함수 1개)
 - Supabase 표 데이터는 테스트 후 전부 원상 복구(0건)

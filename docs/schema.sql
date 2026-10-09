@@ -464,3 +464,812 @@ insert into permissions (role, action) values
   ('security_admin', 'resolve_incident'),
   ('super_admin', 'resolve_incident')
 on conflict do nothing;
+
+
+-- ============================================================================
+-- 영구 잠금 + 이메일 인증 기반 해제 (guide33 / guide34-a)
+--
+-- Supabase SQL Editor에서 이 파일 전체를 "한 번에" 실행하세요. 여러 번 실행해도 안전하도록
+-- (if not exists / drop ... if exists) 작성되어 있습니다. 이미 만들어 둔 데이터는 바뀌지 않습니다:
+--   - 기존 lockouts / account_lockouts 행은 전부 lock_type='TEMPORARY'로 유지됩니다.
+--   - 기존 users 행은 email_status='UNKNOWN'으로 시작합니다.
+-- ============================================================================
+
+-- ---------------------------------------------------------------------------
+-- 1) lockouts: 임시/영구 구분 + 복구 정책
+--    영구 잠금은 자동 만료가 없으므로 unlock_at이 NULL이어야 한다.
+--    ('infinity' 시각을 쓰면 파이썬/JS가 해석하지 못해 대시보드가 깨진다 → NULL + lock_type 방식)
+-- ---------------------------------------------------------------------------
+alter table lockouts add column if not exists lock_type text not null default 'TEMPORARY'
+  check (lock_type in ('TEMPORARY', 'PERMANENT'));
+alter table lockouts alter column unlock_at drop not null;
+alter table lockouts add column if not exists recoverable text not null default 'EXEMPTION'
+  check (recoverable in ('SELF', 'EXEMPTION', 'ADMIN_ONLY'));
+alter table lockouts add column if not exists permanent_reason text;
+alter table lockouts add column if not exists promoted_at timestamptz;
+alter table lockouts drop constraint if exists lockouts_permanent_unlock_chk;
+alter table lockouts add constraint lockouts_permanent_unlock_chk
+  check ((lock_type = 'PERMANENT' and unlock_at is null) or (lock_type = 'TEMPORARY' and unlock_at is not null));
+
+-- ---------------------------------------------------------------------------
+-- 2) account_lockouts: 같은 변경 + 이메일 복구 후 보호관찰 종료 시각
+--    계정 잠금의 복구 방식에는 EXEMPTION(IP 전용 개념)이 없다.
+-- ---------------------------------------------------------------------------
+alter table account_lockouts add column if not exists lock_type text not null default 'TEMPORARY'
+  check (lock_type in ('TEMPORARY', 'PERMANENT'));
+alter table account_lockouts alter column unlock_at drop not null;
+alter table account_lockouts add column if not exists recoverable text not null default 'SELF'
+  check (recoverable in ('SELF', 'ADMIN_ONLY'));
+alter table account_lockouts add column if not exists permanent_reason text;
+alter table account_lockouts add column if not exists promoted_at timestamptz;
+alter table account_lockouts add column if not exists probation_until timestamptz;
+alter table account_lockouts drop constraint if exists account_lockouts_permanent_unlock_chk;
+alter table account_lockouts add constraint account_lockouts_permanent_unlock_chk
+  check ((lock_type = 'PERMANENT' and unlock_at is null) or (lock_type = 'TEMPORARY' and unlock_at is not null));
+
+-- ---------------------------------------------------------------------------
+-- 3) lock_history: 잠금 이력 (append-only)
+--    lockouts는 같은 IP/계정이 다시 잠기면 같은 행에 덮어쓰므로(upsert) "최근 30일 안에
+--    몇 번 잠겼는가"를 셀 수 없다. 이 표는 잠금이 걸릴 때마다 한 줄씩 추가만 한다.
+-- ---------------------------------------------------------------------------
+create table if not exists lock_history (
+  id bigint generated always as identity primary key,
+  target_kind text not null check (target_kind in ('ip', 'account')),
+  target_value text not null,
+  lock_type text not null check (lock_type in ('TEMPORARY', 'PERMANENT')),
+  trigger_reason text not null check (trigger_reason in
+    ('THRESHOLD', 'REPEAT_OFFENDER', 'SIEM_CRITICAL', 'SIEM_HIGH', 'NETWORK_IDS', 'ADMIN_MANUAL')),
+  source_event_type text,                                   -- BRUTE_FORCE / ADMIN_BRUTE_FORCE 등
+  incident_id bigint references security_incidents(id) on delete set null,
+  trigger_note text,                                        -- 관리자 수동 승격 사유 등
+  locked_at timestamptz not null default now(),
+  released_at timestamptz,
+  released_by text,                                         -- 'AUTO_EXPIRE' / 'EMAIL_RECOVERY' / 'admin:<아이디>' / 'script:<이름>'
+  release_note text
+);
+create index if not exists idx_lock_history_target on lock_history (target_kind, target_value, locked_at desc);
+
+-- ---------------------------------------------------------------------------
+-- 4) users: 메일 서버가 수신자를 거부(존재하지 않는 이메일)했는지
+--    가입 때 이메일 소유 확인은 하지 않는다. 복구 메일 발송이 5xx로 영구 거부되면
+--    UNDELIVERABLE로 표시하고, 그 계정의 영구 잠금은 이메일로 풀 수 없게(ADMIN_ONLY) 올린다.
+-- ---------------------------------------------------------------------------
+alter table users add column if not exists email_status text not null default 'UNKNOWN'
+  check (email_status in ('UNKNOWN', 'UNDELIVERABLE'));
+alter table users add column if not exists email_status_checked_at timestamptz;
+
+-- ---------------------------------------------------------------------------
+-- 5) recovery_requests: 이메일로 보낸 1회용 복구 링크/코드
+--    토큰과 6자리 코드는 원문이 아니라 SHA-256 해시만 저장한다.
+-- ---------------------------------------------------------------------------
+create table if not exists recovery_requests (
+  id bigint generated always as identity primary key,
+  user_id bigint not null references users(id) on delete cascade,
+  target_kind text not null check (target_kind in ('ip', 'account')),
+  target_value text not null,
+  token_hash text not null unique,
+  code_hash text not null,
+  device_hash text,                                         -- 요청한 기기(lw_dev 쿠키)의 해시
+  requested_ip text not null,
+  status text not null default 'PENDING'
+    check (status in ('PENDING', 'VERIFIED', 'EXPIRED', 'REVOKED')),
+  code_attempts int not null default 0,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  verified_at timestamptz
+);
+create index if not exists idx_recovery_requests_user_created on recovery_requests (user_id, created_at desc);
+create index if not exists idx_recovery_requests_ip_created on recovery_requests (requested_ip, created_at desc);
+-- 같은 (사용자, 대상)에 진행 중(PENDING)인 요청은 1건만 — 새 요청이 오면 기존 PENDING을
+-- REVOKED로 바꾼 뒤 삽입한다(동시 요청이 겹쳐도 DB가 두 번째를 막는다).
+create unique index if not exists idx_recovery_requests_one_pending
+  on recovery_requests (user_id, target_kind, target_value) where status = 'PENDING';
+
+-- ---------------------------------------------------------------------------
+-- 6) ip_lock_exemptions: IP 영구 잠금 예외 (본인 + 본인 기기만 통과)
+-- ---------------------------------------------------------------------------
+create table if not exists ip_lock_exemptions (
+  id bigint generated always as identity primary key,
+  ip_address text not null,
+  user_id bigint not null references users(id) on delete cascade,
+  device_hash text not null,
+  granted_via text not null check (granted_via in ('EMAIL_RECOVERY', 'ADMIN')),
+  status text not null default 'ACTIVE' check (status in ('ACTIVE', 'REVOKED', 'EXPIRED')),
+  granted_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  revoked_reason text
+);
+create unique index if not exists idx_ip_lock_exemptions_active
+  on ip_lock_exemptions (ip_address, user_id, device_hash) where status = 'ACTIVE';
+
+-- ---------------------------------------------------------------------------
+-- 7) 권한 4종 — 쓰기 API 하나당 권한 하나(1:1) 관례
+--    release_permanent_lock(영구 잠금 완전 해제)은 super_admin만 가진다.
+-- ---------------------------------------------------------------------------
+alter table permissions drop constraint if exists permissions_action_check;
+alter table permissions add constraint permissions_action_check check (
+  action in (
+    'unlock_ip', 'resolve_security_event', 'toggle_signup',
+    'delete_user', 'delete_post', 'delete_comment', 'manage_admin_users',
+    'approve_pending_action', 'resolve_incident',
+    'promote_permanent_lock', 'release_permanent_lock',
+    'revoke_ip_exemption', 'revoke_recovery_request'
+  )
+);
+insert into permissions (role, action) values
+  ('security_admin', 'promote_permanent_lock'),
+  ('security_admin', 'revoke_ip_exemption'),
+  ('security_admin', 'revoke_recovery_request'),
+  ('super_admin',    'promote_permanent_lock'),
+  ('super_admin',    'release_permanent_lock'),
+  ('super_admin',    'revoke_ip_exemption'),
+  ('super_admin',    'revoke_recovery_request')
+on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
+-- 8) access_requests: SIEM HIGH 사건을 관리자 승인 대기로 올릴 때 쓰는 값
+--    (PERMANENT_LOCK_AUTO_ON_HIGH=false일 때). 기존 값은 그대로 두고 새 값만 추가한다.
+-- ---------------------------------------------------------------------------
+alter table access_requests drop constraint if exists access_requests_event_type_check;
+alter table access_requests add constraint access_requests_event_type_check check (
+  event_type in (
+    'BRUTE_FORCE', 'DISTRIBUTED_BRUTE_FORCE', 'SIGNUP_RATE_LIMIT',
+    'WEB_SCANNING', 'UNAUTHORIZED_ACCESS', 'PAGE_ACCESS', 'API_MACRO_PATTERN',
+    'SIEM_HIGH_INCIDENT'
+  )
+);
+alter table access_requests drop constraint if exists access_requests_pending_action_check;
+alter table access_requests add constraint access_requests_pending_action_check check (
+  pending_action in ('LOCK_IP', 'LOCK_ACCOUNT', 'ALERT_ONLY', 'PERMANENT_LOCK_IP')
+);
+
+
+-- ============================================================================
+-- 비밀번호 변경 + 세션 무효화 (guide35)
+--
+-- users.session_version: 이 계정의 "로그인 세션 세대 번호". 로그인할 때 세션에 함께 저장하고,
+-- 회원 화면에 들어올 때마다 DB 값과 비교한다. 비밀번호를 바꾸면 1 올라가서, 바꾸기 전에
+-- 만들어진 다른 기기의 세션(탈취된 세션 포함)은 자동으로 로그아웃된다.
+-- 기존 회원은 0으로 시작하고, 이미 로그인된 세션도 0으로 취급되어 그대로 유지된다.
+-- 여러 번 실행해도 안전하다.
+-- ============================================================================
+alter table users add column if not exists session_version int not null default 0;
+
+
+-- ============================================================================
+-- 관리자 계정 단위 잠금 (guide38)
+--
+-- /admin/login은 IP 단위 잠금만 있어서, IP를 나눠 쓰는 분산 브루트포스로 관리자 계정을
+-- 공격하면 막히지 않았다. 회원 계정 잠금(account_lockouts)과 같은 방식의 잠금을 관리자용
+-- 표로 따로 둔다 — account_lockouts는 username이 기본키라 같은 이름의 회원과 관리자가 한
+-- 줄을 쓰게 되기 때문이다. 관리자 계정 잠금은 항상 임시(5분) 잠금이라 표 구조가 단순하다.
+--
+-- **새 코드를 배포하기 전에** 실행해야 한다(없으면 /admin/login과 대시보드가 오류).
+-- 여러 번 실행해도 안전하다.
+-- ============================================================================
+
+-- 1) 관리자 계정 잠금 현재 상태
+create table if not exists admin_account_lockouts (
+  username text primary key,
+  locked_at timestamptz not null default now(),
+  unlock_at timestamptz not null,
+  failure_count int not null,
+  active boolean not null default true
+);
+
+-- 2) 관리자 아이디별 실패 횟수를 15분 창으로 세는 조회용 인덱스
+create index if not exists idx_admin_login_log_username_time
+  on admin_login_log (username, attempted_at desc);
+
+-- 3) 잠금 이력에 관리자 계정 대상(admin_account)을 허용
+alter table lock_history drop constraint if exists lock_history_target_kind_check;
+alter table lock_history add constraint lock_history_target_kind_check check (
+  target_kind in ('ip', 'account', 'admin_account')
+);
+
+-- 4) 관리자 계정 잠금 해제 권한 — super_admin만 가진다
+alter table permissions drop constraint if exists permissions_action_check;
+alter table permissions add constraint permissions_action_check check (
+  action in (
+    'unlock_ip', 'resolve_security_event', 'toggle_signup',
+    'delete_user', 'delete_post', 'delete_comment', 'manage_admin_users',
+    'approve_pending_action', 'resolve_incident',
+    'promote_permanent_lock', 'release_permanent_lock',
+    'revoke_ip_exemption', 'revoke_recovery_request',
+    'unlock_admin_account'
+  )
+);
+insert into permissions (role, action) values
+  ('super_admin', 'unlock_admin_account')
+on conflict do nothing;
+
+
+-- ============================================================================
+-- 이메일 인증 + 이메일 변경 보호 (guide40) — 비밀번호 찾기(guide41)의 토대
+--
+-- 1) users.email_status에 'VERIFIED'(메일함 주인임이 확인됨)를 추가한다.
+--    UNKNOWN = 아직 확인 안 됨(기존 회원 전부 포함), UNDELIVERABLE = 메일 서버가 영구 거부.
+-- 2) email_tokens: 이메일 인증 / 이메일 변경 확인 / 비밀번호 재설정(guide41)용 1회용 링크.
+--    영구 잠금 복구(recovery_requests)와 표를 나눈다 — 복구의 하루 한도·대시보드 카드·
+--    기기 쿠키·6자리 코드 흐름과 섞이지 않게 하기 위해서다. 토큰은 SHA-256 해시만 저장한다.
+--
+-- **새 코드를 배포하기 전에** 실행해야 한다(없으면 회원가입·프로필 화면이 오류).
+-- 여러 번 실행해도 안전하다.
+-- ============================================================================
+
+alter table users drop constraint if exists users_email_status_check;
+alter table users add constraint users_email_status_check
+  check (email_status in ('UNKNOWN', 'VERIFIED', 'UNDELIVERABLE'));
+
+create table if not exists email_tokens (
+  id bigint generated always as identity primary key,
+  user_id bigint not null references users(id) on delete cascade,
+  purpose text not null check (purpose in ('EMAIL_VERIFY', 'EMAIL_CHANGE', 'PASSWORD_RESET')),
+  email text not null,                                      -- 이 토큰이 확인하는 주소(변경이면 새 주소)
+  token_hash text not null unique,
+  requested_ip text not null,
+  status text not null default 'PENDING'
+    check (status in ('PENDING', 'USED', 'EXPIRED', 'REVOKED')),
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  used_at timestamptz
+);
+-- 같은 (회원, 용도)에 진행 중(PENDING)인 토큰은 1개만 — 새 요청이 오면 기존 것을 REVOKED로
+-- 바꾼 뒤 넣는다(동시 요청이 겹쳐도 DB가 두 번째를 막는다).
+create unique index if not exists idx_email_tokens_one_pending
+  on email_tokens (user_id, purpose) where status = 'PENDING';
+create index if not exists idx_email_tokens_user_created
+  on email_tokens (user_id, purpose, created_at desc);
+
+-- ============================================================================
+-- 로그 테이블 자동 정리 + 일별 요약 보관 (guide44)
+--
+-- 접속·시도 기록은 요청마다 한 줄씩 쌓이는데 지울 방법이 없었다. 지금은 양이 작지만
+-- (2026-10 기준 전체 약 2,500건), 여러 IP에서 몰려오는 공격을 받으면 하루에 수십만 줄이
+-- 쌓일 수 있다. 그래서 보관 기간이 지난 기록을 매일 지운다.
+--
+-- 지우기 전에 "날짜(한국 시간)·표·종류별 건수"를 log_daily_summary에 더해 둔다 — 개별
+-- 기록은 사라져도 "9월 10일 404 접근 120건" 같은 통계는 영구히 남는다.
+--
+--   보관 기간(아래 cleanup_old_logs 맨 위에서 바꿀 수 있다)
+--   - 30일: 페이지 접속·404·권한 없는 접근·가입/글/댓글 시도·API 기록, 끝난 메일 링크
+--           (탐지는 길어야 최근 1시간~하루를 본다)
+--   - 90일: 로그인 기록(회원·관리자), 처리 완료된 보안 이벤트·사건·승인 요청
+--   - 30일: 위치 조회 캐시(ip_locations) — 요약 없이 지운다(다음에 새로 조회)
+--   - 지우지 않음: 처리 전인 이벤트·사건·승인 요청, 대기 중인 메일 링크, 회원·관리자,
+--     잠금·잠금 이력(lock_history)·IP 예외, 게시글·댓글, 설정·권한
+--
+-- 실행 방법
+--   select * from cleanup_old_logs(true);    -- 미리보기: 지울 건수만 보여주고 지우지 않는다
+--   select * from cleanup_old_logs();        -- 실제로 요약을 남기고 지운다
+--
+-- 이 파일은 여러 번 실행해도 안전하다(예약 작업도 같은 이름으로 덮어쓴다).
+-- ============================================================================
+
+-- 1) 일별 요약 -----------------------------------------------------------------
+--    source  = 원래 표 이름, category = 종류(로그인 성공/실패, 이벤트 유형 등, 구분 없으면 'all')
+--    count   = 그날 그 종류의 행 수. 하루가 두 번에 나뉘어 지워져도(보관 기간 경계) 더해진다.
+create table if not exists log_daily_summary (
+  day date not null,
+  source text not null,
+  category text not null,
+  count bigint not null default 0,
+  primary key (day, source, category)
+);
+
+-- 2) 표 하나를 정리한다 ------------------------------------------------------------
+--    p_condition: 지울 행 조건(보관 기준 시각은 $1). p_time_col: 요약의 날짜로 쓸 칸.
+--    p_category: 요약의 종류를 만드는 식. null이면 요약 없이 지운다(캐시용).
+--    삭제와 요약 추가가 한 문장(같은 트랜잭션)이라, 요약만 되고 안 지워지거나 그 반대가 없다.
+create or replace function _cleanup_log_table(
+  p_table text,
+  p_time_col text,
+  p_condition text,
+  p_category text,
+  p_cutoff timestamptz,
+  p_dry_run boolean
+) returns bigint
+language plpgsql
+set search_path = public
+as $$
+declare
+  n bigint;
+begin
+  if p_dry_run then
+    execute format('select count(*) from %I where %s', p_table, p_condition)
+      into n using p_cutoff;
+  elsif p_category is null then
+    execute format(
+      'with gone as (delete from %I where %s returning 1) select count(*) from gone',
+      p_table, p_condition
+    ) into n using p_cutoff;
+  else
+    execute format($f$
+      with gone as (
+        delete from %I where %s
+        returning %I as happened_at, (%s)::text as category
+      ),
+      summary as (
+        insert into log_daily_summary as s (day, source, category, count)
+        select (happened_at at time zone 'Asia/Seoul')::date, %L, coalesce(category, 'unknown'), count(*)
+        from gone
+        group by 1, 3
+        on conflict (day, source, category) do update set count = s.count + excluded.count
+      )
+      select count(*) from gone
+    $f$, p_table, p_condition, p_time_col, p_category, p_table)
+    into n using p_cutoff;
+  end if;
+  return n;
+end;
+$$;
+
+-- 3) 전체 정리 -------------------------------------------------------------------
+create or replace function cleanup_old_logs(dry_run boolean default false)
+returns table (log_table text, deleted_rows bigint)
+language plpgsql
+set search_path = public
+as $$
+declare
+  raw_cutoff   timestamptz := now() - interval '30 days';  -- 단순 접속·시도 기록
+  login_cutoff timestamptz := now() - interval '90 days';  -- 로그인 기록
+  done_cutoff  timestamptz := now() - interval '90 days';  -- 처리 완료된 보안 기록
+  token_cutoff timestamptz := now() - interval '30 days';  -- 끝난 메일 링크
+  cache_cutoff timestamptz := now() - interval '30 days';  -- 위치 조회 캐시
+  t text;
+begin
+  -- 단순 접속·시도 기록: 종류 구분 없이 날짜별 건수
+  foreach t in array array[
+    'page_access_attempts', 'not_found_attempts', 'unauthorized_attempts',
+    'signup_attempts', 'post_attempts', 'comment_attempts'
+  ] loop
+    log_table := t;
+    deleted_rows := _cleanup_log_table(t, 'attempted_at', 'attempted_at < $1', '''all''', raw_cutoff, dry_run);
+    return next;
+  end loop;
+
+  log_table := 'api_access_log';
+  deleted_rows := _cleanup_log_table('api_access_log', 'requested_at',
+    'requested_at < $1', 'method', raw_cutoff, dry_run);
+  return next;
+
+  -- 로그인 기록: 성공/실패별
+  foreach t in array array['login_attempts', 'admin_login_log'] loop
+    log_table := t;
+    deleted_rows := _cleanup_log_table(t, 'attempted_at', 'attempted_at < $1',
+      'case when success then ''success'' else ''failure'' end', login_cutoff, dry_run);
+    return next;
+  end loop;
+
+  -- 처리 완료된 보안 기록만(처리 전인 것은 기간과 무관하게 남긴다)
+  log_table := 'security_events';
+  deleted_rows := _cleanup_log_table('security_events', 'detected_at',
+    'resolved_at is not null and resolved_at < $1', 'event_type', done_cutoff, dry_run);
+  return next;
+
+  -- lock_history.incident_id는 on delete set null이라 잠금 이력은 남는다.
+  log_table := 'security_incidents';
+  deleted_rows := _cleanup_log_table('security_incidents', 'first_event_at',
+    'status = ''CLOSED'' and coalesce(resolved_at, last_event_at) < $1', 'severity_max', done_cutoff, dry_run);
+  return next;
+
+  log_table := 'access_requests';
+  deleted_rows := _cleanup_log_table('access_requests', 'requested_at',
+    'status <> ''PENDING'' and coalesce(decided_at, requested_at) < $1',
+    'event_type || '':'' || status', done_cutoff, dry_run);
+  return next;
+
+  -- 끝난 메일 링크(사용·만료·취소). 대기 중이어도 유효 시간이 지난 것은 끝난 것으로 본다.
+  log_table := 'email_tokens';
+  deleted_rows := _cleanup_log_table('email_tokens', 'created_at',
+    'created_at < $1 and (status <> ''PENDING'' or expires_at < now())',
+    'purpose || '':'' || status', token_cutoff, dry_run);
+  return next;
+
+  log_table := 'recovery_requests';
+  deleted_rows := _cleanup_log_table('recovery_requests', 'created_at',
+    'created_at < $1 and (status <> ''PENDING'' or expires_at < now())',
+    'target_kind || '':'' || status', token_cutoff, dry_run);
+  return next;
+
+  -- 위치 조회 캐시: 요약 없이 지운다
+  log_table := 'ip_locations';
+  deleted_rows := _cleanup_log_table('ip_locations', 'looked_up_at',
+    'looked_up_at < $1', null, cache_cutoff, dry_run);
+  return next;
+end;
+$$;
+
+-- 4) 사이트·API 키로는 호출할 수 없게 막는다 ----------------------------------------
+--    Supabase는 새 함수에 anon/authenticated 실행 권한을 기본으로 주므로 명시적으로 회수한다.
+--    예약 작업(postgres)과 SQL Editor에서만 실행된다.
+revoke all on function _cleanup_log_table(text, text, text, text, timestamptz, boolean)
+  from public, anon, authenticated;
+revoke all on function cleanup_old_logs(boolean) from public, anon, authenticated;
+
+-- 5) 매일 새벽 3시(한국 시간 = UTC 18시)에 실행 ---------------------------------------
+--    같은 이름으로 다시 등록하면 기존 예약을 덮어쓴다.
+create extension if not exists pg_cron with schema pg_catalog;
+select cron.schedule(
+  'cleanup-old-logs',
+  '0 18 * * *',
+  $$select * from public.cleanup_old_logs()$$
+);
+
+-- ============================================================================
+-- 매일 어제 하루치를 요약하고, 삭제는 따로 (guide47) — 44단계(guide44)의 요약 방식을 바꾼다
+--
+-- 44단계는 기록을 "지울 때" 요약했다. 그래서 요약표에는 보관 기간(30·90일)이 지난 오래된 날짜만
+-- 있었고, 그래프를 그리려면 요약표와 원본 기록을 섞어 읽어야 했다. 이제는
+--   ① 매일 새벽 3시(한국 시간)에 아직 요약하지 않은 날 ~ 어제까지 하루씩 요약하고
+--   ② 그다음 보관 기간이 지난 원본 기록을 지운다(기준은 44단계와 같다).
+-- 요약표에는 처음 기록된 날부터 어제까지 모든 날짜가 들어 있게 된다.
+--
+-- 요약표 두 개 (IP·아이디·이메일·정확한 시각은 어디에도 남지 않는다)
+--   log_daily_summary   (day, hour, source, category, count) — 시간대(0~23시, 한국 시간)별 건수
+--   log_daily_breakdown (day, source, dimension, value, count) — 하루 단위 상세
+--       distinct_ips      그날 서로 다른 IP 수
+--       failed_usernames  그날 로그인 실패에서 노린 서로 다른 아이디 수(로그인 기록만, 숫자만)
+--       top_path          많이 노린 주소 상위 5개 + 나머지 합계 '(그 외)'
+--       country           나라별 건수(로그인 기록만 — 위치는 로그인 기록의 IP만 조회해 두기 때문)
+--
+-- 같은 날을 다시 요약해도 안전하다 — 그날 값을 새로 계산해 덮어쓴다(더하지 않는다).
+-- 요약하지 않은 날의 원본 기록은 지우지 않는다(cleanup_old_logs가 마지막 요약일까지만 지운다).
+-- 이 파일을 실행하면 남아 있는 원본 기록(가장 오래된 날 ~ 어제)을 바로 요약한다.
+-- 여러 번 실행해도 안전하다.
+-- ============================================================================
+
+-- 1) 요약표 ---------------------------------------------------------------------
+create table if not exists log_daily_summary (
+  day date not null,
+  source text not null,
+  category text not null,
+  count bigint not null default 0,
+  primary key (day, source, category)
+);
+-- 시간대 칸. 44단계 방식으로 이미 요약된 줄이 있다면 시간을 알 수 없으므로 -1(미상)로 남긴다.
+alter table log_daily_summary add column if not exists hour smallint not null default -1;
+alter table log_daily_summary drop constraint if exists log_daily_summary_hour_check;
+alter table log_daily_summary add constraint log_daily_summary_hour_check check (hour between -1 and 23);
+alter table log_daily_summary drop constraint if exists log_daily_summary_pkey;
+alter table log_daily_summary add constraint log_daily_summary_pkey primary key (day, hour, source, category);
+
+create table if not exists log_daily_breakdown (
+  day date not null,
+  source text not null,
+  dimension text not null
+    check (dimension in ('distinct_ips', 'failed_usernames', 'top_path', 'country')),
+  value text not null default '',
+  count bigint not null,
+  primary key (day, source, dimension, value)
+);
+
+-- 어디까지 요약했는지(한 줄짜리 표). 밀린 날을 채우고, 요약 전 원본을 지우지 않는 데 쓴다.
+create table if not exists log_summary_state (
+  id int primary key default 1 check (id = 1),
+  last_summarized_day date
+);
+insert into log_summary_state (id, last_summarized_day) values (1, null) on conflict (id) do nothing;
+
+-- 2) 표 하나의 하루치를 요약한다 ----------------------------------------------------
+--    p_category: 종류를 만드는 식. p_ip_col / p_path_col: 없으면 null.
+--    p_login: 로그인 기록이면 true — 실패한 아이디 수와 나라별 건수를 더 남긴다.
+create or replace function _summarize_log_source(
+  p_day date,
+  p_table text,
+  p_time_col text,
+  p_category text,
+  p_ip_col text,
+  p_path_col text,
+  p_login boolean
+) returns bigint
+language plpgsql
+set search_path = public
+as $$
+declare
+  day_start timestamptz := p_day::timestamp at time zone 'Asia/Seoul';
+  day_end   timestamptz := (p_day + 1)::timestamp at time zone 'Asia/Seoul';
+  window_sql text := format('%I >= $1 and %I < $2', p_time_col, p_time_col);
+  n bigint;
+begin
+  -- 덮어쓰기: 이 날·이 표의 기존 요약을 지우고 새로 계산한다(44단계 방식의 시간 미상(-1) 줄은 둔다).
+  delete from log_daily_summary where day = p_day and source = p_table and hour >= 0;
+  delete from log_daily_breakdown where day = p_day and source = p_table;
+
+  execute format($f$
+    insert into log_daily_summary (day, hour, source, category, count)
+    select $3, extract(hour from %I at time zone 'Asia/Seoul')::smallint, %L, coalesce((%s)::text, 'unknown'), count(*)
+    from %I where %s
+    group by 2, 4
+  $f$, p_time_col, p_table, p_category, p_table, window_sql)
+  using day_start, day_end, p_day;
+  get diagnostics n = row_count;
+
+  if p_ip_col is not null then
+    execute format($f$
+      insert into log_daily_breakdown (day, source, dimension, value, count)
+      select $3, %L, 'distinct_ips', '', count(distinct %I)
+      from %I where %s
+      having count(*) > 0
+    $f$, p_table, p_ip_col, p_table, window_sql)
+    using day_start, day_end, p_day;
+  end if;
+
+  if p_path_col is not null then
+    execute format($f$
+      with counted as (
+        select coalesce(%I, '(없음)') as v, count(*) as n from %I where %s group by 1
+      ),
+      ranked as (
+        select v, n, row_number() over (order by n desc, v) as rk from counted
+      )
+      insert into log_daily_breakdown (day, source, dimension, value, count)
+      select $3, %L, 'top_path', case when rk <= 5 then v else '(그 외)' end, sum(n)
+      from ranked
+      group by 4
+    $f$, p_path_col, p_table, window_sql, p_table)
+    using day_start, day_end, p_day;
+  end if;
+
+  if p_login then
+    execute format($f$
+      insert into log_daily_breakdown (day, source, dimension, value, count)
+      select $3, %L, 'failed_usernames', '', count(distinct username)
+      from %I where %s and not success
+      having count(*) > 0
+    $f$, p_table, p_table, window_sql)
+    using day_start, day_end, p_day;
+
+    execute format($f$
+      insert into log_daily_breakdown (day, source, dimension, value, count)
+      select $3, %L, 'country', coalesce(nullif(l.country, ''), '알 수 없음'), count(*)
+      from %I a left join ip_locations l on l.ip_address = a.ip_address
+      where a.%s
+      group by 4
+    $f$, p_table, p_table, replace(window_sql, ' and ', ' and a.'))
+    using day_start, day_end, p_day;
+  end if;
+
+  return n;
+end;
+$$;
+
+-- 3) 하루치 전체 요약 -------------------------------------------------------------
+create or replace function summarize_log_day(p_day date)
+returns table (log_table text, summary_rows bigint)
+language plpgsql
+set search_path = public
+as $$
+declare
+  t text;
+begin
+  foreach t in array array['login_attempts', 'admin_login_log'] loop
+    log_table := t;
+    summary_rows := _summarize_log_source(p_day, t, 'attempted_at',
+      'case when success then ''success'' else ''failure'' end', 'ip_address', null, true);
+    return next;
+  end loop;
+
+  foreach t in array array['page_access_attempts', 'not_found_attempts', 'unauthorized_attempts'] loop
+    log_table := t;
+    summary_rows := _summarize_log_source(p_day, t, 'attempted_at', '''all''', 'ip_address', 'path', false);
+    return next;
+  end loop;
+
+  foreach t in array array['signup_attempts', 'post_attempts', 'comment_attempts'] loop
+    log_table := t;
+    summary_rows := _summarize_log_source(p_day, t, 'attempted_at', '''all''', 'ip_address', null, false);
+    return next;
+  end loop;
+
+  log_table := 'api_access_log';
+  summary_rows := _summarize_log_source(p_day, 'api_access_log', 'requested_at', 'method', 'ip_address', 'path', false);
+  return next;
+
+  log_table := 'security_events';
+  summary_rows := _summarize_log_source(p_day, 'security_events', 'detected_at', 'event_type', 'ip_address', 'path', false);
+  return next;
+
+  log_table := 'security_incidents';
+  summary_rows := _summarize_log_source(p_day, 'security_incidents', 'first_event_at', 'severity_max', 'ip_address', null, false);
+  return next;
+
+  log_table := 'access_requests';
+  summary_rows := _summarize_log_source(p_day, 'access_requests', 'requested_at', 'event_type', null, null, false);
+  return next;
+
+  log_table := 'email_tokens';
+  summary_rows := _summarize_log_source(p_day, 'email_tokens', 'created_at', 'purpose', null, null, false);
+  return next;
+
+  log_table := 'recovery_requests';
+  summary_rows := _summarize_log_source(p_day, 'recovery_requests', 'created_at', 'target_kind', null, null, false);
+  return next;
+end;
+$$;
+
+-- 4) 아직 요약하지 않은 날 ~ 어제를 요약한다 ----------------------------------------
+--    처음이면 원본 기록이 남아 있는 가장 오래된 날부터 시작한다. 요약한 날 수를 돌려준다.
+create or replace function summarize_pending_log_days()
+returns integer
+language plpgsql
+set search_path = public
+as $$
+declare
+  yesterday date := (now() at time zone 'Asia/Seoul')::date - 1;
+  last_day date;
+  first_at timestamptz;
+  d date;
+  days integer := 0;
+begin
+  select last_summarized_day into last_day from log_summary_state where id = 1 for update;
+
+  if last_day is null then
+    select min(x) into first_at from (
+      select min(attempted_at) as x from login_attempts
+      union all select min(attempted_at) from admin_login_log
+      union all select min(attempted_at) from page_access_attempts
+      union all select min(attempted_at) from not_found_attempts
+      union all select min(attempted_at) from unauthorized_attempts
+      union all select min(attempted_at) from signup_attempts
+      union all select min(attempted_at) from post_attempts
+      union all select min(attempted_at) from comment_attempts
+      union all select min(requested_at) from api_access_log
+      union all select min(detected_at) from security_events
+      union all select min(first_event_at) from security_incidents
+      union all select min(requested_at) from access_requests
+      union all select min(created_at) from email_tokens
+      union all select min(created_at) from recovery_requests
+    ) firsts;
+    if first_at is null then
+      return 0;  -- 기록이 하나도 없다
+    end if;
+    last_day := (first_at at time zone 'Asia/Seoul')::date - 1;
+  end if;
+
+  d := last_day + 1;
+  while d <= yesterday loop
+    perform summarize_log_day(d);
+    days := days + 1;
+    d := d + 1;
+  end loop;
+
+  if days > 0 then
+    update log_summary_state set last_summarized_day = yesterday where id = 1;
+  end if;
+  return days;
+end;
+$$;
+
+-- 5) 삭제만 하는 정리 (44단계 함수를 바꾼다) ------------------------------------------
+--    요약은 더 이상 여기서 하지 않는다. 마지막으로 요약한 날 다음 날 0시(한국 시간) 이후의 원본은
+--    보관 기간이 지났더라도 지우지 않는다 — 요약 전에 지워지는 일이 없게.
+create or replace function _delete_old_log_rows(p_table text, p_condition text, p_cutoff timestamptz, p_dry_run boolean)
+returns bigint
+language plpgsql
+set search_path = public
+as $$
+declare
+  n bigint;
+begin
+  if p_dry_run then
+    execute format('select count(*) from %I where %s', p_table, p_condition) into n using p_cutoff;
+  else
+    execute format('with gone as (delete from %I where %s returning 1) select count(*) from gone', p_table, p_condition)
+      into n using p_cutoff;
+  end if;
+  return n;
+end;
+$$;
+
+create or replace function cleanup_old_logs(dry_run boolean default false)
+returns table (log_table text, deleted_rows bigint)
+language plpgsql
+set search_path = public
+as $$
+declare
+  last_day date;
+  safe_until timestamptz;
+  raw_cutoff   timestamptz;
+  login_cutoff timestamptz;
+  done_cutoff  timestamptz;
+  token_cutoff timestamptz;
+  cache_cutoff timestamptz := now() - interval '30 days';  -- 위치 캐시는 요약하지 않으므로 그대로
+  t text;
+begin
+  select last_summarized_day into last_day from log_summary_state where id = 1;
+  safe_until := case when last_day is null then '-infinity'::timestamptz
+                     else (last_day + 1)::timestamp at time zone 'Asia/Seoul' end;
+  raw_cutoff   := least(now() - interval '30 days', safe_until);  -- 단순 접속·시도 기록
+  login_cutoff := least(now() - interval '90 days', safe_until);  -- 로그인 기록
+  done_cutoff  := least(now() - interval '90 days', safe_until);  -- 처리 완료된 보안 기록
+  token_cutoff := least(now() - interval '30 days', safe_until);  -- 끝난 메일 링크
+
+  foreach t in array array[
+    'page_access_attempts', 'not_found_attempts', 'unauthorized_attempts',
+    'signup_attempts', 'post_attempts', 'comment_attempts'
+  ] loop
+    log_table := t;
+    deleted_rows := _delete_old_log_rows(t, 'attempted_at < $1', raw_cutoff, dry_run);
+    return next;
+  end loop;
+
+  log_table := 'api_access_log';
+  deleted_rows := _delete_old_log_rows('api_access_log', 'requested_at < $1', raw_cutoff, dry_run);
+  return next;
+
+  foreach t in array array['login_attempts', 'admin_login_log'] loop
+    log_table := t;
+    deleted_rows := _delete_old_log_rows(t, 'attempted_at < $1', login_cutoff, dry_run);
+    return next;
+  end loop;
+
+  -- 처리 완료된 것만(처리 전인 것은 기간과 무관하게 남긴다). 처리 시각은 감지 시각 이후라서
+  -- 처리 시각 기준으로 지워도 요약 안 된 날의 기록은 지워지지 않는다.
+  log_table := 'security_events';
+  deleted_rows := _delete_old_log_rows('security_events',
+    'resolved_at is not null and resolved_at < $1', done_cutoff, dry_run);
+  return next;
+
+  -- lock_history.incident_id는 on delete set null이라 잠금 이력은 남는다.
+  log_table := 'security_incidents';
+  deleted_rows := _delete_old_log_rows('security_incidents',
+    'status = ''CLOSED'' and coalesce(resolved_at, last_event_at) < $1', done_cutoff, dry_run);
+  return next;
+
+  log_table := 'access_requests';
+  deleted_rows := _delete_old_log_rows('access_requests',
+    'status <> ''PENDING'' and coalesce(decided_at, requested_at) < $1', done_cutoff, dry_run);
+  return next;
+
+  -- 끝난 메일 링크(사용·만료·취소). 대기 중이어도 유효 시간이 지난 것은 끝난 것으로 본다.
+  log_table := 'email_tokens';
+  deleted_rows := _delete_old_log_rows('email_tokens',
+    'created_at < $1 and (status <> ''PENDING'' or expires_at < now())', token_cutoff, dry_run);
+  return next;
+
+  log_table := 'recovery_requests';
+  deleted_rows := _delete_old_log_rows('recovery_requests',
+    'created_at < $1 and (status <> ''PENDING'' or expires_at < now())', token_cutoff, dry_run);
+  return next;
+
+  log_table := 'ip_locations';
+  deleted_rows := _delete_old_log_rows('ip_locations', 'looked_up_at < $1', cache_cutoff, dry_run);
+  return next;
+end;
+$$;
+
+-- 44단계의 "요약하면서 지우는" 함수는 더 쓰지 않는다.
+drop function if exists _cleanup_log_table(text, text, text, text, timestamptz, boolean);
+
+-- 6) 매일 할 일: 요약 → 삭제 ----------------------------------------------------------
+create or replace function run_daily_log_maintenance()
+returns void
+language plpgsql
+set search_path = public
+as $$
+begin
+  perform summarize_pending_log_days();
+  perform cleanup_old_logs(false);
+end;
+$$;
+
+-- 7) 사이트·API 키로는 호출할 수 없게 막는다 -----------------------------------------
+revoke all on function _summarize_log_source(date, text, text, text, text, text, boolean) from public, anon, authenticated;
+revoke all on function summarize_log_day(date) from public, anon, authenticated;
+revoke all on function summarize_pending_log_days() from public, anon, authenticated;
+revoke all on function _delete_old_log_rows(text, text, timestamptz, boolean) from public, anon, authenticated;
+revoke all on function cleanup_old_logs(boolean) from public, anon, authenticated;
+revoke all on function run_daily_log_maintenance() from public, anon, authenticated;
+
+-- 8) 예약 작업: 44단계의 'cleanup-old-logs'를 지우고 매일 새벽 3시(한국 시간 = UTC 18시)에 등록 ----
+create extension if not exists pg_cron with schema pg_catalog;
+select cron.unschedule(jobid) from cron.job where jobname = 'cleanup-old-logs';
+select cron.schedule(
+  'daily-log-maintenance',
+  '0 18 * * *',
+  $$select public.run_daily_log_maintenance()$$
+);
+
+-- 9) 남아 있는 원본 기록을 지금 바로 요약한다(가장 오래된 날 ~ 어제) ---------------------
+select summarize_pending_log_days() as summarized_days;

@@ -5,7 +5,7 @@
 
 ### 우리가 한 일
 1. Supabase에 `app_settings`라는 표를 하나 새로 추가 (딱 1행만 쓰는 "전역 설정" 표)
-2. [db.py](../../db.py)에 `list_users`, `delete_user`, `get_signup_enabled`, `set_signup_enabled` 4개 함수 추가
+2. [db.py](../../db/)에 `list_users`, `delete_user`, `get_signup_enabled`, `set_signup_enabled` 4개 함수 추가
 3. 대시보드에 "등록된 회원" 목록(삭제 버튼 포함)과 "회원가입 설정"(켜기/끄기 토글) 두 섹션 추가
 4. `/signup` 화면이 회원가입이 꺼져있을 때는 폼 대신 안내 문구만 보여주도록 수정
 5. 새 기능들을 실제로 브라우저와 자동 테스트로 검증하고, 도중에 발견한 실수 하나를 바로 고침
@@ -81,10 +81,10 @@ async function deleteUser(userId, username) {
 
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [docs/schema.sql](../schema.sql) (`app_settings` 표 추가, Supabase에 실제 실행됨)
-- [db.py](../../db.py) (`list_users`, `delete_user`, `get_signup_enabled`, `set_signup_enabled` 4개 함수 추가)
+- [db.py](../../db/) (`list_users`, `delete_user`, `get_signup_enabled`, `set_signup_enabled` 4개 함수 추가)
 - [app.py](../../app.py) (`/signup` GET·POST에 On/Off 검사 추가, `/api/status`에 `users`·`signup_enabled` 포함, `/api/users/delete`·`/api/settings/signup` 라우트 신규 추가)
-- [templates/dashboard.html](../../templates/dashboard.html) ("회원가입 설정", "등록된 회원" 섹션 추가)
+- [templates/dashboard.html](../../templates/admin_dashboard.html) ("회원가입 설정", "등록된 회원" 섹션 추가)
 - [templates/signup.html](../../templates/signup.html) (회원가입 꺼짐 상태일 때의 안내 문구 추가)
-- [public/js/dashboard.js](../../public/js/dashboard.js) (`renderUsersTable`, `renderSignupStatus`, `deleteUser`, `toggleSignup` 추가)
+- [public/js/dashboard.js](../../public/js/dashboard/) (`renderUsersTable`, `renderSignupStatus`, `deleteUser`, `toggleSignup` 추가)
 - [public/css/dashboard.css](../../public/css/dashboard.css), [public/css/auth.css](../../public/css/auth.css) (새 버튼/안내 문구 스타일 추가)
 - [tests/test_db.py](../../tests/test_db.py) (새 함수 4개에 대한 단위 테스트 7개 추가, 총 22개 통과)
