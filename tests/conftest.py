@@ -27,7 +27,7 @@ def flask_app(monkeypatch):
     monkeypatch.setenv("SUPABASE_KEY", "test-supabase-key")
 
     import db
-    import detector
+    from security import detector
     monkeypatch.setattr(db, "ensure_bootstrap_admin", lambda: None)
 
     # track_page_access()(21단계, attack_response_state.md 구현 대상 #4)는 GET으로
@@ -46,12 +46,37 @@ def flask_app(monkeypatch):
     monkeypatch.setattr(db, "log_api_access", lambda ip, path, method: None)
     monkeypatch.setattr(detector, "is_macro_pattern_suspicious", lambda ip: (False, 1, False))
 
+    # 관리자 문지기(guide37)가 요청마다 세션의 admin_id로 계정을 조회한다. 기본값은 "세션의
+    # 아이디 그대로인 security_admin 계정이 있다"로 둔다 — role이 중요한 테스트는
+    # tests/admin_session.py의 stub_admin_role()로, 삭제된 계정을 흉내낼 테스트는
+    # get_admin_by_id를 직접 바꿔치기한다.
+    from tests.admin_session import stub_admin_role
+    stub_admin_role(monkeypatch, "security_admin")
+
+    # 관리자 계정 단위 잠금(guide38)이 /admin/login과 /api/status에 새로 끼워 넣은 조회 —
+    # 기본값은 "잠긴 관리자 계정 없음, 실패 0회"로 둔다. 이 기능을 테스트하는 곳만 다시 바꾼다.
+    monkeypatch.setattr(db, "list_expired_active_admin_account_lockouts", lambda: [])
+    monkeypatch.setattr(db, "list_active_admin_account_lockouts", lambda: [])
+    monkeypatch.setattr(db, "get_active_admin_account_lockout", lambda username: None)
+    monkeypatch.setattr(db, "count_recent_admin_failures_by_username", lambda username: 0)
+
+    # 내 프로필 화면이 "이메일 변경 확인 대기 중"을 보여주려고 조회한다(guide40) — 기본값은 "없음".
+    monkeypatch.setattr(db, "get_pending_email_token_for_user", lambda user_id, purpose: None)
+
+    # /api/status가 "관리자 계정 관리" 목록을 권한 확인과 같은 배치로 미리 조회한다(guide46) —
+    # 권한이 없는 테스트에서도 불리므로 기본값은 "빈 목록". 내용이 중요한 테스트만 다시 바꾼다.
+    monkeypatch.setattr(db, "list_admin_users", lambda: [])
+
     # 이전 테스트가 이미 app을 import해둔 상태일 수 있으므로, sys.modules에서
     # 지워서 위의 monkeypatch가 적용된 새 환경으로 app.py가 다시 실행되게 한다.
     sys.modules.pop("app", None)
     import app as app_module
 
     app_module.app.config.update(TESTING=True)
+    # 만료된 잠금 정리 간격(guide46)은 서버 인스턴스(모듈)에 기억된다 — 테스트마다 "아직 정리한 적
+    # 없음"에서 시작해야 /api/status 첫 호출이 항상 정리를 한다.
+    import routes.admin.status
+    monkeypatch.setitem(routes.admin.status._expiry_release_state, "at", None)
     yield app_module.app
 
     sys.modules.pop("app", None)
@@ -61,3 +86,49 @@ def flask_app(monkeypatch):
 def client(flask_app):
     """flask_app의 테스트 클라이언트. 실제 서버를 띄우지 않고도 라우트에 요청을 보내볼 수 있다."""
     return flask_app.test_client()
+
+
+# ============================================================================
+# 영구 잠금(guide33)이 기존 코드 경로에 새로 끼워 넣은 DB 호출을 막아두는 공용 준비물
+#
+# soar.enforce_lockout() 등이 이제 잠금 이력(lock_history)을 남기고, 로그인/가입/관리자
+# API가 영구 잠금 상태를 한 번 더 확인한다. 영구 잠금과 무관한 기존 테스트가 이 새 호출
+# 때문에 진짜 Supabase로 네트워크 요청을 시도하지 않도록, 기본값(영구 잠금 없음)으로
+# 막아둔다. 영구 잠금/복구 자체를 테스트하는 파일은 모듈 맨 위에
+# `pytestmark = pytest.mark.real_lockdown`을 달아서 이 기본값을 끄고 자기가 필요한 것만
+# monkeypatch한다.
+# ============================================================================
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "real_lockdown: 영구 잠금 기본 stub(autouse)을 끄고 실제 함수를 테스트한다"
+    )
+
+
+@pytest.fixture(autouse=True)
+def _stub_permanent_lock_defaults(request, monkeypatch):
+    if request.node.get_closest_marker("real_lockdown"):
+        return
+
+    import db
+    from security import detector
+    from security import lockdown
+
+    monkeypatch.setattr(db, "insert_lock_history", lambda *a, **k: None)
+    monkeypatch.setattr(db, "count_lock_history", lambda *a, **k: 0)
+    monkeypatch.setattr(db, "get_account_lockout_row", lambda username: None)
+    # is_locked()를 True로 흉내낸 기존 테스트가 "임시 잠금"으로 취급되게 한다.
+    monkeypatch.setattr(detector, "get_ip_lock_state", lambda ip: detector.LOCK_STATE_TEMPORARY)
+    monkeypatch.setattr(detector, "get_account_lock_state", lambda username: detector.LOCK_STATE_TEMPORARY)
+    monkeypatch.setattr(lockdown, "consider_incident_promotion", lambda ip, incident: None)
+    monkeypatch.setattr(lockdown, "close_incident_if_configured", lambda incident: None)
+    monkeypatch.setattr(lockdown, "is_permanent_ip", lambda ip: False)
+    monkeypatch.setattr(lockdown, "is_permanent_account", lambda username: False)
+    # /api/status가 새로 조회하는 영구 잠금·복구 카드용 데이터
+    monkeypatch.setattr(db, "list_recent_recovery_requests", lambda limit=20: [])
+    monkeypatch.setattr(db, "list_active_ip_exemptions", lambda limit=20: [])
+    monkeypatch.setattr(db, "list_role_permissions", lambda role: [])
+    monkeypatch.setattr(db, "get_email_statuses", lambda usernames: {})
+    # 회원 화면 문지기(member_login_required)의 세션 세대 번호 확인(guide35) — 기존 회원 화면
+    # 테스트는 세대 번호를 모르므로 "변경 없음(0)"으로 둔다.
+    monkeypatch.setattr(db, "get_user_session_version", lambda user_id: 0)

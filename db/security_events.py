@@ -1,12 +1,11 @@
 # ============================================================================
-# db/security_events.py — not_found_attempts / unauthorized_attempts /
-# page_access_attempts / security_events 표 관련 함수
+# db/security_events.py — security_events 표 관련 함수
 #
-# 앞의 세 표는 각각 Web Scanning(21단계), Unauthorized Access, 반복 페이지
-# 접근을 탐지하기 위한 요청 로그다(attack_response_state.md 구현 대상 #1/#2/#4).
-# security_events는 그 중 MEDIUM/HIGH/CRITICAL 이상행위를 위험등급과 함께
-# 기록하는 공통 표다(security-risk-response-summary.md 5절 참고). LOW는 여기
-# 저장하지 않고 위 개별 테이블 조회로만 추세를 본다.
+# security_events는 MEDIUM/HIGH/CRITICAL 이상행위를 위험등급과 함께 기록하는
+# 공통 표다(security-risk-response-summary.md 5절 참고). LOW는 여기 저장하지 않고
+# 요청 로그 표(not_found/unauthorized/page_access_attempts — db/access_logs.py)
+# 조회로만 추세를 본다. 그 세 표의 함수는 원래 이 파일에 있었는데 2026-10-09에
+# db/access_logs.py로 나눴다.
 #
 # db.get_client() 호출 이유는 db/attempts.py 상단 설명 참고.
 # ============================================================================
@@ -15,72 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 from postgrest.exceptions import APIError
 
-import config
 import db
-
-
-def log_not_found_attempt(ip: str, path: str) -> None:
-    """404가 발생한 요청 한 건을 not_found_attempts 표에 기록한다."""
-    db.get_client().table("not_found_attempts").insert({"ip_address": ip, "path": path}).execute()
-
-
-def count_recent_not_found_attempts(
-    ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS
-) -> int:
-    """이 IP가 최근 몇 초(기본 60초) 안에 몇 번이나 404를 유발했는지 센다."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
-    res = (
-        db.get_client()
-        .table("not_found_attempts")
-        .select("id", count="exact")
-        .eq("ip_address", ip)
-        .gte("attempted_at", cutoff)
-        .execute()
-    )
-    return res.count or 0
-
-
-def log_unauthorized_attempt(ip: str, path: str) -> None:
-    """세션 없이 관리자 API에 접근한 요청 한 건을 unauthorized_attempts 표에 기록한다."""
-    db.get_client().table("unauthorized_attempts").insert({"ip_address": ip, "path": path}).execute()
-
-
-def count_recent_unauthorized_attempts(
-    ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS
-) -> int:
-    """이 IP가 최근 몇 초(기본 60초) 안에 몇 번이나 세션 없이 관리자 API를 두드렸는지 센다."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
-    res = (
-        db.get_client()
-        .table("unauthorized_attempts")
-        .select("id", count="exact")
-        .eq("ip_address", ip)
-        .gte("attempted_at", cutoff)
-        .execute()
-    )
-    return res.count or 0
-
-
-def log_page_access_attempt(ip: str, path: str) -> None:
-    """GET 페이지 요청 한 건을 page_access_attempts 표에 기록한다."""
-    db.get_client().table("page_access_attempts").insert({"ip_address": ip, "path": path}).execute()
-
-
-def count_recent_page_access_attempts(
-    ip: str, path: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS
-) -> int:
-    """이 IP가 최근 몇 초(기본 60초) 안에 이 경로를 몇 번이나 요청했는지 센다."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
-    res = (
-        db.get_client()
-        .table("page_access_attempts")
-        .select("id", count="exact")
-        .eq("ip_address", ip)
-        .eq("path", path)
-        .gte("attempted_at", cutoff)
-        .execute()
-    )
-    return res.count or 0
 
 
 def insert_security_event(
@@ -161,7 +95,7 @@ def resolve_security_event(event_id: int) -> bool:
 
     CRITICAL 이벤트는 이 함수로 처리하지 않는다 — CRITICAL은 잠금이 풀릴 때
     resolve_security_events_for_ip()가 자동으로 처리하는 것이 유일한 경로여야
-    한다. 화면(dashboard.js)에서는 CRITICAL 행에 "처리 완료" 버튼 자체를 안
+    한다. 화면(dashboard/render/security.js)에서는 CRITICAL 행에 "처리 완료" 버튼 자체를 안
     보여주지만, 그건 화면 쪽 제약일 뿐이라 API를 직접 호출하면 우회할 수
     있었다 — .neq("severity", "CRITICAL")로 서버 쪽에서도 막는다(그러면 IP가
     아직 잠긴 채로 CRITICAL 이벤트만 "처리 완료"로 표시되는 상태가 생기지 않는다).
@@ -190,17 +124,36 @@ def resolve_security_events_for_ip(ip: str) -> None:
     ).eq("severity", "CRITICAL").is_("resolved_at", "null").execute()
 
 
-def resolve_security_events_for_username(username: str) -> None:
+# 관리자 계정 단위 잠금(guide38)의 이벤트 유형 — soar.enforce_admin_account_lockout()이 기록한다.
+ADMIN_ACCOUNT_LOCK_EVENT_TYPE = "ADMIN_DISTRIBUTED_BRUTE_FORCE"
+
+
+def resolve_security_events_for_username(username: str, event_types: list[str] | None = None) -> None:
     """이 계정의 미해결 CRITICAL 이벤트를 전부 해결됨으로 표시한다.
 
     resolve_security_events_for_ip()의 계정 버전이다 — 분산 브루트포스로 인한
     계정 잠금(soar.enforce_account_lockout)은 IP가 아니라 계정을 잠그므로,
     그 잠금이 풀리는 순간(soar.try_release_expired_account_lockouts) 이 함수로
     관련 CRITICAL 이벤트도 함께 정리한다.
+
+    회원 "alice"와 관리자 "alice"는 security_events.username이 같다(guide38). 그래서
+    event_types를 주면 그 유형만 정리하고(관리자 계정 잠금 해제), 주지 않으면 관리자 계정
+    잠금 이벤트(ADMIN_ACCOUNT_LOCK_EVENT_TYPE)를 뺀 나머지를 정리한다(회원 계정 잠금 해제) —
+    어느 쪽을 풀어도 같은 이름의 다른 쪽 이벤트는 그대로 남는다.
     """
-    db.get_client().table("security_events").update({"resolved_at": db._now_iso()}).eq(
-        "username", username
-    ).eq("severity", "CRITICAL").is_("resolved_at", "null").execute()
+    query = (
+        db.get_client()
+        .table("security_events")
+        .update({"resolved_at": db._now_iso()})
+        .eq("username", username)
+        .eq("severity", "CRITICAL")
+        .is_("resolved_at", "null")
+    )
+    if event_types is not None:
+        query = query.in_("event_type", event_types)
+    else:
+        query = query.neq("event_type", ADMIN_ACCOUNT_LOCK_EVENT_TYPE)
+    query.execute()
 
 
 def get_unresolved_security_event(ip: str, event_type: str) -> dict | None:

@@ -9,7 +9,7 @@
 2. [docs/board-comment/02-design-decisions.md](../board-comment/02-design-decisions.md) — 접근 범위, 삭제 권한, 대댓글 여부 등 모호한 질문 11개에 대한 답을 확정
 3. [docs/board-comment/plan_board.md](../board-comment/plan_board.md) — 스키마·라우트·함수 설계를 담은 구현 계획 수립
 4. [docs/schema.sql](../schema.sql)에 `posts`, `comments`, `post_attempts`, `comment_attempts` 표 4개 추가
-5. [db.py](../../db.py)에 게시글/댓글 CRUD + 빈도 제한 함수 17개, [detector.py](../../detector.py)에 판정 함수 2개, [app.py](../../app.py)에 라우트 12개 추가
+5. [db.py](../../db/)에 게시글/댓글 CRUD + 빈도 제한 함수 17개, [detector.py](../../security/detector.py)에 판정 함수 2개, [app.py](../../app.py)에 라우트 12개 추가
 6. 게시글 목록(`board_list.html`), 상세(`board_detail.html`), 작성/수정 폼(`board_form.html`) 화면과 전용 스타일(`board.css`) 신규 제작
 7. 관리자 대시보드에 "게시판 관리" 섹션(임의 게시글·댓글 삭제) 추가
 8. `pytest` 94개 + 실제 브라우저 검증까지 마친 뒤, 검증 중 발견한 버그 2건 수정
@@ -146,13 +146,13 @@ setInterval(checkForNewComments, boardPollIntervalMs);
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [docs/schema.sql](../schema.sql) (`posts`, `comments`, `post_attempts`, `comment_attempts` 4개 표 추가, Supabase에도 SQL Editor로 직접 반영 완료)
 - [config.py](../../config.py) (`BOARD_PAGE_SIZE`, `POST_RATE_LIMIT`, `COMMENT_RATE_LIMIT` 추가)
-- [db.py](../../db.py) (게시글/댓글/빈도제한 함수 17개 추가)
-- [detector.py](../../detector.py) (`is_post_rate_limited`, `is_comment_rate_limited` 추가)
+- [db.py](../../db/) (게시글/댓글/빈도제한 함수 17개 추가)
+- [detector.py](../../security/detector.py) (`is_post_rate_limited`, `is_comment_rate_limited` 추가)
 - [app.py](../../app.py) (게시판 라우트 10개 + 관리자용 게시글/댓글 관리 API 2개 추가, `api_status()` 확장)
 - [templates/board_list.html](../../templates/board_list.html), [templates/board_detail.html](../../templates/board_detail.html), [templates/board_form.html](../../templates/board_form.html) (신규)
 - [templates/admin_dashboard.html](../../templates/admin_dashboard.html) ("게시판 관리" 섹션 추가), [templates/member_dashboard.html](../../templates/member_dashboard.html) ("게시판 바로가기" 링크 추가)
 - [public/css/board.css](../../public/css/board.css) (신규), [public/js/board.js](../../public/js/board.js) (신규)
-- [public/js/dashboard.js](../../public/js/dashboard.js) (게시글/댓글 관리용 렌더링·삭제 함수 추가)
+- [public/js/dashboard.js](../../public/js/dashboard/) (게시글/댓글 관리용 렌더링·삭제 함수 추가)
 - [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py) (게시판 관련 테스트 추가, 총 94개 통과)
 - [docs/board-comment/](../board-comment) (구현 전 분석 → 설계 결정 → 구현 계획 → 결과 정리, 문서 4종 신규)
 
@@ -222,7 +222,7 @@ CSS 선택자를 콤마로 나열하면 "이 중 아무 클래스나 가진 요�
 - [app.py](../../app.py) (`board_detail()`, `admin_dashboard()`가 폴링 주기 값을 템플릿에 전달)
 - [templates/board_detail.html](../../templates/board_detail.html) (`data-poll-interval-ms` 속성 추가)
 - [templates/admin_dashboard.html](../../templates/admin_dashboard.html) (`poll-interval-ms` meta 태그 추가)
-- [public/js/board.js](../../public/js/board.js), [public/js/dashboard.js](../../public/js/dashboard.js) (하드코딩된 숫자 제거, 화면에서 값을 읽어오도록 변경)
+- [public/js/board.js](../../public/js/board.js), [public/js/dashboard.js](../../public/js/dashboard/) (하드코딩된 숫자 제거, 화면에서 값을 읽어오도록 변경)
 - [public/css/dashboard.css](../../public/css/dashboard.css) (`.delete-user-btn` 규칙에 `.delete-post-btn`/`.delete-comment-btn` 통합)
 
 ---
@@ -234,9 +234,9 @@ CSS 선택자를 콤마로 나열하면 "이 중 아무 클래스나 가진 요�
 또한 실사용 검증(브라우저로 직접 눌러보기)이 자동화 테스트만으로는 못 잡는 문제를 잡아낸다는 걸 다시 확인했습니다 — `null`과 `""`을 다르게 취급하는 버그도, CSS 상세도 충돌 버그도 `pytest`로는 절대 걸리지 않는 종류의 문제였습니다(전자는 브라우저의 JS 실행이, 후자는 실제 렌더링된 화면을 봐야만 드러납니다). 13단계에서도 똑같은 패턴(실사용 중 버그 2개 발견)이 있었는데, 이번에도 같은 교훈이 반복됐습니다.
 
 ### 이 단계 전체에서 바뀐 파일 모음
-- [app.py](../../app.py), [config.py](../../config.py), [db.py](../../db.py), [detector.py](../../detector.py)
+- [app.py](../../app.py), [config.py](../../config.py), [db.py](../../db/), [detector.py](../../security/detector.py)
 - [docs/schema.sql](../schema.sql)
 - [templates/board_list.html](../../templates/board_list.html), [templates/board_detail.html](../../templates/board_detail.html), [templates/board_form.html](../../templates/board_form.html), [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [templates/member_dashboard.html](../../templates/member_dashboard.html)
-- [public/css/board.css](../../public/css/board.css), [public/css/dashboard.css](../../public/css/dashboard.css), [public/js/board.js](../../public/js/board.js), [public/js/dashboard.js](../../public/js/dashboard.js)
+- [public/css/board.css](../../public/css/board.css), [public/css/dashboard.css](../../public/css/dashboard.css), [public/js/board.js](../../public/js/board.js), [public/js/dashboard.js](../../public/js/dashboard/)
 - [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py)
 - [docs/board-comment/](../board-comment) (문서 4종)

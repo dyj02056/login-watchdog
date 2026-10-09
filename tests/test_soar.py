@@ -1,17 +1,16 @@
 # ============================================================================
-# test_soar.py — soar.py(집행관 역할)가 db.py / alert.py를 올바른 순서와
+# test_soar.py — security/soar/ 패키지(집행관 역할)가 db / notify/alert.py를 올바른 순서와
 # 조건으로 호출하는지 확인하는 단위 테스트
 #
 # 여기서 확인하고 싶은 건 "정말로 Slack에 메시지가 갔는가"가 아니라
-# "soar.py가 db.create_lockout과 alert.send_lockout_alert를 올바르게,
+# "security/soar/가 db.create_lockout과 alert.send_lockout_alert를 올바르게,
 # 올바른 값으로, 올바른 순서로 호출하는가"이다. 그래서 진짜 함수 대신
 # "호출된 사실을 기록만 해두는 가짜 함수"로 바꿔치기해서 확인한다.
 # ============================================================================
 
-import alert
-import correlate
 import db
-import soar
+from notify import alert
+from security import correlate, soar
 
 
 def test_enforce_lockout_creates_lockout_then_sends_alert(monkeypatch):
@@ -30,7 +29,7 @@ def test_enforce_lockout_creates_lockout_then_sends_alert(monkeypatch):
     monkeypatch.setattr(alert, "send_lockout_alert", fake_send_lockout_alert)
     monkeypatch.setattr(db, "insert_security_event", fake_insert_security_event)
     # 이 테스트는 "잠그기 → 알리기 → 이벤트 기록" 순서만 확인하는 것이 목적이라,
-    # Track C에서 추가된 상관분석 훅(correlate.py)은 여기서는 아무 일도 안 하게
+    # Track C에서 추가된 상관분석 훅(security/correlate.py)은 여기서는 아무 일도 안 하게
     # 막아둔다 — 훅 자체의 동작은 test_correlate.py와
     # test_record_event_calls_correlate_with_the_recorded_event에서 따로 확인한다.
     monkeypatch.setattr(correlate, "check_and_correlate", lambda *a, **k: None)
@@ -38,7 +37,7 @@ def test_enforce_lockout_creates_lockout_then_sends_alert(monkeypatch):
     soar.enforce_lockout("9.9.9.9", 6, 2)
 
     # 세 함수가 다 호출됐는지, 그리고 "잠그기 → 알리기 → 이벤트 기록" 순서가 지켜졌는지,
-    # distinct_usernames가 그대로 alert.py까지 전달됐는지, distinct_usernames가 2개
+    # distinct_usernames가 그대로 notify/alert.py까지 전달됐는지, distinct_usernames가 2개
     # 이상이라 PASSWORD_SPRAYING으로 분류됐는지 확인.
     assert calls == [
         ("create_lockout", "9.9.9.9", 6),
@@ -376,7 +375,7 @@ def test_record_rejection_bumps_count_when_already_unresolved(monkeypatch):
 
 
 # ============================================================================
-# _record_event / record_rejection — 상관분석 훅(correlate.py) 연동
+# _record_event / record_rejection — 상관분석 훅(security/correlate.py) 연동
 # (Track C guide27) — 위 테스트들이 correlate를 아예 꺼둔 채로 기존 동작만
 # 확인했다면, 여기서는 반대로 "훅이 정말 불리는지, 올바른 값으로 불리는지"만
 # 확인한다.

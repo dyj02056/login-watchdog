@@ -1,17 +1,18 @@
 # ============================================================================
-# detector.py — "판사" 역할: 지금 이 IP가 수상한지, 지금 잠겨있는지만 판단한다
+# security/detector.py — "판사" 역할: 지금 이 IP가 수상한지, 지금 잠겨있는지만 판단한다
 #
 # 이 파일은 데이터베이스의 상태를 절대 바꾸지 않는다(아무것도 저장/수정/삭제하지 않음).
-# 오직 db.py에게 "지금 상태가 어때?"라고 물어보고, 그 답을 바탕으로
+# 오직 db에게 "지금 상태가 어때?"라고 물어보고, 그 답을 바탕으로
 # True/False 같은 "판정 결과"만 돌려준다.
 #
-# 실제로 잠그거나 알림을 보내는 "실행"은 이 파일이 아니라 soar.py가 담당한다
+# 실제로 잠그거나 알림을 보내는 "실행"은 이 파일이 아니라 security/soar/가 담당한다
 # (판단과 실행을 분리해두면, "판단 기준만 바꾸고 싶다" 같은 수정이 훨씬 쉬워진다).
 # ============================================================================
 
 import db
 from config import (
     ACCOUNT_FAILURE_THRESHOLD,
+    ADMIN_ACCOUNT_FAILURE_THRESHOLD,
     COMMENT_RATE_LIMIT,
     FAILURE_THRESHOLD,
     MACRO_DISTINCT_API_THRESHOLD,
@@ -64,7 +65,7 @@ def is_account_suspicious(username: str) -> tuple[bool, int]:
 
 def count_distinct_ips_by_username(username: str) -> int:
     """soar.enforce_account_lockout이 "몇 개의 서로 다른 IP에서 시도됐는지"를
-    잠금 알림에 표시할 수 있도록, db.py가 센 값을 그대로 전달한다.
+    잠금 알림에 표시할 수 있도록, db가 센 값을 그대로 전달한다.
     """
     return db.count_recent_distinct_ips_by_username(username)
 
@@ -78,9 +79,25 @@ def is_account_locked(username: str) -> bool:
     return db.get_active_account_lockout(username) is not None
 
 
+def is_admin_account_suspicious(username: str) -> tuple[bool, int]:
+    """이 관리자 아이디가 여러 IP에 걸쳐 분산 공격당하고 있는 상태인지 판단한다(guide38).
+
+    is_account_suspicious()의 관리자 버전 — admin_login_log를 회원보다 긴 창
+    (ADMIN_ACCOUNT_DETECTION_WINDOW_SECONDS, 기본 15분)으로 세고,
+    ADMIN_ACCOUNT_FAILURE_THRESHOLD(기본 8회)를 "초과"하면 수상하다고 본다.
+    """
+    failure_count = db.count_recent_admin_failures_by_username(username)
+    return failure_count > ADMIN_ACCOUNT_FAILURE_THRESHOLD, failure_count
+
+
+def is_admin_account_locked(username: str) -> bool:
+    """이 관리자 아이디가 지금 잠겨 있는지(is_account_locked()의 관리자 버전)."""
+    return db.get_active_admin_account_lockout(username) is not None
+
+
 def count_distinct_usernames(ip: str) -> int:
     """soar.enforce_lockout이 잠금 알림에 "몇 개의 서로 다른 아이디가 관련됐는지"
-    (Brute Force인지 Password Spraying인지) 표시할 수 있도록, db.py가 센 값을
+    (Brute Force인지 Password Spraying인지) 표시할 수 있도록, db가 센 값을
     그대로 전달한다. is_suspicious()와 마찬가지로 login_attempts를 본다.
     """
     return db.count_recent_distinct_usernames(ip)
@@ -137,7 +154,7 @@ def is_web_scanning(ip: str) -> tuple[bool, int, bool]:
 
     세 번째 반환값(is_first_over_threshold)은 "지금 이 카운트가 임계값을 막
     넘긴 바로 그 순간인가"를 뜻한다 — count가 임계값+1일 때만 True다. 호출하는
-    쪽(app.py)이 이 값으로 "새로 감지된 시점에만 대응 실행"을 판단해서, 임계값을
+    쪽(helpers/hooks.py의 handle_not_found)이 이 값으로 "새로 감지된 시점에만 대응 실행"을 판단해서, 임계값을
     넘긴 뒤에도 계속되는 요청마다 Slack 알림이 중복 발송되는 걸 막는다(알림
     피로 방지 — 원래 app.py가 count == threshold + 1로 직접 계산하던 걸 판정
     로직 쪽으로 옮겨왔다).
@@ -200,3 +217,32 @@ def is_locked(ip: str) -> bool:
     여기서는 그 결과가 있는지(None이 아닌지)만 확인한다.
     """
     return db.get_active_lockout(ip) is not None
+
+
+# ============================================================================
+# 잠금 종류 판정 (guide33, 영구 잠금)
+#
+# is_locked()/is_account_locked()는 "잠겨있는가"만 답한다. 영구 잠금이 생기면 "임시냐
+# 영구냐"에 따라 안내 문구와 풀 수 있는 방법(이메일 복구/예외)이 달라지므로, 같은
+# db.get_active_*() 결과의 lock_type까지 보는 판정을 따로 둔다.
+# ============================================================================
+
+LOCK_STATE_NONE = "NONE"
+LOCK_STATE_TEMPORARY = "TEMPORARY"
+LOCK_STATE_PERMANENT = "PERMANENT"
+
+
+def _state_from_row(row: dict | None) -> str:
+    if row is None:
+        return LOCK_STATE_NONE
+    return LOCK_STATE_PERMANENT if row.get("lock_type") == "PERMANENT" else LOCK_STATE_TEMPORARY
+
+
+def get_ip_lock_state(ip: str) -> str:
+    """이 IP의 잠금 상태를 NONE / TEMPORARY / PERMANENT 중 하나로 알려준다."""
+    return _state_from_row(db.get_active_lockout(ip))
+
+
+def get_account_lock_state(username: str) -> str:
+    """이 계정의 잠금 상태를 NONE / TEMPORARY / PERMANENT 중 하나로 알려준다."""
+    return _state_from_row(db.get_active_account_lockout(username))

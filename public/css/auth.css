@@ -1,5 +1,6 @@
 /* ============================================================================
-   auth.css — 로그인 / 회원가입 / 관리자 로그인 화면이 공통으로 쓰는 스타일
+   auth.css — 로그인 / 회원가입 / 관리자 로그인 화면과, 같은 카드 모양을 쓰는 영구 잠금 복구·
+   비밀번호 찾기·이메일 확인 화면이 공통으로 쓰는 스타일
    색상·글꼴 값은 전부 tokens.css의 var(--이름)에서 가져온다(15단계 리디자인).
    ============================================================================ */
 
@@ -107,4 +108,30 @@ body {
     border-radius: var(--radius-s);
     font-size: 13px;
     text-align: center;
+}
+
+/* 영구 잠금 이메일 복구 화면(guide34-a) — 확인 화면의 요청 정보 박스와 보조 링크 */
+.recovery-detail {
+    background: var(--surface-2);
+    color: var(--ink-soft);
+    padding: 12px;
+    border-radius: var(--radius-s);
+    font-size: 13px;
+    line-height: 1.6;
+    margin-bottom: 12px;
+}
+
+.recovery-detail strong {
+    color: var(--ink);
+}
+
+.auth-card .recovery-note {
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin: 0 0 12px 0;
+    line-height: 1.5;
+}
+
+.auth-links a + a {
+    margin-left: 12px;
 }

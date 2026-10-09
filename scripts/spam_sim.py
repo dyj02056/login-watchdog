@@ -42,11 +42,11 @@ import getpass
 import os
 import sys
 import time
-from html.parser import HTMLParser
-from urllib.parse import urlparse
 
 import requests
 from dotenv import load_dotenv
+
+from _sim_common import extract_csrf_token, is_local_host
 
 
 load_dotenv()
@@ -56,52 +56,6 @@ DEFAULT_HOST = "http://127.0.0.1:5000"
 DEFAULT_ATTEMPTS = 6
 DEFAULT_INTERVAL = 0.2
 REQUEST_TIMEOUT = 5
-
-
-class CsrfTokenParser(HTMLParser):
-    """HTML의 hidden input에서 CSRF 토큰을 추출한다.
-
-    로그인/글쓰기 화면 HTML 안에는 눈에 보이지 않는
-    <input type="hidden" name="csrf_token" value="..."> 태그가 있는데,
-    이 클래스는 HTML을 한 줄씩 읽어가며 그 값만 뽑아낸다.
-    """
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.token: str | None = None
-
-    def handle_starttag(
-        self,
-        tag: str,
-        attrs: list[tuple[str, str | None]],
-    ) -> None:
-        if tag != "input":
-            return
-
-        attributes = dict(attrs)
-
-        if attributes.get("name") == "csrf_token":
-            self.token = attributes.get("value")
-
-
-def extract_csrf_token(html: str) -> str:
-    """HTML 문서에서 csrf_token 값을 찾아 반환한다."""
-    parser = CsrfTokenParser()
-    parser.feed(html)
-
-    if not parser.token:
-        raise RuntimeError(
-            "HTML 화면에서 CSRF 토큰을 찾지 못했습니다."
-        )
-
-    return parser.token
-
-
-def is_local_host(host: str) -> bool:
-    """대상 서버가 로컬 주소인지 확인한다."""
-    hostname = urlparse(host).hostname or ""
-
-    return hostname in ("127.0.0.1", "localhost", "::1")
 
 
 def login(

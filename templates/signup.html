@@ -27,13 +27,13 @@
             {% endif %}
         {% endwith %}
 
-        <!-- signup_enabled : app.py가 db.get_signup_enabled()로 Supabase에서 읽어와
+        <!-- signup_enabled : routes/auth.py가 db.get_signup_enabled()로 Supabase에서 읽어와
              넘겨주는 값. 관리자가 대시보드에서 회원가입을 꺼뒀으면(False), 폼 대신
              안내 문구만 보여준다 — 조건문으로 "이 조건일 때만 이 부분을 보여줘라"를
              표현한다. -->
         {% if signup_enabled %}
             <!-- 이 폼을 제출하면 /signup 주소로 POST 요청이 가고,
-                 app.py의 signup_submit() 함수가 아이디/이메일 중복 확인 후 계정을 생성한다. -->
+                 routes/auth.py의 signup_submit() 함수가 아이디/이메일 중복 확인 후 계정을 생성한다. -->
             <form method="post" action="{{ url_for('auth.signup_submit') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 

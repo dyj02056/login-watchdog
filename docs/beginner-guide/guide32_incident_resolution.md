@@ -73,7 +73,7 @@ def resolve_incident(incident_id, admin_username) -> bool:
 
 ## 4. API와 권한
 
-`POST /api/security-incidents/resolve` ([routes/admin.py](../../routes/admin.py))
+`POST /api/security-incidents/resolve` ([routes/admin.py](../../routes/admin/))
 
 - 권한은 새로 만든 `resolve_incident`입니다(`security_admin`, `super_admin`). "쓰기 API 하나당 권한 하나" 관례를 따랐습니다. `security_viewer`는 403입니다.
 - 요청 본문은 `{"incident_id": 정수}`입니다. 정수가 아니면(없음, 문자열, `true`, 소수) 400입니다.
@@ -112,8 +112,8 @@ def resolve_incident(incident_id, admin_username) -> bool:
 - [db/incidents.py](../../db/incidents.py) — `resolve_incident()`, `mark_incident_idle()`, `_is_idle()` 신규, `record_incident()` 변경, `close_open_incident_for_ip()` 삭제
 - [db/\_\_init\_\_.py](../../db/__init__.py) — 내보내기 목록 갱신
 - [config.py](../../config.py) — `INCIDENT_MERGE_IDLE_MINUTES` 신규
-- [soar.py](../../soar.py), [scripts/unlock_ip.py](../../scripts/unlock_ip.py) — 잠금 해제 경로에서 사건을 닫던 호출 제거
-- [routes/admin.py](../../routes/admin.py) — `POST /api/security-incidents/resolve` 신규
+- [soar.py](../../security/soar/), [scripts/unlock_ip.py](../../scripts/unlock_ip.py) — 잠금 해제 경로에서 사건을 닫던 호출 제거
+- [routes/admin.py](../../routes/admin/) — `POST /api/security-incidents/resolve` 신규
 - [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [public/css/dashboard.css](../../public/css/dashboard.css), [public/js/dashboard/render.js](../../public/js/dashboard/render.js), [api.js](../../public/js/dashboard/api.js), [events.js](../../public/js/dashboard/events.js) — "처리" 열과 "해결" 버튼
 - [docs/schema.sql](../schema.sql) — 상태 제약, `resolved_at`/`resolved_by`, `resolve_incident` 권한
 - [docs/feature-reference/ERD.svg](../feature-reference/ERD.svg), [db-schema-guide.md](../feature-reference/db-schema-guide.md), [01-feature-order.md](../feature-reference/01-feature-order.md), [02-layer-order.md](../feature-reference/02-layer-order.md), [README.md](../../README.md) — 문서 갱신

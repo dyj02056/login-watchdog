@@ -3,8 +3,8 @@
 #
 # security_events가 개별 신고서 한 장 한 장이라면, 이 표는 "같은 IP가 짧은 시간
 # 안에 서로 다른 event_type을 2개 이상 남겼을 때" 그 신고들을 하나로 묶어두는
-# 사건철이다. correlate.py가 판단(묶어야 하는가?)만 하고, 실제 조회/삽입/병합은
-# 전부 이 파일이 맡는다(detector.py/soar.py와 동일한 판단·실행 분리 원칙).
+# 사건철이다. security/correlate.py가 판단(묶어야 하는가?)만 하고, 실제 조회/삽입/병합은
+# 전부 이 파일이 맡는다(security/detector.py·security/soar/와 동일한 판단·실행 분리 원칙).
 #
 # db.get_client() 호출 이유는 db/attempts.py 상단 설명 참고.
 # ============================================================================
@@ -117,7 +117,7 @@ def _merge_into_existing(existing: dict, event_types: list[str], severity: str) 
 def record_incident(ip: str, event_types: list[str], severity: str) -> dict:
     """이 IP에 열린 사건이 있으면 event_types/최고 위험등급을 병합해서 갱신하고,
     없으면 새로 연다. 병합/생성된 사건의 최종 상태(id/event_types/severity_max/
-    escalated)를 돌려준다 — correlate.py가 이 값을 보고 SOAR 플레이북(사건
+    escalated)를 돌려준다 — security/correlate.py가 이 값을 보고 SOAR 플레이북(사건
     에스컬레이션 알림, Track C guide28)을 실행할지 판단한다.
 
     "열려있는지 확인" 후 "새로 연다" 사이의 아주 짧은 틈에 동시 요청 두 개가
@@ -183,6 +183,23 @@ def resolve_incident(incident_id: int, admin_username: str) -> bool:
         db.get_client()
         .table("security_incidents")
         .update({"status": "CLOSED", "resolved_at": db._now_iso(), "resolved_by": admin_username})
+        .eq("id", incident_id)
+        .in_("status", ["OPEN", "IDLE"])
+        .execute()
+    )
+    return bool(res.data)
+
+
+def close_incident_system(incident_id: int, actor: str) -> bool:
+    """사건을 시스템이 자동으로 CLOSED 처리한다(PERMANENT_LOCK_AUTO_CLOSE_INCIDENT=true일 때만 쓰인다).
+
+    resolve_incident()와 같은 조건(OPEN/IDLE만 대상)이지만, 사람이 눌렀을 때와
+    구분되도록 resolved_by에 "system:permanent_lock" 같은 시스템 표식을 기록한다.
+    """
+    res = (
+        db.get_client()
+        .table("security_incidents")
+        .update({"status": "CLOSED", "resolved_at": db._now_iso(), "resolved_by": actor})
         .eq("id", incident_id)
         .in_("status", ["OPEN", "IDLE"])
         .execute()

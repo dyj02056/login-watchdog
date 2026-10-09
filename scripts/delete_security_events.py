@@ -3,12 +3,12 @@
 # 터미널에서 영구 삭제하는 유지보수 스크립트
 #
 # 관리자 대시보드의 "보안 이벤트" 표에서 "처리 완료"를 눌러도 행 자체는 지워지지
-# 않고 resolved_at 칸만 채워진 채 표에 계속 남는다(routes/admin.py의
+# 않고 resolved_at 칸만 채워진 채 표에 계속 남는다(routes/admin/incidents.py의
 # api_security_events_resolve → db.resolve_security_event 참고). 시간이 지나
 # 처리 완료된 기록이 쌓이면 정리하고 싶을 수 있는데, 대시보드 화면에는 "삭제"
 # 버튼이 없다 — 실수로 눌러 증적 자료를 날리는 사고를 막기 위해 일부러 넣지
 # 않았다. 이 스크립트는 그 대신 unlock_ip.py와 같은 방식으로, 웹 화면을 거치지
-# 않고 db.py를 통해 Supabase의 security_events 표를 직접 정리한다.
+# 않고 db 패키지를 통해 Supabase의 security_events 표를 직접 정리한다.
 #
 # 안전 원칙: unlock_ip.py처럼 --id/--resolved/--all 중 하나를 명시적으로 줘야만
 # 실제 삭제가 일어난다(아무 옵션 없이 실행하면 지금 몇 건이 쌓여있는지 조회만

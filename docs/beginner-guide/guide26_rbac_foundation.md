@@ -107,8 +107,8 @@ if role is not None and db.has_permission(role, "manage_admin_users"):
 - [db/admin.py](../../db/admin.py) — `get_admin_role()`, `list_admin_users()`, `get_admin_role_by_id()`, `create_admin_user()`, `delete_admin_user()`
 - [db/roles.py](../../db/roles.py) — 신규, `has_permission()`
 - [db/__init__.py](../../db/__init__.py)
-- [helpers.py](../../helpers.py) — `require_permission()` 추가
-- [routes/admin.py](../../routes/admin.py) — `/api/admin-users/create`, `/api/admin-users/delete` 신규 + `/api/status` 조건부 `admin_users` 필드
+- [helpers.py](../../helpers/) — `require_permission()` 추가
+- [routes/admin.py](../../routes/admin/) — `/api/admin-users/create`, `/api/admin-users/delete` 신규 + `/api/status` 조건부 `admin_users` 필드
 - [routes/auth.py](../../routes/auth.py) — 아이디/비밀번호 규칙을 `config.py`에서 가져오도록 변경
 - [scripts/create_admin.py](../../scripts/create_admin.py) — 신규, 이후 `db.create_admin_user()` 재사용하도록 리팩터링
 - [templates/admin_dashboard.html](../../templates/admin_dashboard.html) — "관리자 계정 관리" 카드
