@@ -90,7 +90,7 @@ export function AttackView() {
           )}
         </Panel>
 
-        <Panel className={styles.paths} title="대상 경로 비중">
+        <Panel className={styles.paths} title="대상 경로 (미확인 포함) 비중">
           {body((s) =>
             s.top_paths.length || s.pathless_total ? (
               <PathDonut items={s.top_paths} pathless={s.pathless_types} pathlessTotal={s.pathless_total} />

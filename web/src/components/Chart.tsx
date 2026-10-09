@@ -51,8 +51,11 @@ export function tooltipBase(t: Theme) {
   };
 }
 
+export type ChartSize = { width: number; height: number };
+
 type Props = {
-  build: (theme: Theme) => EChartsCoreOption;
+  /** 차트가 놓인 칸의 크기(px)도 받는다 — 칸 크기에 맞춰 좌표를 직접 계산하는 차트용 */
+  build: (theme: Theme, size: ChartSize) => EChartsCoreOption;
   /** 스크린 리더용 설명. 차트가 무엇을 보여주는지 한 문장으로 */
   label: string;
   /** build가 의존하는 값. 바뀔 때만 다시 그린다 */
@@ -71,7 +74,15 @@ export function Chart({ build, label, deps, className }: Props) {
     if (!element) return;
     const instance = echarts.init(element, undefined, { renderer: "canvas" });
     chart.current = instance;
-    const observer = new ResizeObserver(() => instance.resize());
+    // 크기가 바뀌면 다시 그린다 — 칸 크기로 좌표를 계산하는 차트(PathDonut)가 따라오게. 크기가 거의 같으면 건너뛴다.
+    let drawn = { width: 0, height: 0 };
+    const observer = new ResizeObserver(() => {
+      instance.resize();
+      const size = { width: element.clientWidth, height: element.clientHeight };
+      if (Math.abs(size.width - drawn.width) < 2 && Math.abs(size.height - drawn.height) < 2) return;
+      drawn = size;
+      if (size.width > 0) instance.setOption(buildRef.current(readTheme(), size), { notMerge: true });
+    });
     observer.observe(element);
     return () => {
       observer.disconnect();
@@ -81,7 +92,9 @@ export function Chart({ build, label, deps, className }: Props) {
   }, []);
 
   useEffect(() => {
-    chart.current?.setOption(buildRef.current(readTheme()), { notMerge: true });
+    const element = host.current;
+    if (!element || !chart.current) return;
+    chart.current.setOption(buildRef.current(readTheme(), { width: element.clientWidth, height: element.clientHeight }), { notMerge: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 

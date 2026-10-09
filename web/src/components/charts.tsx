@@ -1,7 +1,6 @@
 "use client";
 
 // charts.tsx — 관제 화면에서 쓰는 차트 6종. 값이 비었을 때의 안내는 부르는 쪽(화면)이 정한다.
-import { useEffect, useState } from "react";
 import { Chart, tooltipBase } from "./Chart";
 import type { Theme } from "./Chart";
 import { actionLabel, eventTypeLabel } from "@/lib/labels";
@@ -312,70 +311,73 @@ export function TopBars({ items, tone, format, label }: { items: Named; tone: "c
 }
 
 const PATH_COLORS = ["#3cc8f0", "#e9568f", "#34e08c", "#ff9a3c", "#a78bfa"];
-// 경로 없음 쪽 도넛은 큰 도넛과 색이 겹쳐 보이지 않게 옅은 색을 쓴다. "기타"는 마지막에 회색으로.
-const PATHLESS_COLORS = ["#7dd3fc", "#fda4af", "#fcd34d", "#c4b5fd"];
-const PATHLESS_OTHER = "기타";
-
-/** 화면이 좁으면(휴대폰 등) 두 도넛을 위아래로 쌓는다. */
-function useNarrow(maxWidth: number): boolean {
-  const [narrow, setNarrow] = useState(false);
-  useEffect(() => {
-    const query = window.matchMedia(`(max-width: ${maxWidth}px)`);
-    const update = () => setNarrow(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, [maxWidth]);
-  return narrow;
-}
+// 미확인 쪽 도넛은 큰 도넛과 색이 겹쳐 보이지 않게 옅은 색을 쓴다. "기타"는 마지막에 회색으로.
+const UNKNOWN_COLORS = ["#7dd3fc", "#fda4af", "#fcd34d", "#c4b5fd"];
+const UNKNOWN_OTHER = "기타";
+const UNKNOWN_NAME = "미확인";
 
 /**
- * 도넛: 대상 경로 비중. 경로가 기록되지 않은 이벤트는 큰 도넛의 한 조각("경로 없음")으로 두고,
- * 화살표로 이어진 작은 도넛(큰 도넛의 75%)에서 공격 유형별로 쪼개 보여준다.
+ * 도넛: 대상 경로 비중. 경로가 기록되지 않은 이벤트는 큰 도넛의 한 조각("미확인")으로 두고,
+ * 그 조각에서 시작하는 화살표로 이어진 작은 도넛(큰 도넛의 75%)에서 공격 유형별로 쪼개 보여준다.
+ * 위치는 전부 px로 계산한다 — 화살표 끝점과 가운데 문구가 도넛 중심에 정확히 맞아야 해서 퍼센트를 쓰지 않는다.
  */
 export function PathDonut({ items, pathless, pathlessTotal }: { items: Named; pathless: Named; pathlessTotal: number }) {
-  const narrow = useNarrow(800);
   return (
     <Chart
-      label="공격 대상 경로별 비중 도넛 차트와, 경로가 없는 이벤트의 공격 유형별 도넛 차트"
-      deps={[items, pathless, pathlessTotal, narrow]}
-      build={(t) => {
+      label="공격 대상 경로별 비중 도넛 차트와, 경로가 확인되지 않은(미확인) 이벤트의 공격 유형별 도넛 차트"
+      deps={[items, pathless, pathlessTotal]}
+      build={(t, { width, height }) => {
         const pathTotal = items.reduce((sum, item) => sum + item.count, 0);
         const hasPaths = items.length > 0;
-        const hasPathless = pathlessTotal > 0;
-        const both = hasPaths && hasPathless;
+        const hasUnknown = pathlessTotal > 0;
+        const both = hasPaths && hasUnknown;
+        const narrow = both && width < 640; // 좁으면 두 도넛을 위아래로 쌓는다
 
-        // 크기는 px로 고정한다: 작은 도넛은 큰 도넛의 75%.
         const big = narrow ? { outer: 58, inner: 36 } : { outer: 96, inner: 58 };
         const small = { outer: Math.round(big.outer * 0.75), inner: Math.round(big.inner * 0.75) };
+        const labelSpace = 130; // 도넛 바깥 라벨이 들어갈 좌우 여백
+        // 칸이 넓어도 두 도넛 사이가 한없이 멀어지지 않게 묶음 폭을 제한하고 가운데에 둔다.
+        const leftSpace = 150; // 큰 도넛 왼쪽 라벨은 경로 이름이라 더 길다
+        const groupWidth = Math.min(width, 780); // 왼쪽 라벨 + 큰 도넛 + 화살표·작은 도넛 왼쪽 라벨 + 작은 도넛 + 오른쪽 라벨
+        const left = (width - groupWidth) / 2;
 
-        // 가로 배치: 큰 도넛 왼쪽, 작은 도넛 오른쪽. 세로 배치(좁은 화면): 큰 도넛 위, 작은 도넛 아래.
-        const bigCenter = both ? (narrow ? ["50%", "27%"] : ["30%", "52%"]) : ["50%", "52%"];
-        const smallCenter = hasPaths ? (narrow ? ["50%", "77%"] : ["79%", "52%"]) : ["50%", "52%"];
+        // 중심 좌표(px). 가로: 큰 도넛 왼쪽·작은 도넛 오른쪽. 세로: 큰 도넛 위·작은 도넛 아래.
+        const cy = height * 0.52;
+        const bigCenter = both
+          ? narrow
+            ? { x: width / 2, y: height * 0.27 }
+            : { x: left + leftSpace + big.outer, y: cy }
+          : { x: width / 2, y: cy };
+        const smallCenter = hasPaths
+          ? narrow
+            ? { x: width / 2, y: height * 0.77 }
+            : { x: left + groupWidth - labelSpace + 10 - small.outer, y: cy }
+          : { x: width / 2, y: cy };
 
-        // "경로 없음" 조각이 큰 도넛의 오른쪽(가로) 또는 아래쪽(세로) 한가운데에 오도록 시작 각도를 맞춰 화살표가 똑바로 나간다.
+        // "미확인" 조각이 큰 도넛의 오른쪽(가로) 또는 아래쪽(세로) 한가운데에 오도록 시작 각도를 맞춘다 — 화살표가 그 조각에서 똑바로 나간다.
         const share = both ? pathlessTotal / (pathTotal + pathlessTotal) : 0;
         const startAngle = (narrow ? -90 : 0) + share * 180;
 
         const bigData = [
           ...(both
-            ? [{ name: "경로 없음", value: pathlessTotal, itemStyle: { color: t.week }, label: { show: false }, labelLine: { show: false } }]
+            ? [{ name: UNKNOWN_NAME, value: pathlessTotal, itemStyle: { color: t.week }, label: { show: false }, labelLine: { show: false } }]
             : []),
           ...items.map((item, index) => ({ name: item.name, value: item.count, itemStyle: { color: PATH_COLORS[index % PATH_COLORS.length] } })),
         ];
         const smallData = pathless.map((item, index) => ({
           name: eventTypeLabel(item.name),
           value: item.count,
-          itemStyle: { color: item.name === PATHLESS_OTHER ? t.week : PATHLESS_COLORS[index % PATHLESS_COLORS.length] },
+          itemStyle: { color: item.name === UNKNOWN_OTHER ? t.week : UNKNOWN_COLORS[index % UNKNOWN_COLORS.length] },
         }));
 
         const pieBase = { type: "pie" as const, minAngle: 6, itemStyle: { borderColor: t.bg1, borderWidth: 2 }, labelLine: { lineStyle: { color: t.lineStrong } } };
-        const labelBase = { color: t.ink1, fontFamily: t.font, fontSize: 11 };
+        const labelBase = { color: t.ink1, fontFamily: t.font, fontSize: 11, overflow: "truncate" as const };
 
-        // 화살표(큰 도넛의 "경로 없음" 조각 → 작은 도넛). 가로면 →, 세로면 ↓.
-        const arrow = narrow
-          ? { line: [[0, 0], [0, 34]], head: [[0, 38], [-4, 30], [4, 30]], left: "50%", top: "47%" }
-          : { line: [[0, 0], [40, 0]], head: [[46, 0], [38, -4], [38, 4]], left: "52%", top: "52%" };
+        // 화살표: 큰 도넛의 "미확인" 조각 바깥 가장자리에서 시작해 작은 도넛 바깥 가장자리 바로 앞에서 끝난다.
+        // 그룹을 시작점에 놓고 +x 방향으로 그린 뒤, 세로 배치면 90도 돌려 아래쪽을 향하게 한다.
+        const gap = 6;
+        const from = narrow ? { x: bigCenter.x, y: bigCenter.y + big.outer } : { x: bigCenter.x + big.outer, y: bigCenter.y };
+        const length = Math.max(0, narrow ? smallCenter.y - small.outer - gap - from.y : smallCenter.x - small.outer - gap - from.x);
 
         return {
           animationDuration: 500,
@@ -387,22 +389,22 @@ export function PathDonut({ items, pathless, pathlessTotal }: { items: Named; pa
                     ...pieBase,
                     name: "대상 경로",
                     radius: [big.inner, big.outer],
-                    center: bigCenter,
+                    center: [bigCenter.x, bigCenter.y],
                     startAngle,
-                    label: { ...labelBase, formatter: "{b}" },
+                    label: { ...labelBase, width: leftSpace - 25, formatter: "{b}" },
                     data: bigData,
                   },
                 ]
               : []),
-            ...(hasPathless
+            ...(hasUnknown
               ? [
                   {
                     ...pieBase,
-                    name: "경로 없음",
+                    name: UNKNOWN_NAME,
                     radius: [small.inner, small.outer],
-                    center: smallCenter,
-                    label: { ...labelBase, formatter: "{b}\n{c}건" },
-                    tooltip: { formatter: (p: { name: string; value: number; percent: number }) => `${p.name}<br/>${p.value}건 · 경로 없음 중 ${p.percent}%` },
+                    center: [smallCenter.x, smallCenter.y],
+                    label: { ...labelBase, width: labelSpace - 20, formatter: "{b}\n{c}건" },
+                    tooltip: { formatter: (p: { name: string; value: number; percent: number }) => `${p.name}<br/>${p.value}건 · ${UNKNOWN_NAME} 중 ${p.percent}%` },
                     data: smallData,
                   },
                 ]
@@ -410,38 +412,40 @@ export function PathDonut({ items, pathless, pathlessTotal }: { items: Named; pa
           ],
           graphic: {
             elements: [
-            ...(both
-              ? [
-                  {
-                    type: "group",
-                    left: arrow.left,
-                    top: arrow.top,
-                    silent: true,
-                    children: [
-                      { type: "polyline", shape: { points: arrow.line }, style: { stroke: t.ink1, lineWidth: 1.5, fill: "none" } },
-                      { type: "polygon", shape: { points: arrow.head }, style: { fill: t.ink1 } },
-                    ],
-                  },
-                ]
-              : []),
-            ...(hasPathless
-              ? [
-                  {
-                    type: "text",
-                    silent: true,
-                    left: smallCenter[0],
-                    top: smallCenter[1],
-                    style: {
-                      text: `경로 없음\n${formatCount(pathlessTotal)}건`,
-                      textAlign: "center",
-                      textVerticalAlign: "middle",
-                      fill: t.ink1,
-                      font: `600 11px ${t.font}`,
-                      lineHeight: 15,
+              ...(both && length > 12
+                ? [
+                    {
+                      type: "group",
+                      x: from.x,
+                      y: from.y,
+                      rotation: narrow ? -Math.PI / 2 : 0, // zrender는 시계 반대 방향이 +라서 -90도가 아래쪽
+                      silent: true,
+                      children: [
+                        { type: "circle", shape: { cx: 0, cy: 0, r: 3 }, style: { fill: t.ink1 } },
+                        { type: "polyline", shape: { points: [[0, 0], [length - 2, 0]] }, style: { stroke: t.ink1, lineWidth: 1.5, fill: "none" } },
+                        { type: "polygon", shape: { points: [[length, 0], [length - 8, -4.5], [length - 8, 4.5]] }, style: { fill: t.ink1 } },
+                      ],
                     },
-                  },
-                ]
-              : []),
+                  ]
+                : []),
+              ...(hasUnknown
+                ? [
+                    {
+                      type: "text",
+                      silent: true,
+                      x: smallCenter.x,
+                      y: smallCenter.y,
+                      style: {
+                        text: `${UNKNOWN_NAME}\n${formatCount(pathlessTotal)}건`,
+                        textAlign: "center",
+                        textVerticalAlign: "middle",
+                        fill: t.ink1,
+                        font: `600 11px ${t.font}`,
+                        lineHeight: 15,
+                      },
+                    },
+                  ]
+                : []),
             ],
           },
         };
