@@ -29,7 +29,7 @@ scripts/
 | `simulation/high/` | `signup_abuse_sim.py`, `spam_sim.py` (옮김) · `http_flood_sim.py`, `comment_spam_sim.py`, `recovery_flood_sim.py` (새로 추가) |
 | `simulation/medium/` | `macro_bot_sim.py`, `repeated_access_sim.py`, `unauthorized_access_sim.py`, `web_scanning_sim.py` (옮김) · `honeypot_bot_sim.py` (새로 추가) |
 | `management/` | `create_admin.py`, `daily_report.py`, `delete_security_events.py`, `send_test_mail.py`, `tune_thresholds.py`, `unlock_account.py`, `unlock_ip.py` |
-| `demo/` | `demo_server.py` (옮김) · `check_simulations.py`, `memory_supabase.py` (새로 추가) |
+| `demo/` | `demo_server.py` (옮김) · `check_simulations.py`, `memory_supabase.py` (새로 추가) · 이후 `generate_demo_logs.py` 등 샘플 로그 도구가 더해졌다([50단계](guide50_demo_sample_logs.md)) |
 
 이전 단계 문서에 `python scripts/unlock_ip.py`처럼 적힌 곳은 모두 새 경로(`scripts/management/unlock_ip.py`)로 고쳐 두었습니다. 스크립트가 프로젝트 루트의 `config.py`·`db`를 찾는 부분(`sys.path`)도 한 단계 깊어진 폴더에 맞게 고쳤습니다.
 
@@ -64,7 +64,7 @@ python scripts/demo/check_simulations.py honeypot     # 이름에 'honeypot'이 
 
 ### 메모리 DB — `memory_supabase.py`
 
-`demo_server.py`의 가짜 클라이언트는 항상 빈 결과를 돌려주지만, 이 가짜 Supabase(`MemoryClient`)는 표를 파이썬 리스트로 들고 있어서 `insert`한 행을 기억하고 `eq`·`gt`·`in_`·`or_` 같은 조건으로 걸러 셉니다. 그래서 "60초 안에 5번 틀리면 잠금" 같은 탐지가 진짜처럼 동작합니다. `db` 패키지가 실제로 쓰는 연산(`select(count)`/`insert`/`update`/`delete`/`upsert`와 필터·정렬)만 흉내 냅니다. 개발·점검용이며 운영에서는 쓰지 않습니다.
+이 가짜 Supabase(`MemoryClient`)는 표를 파이썬 리스트로 들고 있어서 `insert`한 행을 기억하고 `eq`·`gt`·`in_`·`or_` 같은 조건으로 걸러 셉니다. 그래서 "60초 안에 5번 틀리면 잠금" 같은 탐지가 진짜처럼 동작합니다. `db` 패키지가 실제로 쓰는 연산(`select(count)`/`insert`/`update`/`delete`/`upsert`와 필터·정렬)만 흉내 냅니다. 개발·점검용이며 운영에서는 쓰지 않습니다. (50단계에서 `demo_server.py`도 이 메모리 DB를 쓰도록 바뀌었고, 표별 기본값·기본키·`users(username)` 연결 조회 등을 보완했습니다 — [guide50](guide50_demo_sample_logs.md).)
 
 ## 실제로 확인한 것
 

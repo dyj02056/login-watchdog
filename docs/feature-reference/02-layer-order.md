@@ -1555,7 +1555,11 @@ DB 호출 155곳을 그대로 둔 채 연결 한 곳만 바꿨다는 점에서, 
 | 담당 | 하는 일 |
 |---|---|
 | [scripts/demo/check_simulations.py](../../scripts/demo/check_simulations.py) | 메모리 DB 서버를 띄우고 시뮬레이터를 하나씩 실행, 기대한 `(event_type, severity)`가 기록됐는지 PASS/FAIL 대조 |
-| [scripts/demo/memory_supabase.py](../../scripts/demo/memory_supabase.py) | `db` 패키지가 쓰는 PostgREST 체인을 흉내 내는 메모리 가짜 Supabase |
+| [scripts/demo/memory_supabase.py](../../scripts/demo/memory_supabase.py) | `db` 패키지가 쓰는 PostgREST 체인을 흉내 내는 메모리 가짜 Supabase(표별 기본값·기본키·`users(username)` 조인 지원) |
+| [scripts/demo/generate_demo_logs.py](../../scripts/demo/generate_demo_logs.py) | 7일치 샘플 로그 생성기 — 가짜 회원 가입 + 시뮬레이션 21종을 시각 순서대로 실행 → `output/demo_logs.json` (guide50) |
+| [scripts/demo/demo_server.py](../../scripts/demo/demo_server.py) | 샘플 로그 JSON으로 관제 화면을 띄우는 데모 서버 |
+| [scripts/demo/load_demo_to_supabase.py](../../scripts/demo/load_demo_to_supabase.py) | (선택) 샘플 로그를 실제 Supabase에 적재(`--apply`)·삭제(`--purge`) |
+| [scripts/demo/demo_data.py](../../scripts/demo/demo_data.py) | 나라별 IP 대역·가짜 회원·시각 이동 규칙 |
 | [scripts/simulation/](../../scripts/simulation) | `critical/`·`high/`·`medium/` 시뮬레이터와 `_sim_common.py` |
 
 자세한 설명: [01 문서 31번](01-feature-order.md#31-시뮬레이션-일괄-점검), [guide49](../beginner-guide/guide49_scripts_reorganization.md)
@@ -1633,7 +1637,7 @@ pytest
 | [scripts/simulation/high/recovery_flood_sim.py](../../scripts/simulation/high/recovery_flood_sim.py) | 복구·비밀번호 찾기·이메일 확인 폭주(25번) |
 | [scripts/simulation/medium/honeypot_bot_sim.py](../../scripts/simulation/medium/honeypot_bot_sim.py) | 허니팟 봇 차단 |
 | [scripts/demo/check_simulations.py](../../scripts/demo/check_simulations.py) | 위 시뮬레이터 전부를 메모리 DB 서버에서 한 번에 점검(31번) |
-| [scripts/demo/demo_server.py](../../scripts/demo/demo_server.py) | 가짜 데이터로 관제 화면만 띄우는 데모 서버(30번) |
+| [scripts/demo/demo_server.py](../../scripts/demo/demo_server.py) | 샘플 로그로 관제 화면만 띄우는 데모 서버(30번, 샘플 로그는 31번) |
 
 ### 32.3 DB 스키마
 전체 테이블 정의는 [docs/schema.sql](../../docs/schema.sql) 참고. 처음 19개 테이블에 RBAC·상관분석·조기 경보 등으로 표가 늘었고, 영구 잠금으로 `lock_history`·`recovery_requests`·`ip_lock_exemptions`, 관리자 계정 잠금으로 `admin_account_lockouts`, 이메일 인증으로 `email_tokens`, 로그 요약으로 `log_daily_summary`·`log_daily_breakdown`·`log_summary_state`가 추가되어 지금은 30개입니다. 기존 DB에 추가로 실행할 SQL은 [docs/migrations/](../../docs/migrations)에 있습니다. 표별 설명은 [db-schema-guide.md](db-schema-guide.md).

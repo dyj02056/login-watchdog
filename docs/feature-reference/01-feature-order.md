@@ -2280,7 +2280,7 @@ IPv6 사용자는 보통 /64 대역(2⁶⁴개 주소)을 통째로 받아 주�
 `/api/stats` 응답에는 시간대별 건수, 7일 로그량, 공격자 히트맵, 신규·반복 공격자, 국가별 흐름, 미처리 이벤트 정렬, 복합 공격 흐름 링크가 들어 있다. 템플릿에 넘기던 값 중 `password`·`hash`·`token`·`secret`·`session_version`이 들어간 칸은 JSON으로 내보내기 전에 지운다.
 
 ### 4. 시현 방법
-- Supabase 없이 화면만: `python scripts/demo/demo_server.py` → http://127.0.0.1:5077/__demo_login (관리자) / `__demo_member` (회원). 아무 데도 접속하지 않는다.
+- Supabase 없이 화면만: `python scripts/demo/generate_demo_logs.py`로 7일치 샘플 로그를 한 번 만든 뒤(31번 7항) `python scripts/demo/demo_server.py` → http://127.0.0.1:5077/__demo_login (관리자) / `__demo_member` (회원). 아무 데도 접속하지 않는다.
 - 화면 소스를 고친 뒤: `cd web && npm ci && npm run build`로 `spa/`·`public/_next/`를 다시 만들어 함께 커밋한다.
 
 ### 5. 결과 화면
@@ -2338,6 +2338,13 @@ python scripts/demo/check_simulations.py honeypot     # 이름에 honeypot이 �
 - 가짜 공격자 IP는 서버가 `TRUST_FORWARDED_FOR=true`일 때만 반영된다(점검기는 이 값을 켠 채로 서버를 띄운다).
 - 자세한 내용: [guide49_scripts_reorganization.md](../beginner-guide/guide49_scripts_reorganization.md)
 
+### 7. 7일치 샘플 로그 (guide50)
+- **무엇**: 시연·스크린샷용 기록을 서버가 직접 만들게 하는 도구. `generate_demo_logs.py`가 메모리 DB 서버를 켜고 가짜 회원 12명을 실제 `/signup`으로 가입시킨 뒤, 정상 접속과 공격 시뮬레이션 21종을 시각 순서대로 실행한다. 묶음이 끝날 때마다 기록 시각을 지난 7일 안의 배정 시각으로 옮기고, 시뮬레이션이 쓴 IP를 17개국의 실제 할당 대역 IP로 바꿔 `scripts/demo/output/demo_logs.json`에 저장한다. 진짜 Supabase·Slack·메일에는 접속하지 않는다.
+- **보여주기**: `demo_server.py`가 그 JSON을 메모리 DB에 올려 대시보드를 띄운다(열 때마다 시각을 "지금" 기준으로 옮김).
+- **AI 조기경보**: 기본은 로컬 판정기, `--use-groq`를 주면 진짜 Groq API로 판정한다(`.env`의 `GROQ_API_KEY` 필요, 샘플 데이터가 Groq로 전송됨).
+- **실제 DB에 넣기(선택)**: `load_demo_to_supabase.py` — 기본은 미리보기, `--apply`(DB 호스트 이름 입력 확인)로 적재, `--purge`로 넣은 행만 삭제. 넣은 행의 번호를 `output/supabase_manifest.json`에 기록해 두었다가 그 번호만 지운다. 회원 비밀번호는 로그인 불가 값으로, 관리자 계정·메일 토큰은 넣지 않는다.
+- **한계**: IP 대역은 직접 고른 값이라 외부 위치 조회와 도시가 다를 수 있고, 이메일 복구 요청·IP 예외는 직접 만든 행이다. 자세한 내용: [guide50_demo_sample_logs.md](../beginner-guide/guide50_demo_sample_logs.md)
+
 ---
 
 ## 32. 부록
@@ -2375,6 +2382,7 @@ python scripts/demo/check_simulations.py honeypot     # 이름에 honeypot이 �
 | [tests/test_ipv6_prefix.py](../../tests/test_ipv6_prefix.py) | IPv6 /64 대역 정규화(29번) |
 | [tests/test_spa.py](../../tests/test_spa.py) | Next.js 껍데기 서빙·CSP 해시·JSON 변환·폴백(30번) |
 | [tests/test_stats.py](../../tests/test_stats.py) | 관제 화면 집계 `db/stats.py`(30번) |
+| [tests/test_demo_logs.py](../../tests/test_demo_logs.py) | 샘플 로그 도구: 국가별 IP 풀·시각 이동·메모리 DB 보완·Supabase 적재/삭제(31번 7항) |
 
 실행 방법(현재 718개, 몇 초 안에 끝남):
 ```bash
@@ -2409,7 +2417,10 @@ pytest
 | [scripts/simulation/high/recovery_flood_sim.py](../../scripts/simulation/high/recovery_flood_sim.py) | 복구·비밀번호 찾기·이메일 확인 폭주(25번) |
 | [scripts/simulation/medium/honeypot_bot_sim.py](../../scripts/simulation/medium/honeypot_bot_sim.py) | 허니팟 봇 차단 |
 | [scripts/demo/check_simulations.py](../../scripts/demo/check_simulations.py) | 위 시뮬레이터 전부를 메모리 DB 서버에서 한 번에 점검(31번) |
-| [scripts/demo/demo_server.py](../../scripts/demo/demo_server.py) | 가짜 데이터로 관제 화면만 띄우는 데모 서버(30번) |
+| [scripts/demo/demo_server.py](../../scripts/demo/demo_server.py) | 샘플 로그(JSON)로 관제 화면만 띄우는 데모 서버(30번·31번 7항) |
+| [scripts/demo/generate_demo_logs.py](../../scripts/demo/generate_demo_logs.py) | 7일치 샘플 로그 생성기(31번 7항) |
+| [scripts/demo/load_demo_to_supabase.py](../../scripts/demo/load_demo_to_supabase.py) | 샘플 로그를 실제 Supabase에 넣거나 지우는 선택 도구(31번 7항) |
+| [scripts/demo/demo_data.py](../../scripts/demo/demo_data.py) | 나라별 IP 대역·회원 이름·시각 이동 규칙(31번 7항) |
 
 ### 32.3 DB 스키마
 전체 테이블 정의는 [docs/schema.sql](../../docs/schema.sql) 참고. 처음 19개 테이블에 RBAC·상관분석·조기 경보 등으로 표가 늘었고, 영구 잠금으로 `lock_history`·`recovery_requests`·`ip_lock_exemptions`, 관리자 계정 잠금으로 `admin_account_lockouts`, 이메일 인증으로 `email_tokens`, 로그 요약으로 `log_daily_summary`·`log_daily_breakdown`·`log_summary_state`가 추가되어 지금은 30개입니다. 기존 DB에 추가로 실행할 SQL은 [docs/migrations/](../../docs/migrations)에 있습니다. 표별 설명은 [db-schema-guide.md](db-schema-guide.md).

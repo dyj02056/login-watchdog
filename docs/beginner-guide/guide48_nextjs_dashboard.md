@@ -64,7 +64,7 @@ npm run build       # 정적 빌드 + spa/, public/_next/ 갱신
 
 - `next dev`(핫리로드)는 `/api`를 로컬 Flask(`FLASK_ORIGIN`, 기본 5000번)로 넘긴다. 다만 `/board/<번호>` 같은 주소는 개발 서버에 없으므로, 최종 확인은 항상 빌드 후 Flask로 한다.
 - 이후 `scripts/`를 용도별 폴더로 나누고 시뮬레이션 일괄 점검 도구를 추가했다([49단계](guide49_scripts_reorganization.md)). 아래 `demo_server.py` 경로도 그에 따른 새 위치다.
-- Supabase 없이 화면만 볼 때는 `python scripts/demo/demo_server.py` → `http://127.0.0.1:5077/__demo_login`(관리자) / `__demo_member`(회원). DB·Slack·메일에는 아무것도 보내지 않는다.
+- Supabase 없이 화면만 볼 때는 먼저 `python scripts/demo/generate_demo_logs.py`로 7일치 샘플 로그를 한 번 만든 뒤([50단계](guide50_demo_sample_logs.md)) `python scripts/demo/demo_server.py` → `http://127.0.0.1:5077/__demo_login`(관리자) / `__demo_member`(회원). DB·Slack·메일에는 아무것도 보내지 않는다.
 - CSP(`script-src 'self'`, `style-src 'self'`)가 그대로라서 **인라인 `style` 속성과 `onclick=` 을 쓰면 안 된다**. `npm run build`의 후처리(`web/scripts/postbuild.mjs`)가 이를 검사해서 있으면 빌드를 실패시킨다. 색은 CSS 변수·클래스로만 바꾼다.
 
 ## 디자인 규칙 (`web/src/styles/tokens.css`)

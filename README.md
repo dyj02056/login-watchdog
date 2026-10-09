@@ -113,7 +113,7 @@ cd web
 npm ci          # 처음 한 번
 npm run build   # 빌드 후 spa/ 와 public/_next/ 를 갱신
 ```
-7일치 샘플 로그로 관제 화면만 확인하려면(Supabase 접속 없음) `python scripts/demo/generate_demo_logs.py`(처음 한 번) → `python scripts/demo/demo_server.py` 후 http://127.0.0.1:5077/__demo_login 을 엽니다.
+7일치 샘플 로그로 관제 화면만 확인하려면(Supabase 접속 없음) 가상환경을 켠 뒤 `python scripts/demo/generate_demo_logs.py`(처음 한 번, 약 2분) → `python scripts/demo/demo_server.py` 후 http://127.0.0.1:5077/__demo_login 을 엽니다. AI 조기경보를 진짜 Groq로 판정하려면 `--use-groq`, 실제 Supabase에도 넣으려면 `scripts/demo/load_demo_to_supabase.py --apply`(선택, 미리보기가 기본·`--purge`로 삭제)를 씁니다. 자세한 내용은 [guide50_demo_sample_logs.md](docs/beginner-guide/guide50_demo_sample_logs.md) 참고
 
 기본적으로 `http://localhost:5000`에서 실행됩니다. 해당 포트가 이미 사용 중이면 `PORT` 환경변수로 다른 포트를 지정할 수 있습니다(`PORT=5050 python app.py`).
 
@@ -212,7 +212,7 @@ npm run build   # 빌드 후 spa/ 와 public/_next/ 를 갱신
 ```bash
 pytest tests/
 ```
-실제 Supabase에 접속하지 않고 가짜 데이터(monkeypatch)로 판정 로직만 검증하므로 몇 초 안에 끝납니다. 현재 총 720개 테스트가 모두 통과합니다.
+실제 Supabase에 접속하지 않고 가짜 데이터(monkeypatch)로 판정 로직만 검증하므로 몇 초 안에 끝납니다. 현재 총 728개 테스트가 모두 통과합니다.
 
 ## 유지보수 스크립트
 
@@ -367,7 +367,7 @@ login-watchdog/
 
 - [PRODUCT.md](PRODUCT.md) — 관제 화면(Next.js)의 사용자·톤·디자인 원칙. [web/README.md](web/README.md)는 화면 소스를 빌드하는 방법
 - [plan.md](plan.md) — 각 파일을 왜 이렇게 설계했는지에 대한 상세 근거
-- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide49_scripts_reorganization.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
+- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide50_demo_sample_logs.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
 - [docs/feature-reference/01-feature-order.md](docs/feature-reference/01-feature-order.md) · [02-layer-order.md](docs/feature-reference/02-layer-order.md) — 기능별로 "어떤 코드가 어떤 순서로 실행되는지"를 실제 코드·줄번호와 함께 따라가는 가이드(기능 순서 / 계층 순서)
 - [docs/feature-reference/db-schema-guide.md](docs/feature-reference/db-schema-guide.md) · [ERD.svg](docs/feature-reference/ERD.svg) — 테이블 30개의 쓰임새와 관계도
 - [docs/architecture-map.html](docs/architecture-map.html) — 폴더·파일이 탐지 → 대응 → 알림 파이프라인의 어느 단계를 맡는지 색으로 묶은 지도

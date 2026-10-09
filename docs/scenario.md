@@ -12,6 +12,7 @@
 | 관리자 | `super_admin` 계정 1개, 가능하면 `security_admin` 계정 1개(권한 차이 시연용) |
 | 테스트 회원 | 받을 수 있는 이메일로 가입한 회원 1개(복구 메일 시연용) |
 | 화면 배치 | 관제 보드가 3개로 나뉘어 있습니다 — **위협 현황**(`/admin/dashboard`: KPI·시간대별 추이·히트맵·공격 흐름도), **공격 상세**(`/admin/attack`: Top 5·국가별 흐름·실시간 이벤트), **처리 작업대**(`/admin/ops`: 잠금·보안 이벤트·AI 조기 경보·영구 잠금 카드 등 버튼으로 처리하는 모든 기능). 이 대본의 "카드"·"표"는 따로 적지 않으면 처리 작업대에 있습니다. 한쪽에는 위협 현황(또는 공격 상세), 다른 쪽에는 처리 작업대를 띄워 두면 5초마다 결과가 갱신됨(탭이 **보이는 상태**여야 갱신됨 — 다른 탭으로 가면 폴링이 멈췄다가 돌아오면 즉시 갱신) |
+| 시연용 샘플 로그(선택) | 실제 공격을 돌리지 않고 대시보드만 보여 줄 때: 가상환경을 켠 뒤 `python scripts/demo/generate_demo_logs.py`(약 2분)로 7일치 기록을 만들고 `python scripts/demo/demo_server.py` → http://127.0.0.1:5077/__demo_login. 진짜 DB·Slack·메일 미접속. 배포 대시보드에 보여야 하면 `load_demo_to_supabase.py --apply`(선택, [guide50](beginner-guide/guide50_demo_sample_logs.md)) |
 | 시연 전 점검(선택) | `python scripts/demo/check_simulations.py` — 가짜 DB를 붙인 서버에서 시뮬레이터 전부를 돌려 기대한 보안 이벤트가 기록되는지 PASS/FAIL로 확인합니다(진짜 DB·Slack·메일 미접속, 5000번 포트를 쓰므로 `python app.py`는 끄고 실행). 화면 구성만 먼저 보고 싶다면 `python scripts/demo/demo_server.py` → http://127.0.0.1:5077/__demo_login |
 | AI 조기 경보(1-1) | `.env`에 `GROQ_API_KEY`가 있어야 동작. 없으면 조기 경보 단계만 조용히 건너뛰고 나머지 시연은 그대로 됨 |
 | 허용 목록 | 시연자 PC의 IP를 `PERMANENT_LOCK_IP_ALLOWLIST`에 넣어 두기(본인이 잠기는 사고 방지). 가짜 IP(`--ip`)는 넣지 않음 |

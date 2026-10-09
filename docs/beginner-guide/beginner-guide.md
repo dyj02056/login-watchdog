@@ -58,6 +58,7 @@
 47. [47단계 — 매일 어제 하루치를 요약한다(시각화용 요약표)](guide47_daily_log_summary.md)
 48. [48단계 — Next.js 관제 화면으로 바꾸기](guide48_nextjs_dashboard.md)
 49. [49단계 — scripts/ 정리와 시뮬레이션 일괄 점검](guide49_scripts_reorganization.md)
+50. [50단계 — 7일치 샘플 로그 만들기 (대시보드 시연용)](guide50_demo_sample_logs.md)
 
 **단계 사이의 리팩터링 기록** (기능 변화 없이 파일 구조만 바꾼 작업)
 
