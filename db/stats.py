@@ -45,6 +45,31 @@ _MAX_ROWS = 20000  # 한 표에서 가져올 최대 줄 수(폭주 시 응답이
 
 SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2}
 
+# "연관 사건" 표에 올리는 상태. OPEN은 아직 처리 중, IDLE은 새 이벤트가 끊겼는데도 관리자가 "해결"을 안 누른 것.
+# CLOSED여도 시스템이 자동으로 닫은 것(resolved_by가 "system:"으로 시작)은 사람이 확인하지 않았으므로 함께 보여준다.
+INCIDENT_STATUS_ORDER = {"OPEN": 0, "IDLE": 1, "CLOSED": 2}
+OPEN_INCIDENT_LIMIT = 8
+LOCK_LIMIT = 8
+
+
+def build_locks(ip_locks: list[dict], account_locks: list[dict], admin_locks: list[dict]) -> dict:
+    """지금 잠긴 IP·회원 계정·관리자 계정을 영구 잠금과 함께 한 목록으로 합친다(영구가 먼저, 그다음 최근순)."""
+    rows = []
+    for kind, source, key in (("ip", ip_locks, "ip_address"), ("account", account_locks, "username"), ("admin", admin_locks, "username")):
+        for row in source:
+            rows.append(
+                {
+                    "kind": kind,
+                    "target": row.get(key),
+                    "permanent": row.get("lock_type") == "PERMANENT",
+                    "locked_at": row.get("locked_at"),
+                    "unlock_at": row.get("unlock_at"),
+                }
+            )
+    rows.sort(key=lambda r: r["locked_at"] or "", reverse=True)
+    rows.sort(key=lambda r: not r["permanent"])  # 안정 정렬이라 영구끼리·임시끼리는 최근순이 유지된다
+    return {"locks": rows[:LOCK_LIMIT], "locks_total": len(rows), "locks_permanent": sum(1 for r in rows if r["permanent"])}
+
 
 def _parse(value: str | None) -> datetime | None:
     if not value:
@@ -108,7 +133,6 @@ def fetch_raw(now: datetime | None = None) -> dict:
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_ago_start = today_start - timedelta(days=RECENT_DAYS)  # 지난주 같은 요일 포함
     events_since = today_start - timedelta(days=EVENT_WINDOW_DAYS)
-    incidents_since = today_start - timedelta(days=RECENT_DAYS - 1)
 
     jobs = {
         "events": lambda: _fetch_rows(
@@ -126,9 +150,9 @@ def fetch_raw(now: datetime | None = None) -> dict:
         ),
         "incidents": lambda: _fetch_rows(
             "security_incidents",
-            "id,ip_address,event_types,severity_max,status,first_event_at,last_event_at",
+            "id,ip_address,event_types,severity_max,status,first_event_at,last_event_at,resolved_by",
             "last_event_at",
-            incidents_since,
+            events_since,
         ),
         "summary": lambda: _summary_rows((today_start - timedelta(days=RECENT_DAYS - 1)).date()),
     }
@@ -281,8 +305,20 @@ def build_threat_stats(raw: dict, *, active_locks: int, pending_ai: int, locatio
             "country": (locations.get(i["ip_address"]) or {}).get("country"),
         }
         for i in raw["incidents"]
-        if len(i["event_types"]) >= 3
+        if len(i["event_types"]) >= 3 and (_parse(i["last_event_at"]) or now).date() >= new_cutoff
     ]
+    pending_incidents = sorted(
+        (
+            i
+            for i in raw["incidents"]
+            if i["status"] in ("OPEN", "IDLE") or (i["status"] == "CLOSED" and str(i.get("resolved_by") or "").startswith("system"))
+        ),
+        key=lambda i: (
+            INCIDENT_STATUS_ORDER.get(i["status"], 9),
+            SEVERITY_ORDER.get(i["severity_max"], 9),
+            -(_parse(i["last_event_at"]) or now).timestamp(),
+        ),
+    )
 
     # 6) 상세 모니터링: Top 5들과 나라별 흐름
     today_events = [e for e in events if e["_d"] == today]
@@ -353,6 +389,19 @@ def build_threat_stats(raw: dict, *, active_locks: int, pending_ai: int, locatio
             for e in unresolved[:8]
         ],
         "compound": compound[:6],
+        "open_incidents": [
+            {
+                "id": i["id"],
+                "ip": i["ip_address"],
+                "types": i["event_types"],
+                "severity": i["severity_max"],
+                "status": i["status"],
+                "auto_closed": i["status"] == "CLOSED",
+                "last_event_at": i["last_event_at"],
+            }
+            for i in pending_incidents[:OPEN_INCIDENT_LIMIT]
+        ],
+        "open_incidents_total": len(pending_incidents),
         "top_sources": top_sources,
         "top_types": top_types,
         "top_paths": top_paths,

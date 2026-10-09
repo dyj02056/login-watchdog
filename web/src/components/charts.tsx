@@ -4,7 +4,7 @@
 import { Chart, tooltipBase } from "./Chart";
 import type { Theme } from "./Chart";
 import { actionLabel, eventTypeLabel } from "@/lib/labels";
-import { formatDayWithWeekday, formatMonthDay } from "@/lib/format";
+import { formatCount, formatDayWithWeekday, formatMonthDay } from "@/lib/format";
 import type { Stats } from "@/lib/types";
 
 const HOURS = Array.from({ length: 24 }, (_, hour) => String(hour).padStart(2, "0"));
@@ -187,6 +187,16 @@ export function IpHeatmap({ heatmap }: { heatmap: Stats["heatmap"] }) {
 
 type FlowKind = "source" | "type" | "action";
 
+// 공격 유형마다 색 하나를 돌려 쓴다. 그 유형으로 들어오고 나가는 띠가 같은 색이라 한 줄기로 따라가진다.
+const FLOW_TYPE_COLORS = ["#3cc8f0", "#e9568f", "#f2d04b", "#a78bfa", "#ff9a3c", "#34e08c", "#5eead4", "#f472b6"];
+
+/** 조치는 심각도 색: 알림은 약하게, 요청 거부는 중간, 잠금은 강하게. */
+function flowActionColor(t: Theme, action: string): string {
+  if (action === "ALERTED") return t.cyan;
+  if (action === "REJECTED") return t.high;
+  return t.critical;
+}
+
 /** 흐름도(Sankey). 왼쪽 출발(IP·국가) → 공격 유형 → 조치. */
 export function FlowChart({ links, sourceLabel }: { links: { source: string; target: string; value: number }[]; sourceLabel?: string }) {
   return (
@@ -202,9 +212,23 @@ export function FlowChart({ links, sourceLabel }: { links: { source: string; tar
         // 유형 노드는 source로 먼저 등록됐을 수 있으므로(유형 → 조치 링크) 한 번 더 바로잡는다.
         for (const link of links) if (link.target.startsWith("조치:")) kinds.set(link.source, "type");
         const depth: Record<FlowKind, number> = { source: 0, type: 1, action: 2 };
-        const color: Record<FlowKind, string> = { source: t.week, type: t.cyan, action: t.signal };
+
+        // 노드 합계(들어온 양과 나간 양 중 큰 쪽) — 라벨에 건수로 붙인다.
+        const inSum = new Map<string, number>();
+        const outSum = new Map<string, number>();
+        for (const link of links) {
+          inSum.set(link.target, (inSum.get(link.target) ?? 0) + link.value);
+          outSum.set(link.source, (outSum.get(link.source) ?? 0) + link.value);
+        }
+        const total = (name: string) => Math.max(inSum.get(name) ?? 0, outSum.get(name) ?? 0);
+
+        const typeColor = new Map<string, string>();
+        for (const [name, kind] of kinds) if (kind === "type") typeColor.set(name, FLOW_TYPE_COLORS[typeColor.size % FLOW_TYPE_COLORS.length]);
+        const nodeColor = (name: string, kind: FlowKind) =>
+          kind === "type" ? typeColor.get(name)! : kind === "action" ? flowActionColor(t, name.slice(3)) : t.week;
         const display = (name: string, kind: FlowKind) =>
           kind === "action" ? actionLabel(name.slice(3)) : kind === "type" ? eventTypeLabel(name) : name;
+
         return {
           animationDuration: 500,
           tooltip: { trigger: "item", ...tooltipBase(t) },
@@ -212,21 +236,34 @@ export function FlowChart({ links, sourceLabel }: { links: { source: string; tar
             {
               type: "sankey",
               left: 6,
-              right: 118,
-              top: 6,
-              bottom: 6,
-              nodeWidth: 10,
-              nodeGap: 10,
+              right: 150,
+              top: 8,
+              bottom: 8,
+              nodeWidth: 14,
+              nodeGap: 12,
               draggable: false,
-              emphasis: { focus: "adjacency" },
+              // 가리킨 경로만 밝게, 나머지는 흐리게
+              emphasis: { focus: "adjacency", lineStyle: { opacity: 0.85 } },
+              blur: { lineStyle: { opacity: 0.06 }, itemStyle: { opacity: 0.35 } },
               data: [...kinds].map(([name, kind]) => ({
                 name,
                 depth: depth[kind],
-                itemStyle: { color: color[kind] },
-                label: { formatter: display(name, kind), color: t.ink0, fontFamily: t.font, fontSize: 11 },
+                itemStyle: { color: nodeColor(name, kind) },
+                label: {
+                  formatter: `${display(name, kind)}  {n|${formatCount(total(name))}건}`,
+                  rich: { n: { color: t.ink1, fontFamily: t.mono, fontSize: 12 } },
+                  color: t.ink0,
+                  fontFamily: t.font,
+                  fontSize: 13,
+                  fontWeight: 600,
+                },
               })),
-              links,
-              lineStyle: { color: "gradient", opacity: 0.32, curveness: 0.5 },
+              links: links.map((link) => {
+                // 띠 색은 연결된 "유형"의 색을 따른다.
+                const typeName = typeColor.has(link.target) ? link.target : link.source;
+                return { ...link, lineStyle: { color: typeColor.get(typeName) ?? t.week, opacity: 0.5 } };
+              }),
+              lineStyle: { curveness: 0.5 },
             },
           ],
         };

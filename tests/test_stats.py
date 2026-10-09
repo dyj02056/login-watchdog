@@ -114,3 +114,34 @@ def test_flow_and_country_links_aggregate_counts():
     assert links[("BRUTE_FORCE", "조치:LOCK_IP")] == 2
     countries = {(l["source"], l["target"]): l["value"] for l in result["country_flow"]["links"]}
     assert countries[("Korea", "BRUTE_FORCE")] == 2 and countries[("위치 미확인", "WEB_SCANNING")] == 1
+
+
+def _incident(i, status, severity="HIGH", resolved_by=None, minutes_ago=5):
+    stamp = (NOW - timedelta(minutes=minutes_ago)).isoformat()
+    return {"id": i, "ip_address": f"7.7.7.{i}", "event_types": ["A", "B"], "severity_max": severity, "status": status,
+            "first_event_at": stamp, "last_event_at": stamp, "resolved_by": resolved_by}
+
+
+def test_open_incidents_list_unresolved_idle_and_system_closed_but_not_admin_closed():
+    incidents = [
+        _incident(1, "CLOSED", resolved_by="admin1"),
+        _incident(2, "IDLE", "CRITICAL"),
+        _incident(3, "OPEN", "MEDIUM"),
+        _incident(4, "CLOSED", resolved_by="system:permanent_lock"),
+        _incident(5, "OPEN", "CRITICAL"),
+    ]
+    result = build(_raw(incidents=incidents))
+    assert [i["id"] for i in result["open_incidents"]] == [5, 3, 2, 4]  # 상태(OPEN→IDLE→자동 종료) 순, 같은 상태는 등급순
+    assert result["open_incidents_total"] == 4
+    assert [i["auto_closed"] for i in result["open_incidents"]] == [False, False, False, True]
+
+
+def test_build_locks_merges_ip_account_admin_with_permanent_first():
+    locks = stats.build_locks(
+        [{"ip_address": "1.1.1.1", "locked_at": "2026-10-09T10:00:00+00:00", "lock_type": "TEMPORARY"}],
+        [{"username": "kim", "locked_at": "2026-10-09T09:00:00+00:00", "lock_type": "PERMANENT"}],
+        [{"username": "root", "locked_at": "2026-10-09T11:00:00+00:00"}],
+    )
+    assert [(l["kind"], l["target"], l["permanent"]) for l in locks["locks"]] == [
+        ("account", "kim", True), ("admin", "root", False), ("ip", "1.1.1.1", False)]
+    assert locks["locks_total"] == 3 and locks["locks_permanent"] == 1

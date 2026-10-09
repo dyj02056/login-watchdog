@@ -121,6 +121,12 @@ def _fake_raw(now=None):
          "severity_max": "CRITICAL", "status": "OPEN", "first_event_at": (now - timedelta(hours=5)).isoformat(), "last_event_at": (now - timedelta(minutes=12)).isoformat()},
         {"id": 2, "ip_address": "198.51.100.23", "event_types": ["BRUTE_FORCE", "DISTRIBUTED_BRUTE_FORCE", "API_MACRO_PATTERN"],
          "severity_max": "CRITICAL", "status": "OPEN", "first_event_at": (now - timedelta(hours=9)).isoformat(), "last_event_at": (now - timedelta(hours=1)).isoformat()},
+        {"id": 3, "ip_address": "192.0.2.144", "event_types": ["WEB_SCANNING", "HTTP_FLOOD"],
+         "severity_max": "HIGH", "status": "IDLE", "first_event_at": (now - timedelta(days=2)).isoformat(), "last_event_at": (now - timedelta(days=1, hours=3)).isoformat()},
+        {"id": 4, "ip_address": "203.0.113.9", "event_types": ["BRUTE_FORCE", "PASSWORD_SPRAYING"], "resolved_by": "system:permanent_lock",
+         "severity_max": "CRITICAL", "status": "CLOSED", "first_event_at": (now - timedelta(days=3)).isoformat(), "last_event_at": (now - timedelta(days=2)).isoformat()},
+        {"id": 5, "ip_address": "198.51.100.77", "event_types": ["WEB_SCANNING", "PAGE_ACCESS"], "resolved_by": "demo-admin",
+         "severity_max": "MEDIUM", "status": "CLOSED", "first_event_at": (now - timedelta(days=3)).isoformat(), "last_event_at": (now - timedelta(days=2)).isoformat()},
     ]
     return {
         "now": now, "events": events, "summary": summary, "incidents": incidents,
@@ -200,6 +206,7 @@ db.list_active_lockouts = lambda: [
     {"ip_address": "198.51.100.23", "locked_at": _iso(days=1), "unlock_at": None, "failure_count": 14, "lock_type": "PERMANENT", "permanent_reason": "REPEAT_OFFENDER", "recoverable": "SELF", "promoted_at": _iso(hours=20)},
 ]
 db.list_active_account_lockouts = lambda: [{"username": "kim_minjae", "locked_at": _iso(minutes=1), "unlock_at": _iso(minutes=-4), "failure_count": 8, "lock_type": "TEMPORARY"}]
+db.list_active_admin_account_lockouts = lambda: [{"username": "night_shift", "locked_at": _iso(minutes=9), "unlock_at": _iso(minutes=-1), "failure_count": 5}]
 db.list_recent_recovery_requests = lambda n: [{"id": 1, "created_at": _iso(hours=3), "username": "park_dohyun", "target_kind": "account", "target_value": "park_dohyun", "requested_ip": "192.0.2.14", "status": "PENDING"}]
 db.list_active_ip_exemptions = lambda n: [{"id": 1, "granted_at": _iso(days=1), "ip_address": "192.0.2.14", "username": "park_dohyun", "expires_at": _iso(days=-29)}]
 db.get_signup_enabled = lambda: True

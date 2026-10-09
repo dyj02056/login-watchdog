@@ -34,16 +34,23 @@ export function formatTime(value: string | null | undefined): string {
   return date ? time.format(date) : "-";
 }
 
-/** 날짜(YYYY-MM-DD) → "10-09" */
-export function formatMonthDay(day: string): string {
-  const date = toDate(`${day}T00:00:00+09:00`);
-  return date ? monthDay.format(date) : day;
+// sv-SE는 월/일만 뽑으면 "09/10"(일/월)로 나오는 환경이 있어서, 부분을 직접 집어 월/일 순서로 조립한다.
+function monthSlashDay(date: Date): string {
+  const parts = monthDay.formatToParts(date);
+  const pick = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${pick("month")}/${pick("day")}`;
 }
 
-/** 날짜(YYYY-MM-DD) → "10-09(금)" */
+/** 날짜(YYYY-MM-DD) → "10/09" (월/일) */
+export function formatMonthDay(day: string): string {
+  const date = toDate(`${day}T00:00:00+09:00`);
+  return date ? monthSlashDay(date) : day;
+}
+
+/** 날짜(YYYY-MM-DD) → "10/09(금)" */
 export function formatDayWithWeekday(day: string): string {
   const date = toDate(`${day}T12:00:00+09:00`);
-  return date ? `${monthDay.format(date)}(${weekday.format(date)})` : day;
+  return date ? `${monthSlashDay(date)}(${weekday.format(date)})` : day;
 }
 
 export function formatCount(value: number | null | undefined): string {
@@ -58,5 +65,5 @@ export function compactCount(value: number): string {
 }
 
 export function severityLabel(severity: string): string {
-  return { CRITICAL: "치명", HIGH: "높음", MEDIUM: "보통", LOW: "낮음" }[severity] ?? severity;
+  return { CRITICAL: "critical", HIGH: "high", MEDIUM: "medium", LOW: "low" }[severity] ?? severity;
 }

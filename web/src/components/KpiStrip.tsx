@@ -11,7 +11,7 @@ export function KpiStrip({ kpi }: { kpi: Stats["kpi"] | null }) {
     { label: "로그인 실패", value: kpi.failed_logins_today, note: "오늘 누적" },
     { label: "자동 차단", value: kpi.blocked_today, note: "잠금·요청 거부" },
     { label: "현재 잠금", value: kpi.active_locks, note: "IP·계정" },
-    { label: "미처리 치명", value: kpi.unresolved_critical, note: `전체 미처리 ${formatCount(kpi.unresolved_total)}건`, alert: kpi.unresolved_critical > 0 },
+    { label: "미처리 critical", value: kpi.unresolved_critical, note: `전체 미처리 ${formatCount(kpi.unresolved_total)}건`, alert: kpi.unresolved_critical > 0 },
     { label: "AI 승인 대기", value: kpi.pending_ai, note: "조기 경보", alert: kpi.pending_ai > 0 },
   ];
   const severity = kpi?.severity_7d;
@@ -29,7 +29,7 @@ export function KpiStrip({ kpi }: { kpi: Stats["kpi"] | null }) {
 
       <div className={`${styles.cell} ${styles.mix}`}>
         <span className={styles.label}>7일 위험등급</span>
-        <svg className={styles.bar} viewBox="0 0 100 6" preserveAspectRatio="none" role="img" aria-label={severity ? `치명 ${severity.CRITICAL}, 높음 ${severity.HIGH}, 보통 ${severity.MEDIUM}` : "집계 중"}>
+        <svg className={styles.bar} viewBox="0 0 100 6" preserveAspectRatio="none" role="img" aria-label={severity ? `critical ${severity.CRITICAL}, high ${severity.HIGH}, medium ${severity.MEDIUM}` : "집계 중"}>
           <rect className={styles.track} x="0" y="0" width="100" height="6" />
           {severity ? (
             <>
@@ -40,7 +40,7 @@ export function KpiStrip({ kpi }: { kpi: Stats["kpi"] | null }) {
           ) : null}
         </svg>
         <span className={`${styles.note} num`}>
-          {severity ? `치명 ${severity.CRITICAL} · 높음 ${severity.HIGH} · 보통 ${severity.MEDIUM}` : " "}
+          {severity ? `critical ${severity.CRITICAL} · high ${severity.HIGH} · medium ${severity.MEDIUM}` : " "}
         </span>
       </div>
     </div>

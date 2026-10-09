@@ -33,6 +33,11 @@ export type Stats = {
   repeat_attackers: IpRow[];
   unresolved: { id: number; severity: Severity; event_type: string; ip: string; country: string | null; path: string | null; detected_at: string }[];
   compound: { ip: string; types: string[]; type_count: number; severity: Severity; status: string; last_event_at: string; country: string | null }[];
+  open_incidents: { id: number; ip: string; types: string[]; severity: Severity; status: "OPEN" | "IDLE" | "CLOSED"; auto_closed: boolean; last_event_at: string }[];
+  open_incidents_total: number;
+  locks: { kind: "ip" | "account" | "admin"; target: string; permanent: boolean; locked_at: string | null; unlock_at: string | null }[];
+  locks_total: number;
+  locks_permanent: number;
   top_sources: { name: string; count: number }[];
   top_types: { name: string; count: number }[];
   top_paths: { name: string; count: number }[];

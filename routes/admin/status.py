@@ -180,9 +180,12 @@ def api_stats():
         account_locks = executor.submit(db.list_active_account_lockouts)
         admin_locks = executor.submit(db.list_active_admin_account_lockouts)
         pending = executor.submit(db.list_pending_requests, 1, 1)
-        active = len(locks.result()) + len(account_locks.result()) + len(admin_locks.result())
+        ip_locks, member_locks, admin_account_locks = locks.result(), account_locks.result(), admin_locks.result()
+        active = len(ip_locks) + len(member_locks) + len(admin_account_locks)
         pending_count = pending.result()[1]
-    return jsonify(db_stats.get_threat_stats(active_locks=active, pending_ai=pending_count))
+    stats = db_stats.get_threat_stats(active_locks=active, pending_ai=pending_count)
+    # 잠금 목록은 건수가 같아도 내용이 바뀔 수 있어서(풀림·재잠금) 보관된 집계에 매번 새로 얹는다.
+    return jsonify({**stats, **db_stats.build_locks(ip_locks, member_locks, admin_account_locks)})
 
 
 # 전체 상태 응답을 잠깐 보관해 탭 여러 개가 같은 조회를 나눠 쓴다(config.ADMIN_STATUS_CACHE_SECONDS).

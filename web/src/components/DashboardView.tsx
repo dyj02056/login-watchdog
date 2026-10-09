@@ -7,7 +7,7 @@ import { eventTypeLabel } from "@/lib/labels";
 import type { Stats } from "@/lib/types";
 import { usePolling } from "@/lib/usePolling";
 import { AdminShell } from "./AdminShell";
-import { SeverityBadge } from "./Badge";
+import { Pill, SeverityBadge } from "./Badge";
 import { DailyVolume, FlowChart, HourlyTrend, IpHeatmap } from "./charts";
 import { DataTable } from "./DataTable";
 import { KpiStrip } from "./KpiStrip";
@@ -16,6 +16,11 @@ import { EmptyState, ErrorState, Skeleton } from "./States";
 import styles from "./DashboardView.module.css";
 
 const POLL_MS = 30_000;
+
+const LOCK_KIND = { ip: "IP", account: "회원", admin: "관리자" } as const;
+// OPEN은 지금도 진행 중, IDLE은 이벤트가 끊겼는데 "해결"이 눌리지 않은 것, 자동 종료는 시스템이 닫은 것.
+const INCIDENT_STATUS = { OPEN: "미처리", IDLE: "방치", CLOSED: "종료" } as const;
+const INCIDENT_TONE = { OPEN: "danger", IDLE: "warn", CLOSED: "neutral" } as const;
 
 export function DashboardView() {
   const { data, error, loading, updatedAt, refresh } = usePolling<Stats>(async () => {
@@ -101,17 +106,23 @@ export function DashboardView() {
           ))}
         </Panel>
 
-        <Panel className={styles.repeat} title="지속 공격자 (3일 이상)" flush>
+        <Panel
+          className={styles.locks}
+          title="잠금 현황 (현재 · 영구)"
+          flush
+          meta={data ? <span>{data.locks_total}건 · 영구 {data.locks_permanent}건</span> : undefined}
+        >
           {body((s) => (
             <DataTable
-              caption="최근 7일 중 3일 이상 탐지된 공격자"
-              rows={s.repeat_attackers}
-              rowKey={(row) => row.ip}
-              empty={{ title: "3일 이상 이어진 공격자가 없습니다." }}
+              caption="현재 잠긴 IP·계정과 영구 잠금"
+              rows={s.locks}
+              rowKey={(row) => `${row.kind}-${row.target}`}
+              empty={{ title: "잠긴 IP·계정이 없습니다." }}
               columns={[
-                { header: "공격자 IP", cell: (r) => r.ip, num: true },
-                { header: "일수", cell: (r) => `${r.days}일`, num: true, align: "right" },
-                { header: "건수", cell: (r) => r.count, num: true, align: "right" },
+                { header: "대상", cell: (r) => r.target, num: true, grow: true },
+                { header: "구분", cell: (r) => LOCK_KIND[r.kind] },
+                { header: "상태", cell: (r) => <Pill tone={r.permanent ? "danger" : "warn"}>{r.permanent ? "영구" : "임시"}</Pill> },
+                { header: "잠긴 시각", cell: (r) => (r.locked_at ? formatDateTime(r.locked_at).slice(5, 16) : "-"), num: true },
               ]}
             />
           ))}
@@ -134,17 +145,22 @@ export function DashboardView() {
           ))}
         </Panel>
 
-        <Panel className={styles.compound} title="복합 공격" flush>
+        <Panel
+          className={styles.compound}
+          title="연관 사건 (미처리 · 방치)"
+          flush
+          meta={data ? <span>{data.open_incidents_total}건</span> : undefined}
+        >
           {body((s) => (
             <DataTable
-              caption="서로 다른 공격 유형이 3개 이상 겹친 IP"
-              rows={s.compound}
-              rowKey={(row) => `${row.ip}-${row.last_event_at}`}
-              empty={{ title: "복합 공격이 없습니다.", hint: "한 IP에서 3가지 이상 유형이 겹치면 표시됩니다." }}
+              caption="해결 처리가 되지 않은 연관 사건"
+              rows={s.open_incidents}
+              rowKey={(row) => row.id}
+              empty={{ title: "미처리 연관 사건이 없습니다.", hint: "같은 IP에서 여러 유형이 이어진 사건 중 해결되지 않은 것이 표시됩니다." }}
               columns={[
                 { header: "IP", cell: (r) => r.ip, num: true },
-                { header: "유형", cell: (r) => `${r.type_count}종`, num: true, align: "right" },
                 { header: "등급", cell: (r) => <SeverityBadge severity={r.severity} /> },
+                { header: "상태", cell: (r) => <Pill tone={INCIDENT_TONE[r.status]}>{r.auto_closed ? "자동 종료" : INCIDENT_STATUS[r.status]}</Pill> },
               ]}
             />
           ))}

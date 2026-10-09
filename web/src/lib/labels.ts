@@ -15,6 +15,7 @@ const EVENT_TYPES: Record<string, string> = {
   PAGE_ACCESS: "반복 페이지 접근",
   API_MACRO_PATTERN: "API 매크로",
   BOT_DETECTED: "봇 탐지",
+  PERMANENT_LOCK: "영구 잠금 전환",
 };
 
 const ACTIONS: Record<string, string> = {
