@@ -17,13 +17,10 @@ import types
 
 import pytest
 
-import alert
 import config
-import correlate
 import db
-import detector
-import lockdown
-import soar
+from notify import alert
+from security import correlate, detector, lockdown, soar
 
 from tests.admin_session import login_admin_session, stub_admin_role
 from tests.test_app import get_csrf_token  # noqa: E402

@@ -17,11 +17,9 @@ import pytest
 
 import config
 import db
-import detector
-import geoip
-import lockdown
-import soar
-from ip_utils import lookup_address, normalize_ip
+from security import detector, lockdown, soar
+from services import geoip
+from services.ip_utils import lookup_address, normalize_ip
 
 from tests.test_app import get_csrf_token  # noqa: E402
 

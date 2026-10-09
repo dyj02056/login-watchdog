@@ -9,7 +9,7 @@
 # 문제는 이때 관리자 대시보드의 "즉시 해제" 버튼도 쓸 수 없다는 점이다 — 그 버튼을
 # 누르려면 먼저 관리자로 로그인해야 하는데, 로그인 자체가 잠겨서 막혀버리기
 # 때문이다(닭이 먼저냐 달걀이 먼저냐 문제). 이 스크립트는 웹 화면을 거치지 않고
-# db.py를 통해 Supabase의 lockouts 표를 직접 갱신한다 — 관리자 대시보드의
+# db 패키지를 통해 Supabase의 lockouts 표를 직접 갱신한다 — 관리자 대시보드의
 # "즉시 해제" 버튼이 서버 안에서 하는 일(db.release_lockout)을, 서버·로그인 없이
 # 터미널에서 곧바로 실행하는 것과 같다.
 #
@@ -25,15 +25,15 @@ import sys
 
 from dotenv import load_dotenv
 
-# daily_report.py와 동일한 이유: scripts/ 폴더 밖(프로젝트 루트)에 있는 db.py를
+# daily_report.py와 동일한 이유: scripts/ 폴더 밖(프로젝트 루트)에 있는 db 패키지를
 # "python scripts/unlock_ip.py"로 실행해도 항상 찾을 수 있도록 경로를 추가해준다.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 load_dotenv()
 
 import db  # noqa: E402  (load_dotenv()가 SUPABASE_URL 등을 먼저 읽어들인 뒤에 import 해야 함)
-import lockdown  # noqa: E402
-from ip_utils import normalize_ip  # noqa: E402
+from security import lockdown  # noqa: E402
+from services.ip_utils import normalize_ip  # noqa: E402
 
 
 # --permanent로 영구 잠금을 풀 때 lock_history에 남길 기본 사유 — 터미널에서 풀어도

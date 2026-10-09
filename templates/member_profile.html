@@ -41,7 +41,7 @@
 
             <!-- 아이디(username)는 로그인 시도 기록(login_attempts) 등 다른 표와
                  문자열 그대로 연결되어 있어서 여기서는 수정할 수 없게 readonly로
-                 표시만 한다(app.py의 update_user_profile()도 username은 아예
+                 표시만 한다(routes/member.py의 member_profile_submit()도 username은 아예
                  안 받는다 — 화면과 서버 양쪽에서 같은 규칙을 지킨다). -->
             <form method="post" action="{{ url_for('member.member_profile_submit') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -229,7 +229,7 @@ def list_expired_active_lockouts() -> list[dict]:
 
     이 목록이 바로 "지금 당장 자동으로 풀어줘야 할 IP들"이다.
     이 함수 자체는 아무것도 풀지 않고, "풀어야 할 목록"만 알려준다
-    (실제로 푸는 실행은 soar.py의 try_release_expired_lockouts()가 담당).
+    (실제로 푸는 실행은 security/soar/의 try_release_expired_lockouts()가 담당).
     """
     res = (
         db.get_client()

@@ -1,11 +1,11 @@
 # ============================================================================
-# lockdown.py — "영구 출입금지 담당 부서": 임시 잠금을 영구 잠금으로 올리고(승격),
+# security/lockdown.py — "영구 출입금지 담당 부서": 임시 잠금을 영구 잠금으로 올리고(승격),
 # 영구 잠금을 풀어주는(관리자 해제 / 이메일 복구) 로직 본체 (guide33 / guide34-a)
 #
-# 왜 별도 모듈인가: soar.py가 이미 correlate.py를 import하고 있어서, correlate.py가
-# soar.py의 승격 함수를 직접 부르면 순환 import가 된다. 그래서 승격·해제 로직을 이
-# 파일 하나로 모으고, soar.py와 correlate.py가 둘 다 이 파일만 import하게 한다.
-# 이 파일은 모듈 수준에서 db / alert / config만 import한다. 영구 잠금 이벤트를
+# 왜 별도 모듈인가: security/soar/가 이미 security/correlate.py를 import하고 있어서, security/correlate.py가
+# security/soar/의 승격 함수를 직접 부르면 순환 import가 된다. 그래서 승격·해제 로직을 이
+# 파일 하나로 모으고, security/soar/와 security/correlate.py가 둘 다 이 파일만 import하게 한다.
+# 이 파일은 모듈 수준에서 db / alert / config / ip_utils만 import한다. 영구 잠금 이벤트를
 # 상관분석(correlate)에 흘려보내는 부분만 함수 안에서 늦게 import한다(순환 방지).
 #
 # 설계 원칙 (docs의 permanent-lock 계획서 1.1 참고)
@@ -17,10 +17,10 @@
 
 from datetime import datetime, timedelta, timezone
 
-import alert
 import config
 import db
-from ip_utils import normalize_ip
+from notify import alert
+from services.ip_utils import normalize_ip
 
 PERMANENT_LOCK_EVENT_TYPE = "PERMANENT_LOCK"
 
@@ -75,7 +75,7 @@ def _record_permanent_lock_event(
     else:
         db.insert_security_event(PERMANENT_LOCK_EVENT_TYPE, "CRITICAL", ip, None, count, "PERMANENT_LOCKED")
     if correlate_event:
-        import correlate  # noqa: PLC0415  (순환 import 방지를 위한 지연 import)
+        from security import correlate  # noqa: PLC0415  (순환 import 방지를 위한 지연 import)
 
         correlate.check_and_correlate(ip, PERMANENT_LOCK_EVENT_TYPE, "CRITICAL")
 
@@ -238,7 +238,7 @@ def release(target_kind: str, target_value: str, actor: str, note: str) -> bool:
     터미널 스크립트는 'script:unlock_ip' 같은 값이다(lock_history.released_by에 그대로 기록).
 
     영구 잠금이 아닌 대상(이미 풀렸거나 임시 잠금)이면 False — 호출부가 404/409로 응답한다.
-    푼 사람과 사유를 lock_history에 'admin:<이름>' 형식으로 남기고 Slack에도 알린다.
+    푼 사람(actor)과 사유를 lock_history에 남기고 Slack에도 알린다.
     연관 보안 이벤트는 정리하지만, 연관 사건(security_incidents)은 닫지 않는다 —
     사건 해결은 관리자의 "검토 끝" 판단이라 별개다(guide32).
     """

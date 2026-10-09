@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv()
 
 import config  # noqa: E402  (load_dotenv()가 환경변수를 먼저 읽어들인 뒤에 import 해야 함)
-import mailer  # noqa: E402
+from notify import mailer  # noqa: E402
 
 _HINTS = {
     mailer.FAIL_CONFIG: "MAIL_BACKEND=smtp 와 SMTP_HOST 를 설정하세요(운영에서는 console 백엔드를 쓸 수 없습니다).",

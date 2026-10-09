@@ -34,7 +34,7 @@ def get_user_by_id(user_id: int) -> dict | None:
     """회원 번호(id)로 사용자 한 명을 찾는다.
 
     로그인 세션에는 아이디(username) 문자열뿐 아니라 이 id도 함께 저장해둔다
-    (app.py의 login_submit() 참고) — 프로필을 수정할 때 "어느 행을 고칠지"를
+    (routes/auth.py의 login_submit() 참고) — 프로필을 수정할 때 "어느 행을 고칠지"를
     아이디가 아니라 변하지 않는 id로 정확히 짚어내기 위해서다.
     """
     res = db.get_client().table("users").select("*").eq("id", user_id).limit(1).execute()
@@ -44,8 +44,8 @@ def get_user_by_id(user_id: int) -> dict | None:
 def create_user(username: str, email: str, password: str) -> dict | None:
     """새 사용자 계정을 만든다 (회원가입).
 
-    같은 아이디나 같은 이메일로 이미 가입한 사람이 있으면 실패(False)를 돌려주고
-    아무것도 저장하지 않는다. 문제없으면 비밀번호를 암호화해서 저장하고 True를 돌려준다.
+    같은 아이디나 같은 이메일로 이미 가입한 사람이 있으면 실패(None)를 돌려주고
+    아무것도 저장하지 않는다. 문제없으면 비밀번호를 암호화해서 저장하고 새 회원 행을 돌려준다.
 
     반환값:
         새로 만든 회원 행(dict) - 회원가입 성공 (가입 인증 메일을 보낼 때 id·email이 필요하다, guide40)

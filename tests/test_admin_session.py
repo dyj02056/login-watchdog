@@ -16,7 +16,7 @@ import pytest
 
 import config
 import db
-import soar
+from security import soar
 
 from tests.admin_session import login_admin_session, stub_admin_role
 from tests.test_app import get_csrf_token  # noqa: E402
@@ -27,7 +27,7 @@ def unauthorized_log(monkeypatch):
     logged = []
     monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: logged.append(path))
     monkeypatch.setattr(
-        "detector.is_unauthorized_access_suspicious", lambda ip: (False, 1, False)
+        "security.detector.is_unauthorized_access_suspicious", lambda ip: (False, 1, False)
     )
     return logged
 

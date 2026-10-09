@@ -1,24 +1,23 @@
 # ============================================================================
 # app.py — 이 프로그램의 "정문" 역할을 하는 Flask 진입점
 #
-# 지금까지 만든 db.py(데이터 저장/조회), detector.py(판정), soar.py(조치),
-# alert.py(알림)는 전부 "부품"이었다. 이 파일은 그 부품들을 실제 웹 화면의
+# 지금까지 만든 db/(데이터 저장/조회), security/detector.py(판정), security/soar/(조치),
+# notify/alert.py(알림)는 전부 "부품"이었다. 이 파일은 그 부품들을 실제 웹 화면의
 # 버튼·주소(URL)와 연결해서, 사용자가 브라우저로 방문했을 때 실제로 동작하는
 # "완성된 웹사이트"로 만들어주는 역할을 한다.
 #
 # Flask란? 파이썬으로 웹사이트(웹 서버)를 아주 적은 코드로 만들 수 있게
 # 도와주는 도구(프레임워크)다. "이 주소로 누가 들어오면 이 함수를 실행해라"
 # 는 규칙을 하나씩 등록해두면, 사용자가 그 주소로 접속했을 때 자동으로
-
-
 # 해당 함수가 실행되어 화면을 만들어 보여준다.
 #
-# 실제 화면 라우트(회원가입/로그인/관리자/게시판/회원 대시보드)는 이제 이
-# 파일이 아니라 routes/ 아래 Blueprint 4개에 나뉘어 있다 — 이 파일에는 앱을
-# 만들고(Flask()), 공용 설정(세션/CSRF)을 하고, 그 Blueprint들을 등록하는
-# "조립" 코드와, 특정 라우트 하나에 속하지 않는 공용 에러 핸들러/훅만 남아있다.
-# 분리 배경과 각 파일이 어디로 갔는지는 docs/refactor/2026-09-15-file-split.md
-# 참고.
+# 실제 화면 라우트(회원가입/로그인/관리자/게시판/회원 대시보드 등)는 이제 이
+# 파일이 아니라 routes/ 아래 Blueprint들에 나뉘어 있다 — 이 파일에는 앱을
+# 만들고(Flask()), 공용 설정(세션/CSRF/요청 한도)을 하고, 그 Blueprint들을 등록하는
+# "조립" 코드와, 요청 한도·CSRF 에러 핸들러만 남아있다. 모든 요청에 걸리는 관찰 훅
+# (보안 헤더, 404 기록, 반복 접근·매크로 탐지)은 helpers/hooks.py에 있다.
+# 분리 배경과 각 파일이 어디로 갔는지는 docs/refactor/2026-09-15-file-split.md,
+# docs/refactor/2026-10-09-module-plan.md 참고.
 # ============================================================================
 
 
@@ -40,17 +39,17 @@ load_dotenv()
 
 import config
 import db
-import detector
-import mailer
-import soar
 from helpers import get_request_ip
+from helpers.hooks import PAGE_ACCESS_EXCLUDED_ENDPOINTS, register_request_hooks
+from notify import mailer
 from routes.admin import admin_bp
 from routes.auth import auth_bp
 from routes.board import board_bp
-from routes.member import member_bp
 from routes.email import email_bp
+from routes.member import member_bp
 from routes.password import password_bp
 from routes.recovery import recovery_bp
+from security import soar
 
 # static_folder="public", static_url_path="": 기본값이면 Flask가 "static/" 폴더를
 # "/static/파일명" 주소로 서빙하는데, Vercel은 CSS/JS 같은 정적 파일을 "public/" 폴더에서
@@ -90,8 +89,9 @@ app.config["SESSION_COOKIE_SECURE"] = os.environ.get("FLASK_ENV") == "production
 # 요청은 토큰이 없거나 틀려서 자동으로 거부된다.
 csrf = CSRFProtect(app)
 
-# 라우트는 4개의 Blueprint(routes/auth.py, admin.py, board.py, member.py)에 나뉘어
-# 있다. url_prefix를 따로 주지 않으므로 실제 URL 경로(/login, /admin/dashboard 등)는
+# 라우트는 7개의 Blueprint(routes/auth.py, admin/, board.py, member.py, recovery.py,
+# email.py, password.py)에 나뉘어 있다. url_prefix를 따로 주지 않으므로 실제 URL
+# 경로(/login, /admin/dashboard 등)는
 # 분리 이전과 완전히 동일하다 — 바뀐 건 Blueprint 등록에 따라 url_for()에 넘기는
 # 이름이 "login"에서 "auth.login"처럼 <블루프린트 이름>.<함수 이름> 형태가 된 것뿐이다
 # (이 파일과 templates/*.html의 url_for() 호출도 전부 그 형태로 맞춰뒀다).
@@ -117,15 +117,15 @@ mailer.print_configuration_warnings()
 # 그대로 재사용해서, TRUST_FORWARDED_FOR 설정에 따라 실제 IP/신뢰하는 헤더 값
 # 중 이미 검증된 같은 기준으로 카운트한다.
 #
-# board.js/dashboard.js가 스스로 만들어내는 자동 폴링 API(_PAGE_ACCESS_EXCLUDED_
-# ENDPOINTS, track_page_access() 참고)는 정상적으로도 이 한도를 넘길 만큼 자주
+# board.js/dashboard.js가 스스로 만들어내는 자동 폴링 API(PAGE_ACCESS_EXCLUDED_
+# ENDPOINTS, helpers/hooks.py의 track_page_access() 참고)는 정상적으로도 이 한도를 넘길 만큼 자주
 # 호출되므로, default_limits_exempt_when으로 그 엔드포인트들만 제외한다.
 # ============================================================================
 limiter = Limiter(
     key_func=get_request_ip,
     app=app,
     default_limits=[f"{config.GLOBAL_RATE_LIMIT_PER_MINUTE} per minute"],
-    default_limits_exempt_when=lambda: request.endpoint in _PAGE_ACCESS_EXCLUDED_ENDPOINTS,
+    default_limits_exempt_when=lambda: request.endpoint in PAGE_ACCESS_EXCLUDED_ENDPOINTS,
 )
 
 # 복구 코드 제출(POST /recovery/verify)에는 전역 한도보다 훨씬 좁은 한도를 따로 건다
@@ -154,7 +154,9 @@ for _endpoint in ("password.password_forgot_submit", "password.password_reset_su
 
 @app.errorhandler(RateLimitExceeded)
 def handle_rate_limit_exceeded(error):
-    """전역 요청 한도(GLOBAL_RATE_LIMIT_PER_MINUTE)를 넘긴 요청을 429로 거절하고 기록한다.
+    """요청 한도를 넘긴 요청을 429로 거절하고 기록한다. 전역 한도(GLOBAL_RATE_LIMIT_PER_MINUTE)
+    뿐 아니라 위에서 따로 건 라우트별 좁은 한도(복구·이메일 확인·비밀번호 찾기)도 같은 예외로
+    여기에 온다 — 어느 쪽이든 HTTP_FLOOD 이벤트로 기록하고, count 칸에는 전역 한도 값을 넣는다.
 
     soar.record_rejection()은 signup/post/comment 요청 거부와 동일한 HIGH 등급
     "상태 기반 중복 방지" 패턴을 쓴다 — 같은 IP가 계속 도배해도 미해결 이벤트
@@ -163,42 +165,6 @@ def handle_rate_limit_exceeded(error):
     ip = get_request_ip()
     soar.record_rejection("HTTP_FLOOD", ip, request.path, config.GLOBAL_RATE_LIMIT_PER_MINUTE)
     return error.get_response()
-
-
-@app.after_request
-def set_security_headers(response):
-    """모든 응답에 클릭재킹/콘텐츠 스니핑 방어용 보안 헤더를 추가한다 (L7 공격 보강 계획 Tier 2).
-
-    - X-Frame-Options / Content-Security-Policy(frame-ancestors): 이 사이트를
-      다른 사이트가 <iframe>에 몰래 끼워넣고 투명하게 겹친 뒤 클릭을 유도하는
-      클릭재킹을 막는다. "즉시 해제"/"회원 삭제" 같은 파괴적 버튼이 있는 관리자
-      대시보드일수록 이 방어가 중요하다. 두 헤더를 함께 쓰는 이유는
-      X-Frame-Options가 예전 브라우저 호환용이고, CSP의 frame-ancestors가 최신
-      표준이기 때문이다.
-    - Content-Security-Policy(그 외 지시문): 이 사이트가 직접 서빙하지 않는
-      스크립트/스타일/이미지가 끼어드는 것을 막는다. style-src/font-src에
-      Google Fonts 도메인만 예외로 열어둔 이유는 public/css/tokens.css가
-      @import로 그 폰트를 불러오기 때문이다 — 그 외 템플릿/정적 파일은
-      전부 이 사이트("'self'")에서만 가져온다.
-    - X-Content-Type-Options: 브라우저가 응답의 Content-Type을 무시하고
-      내용만 보고 실행 방식을 "추측"하는 MIME 스니핑을 막는다.
-    - Referrer-Policy: 다른 사이트로 이동할 때 이 사이트의 전체 URL(쿼리스트링
-      포함)이 Referer 헤더로 그대로 넘어가는 것을 줄인다.
-    """
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; "
-        "script-src 'self'; "
-        "style-src 'self' https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com; "
-        "img-src 'self'; "
-        "frame-ancestors 'none'; "
-        "base-uri 'self'; "
-        "form-action 'self'"
-    )
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    return response
 
 
 @app.errorhandler(CSRFError)
@@ -225,7 +191,7 @@ def handle_csrf_error(error):
 
 
 # 서버가 켜질 때 딱 한 번, 관리자 계정이 하나도 없으면 .env 값으로 자동 생성한다.
-# (회원가입 화면 없이 처음부터 관리자 1명이 존재하게 만드는 장치, db.py 3단계 참고)
+# (회원가입 화면 없이 처음부터 관리자 1명이 존재하게 만드는 장치, db/admin.py의 ensure_bootstrap_admin() 참고)
 db.ensure_bootstrap_admin()
 
 
@@ -233,7 +199,7 @@ def format_kr_time(iso_string: str) -> str:
     """Supabase가 돌려주는 "2026-09-02T15:10:24.091+00:00" 같은 시각 문자열을
     "2026-09-02 15:10:24"처럼 사람이 읽기 편한 형태로 바꾼다.
 
-    관리자 대시보드는 이 변환을 자바스크립트(dashboard.js의 formatTime())가
+    관리자 대시보드는 이 변환을 자바스크립트(dashboard/utils.js의 formatTime())가
     브라우저에서 처리하지만, 회원 화면(member_history.html)은 폴링 없이 서버가
     한 번에 화면을 그려서 보내주는 방식이라, 변환도 자바스크립트 대신 여기
     파이썬 쪽에서 미리 해둔다.
@@ -246,115 +212,9 @@ def format_kr_time(iso_string: str) -> str:
 # 간단히 쓸 수 있다 — 변환 로직을 템플릿 여기저기에 반복해서 적을 필요가 없다.
 app.jinja_env.filters["kr_time"] = format_kr_time
 
-
-@app.errorhandler(404)
-def handle_not_found(error):
-    """존재하지 않는 경로 요청(404)을 기록하고, 반복되면 Web Scanning 의심 알림을 보낸다.
-
-    화면에 보여주는 내용은 Flask/Werkzeug 기본 404 응답 그대로 둔다(error.get_response())
-    — 이 라우트의 목적은 사용자 경험을 바꾸는 게 아니라, 그동안 아무 기록도 남기지
-    않던 404 요청을 관찰 가능하게 만드는 것뿐이다 (21단계, attack_response_state.md
-    구현 대상 #1).
-
-    알림은 "임계값을 막 넘긴 바로 그 요청"에서 딱 한 번만 보낸다(count가 정확히
-    threshold+1일 때). enforce_lockout처럼 "잠긴 상태"라는 별도 표시가 없는 대신,
-    이 방식으로 매 요청마다 알림이 반복되는 걸(알림 피로) 막는다.
-    """
-    ip = get_request_ip()
-    db.log_not_found_attempt(ip, request.path)
-
-    suspicious, count, is_first_over_threshold = detector.is_web_scanning(ip)
-    if suspicious and is_first_over_threshold:
-        soar.notify_web_scanning(ip, count, request.path)
-    elif not suspicious and count >= config.WEB_SCANNING_ALERT_THRESHOLD - config.EARLY_WARNING_BAND:
-        # 아직 기준치는 안 넘었지만 코앞이면 LLM에게 조기 경보 여부를 물어본다
-        # (Track A, guide31).
-        soar.consider_early_warning(
-            "WEB_SCANNING", "ALERT_ONLY", "ip", ip, count, config.WEB_SCANNING_ALERT_THRESHOLD,
-            path=request.path,
-        )
-
-    return error.get_response()
-
-
-# board.js/dashboard.js가 스스로 만들어내는 자동 폴링 API. 브라우저 탭 하나만
-# 열려 있어도 정상적으로 초당 여러 번씩 호출되므로, track_page_access()가 이걸
-# "반복 접근 의심"으로 잘못 판단하지 않도록 관찰 대상에서 제외한다
-# ("static"은 Flask가 public/의 CSS·JS·이미지를 서빙할 때 쓰는 내장 엔드포인트).
-#
-# Blueprint로 분리하면서 각 라우트의 엔드포인트 이름이 "api_status"에서
-# "admin.api_status"처럼 "<블루프린트 이름>.<함수 이름>"으로 바뀌었다 — 이 집합도
-# 그 이름을 그대로 맞춰줘야 폴링 API가 계속 관찰 대상에서 제외된다.
-_PAGE_ACCESS_EXCLUDED_ENDPOINTS = {"static", "admin.api_status", "board.api_board_comments_latest"}
-
-
-
-
-@app.before_request
-def track_page_access():
-    """같은 IP가 같은 GET 페이지를 반복 요청하는지 관찰하고, 반복되면 알린다.
-
-    이 함수는 handle_not_found()와 달리 특정 경로가 아니라 "매 요청"마다 실행된다
-    (Flask가 라우팅을 마친 뒤, 실제 뷰 함수를 부르기 직전에 호출해준다). 그래서
-    대상을 신중하게 좁혀야 한다:
-    - request.url_rule이 None이면 애초에 존재하지 않는 경로(404)라는 뜻이므로
-      제외한다 — 그 경우는 not_found_attempts가 이미 별도로 기록한다.
-    - GET이 아닌 요청(폼 제출 등)은 "페이지 접근"이 아니므로 제외한다.
-    - _PAGE_ACCESS_EXCLUDED_ENDPOINTS에 있는 엔드포인트(정적 파일, 자동 폴링 API)도
-      제외한다 — 이것들을 빼두지 않으면 정상 사용자가 항상 "수상함"으로
-      잘못 판정된다.
-
-    알림은 handle_not_found()와 동일하게 "임계값을 막 넘긴 바로 그 요청"에서
-    딱 한 번만 보낸다 (attack_response_state.md 구현 대상 #4).
-    """
-    if request.method != "GET" or request.url_rule is None:
-        return
-    if request.endpoint in _PAGE_ACCESS_EXCLUDED_ENDPOINTS:
-        return
-
-    ip = get_request_ip()
-    db.log_page_access_attempt(ip, request.path)
-
-    suspicious, count, is_first_over_threshold = detector.is_page_access_suspicious(ip, request.path)
-    if suspicious and is_first_over_threshold:
-        soar.notify_page_access(ip, count, request.path)
-    elif not suspicious and count >= config.PAGE_ACCESS_ALERT_THRESHOLD - config.EARLY_WARNING_BAND:
-        soar.consider_early_warning(
-            "PAGE_ACCESS", "ALERT_ONLY", "ip", ip, count, config.PAGE_ACCESS_ALERT_THRESHOLD,
-            path=request.path,
-        )
-
-
-@app.before_request
-def track_api_access():
-    """같은 IP가 짧은 시간 안에 서로 다른 /api/* 경로를 여러 개 호출하는지
-    관찰하고, 매크로/봇 패턴으로 의심되면 알린다 (Track C guide29, 매크로/봇 탐지).
-
-    track_page_access()와 별도 훅으로 둔 이유: track_page_access()는 GET만,
-    "같은 경로 하나"의 반복만 본다 — 이 훅은 메서드를 가리지 않고(POST 포함),
-    "서로 다른 여러 경로"에 걸친 패턴을 본다. 서로 다른 종류의 수상함이라
-    하나로 합치지 않는다.
-
-    _PAGE_ACCESS_EXCLUDED_ENDPOINTS를 그대로 재사용해서 dashboard.js/board.js의
-    자동 폴링 API는 여기서도 제외한다 — 어차피 경로 하나만 반복 호출하므로
-    이 탐지(서로 다른 경로 개수)에는 원래 걸리지 않지만, 표를 불필요하게
-    불리지 않기 위해 애초에 기록하지 않는다.
-    """
-    if request.url_rule is None or not request.path.startswith("/api/"):
-        return
-    if request.endpoint in _PAGE_ACCESS_EXCLUDED_ENDPOINTS:
-        return
-
-    ip = get_request_ip()
-    db.log_api_access(ip, request.path, request.method)
-
-    suspicious, count, is_first_over_threshold = detector.is_macro_pattern_suspicious(ip)
-    if suspicious and is_first_over_threshold:
-        soar.notify_macro_pattern(ip, count)
-    elif not suspicious and count >= config.MACRO_DISTINCT_API_THRESHOLD - config.EARLY_WARNING_BAND:
-        soar.consider_early_warning(
-            "API_MACRO_PATTERN", "ALERT_ONLY", "ip", ip, count, config.MACRO_DISTINCT_API_THRESHOLD,
-        )
+# 보안 헤더·404 기록·반복 접근/매크로 관찰 훅(helpers/hooks.py). 위의 Limiter보다 뒤에 등록해야
+# 전역 요청 한도가 관찰 훅보다 먼저 돈다(register_request_hooks 설명 참고).
+register_request_hooks(app)
 
 
 # ============================================================================

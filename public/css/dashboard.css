@@ -75,7 +75,7 @@ section h2 {
     gap: 10px;
 }
 
-/* dashboard.js가 자바스크립트로 만들어 넣는 잠금 카드 하나 */
+/* dashboard/render/locks.js가 자바스크립트로 만들어 넣는 잠금 카드 하나 */
 .lockout-card {
     border: 1px solid var(--danger-soft);
     background: var(--danger-soft);
@@ -122,10 +122,10 @@ section h2 {
     font-size: 13px;
 }
 
-/* 회원 목록·게시판 관리(게시글/댓글)의 "삭제" 버튼 — 전부 되돌릴 수 없는
+/* 회원 목록·게시판 관리(게시글/댓글)·관리자 계정 관리의 "삭제" 버튼 — 전부 되돌릴 수 없는
    조치이므로 동일하게 위험을 알리는 색을 쓰고, 하나의 규칙으로 묶어 스타일이
-   어긋나지 않게 한다(dashboard.js의 delete-user-btn/delete-post-btn/
-   delete-comment-btn 클래스가 전부 이 규칙을 공유). */
+   어긋나지 않게 한다(dashboard/render/tables.js의 delete-user-btn/delete-post-btn/
+   delete-comment-btn/delete-admin-user-btn 클래스가 전부 이 규칙을 공유). */
 .delete-user-btn,
 .delete-post-btn,
 .delete-comment-btn,
@@ -177,8 +177,8 @@ section h2 {
     font-size: 13px;
 }
 
-/* 회원/게시글/댓글 관리 표 아래 페이지 이동 줄. board.css의 .board-pagination과
-   같은 모양이지만, 서버가 렌더링하는 <a href>가 아니라 dashboard.js가 클릭마다
+/* 페이지가 있는 표 8개(로그인 시도·회원·게시글·댓글 등) 아래 페이지 이동 줄. board.css의 .board-pagination과
+   같은 모양이지만, 서버가 렌더링하는 <a href>가 아니라 대시보드 JS(dashboard/api.js)가 클릭마다
    fetch()로 다시 그리는 표라서 <button>을 쓴다(그래서 board-pagination 클래스를
    그대로 재사용하지 않고 admin- 접두사로 분리했다). */
 .admin-pagination {
@@ -245,11 +245,12 @@ tbody.is-loading {
 
 /* 보안 이벤트 표는 9개 열이 전부 같은 너비로 나뉘면 "경로" 칸이 URL을 담기엔
    너무 좁아서 계속 여러 줄로 빽빽하게 끊긴다. 다른 열(등급/횟수처럼 짧은 값만
-   들어가는 칸)은 좁혀주고, 그만큼을 "경로" 칸에 몰아준다. 비율 합은 100%.
-   본문이 1200px로 넓어지면서 IP/계정 칸을 넓혔다(IP 최대 15자, 계정 최대 20자가
-   한 줄에 들어가도록 — 계정 20자만 두 줄로 나뉜다). "유형" 칸은 가장 긴 유형 코드
+   들어가는 칸)은 좁혀주고, 그만큼을 긴 값이 들어가는 칸(유형/IP/계정/경로)에 나눠준다.
+   비율 합은 100%. 본문이 1200px로 넓어지면서 IP/계정 칸을 넓혔다(IP 최대 15자, 계정
+   최대 20자가 한 줄에 들어가도록 — 계정 20자만 두 줄로 나뉜다). "유형" 칸은
    DISTRIBUTED_BRUTE_FORCE(23자)가, "조치" 칸은 ACCOUNT_LOCKED(14자)가 단어 중간에서
-   끊기지 않을 만큼 확보했다.
+   끊기지 않을 만큼 확보했다(이후 guide38에서 생긴 ADMIN_DISTRIBUTED_BRUTE_FORCE(29자)는
+   이 기준보다 길다).
    단, "등급" 칸은 너무 좁히면 배지("CRITICAL" 등)가 칸 너비보다 넓어져
    overflow로 옆 "유형" 칸 글자 위에 겹쳐 보이므로, 배지가 한 줄로 들어갈
    만큼의 최소 너비를 확보해둔다. */
@@ -297,7 +298,7 @@ tbody.is-loading {
 
 /* IP·시각처럼 자릿수가 맞춰져야 보기 편한 값에는 고정폭 글꼴을 쓴다.
    표마다 열 순서가 달라서 "몇 번째 칸"으로 지정하면 엉뚱한 칸에 적용될
-   위험이 있어, 해당 값을 그리는 쪽(dashboard.js)에서 이 클래스를 직접
+   위험이 있어, 해당 값을 그리는 쪽(dashboard/render/*.js)에서 이 클래스를 직접
    붙여주는 방식을 쓴다. */
 .mono {
     font-family: var(--font-mono);

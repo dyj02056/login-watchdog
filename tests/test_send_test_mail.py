@@ -10,7 +10,7 @@ sys.path.insert(
 )
 
 import config
-import mailer
+from notify import mailer
 import send_test_mail  # noqa: E402
 
 

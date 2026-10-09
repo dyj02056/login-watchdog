@@ -5,17 +5,14 @@
 # 세 섹션을 그대로 옮겨왔다. 배경은 docs/refactor/2026-09-15-file-split.md 참고.
 # ============================================================================
 
-import re
-
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
 import config
 import db
-import detector
-import email_verification
-import mailer
-import soar
 from helpers import get_device_hash, get_request_ip, is_bot_submission
+from notify import mailer
+from security import detector, soar
+from services import email_verification
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -27,7 +24,7 @@ auth_bp = Blueprint("auth", __name__)
 # db.create_user()에 넘겼다. 그러면 두 가지 문제가 생긴다.
 # 1) 아이디에 아무 문자나 허용되므로 `<img src=x onerror=...>` 같은 값도 그대로
 #    저장된다 — 대시보드 쪽 escapeHtml()로 화면 출력은 막아뒀지만(6단계 XSS 수정
-#    참고),애초에 이런 값이 데이터베이스에 들어가는 것 자체를 막는 편이 더 안전한
+#    참고), 애초에 이런 값이 데이터베이스에 들어가는 것 자체를 막는 편이 더 안전한
 #    "심층 방어(defense in depth)"다.
 # 2) 이메일 형식이 아닌 문자열이나 아주 짧은 비밀번호도 그대로 가입돼버린다.
 #
@@ -35,14 +32,9 @@ auth_bp = Blueprint("auth", __name__)
 # db.create_user()를 아예 호출하지 않고 바로 안내 메시지를 보여준다.
 # ============================================================================
 
-# 아이디/비밀번호 규칙은 config.USERNAME_PATTERN / config.MIN_PASSWORD_LENGTH로
-# 옮겨졌다 — scripts/create_admin.py, 대시보드 "관리자 계정 관리"(Track B guide26)도
+# 아이디/비밀번호/이메일 규칙은 config.USERNAME_PATTERN / MIN_PASSWORD_LENGTH / EMAIL_PATTERN으로
+# 옮겨졌다 — scripts/create_admin.py, 대시보드 "관리자 계정 관리"(Track B guide26), 이메일 변경(routes/member.py)도
 # 같은 규칙을 써야 해서 공용 상수가 됐다(config.py 상단 주석 참고).
-
-# 이메일: "글자@글자.글자" 형태의 아주 기본적인 모양만 확인한다. 완벽한 RFC 5322
-# 검증은 아니지만(그런 정규식은 매우 복잡하다), "이메일처럼 안 생긴 값"을 걸러내는
-# 데는 충분하고, 실제 도달 가능 여부는 어차피 별도의 인증 메일 없이는 확인할 수 없다.
-EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 # 계정 잠금 안내(guide39) — 임시든 영구든 같은 문구와 같은 복구 링크를 보여준다. 영구 승격은
 # 가입된 아이디에만 일어나서(lockdown.promote_account), "영구 잠금"이라고 따로 알려주면 그
@@ -130,7 +122,7 @@ def signup_submit():
         flash("아이디는 영문자, 숫자, 밑줄(_)만 사용해 3~20자로 입력해주세요.")
         return render_template("signup.html", signup_enabled=True)
 
-    if not EMAIL_PATTERN.match(email):
+    if not config.EMAIL_PATTERN.match(email):
         flash("올바른 이메일 형식이 아닙니다.")
         return render_template("signup.html", signup_enabled=True)
 
@@ -166,8 +158,9 @@ def signup_submit():
 # ============================================================================
 
 def _login_form(recovery_link: bool = False):
-    """로그인 폼을 다시 보여준다. recovery_link=True면 영구 잠금 안내 아래에 이메일
-    복구(/recovery) 링크를 함께 보여준다(templates/login_form.html 참고)."""
+    """로그인 폼을 다시 보여준다. recovery_link=True면 잠금 안내 아래에 이메일
+    복구(/recovery) 링크를 함께 보여준다 — 영구 잠금 IP와, 임시·영구를 구분하지 않고 모든
+    계정 잠금(guide39, ACCOUNT_LOCKED_MESSAGE 설명 참고)에 쓴다(templates/login_form.html 참고)."""
     return render_template(
         "login_form.html",
         form_action=url_for("auth.login_submit"),
@@ -208,13 +201,15 @@ def login_submit():
     1. 혹시 자동으로 풀어줘야 할 만료된 잠금(IP 단위 + 계정 단위)이 있으면 먼저 정리한다.
     2. 이번 요청을 보낸 IP와 입력된 아이디를 알아낸다.
     3. 이 IP가 지금 잠긴 상태이거나, 이 계정 자체가 (다른 IP들이 나눠서 공격해서)
-       잠긴 상태라면 아이디/비밀번호를 확인하지도 않고 곧바로 거부한다.
+       잠긴 상태라면 아이디/비밀번호를 확인하지도 않고 곧바로 거부한다. 단, 영구 잠금된
+       IP는 이메일 복구로 예외를 받은 "본인 + 본인 기기"만 통과시킨다(guide33/34-a).
     4. 잠긴 상태가 아니라면 실제로 아이디/비밀번호를 확인하고, 그 시도를 기록한다.
     5. 실패했다면 "혹시 이 IP가 수상한 수준(5회 초과)이 됐는지"를 먼저 보고,
        아니라면 "혹시 이 계정이 여러 IP에 걸쳐 총합으로 수상한 수준(8회 초과)이
        됐는지"도 본다 — 전자는 soar.enforce_lockout(IP 잠금), 후자는
        soar.enforce_account_lockout(계정 잠금)이 알림까지 같이 보낸다
-       (L7 공격 보강 계획 Tier 1: 분산/저속 브루트포스 대응).
+       (L7 공격 보강 계획 Tier 1: 분산/저속 브루트포스 대응). 둘 다 아직 기준치 아래지만
+       코앞이면 LLM 조기 경보를 판단한다(guide31).
     6. 성공했다면 회원 세션을 만들어서 회원 대시보드로 이동시킨다(12단계에서 추가).
     """
     # 1) 시간이 지나 자동으로 풀려야 할 잠금들을 정리 (IP 단위 + 계정 단위)

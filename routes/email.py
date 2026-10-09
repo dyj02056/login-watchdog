@@ -13,8 +13,8 @@
 from flask import Blueprint, render_template, request
 
 import db
-import email_verification
 from helpers import mask_username
+from services import email_verification
 
 email_bp = Blueprint("email", __name__)
 

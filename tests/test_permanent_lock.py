@@ -1,7 +1,7 @@
 # ============================================================================
 # test_permanent_lock.py — 영구 잠금(guide33)의 승격·해제·DB 보호 로직 단위 테스트
 #
-# lockdown.py(승격/해제 본체), soar.py/correlate.py의 연결 지점, db/lockouts.py·
+# security/lockdown.py(승격/해제 본체), security/soar/·security/correlate.py의 연결 지점, db/lockouts.py·
 # db/account_lockouts.py의 "영구 잠금 보호"를 확인한다. 다른 테스트들과 같은 방식으로
 # 진짜 Supabase 대신 db/alert 함수를 "호출 기록용 가짜"로 바꿔치기한다.
 #
@@ -13,13 +13,10 @@ import types
 
 import pytest
 
-import alert
 import config
-import correlate
 import db
-import detector
-import lockdown
-import soar
+from notify import alert
+from security import correlate, detector, lockdown, soar
 
 pytestmark = pytest.mark.real_lockdown
 
@@ -190,7 +187,7 @@ def test_account_relocked_after_probation_ended_is_not_promoted_below_strike_cou
 
 
 # ---------------------------------------------------------------------------
-# soar.py 연결 — 임시 잠금 직후 lockdown 호출, manual_release의 영구 잠금 보호
+# security/soar/ 연결 — 임시 잠금 직후 lockdown 호출, manual_release의 영구 잠금 보호
 # ---------------------------------------------------------------------------
 
 def test_enforce_lockout_hands_over_to_lockdown_after_event_is_recorded(monkeypatch):
@@ -325,7 +322,7 @@ def test_approved_siem_high_request_promotes_the_ip(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# correlate.py 연결 — PERMANENT_LOCK 이벤트는 재승격하지 않는다
+# security/correlate.py 연결 — PERMANENT_LOCK 이벤트는 재승격하지 않는다
 # ---------------------------------------------------------------------------
 
 def _stub_correlate_db(monkeypatch, incident):

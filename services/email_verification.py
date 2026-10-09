@@ -1,5 +1,5 @@
 # ============================================================================
-# email_verification.py — "이메일 담당": 이메일 인증 / 이메일 변경 확인 링크를 만들고 처리한다 (guide40)
+# services/email_verification.py — "이메일 담당": 이메일 인증 / 이메일 변경 확인 링크를 만들고 처리한다 (guide40)
 #
 # 왜 필요한가: 비밀번호 재설정(guide41)은 "계정을 되찾는 메일"이라 확인된 주소로만 보내야 한다.
 # 그런데 지금까지 가입 이메일은 형식만 검사했고(오타·남의 주소 그대로 저장), 이메일 변경은 세션만
@@ -14,8 +14,8 @@
 # 비밀번호 재설정(guide41)도 같은 표(email_tokens, PASSWORD_RESET)와 같은 원칙으로 이 파일이 처리한다 —
 # 단, 재설정 메일은 "계정을 되찾는 메일"이라 VERIFIED 주소에만 보낸다.
 #
-# 라우트(routes/member.py, routes/email.py, routes/auth.py, routes/password.py)는 "언제" 부를지만 정하고, 실제
-# 판단·발송은 전부 이 파일이 한다 — alert.py/mailer.py처럼 결과를 예외 대신 값으로 돌려준다.
+# 라우트(routes/member.py, routes/email.py, routes/auth.py, routes/password.py, routes/recovery.py)는 "언제" 부를지만 정하고, 실제
+# 판단·발송은 전부 이 파일이 한다 — notify/alert.py·notify/mailer.py처럼 결과를 예외 대신 값으로 돌려준다.
 # ============================================================================
 
 import secrets
@@ -23,8 +23,8 @@ from datetime import datetime, timedelta, timezone
 
 import config
 import db
-import mailer
 from helpers import hash_secret, public_base_url
+from notify import mailer
 
 # send_verification() / request_email_change()가 돌려주는 결과
 SENT = "SENT"                    # 메일을 보냈다(또는 화면에는 보냈다고 안내할 상황)

@@ -1,21 +1,21 @@
 # ============================================================================
-# geoip.py — IP 주소로 "어느 나라, 어느 도시에서 접속했는지" 알아내는 부품
+# services/geoip.py — IP 주소로 "어느 나라, 어느 도시에서 접속했는지" 알아내는 부품
 #
-# alert.py가 Slack이라는 외부 서비스와의 통신만 전담하는 것처럼, 이 파일은
-# ip-api.com이라는 외부 서비스와의 통신만 전담한다. db.py(Supabase)나
-# app.py(화면)는 이 파일이 내부적으로 무엇을 하는지 몰라도, get_locations()
-# 함수 하나만 부르면 위치 정보를 받을 수 있다.
+# notify/alert.py가 Slack이라는 외부 서비스와의 통신만 전담하는 것처럼, 이 파일은
+# ip-api.com이라는 외부 서비스와의 통신만 전담한다. db(Supabase)나
+# 화면 쪽(helpers/request_utils.py의 _attach_locations())은 이 파일이 내부적으로
+# 무엇을 하는지 몰라도, get_locations() 함수 하나만 부르면 위치 정보를 받을 수 있다.
 #
 # 가장 중요한 설계 포인트는 "캐싱"이다. ip-api.com 무료 사용은 분당 45건까지만
-# 허용하는데, 대시보드가 10초마다 최근 로그인 시도를 다시 그리면서 그때마다
-# 새로 조회하면 순식간에 한도를 넘긴다. 그래서 한 번 조회한 IP는 db.py를 통해
+# 허용하는데, 대시보드가 5초마다 최근 로그인 시도를 다시 그리면서 그때마다
+# 새로 조회하면 순식간에 한도를 넘긴다. 그래서 한 번 조회한 IP는 db(db/geoip_cache.py)를 통해
 # Supabase에 저장해두고, 다음부터는 외부 API 대신 그 저장값을 재사용한다.
 # ============================================================================
 
 import requests
 
 import db
-from ip_utils import lookup_address
+from services.ip_utils import lookup_address
 
 _API_URL = "http://ip-api.com/json/{ip}"
 

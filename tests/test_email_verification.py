@@ -16,10 +16,9 @@ import pytest
 
 import config
 import db
-import detector
-import email_verification
-import mailer
-import soar
+from notify import mailer
+from security import detector, soar
+from services import email_verification
 
 from tests.test_app import get_csrf_token  # noqa: E402
 

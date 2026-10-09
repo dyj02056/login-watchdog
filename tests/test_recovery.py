@@ -14,17 +14,15 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from markupsafe import escape
 
-import alert
 import config
 import db
-import detector
-import email_verification
 import helpers
-import lockdown
-import mailer
+from notify import alert, mailer
+from security import detector, lockdown
+from services import email_verification
 import routes.auth as routes_auth
 import routes.recovery as routes_recovery
-import soar
+from security import soar
 
 from tests.test_app import get_csrf_token  # noqa: E402
 

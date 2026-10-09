@@ -8,6 +8,12 @@ import re
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{3,20}$")
 MIN_PASSWORD_LENGTH = 8
 
+# 이메일 형식 규칙(회원가입 routes/auth.py, 이메일 변경 routes/member.py가 같이 쓴다).
+# "글자@글자.글자" 형태의 아주 기본적인 모양만 확인한다. 완벽한 RFC 5322
+# 검증은 아니지만(그런 정규식은 매우 복잡하다), "이메일처럼 안 생긴 값"을 걸러내는
+# 데는 충분하고, 실제 도달 가능 여부는 어차피 별도의 인증 메일 없이는 확인할 수 없다.
+EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
 FAILURE_THRESHOLD = int(os.environ.get("FAILURE_THRESHOLD", 5))
 DETECTION_WINDOW_SECONDS = int(os.environ.get("DETECTION_WINDOW_SECONDS", 60))
 LOCKOUT_DURATION_SECONDS = int(os.environ.get("LOCKOUT_DURATION_SECONDS", 300))
@@ -76,8 +82,8 @@ WEB_SCANNING_ALERT_THRESHOLD = int(os.environ.get("WEB_SCANNING_ALERT_THRESHOLD"
 UNAUTHORIZED_ACCESS_ALERT_THRESHOLD = int(os.environ.get("UNAUTHORIZED_ACCESS_ALERT_THRESHOLD", 10))
 
 # 반복 페이지 접근(같은 IP가 같은 GET 경로를 짧은 시간에 반복 요청) 탐지 임계값.
-# board.js/dashboard.js처럼 이 프로젝트 자체가 만든 자동 폴링 API는 애초에
-# 카운트 대상에서 제외하므로(app.py의 _PAGE_ACCESS_EXCLUDED_ENDPOINTS 참고),
+# board.js·관리자 대시보드 JS처럼 이 프로젝트 자체가 만든 자동 폴링 API는 애초에
+# 카운트 대상에서 제외하므로(helpers/hooks.py의 PAGE_ACCESS_EXCLUDED_ENDPOINTS 참고),
 # 이 값은 "사람이 직접, 혹은 스크립트가 같은 페이지를 반복 새로고침하는" 상황만
 # 대상으로 한다 — 정상적인 수동 새로고침보다는 넉넉하게 잡는다
 # (attack_response_state.md 구현 대상 #4).
@@ -104,7 +110,7 @@ INCIDENT_MERGE_IDLE_MINUTES = max(
 
 # SOAR 플레이북 고도화(Track C guide28) 에스컬레이션 기준 — 사건(security_incidents)에
 # 묶인 서로 다른 event_type이 이 개수 이상이면서 severity_max가 CRITICAL이면,
-# correlate.py가 "복합 공격 발생" 에스컬레이션 알림을 별도로 보낸다. 상관분석 자체의
+# security/correlate.py가 "복합 공격 발생" 에스컬레이션 알림을 별도로 보낸다. 상관분석 자체의
 # 기준(2개 이상)보다 한 단계 더 높게 잡은 이유: 2종류만 겹쳐도 사건으로는 묶어서
 # 대시보드에 보여주지만, 그 정도로 관리자에게 "추가로" 긴급 알림까지 보낼 필요는
 # 없고 정말 여러 단계에 걸친 공격(3종류 이상)일 때만 알림 피로 없이 강조한다.
@@ -114,14 +120,14 @@ INCIDENT_ESCALATION_MIN_EVENT_TYPES = int(os.environ.get("INCIDENT_ESCALATION_MI
 # 서로 다른 /api/* 경로를 이 개수를 "초과"해서 호출하면 의심한다. is_suspicious()
 # 등과 같은 "초과" 기준을 쓰는 이유는 정상 사용자도 화면을 넘나들며 API 몇 개는
 # 우연히 부를 수 있어서, 로그인 실패 판정과 마찬가지로 약간의 여유를 준다 —
-# 사람이 몇 초 안에 6개 넘는 서로 다른 API를 손으로 누르긴 어렵지만, 스크립트는 쉽다.
+# 사람이 몇 초 안에 5개 넘는(6개 이상) 서로 다른 API를 손으로 누르긴 어렵지만, 스크립트는 쉽다.
 MACRO_DISTINCT_API_THRESHOLD = int(os.environ.get("MACRO_DISTINCT_API_THRESHOLD", 5))
 
 # LLM 조기 경보(Track A, guide31) — 임계값을 "아직 못 넘었지만 코앞"인 구간
 # (threshold - EARLY_WARNING_BAND ~ threshold - 1)에서만 Groq에게 "지켜볼
 # 필요가 있는지" 판단을 맡긴다. 이미 임계값을 넘긴 경우는 규칙이 이미 확정
-# 판단을 내린 상태이므로 이 구간에 해당하지 않는다 — soar.py의
-# consider_early_warning() 호출부(routes/auth.py, app.py, helpers.py) 참고.
+# 판단을 내린 상태이므로 이 구간에 해당하지 않는다 — security/soar/의
+# consider_early_warning() 호출부(routes/auth.py, helpers/auth.py, helpers/hooks.py) 참고.
 # 폭을 너무 넓게 잡으면(예: 4) 정상 사용자의 사소한 실수까지 AI 호출 대상이 되어
 # 비용/지연이 늘고, 너무 좁게 잡으면(0) 규칙을 살짝 피해 가는 패턴을 놓친다.
 EARLY_WARNING_BAND = int(os.environ.get("EARLY_WARNING_BAND", 2))
@@ -130,7 +136,7 @@ EARLY_WARNING_BAND = int(os.environ.get("EARLY_WARNING_BAND", 2))
 # 등 "특정 폼 제출"에만 걸려있고, 일반 GET 페이지는 아무리 요청이 쏟아져도 다
 # 받아준다. 이 값은 같은 IP가 1분 안에 "전체 요청 종류를 합쳐서" 몇 번까지
 # 허용할지를 정한다 — Flask-Limiter의 전역 기본 한도로 쓰인다(app.py 참고).
-# 폴링 API(_PAGE_ACCESS_EXCLUDED_ENDPOINTS)는 정상적으로도 이 한도를 넘길 만큼
+# 폴링 API(helpers/hooks.py의 PAGE_ACCESS_EXCLUDED_ENDPOINTS)는 정상적으로도 이 한도를 넘길 만큼
 # 자주 호출되므로 이 제한에서 제외한다.
 GLOBAL_RATE_LIMIT_PER_MINUTE = int(os.environ.get("GLOBAL_RATE_LIMIT_PER_MINUTE", 120))
 
@@ -145,7 +151,7 @@ ADMIN_SESSION_MAX_HOURS = int(os.environ.get("ADMIN_SESSION_MAX_HOURS", 8))
 
 # FLASK_ENV=production(Vercel 배포)일 때만 운영 모드로 본다 — 로컬에서는 보통 이 값이
 # 비어 있으므로 "production이 아니면 개발 환경"으로 취급한다. 운영 모드에서는
-# 메일 console 백엔드(토큰을 터미널에 그대로 출력)를 막는다(mailer.py 참고).
+# 메일 console 백엔드(토큰을 터미널에 그대로 출력)를 막는다(notify/mailer.py 참고).
 IS_PRODUCTION = os.environ.get("FLASK_ENV") == "production"
 
 
@@ -175,11 +181,11 @@ PERMANENT_LOCK_AUTO_CLOSE_INCIDENT = (
     os.environ.get("PERMANENT_LOCK_AUTO_CLOSE_INCIDENT", "false").lower() == "true"
 )
 
+# IPv6를 몇 비트 대역 단위로 세고 잠글지(guide42). 보통 가정·회선 하나가 /64를 받는다 — 통신사가
+# /56·/48을 주는 환경이면 값을 줄인다. 1~128 밖의 값은 64로 취급한다(services/ip_utils.py).
+IPV6_PREFIX_LENGTH = int(os.environ.get("IPV6_PREFIX_LENGTH", 64))
 # 절대 영구 잠그지 않을 IP(관리자 PC, Docker 게이트웨이 등). 자기 자신을 잠그는 "자충수"
 # 방지용이다(soar.notify_unauthorized_access 주석과 같은 이유).
-# IPv6를 몇 비트 대역 단위로 세고 잠글지(guide42). 보통 가정·회선 하나가 /64를 받는다 — 통신사가
-# /56·/48을 주는 환경이면 값을 줄인다. 1~128 밖의 값은 64로 취급한다(ip_utils.py).
-IPV6_PREFIX_LENGTH = int(os.environ.get("IPV6_PREFIX_LENGTH", 64))
 PERMANENT_LOCK_IP_ALLOWLIST = _csv_set(os.environ.get("PERMANENT_LOCK_IP_ALLOWLIST", "127.0.0.1,::1"))
 
 # 이메일 복구 정책

@@ -147,7 +147,8 @@ def set_account_probation(username: str, until_iso: str) -> None:
 def get_active_account_lockout(username: str) -> dict | None:
     """이 계정이 "지금 이 순간" 실제로 잠겨있는지 확인하고, 잠겨있다면 그 잠금 정보를 돌려준다.
 
-    db.get_active_lockout()과 동일한 두 조건(active=True, unlock_at이 미래)을 본다.
+    db.get_active_lockout()과 동일한 두 조건(active=True, 그리고 영구 잠금이거나
+    unlock_at이 미래)을 본다.
     """
     res = (
         db.get_client()
@@ -189,7 +190,7 @@ def list_expired_active_account_lockouts() -> list[dict]:
     """"5분이 지났는데도 아직 active=True로 남아있는" 계정 잠금 목록을 찾는다.
 
     db.list_expired_active_lockouts()와 마찬가지로 아무것도 풀지 않고 "풀어야
-    할 목록"만 알려준다 — 실제로 푸는 실행은 soar.py의
+    할 목록"만 알려준다 — 실제로 푸는 실행은 security/soar/의
     try_release_expired_account_lockouts()가 담당한다.
     """
     res = (

@@ -102,7 +102,7 @@ def count_recent_distinct_ips_by_username(
 
     count_recent_distinct_usernames()(한 IP가 몇 개의 아이디를 시도했는지)의
     반대 방향이다 — 한 계정에 몰리는 IP가 많을수록 분산 브루트포스(봇넷/
-    프록시 로테이션) 의심이 커진다는 걸 alert.py가 메시지에 보여줄 수 있게
+    프록시 로테이션) 의심이 커진다는 걸 notify/alert.py가 메시지에 보여줄 수 있게
     한다.
     """
     cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()

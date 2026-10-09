@@ -13,8 +13,7 @@
 import pytest
 
 import db
-import lockdown
-import soar
+from security import lockdown, soar
 
 from tests.test_app import get_csrf_token  # noqa: E402
 from tests.admin_session import login_admin_session, stub_admin_role  # noqa: E402

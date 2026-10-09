@@ -29,7 +29,7 @@ def create_admin(username: str, password: str, role: str) -> bool:
     """admin_users 표에 새 관리자 계정 한 개를 role과 함께 추가한다.
 
     실제 insert 로직은 db.create_admin_user()에 있다 — 대시보드 "관리자 계정
-    관리"(routes/admin.py)도 같은 함수를 쓴다. 아이디가 이미 있으면 아무것도
+    관리"(routes/admin/manage.py)도 같은 함수를 쓴다. 아이디가 이미 있으면 아무것도
     만들지 않고 False를 돌려준다(중복 생성 방지, ensure_bootstrap_admin()과
     같은 원칙 — 이 스크립트도 실수로 두 번 실행해도 안전해야 한다).
     """

@@ -1,9 +1,11 @@
 # ============================================================================
-# mailer.py — "우체부" 역할: 복구 메일을 실제로 보낸다 (guide34-a)
+# notify/mailer.py — "우체부" 역할: 사용자에게 가는 메일을 실제로 보낸다
+# (영구 잠금 복구 guide34-a, 비밀번호 변경 알림 guide35, 이메일 인증·변경 guide40,
+#  비밀번호 재설정 guide41)
 #
-# alert.py(Slack)와 같은 구조다 — 메시지를 조립하는 함수(send_recovery_email 등)와
+# notify/alert.py(Slack)와 같은 구조다 — 메시지를 조립하는 함수(send_recovery_email 등)와
 # 실제로 내보내는 함수 하나(_send_mail)로 나뉜다. "언제 보낼지"는 이 파일이 아니라
-# routes/recovery.py가 결정한다.
+# routes/recovery.py, routes/member.py, services/email_verification.py가 결정한다.
 #
 # 전송 결과는 예외가 아니라 세 가지 문자열 중 하나로 돌려준다:
 #   SENT    — 메일 서버가 받아줬다
@@ -23,9 +25,9 @@ import time
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid, parseaddr
 
-import alert
 import config
-from alert import _safe_print
+from notify import alert
+from notify.alert import _safe_print
 
 SENT = "SENT"
 REFUSED = "REFUSED"
@@ -36,7 +38,7 @@ FAIL_CONFIG = "CONFIG"    # MAIL_BACKEND/SMTP_HOST/PUBLIC_BASE_URL 등 설정 �
 FAIL_AUTH = "AUTH"        # SMTP 아이디/앱 비밀번호가 틀림
 FAIL_CONNECT = "CONNECT"  # 서버에 접속하지 못함(포트 차단, 시간 초과, 서버 다운)
 FAIL_OTHER = "OTHER"      # 발신자 거부, 일시적 수신 거부 등
-FAIL_INTERNAL = "INTERNAL"  # 복구 요청 처리 중 DB 연결 오류 등 서버 내부 오류(메일 설정 문제 아님)
+FAIL_INTERNAL = "INTERNAL"  # 복구·비밀번호 재설정 요청 처리 중 DB 연결 오류 등 서버 내부 오류(메일 설정 문제 아님)
 
 # 같은 원인의 Slack 알림을 반복해서 보내지 않기 위한 마지막 알림 시각(프로세스 메모리).
 # 서버리스(Vercel)에서는 인스턴스마다 따로라서 "완벽한 1회"는 아니고 알림 폭주를 줄이는 용도다.

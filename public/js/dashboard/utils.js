@@ -1,5 +1,6 @@
 // ============================================================================
-// dashboard/utils.js — 대시보드 전용 범용 헬퍼(escapeHtml, formatTime, renderPagination)
+// dashboard/utils.js — 대시보드 전용 범용 헬퍼(escapeHtml, formatTime, formatDateTime, renderPagination,
+// markBusy/runAction, askNote)
 // 배경 설명은 dashboard/main.js 상단 주석 참고.
 // ============================================================================
 
@@ -36,6 +37,11 @@ export function formatTime(isoString) {
     return new Date(isoString).toLocaleTimeString("ko-KR");
 }
 
+/** 날짜까지 포함한 시각(영구 잠금·복구 요청 표용). 값이 없으면 "-". */
+export function formatDateTime(isoString) {
+    return isoString ? new Date(isoString).toLocaleString("ko-KR") : "-";
+}
+
 /**
  * board_list.html의 "← 이전 | N / 총페이지 | 다음 →" 페이지 이동 줄을 그대로
  * 흉내내서 표 하나의 페이지네이션 영역(containerId)을 채운다.
@@ -65,7 +71,7 @@ const BUSY_LABEL = "처리 중…";
 
 /**
  * 처리 버튼을 "처리 중…"으로 바꾸고 다시 누를 수 없게 한다(guide46). 요청을 실제로 보내기 직전에
- * 부른다(api.js의 sendAction) — 확인 팝업을 취소했을 때 버튼이 바뀌어 보이지 않게.
+ * 부른다(actions.js의 sendAction) — 확인 팝업을 취소했을 때 버튼이 바뀌어 보이지 않게.
  * @param {HTMLElement|null|undefined} button
  */
 export function markBusy(button) {

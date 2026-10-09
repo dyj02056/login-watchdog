@@ -14,7 +14,7 @@ import pytest
 
 import config
 import db
-import soar
+from security import soar
 from tests.admin_session import login_admin_session
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -77,8 +77,8 @@ def test_only_returns_that_table_with_a_single_query(admin_client, calls, monkey
 
 def test_only_attempts_also_attaches_locations(admin_client, calls, monkeypatch):
     monkeypatch.setattr(db, "list_recent_attempts", lambda page, size: ([{"ip_address": "1.1.1.1"}], 1))
-    import routes.admin
-    monkeypatch.setattr(routes.admin, "_attach_locations", lambda rows: [dict(r, location="KR") for r in rows])
+    import routes.admin.status
+    monkeypatch.setattr(routes.admin.status, "_attach_locations", lambda rows: [dict(r, location="KR") for r in rows])
 
     data = admin_client.get("/api/status?only=attempts").get_json()
 
@@ -92,7 +92,7 @@ def test_unknown_table_is_rejected(admin_client, calls):
 
 
 def test_only_still_requires_login(client, calls, monkeypatch):
-    import detector
+    from security import detector
     monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
     monkeypatch.setattr(detector, "is_unauthorized_access_suspicious", lambda ip: (False, 1, False))
 
@@ -113,9 +113,9 @@ def _release_count(calls):
 
 
 def test_expired_lock_cleanup_runs_at_most_once_per_interval(admin_client, calls, monkeypatch):
-    import routes.admin
+    import routes.admin.status
     clock = [1000.0]
-    monkeypatch.setattr(routes.admin.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(routes.admin.status.time, "monotonic", lambda: clock[0])
     monkeypatch.setattr(config, "ADMIN_STATUS_RELEASE_INTERVAL_SECONDS", 15)
 
     admin_client.get("/api/status")
@@ -139,7 +139,7 @@ def test_interval_zero_cleans_up_on_every_refresh(admin_client, calls, monkeypat
 
 def test_all_dashboard_queries_go_out_in_one_wave():
     # 동시 처리 한도가 조회 개수보다 작으면 일부가 앞 조회를 기다렸다가 두 번째로 나간다.
-    source = (ROOT / "routes" / "admin.py").read_text(encoding="utf-8")
+    source = (ROOT / "routes" / "admin" / "status.py").read_text(encoding="utf-8")
     body = source[source.index("def api_status():"):source.index("response_data = {")]
     pool = body[body.index("with ThreadPoolExecutor(max_workers=17) as executor:"):]
     assert pool.count("executor.submit(") == 17
@@ -167,9 +167,10 @@ def test_page_buttons_go_through_go_to_page():
 
 
 def test_every_action_request_marks_its_button_busy():
-    api = (JS / "api.js").read_text(encoding="utf-8")
-    assert 'await fetch("/api/' not in api                     # 처리 요청은 모두 sendAction을 거친다
-    assert api.count('await sendAction(button, "/api/') == 17
+    # 처리 요청은 actions.js에 모여 있다(조회는 api.js) — 2026-10-09 분리.
+    actions = (JS / "actions.js").read_text(encoding="utf-8")
+    assert 'await fetch("/api/' not in actions                 # 처리 요청은 모두 sendAction을 거친다
+    assert actions.count('await sendAction(button, "/api/') == 17
     events = (JS / "events.js").read_text(encoding="utf-8")
     assert events.count("runAction(") == 17
 

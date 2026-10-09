@@ -10,7 +10,7 @@ import threading
 from pathlib import Path
 
 import db
-import soar
+from security import soar
 from tests.admin_session import login_admin_session
 
 ROOT = Path(__file__).resolve().parent.parent

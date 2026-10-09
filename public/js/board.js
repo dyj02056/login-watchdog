@@ -2,7 +2,7 @@
 // board.js — 게시글 상세 화면(board_detail.html) 전용. "새로운 댓글이
 // 추가되었습니다" 배너를 가볍게 폴링으로 띄워주는 역할만 한다.
 //
-// 관리자 대시보드(dashboard.js)는 표 전체를 자바스크립트로 다시 그리지만,
+// 관리자 대시보드(public/js/dashboard/)는 표 전체를 자바스크립트로 다시 그리지만,
 // 이 화면은 기본적으로 서버가 완성된 HTML을 내려주는 SSR 방식이다(결정 #6).
 // 여기서 폴링하는 건 "댓글이 새로 달렸는지" 신호 하나뿐이고, 배너를 누르면
 // 페이지를 통째로 새로고침해서 최신 댓글까지 포함된 SSR 화면을 다시 받는다 —
@@ -17,7 +17,7 @@ import { startPolling } from "./polling.js";
 
 const boardDetailEl = document.getElementById("board-detail");
 const boardPostId = boardDetailEl.getAttribute("data-post-id");
-// 폴링 주기는 config.py(BOARD_COMMENT_POLL_MS)에서 app.py가 계산해 넘겨준 값을
+// 폴링 주기는 config.py(BOARD_COMMENT_POLL_MS)에서 routes/board.py가 꺼내 넘겨준 값을
 // 화면의 data 속성에서 그대로 읽는다 — 이 파일에 숫자를 직접 적어두지 않는다.
 const boardPollIntervalMs = Number(boardDetailEl.getAttribute("data-poll-interval-ms"));
 
@@ -40,7 +40,7 @@ async function checkForNewComments() {
     const response = await fetch(`/api/board/${boardPostId}/comments/latest`);
     if (!response.ok) {
         // 401(세션 만료) 등은 조용히 무시한다 — 이 배너는 부가 기능이라
-        // 실패했다고 화면 전체가 멈추면 안 된다(alert.py의 "부가 기능 실패가
+        // 실패했다고 화면 전체가 멈추면 안 된다(notify/alert.py의 "부가 기능 실패가
         // 핵심 기능을 막으면 안 된다" 원칙과 동일).
         return;
     }

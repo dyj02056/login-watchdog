@@ -15,9 +15,8 @@ import pytest
 
 import config
 import db
-import detector
-import mailer
-import soar
+from notify import mailer
+from security import detector, soar
 
 from tests.test_app import get_csrf_token  # noqa: E402
 from tests.admin_session import login_admin_session  # noqa: E402

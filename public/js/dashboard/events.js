@@ -1,5 +1,5 @@
 // ============================================================================
-// dashboard/events.js — 버튼 클릭 등 화면 이벤트를 api.js 함수와 연결한다.
+// dashboard/events.js — 버튼 클릭 등 화면 이벤트를 actions.js/api.js 함수와 연결한다.
 // import되는 순간 아래 addEventListener 호출들이 즉시 실행된다(부수효과 모듈).
 // 배경 설명은 dashboard/main.js 상단 주석 참고.
 // ============================================================================
@@ -11,7 +11,6 @@ import {
     deleteComment,
     deletePost,
     deleteUser,
-    goToPage,
     promotePermanentLock,
     rejectAccessRequest,
     releasePermanentLock,
@@ -23,11 +22,12 @@ import {
     unlockAccount,
     unlockAdminAccount,
     unlockIp,
-} from "./api.js";
+} from "./actions.js";
+import { goToPage } from "./api.js";
 import { pages } from "./state.js";
 import { runAction } from "./utils.js";
 
-// "즉시 해제" 버튼은 render.js의 renderLockoutCards()가 매번 새로 만들어내므로,
+// "즉시 해제" 버튼은 render/locks.js의 renderLockoutCards()가 매번 새로 만들어내므로,
 // 버튼 각각에 이벤트를 미리 걸어둘 수 없다. 대신 항상 존재하는 container
 // (lockout-list)에 이벤트를 걸어두고, "클릭된 곳이 unlock-btn 버튼이 맞는지"를
 // 그때그때 확인하는 방식을 쓴다 — 이걸 "이벤트 위임(event delegation)"이라고 부른다.
@@ -74,7 +74,7 @@ document.getElementById("comments-table-body").addEventListener("click", (event)
 });
 
 // "관리자 계정 관리" 표의 "삭제" 버튼도 회원 목록과 동일한 이벤트 위임 방식을 쓴다.
-// 이 <tbody>는 항상 DOM에 존재한다(카드 자체는 render.js가 hidden 속성으로만
+// 이 <tbody>는 항상 DOM에 존재한다(카드 자체는 render/tables.js가 hidden 속성으로만
 // 숨기고 제거하지는 않으므로) — viewer/security_admin 로그인 시에도 이 리스너를
 // 걸어도 안전하다.
 document.getElementById("admin-users-table-body").addEventListener("click", (event) => {

@@ -88,6 +88,7 @@ def get_client() -> Client:
 def _now_iso() -> str:
     """지금 이 순간의 시각을 데이터베이스가 알아듣는 표준 문자열 형식으로 돌려준다.
 
-    이름 앞의 밑줄(_)은 "이 함수는 이 파일 안에서만 쓰는 내부용 도구"라는 표시.
+    이름 앞의 밑줄(_)은 "이 함수는 db 패키지 안에서만 쓰는 내부용 도구"라는 표시
+    (패키지 안의 다른 모듈들은 db._now_iso()로 부른다).
     """
     return datetime.now(timezone.utc).isoformat()

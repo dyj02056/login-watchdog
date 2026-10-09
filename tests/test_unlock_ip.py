@@ -1,8 +1,8 @@
 # ============================================================================
-# test_unlock_ip.py — scripts/unlock_ip.py가 db.py를 올바른 조건으로 호출하는지
+# test_unlock_ip.py — scripts/unlock_ip.py가 db를 올바른 조건으로 호출하는지
 # 확인하는 단위 테스트
 #
-# test_soar.py와 같은 방식이다: 진짜 Supabase에 접속하는 대신, db.py의 함수를
+# test_soar.py와 같은 방식이다: 진짜 Supabase에 접속하는 대신, db의 함수를
 # "호출된 사실만 기록하는 가짜 함수"로 바꿔치기(monkeypatch)해서 확인한다.
 #
 # unlock_ip.py는 scripts/ 폴더 안에 있어서 tests/ 쪽에서 그냥 "import unlock_ip"만

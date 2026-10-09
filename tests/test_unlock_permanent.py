@@ -16,7 +16,7 @@ sys.path.insert(
 )
 
 import db
-import lockdown
+from security import lockdown
 import unlock_account  # noqa: E402
 import unlock_ip  # noqa: E402
 

@@ -68,7 +68,7 @@ def verify_admin_credentials(username: str, password: str) -> bool:
 def get_admin_id_by_username(username: str) -> int | None:
     """이 관리자 아이디의 기본키(id)를 돌려준다.
 
-    관리자 로그인이 성공하면 routes/admin.py가 이 함수로 id를 찾아 세션에 함께 넣는다
+    관리자 로그인이 성공하면 routes/admin/login.py가 이 함수로 id를 찾아 세션에 함께 넣는다
     (guide37) — 이후 요청은 세션의 id로 get_admin_by_id()를 불러 계정을 대조한다.
     """
     res = db.get_client().table("admin_users").select("id").eq("username", username).limit(1).execute()
@@ -109,7 +109,7 @@ def get_admin_role_by_id(admin_id: int) -> str | None:
     """id로 관리자 계정의 role을 조회한다. 대시보드의 "계정 삭제" 버튼은 행의
     기본키(id)만 들고 있으므로 삭제 대상의 role을 확인할 때 이 조회를 쓴다.
 
-    routes/admin.py가 삭제 전에 이 함수로 대상이 super_admin인지 먼저 확인해
+    routes/admin/manage.py가 삭제 전에 이 함수로 대상이 super_admin인지 먼저 확인해
     "이 화면에서는 super_admin을 지울 수 없다"는 규칙을 지킨다.
     """
     res = db.get_client().table("admin_users").select("role").eq("id", admin_id).limit(1).execute()
@@ -120,7 +120,7 @@ def create_admin_user(username: str, password: str, role: str) -> bool:
     """새 관리자 계정을 role과 함께 만든다.
 
     scripts/create_admin.py(터미널 스크립트)와 대시보드 "관리자 계정 관리"
-    (routes/admin.py)가 둘 다 이 함수를 통해서만 계정을 만든다 — insert 로직이
+    (routes/admin/manage.py)가 둘 다 이 함수를 통해서만 계정을 만든다 — insert 로직이
     두 곳에 따로 있으면 한쪽만 고치고 잊어버리는 사고가 나기 쉽다.
 
     아이디가 이미 있으면(unique 제약) 아무것도 만들지 않고 False를 돌려준다.
@@ -141,7 +141,7 @@ def delete_admin_user(admin_id: int) -> bool:
     """관리자 계정을 하나 삭제한다.
 
     super_admin을 지우면 안 되는 규칙(login_watchdog_expansion_plan.md 논의 —
-    super_admin은 1명만 두기로 결정)은 여기가 아니라 호출부(routes/admin.py)가
+    super_admin은 1명만 두기로 결정)은 여기가 아니라 호출부(routes/admin/manage.py)가
     delete_admin_user 호출 전에 get_admin_role_by_id로 먼저 확인한다 — 이 함수는
     db/users.py의 delete_user()와 동일하게 "삭제 실행"에만 집중한다.
     """

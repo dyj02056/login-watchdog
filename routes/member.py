@@ -15,10 +15,6 @@ from flask import Blueprint, flash, redirect, render_template, request, session,
 
 import config
 import db
-import detector
-import email_verification
-import mailer
-import soar
 from helpers import (
     _attach_locations,
     clear_member_session,
@@ -26,7 +22,9 @@ from helpers import (
     is_bot_submission,
     member_login_required,
 )
-from routes.auth import EMAIL_PATTERN  # 회원가입과 같은 이메일 형식 검사
+from notify import mailer
+from security import detector, soar
+from services import email_verification
 
 member_bp = Blueprint("member", __name__)
 
@@ -42,9 +40,9 @@ def _logout_missing_member():
     눌렀는데 그 회원이 다른 탭에서 아직 로그인 상태였던 경우) 세션을 정리하고
     로그인 화면으로 돌려보낸다.
 
-    member_login_required는 "세션에 값이 있는지"만 확인하지, 그 값이 가리키는
-    회원이 지금도 실제로 존재하는지는 확인하지 않는다 — 그래서 회원용 화면들이
-    db.get_user_by_id()로 다시 한번 확인하고, 없으면 이 함수를 부른다.
+    member_login_required도 요청 시작 때 세션 세대 번호를 조회하면서 회원이 삭제됐으면
+    세션을 끊지만(guide35), 그 확인과 화면 처리 사이에 삭제되는 경우까지 대비해 회원용
+    화면들이 db.get_user_by_id()로 다시 한번 확인하고, 없으면 이 함수를 부른다.
     """
     clear_member_session()
     flash("계정 정보를 찾을 수 없습니다. 다시 로그인해주세요.")
@@ -54,7 +52,8 @@ def _logout_missing_member():
 @member_bp.route("/dashboard", methods=["GET"])
 @member_login_required
 def member_dashboard():
-    """로그인한 회원 본인을 위한 첫 화면. 인사말과 이동 버튼 2개만 보여준다.
+    """로그인한 회원 본인을 위한 첫 화면. 인사말, 이동 링크 3개(로그인 기록·프로필·게시판),
+    그리고 이메일이 아직 인증되지 않았으면 인증 안내 배너(guide40)를 보여준다.
 
     인사말에는 "표시 이름"(user.name)이 설정돼 있으면 그걸 쓰고, 아직 프로필을
     한 번도 안 고쳐서 비어있으면(기본값 '') 로그인 아이디로 대신 보여준다.
@@ -141,7 +140,7 @@ def member_email_change_submit():
     if not new_email or not current_password:
         flash("새 이메일과 현재 비밀번호를 모두 입력해주세요.")
         return redirect(url_for("member.member_profile"))
-    if not EMAIL_PATTERN.match(new_email):
+    if not config.EMAIL_PATTERN.match(new_email):
         flash("올바른 이메일 형식이 아닙니다.")
         return redirect(url_for("member.member_profile"))
     if new_email.lower() == user["email"].lower():
@@ -244,7 +243,7 @@ def member_password_submit():
 
 
 def _lock_if_suspicious(ip: str, username: str) -> bool:
-    """비밀번호 변경 화면에서 현재 비밀번호를 틀렸을 때, 로그인 실패와 같은 기준으로 잠근다.
+    """비밀번호 변경·이메일 변경 화면에서 현재 비밀번호를 틀렸을 때, 로그인 실패와 같은 기준으로 잠근다.
     이번 실패로 잠금이 걸렸으면 True. 이미 잠긴 IP(예: 영구 잠금 예외로 들어온 회원)는 다시
     잠그지 않는다 — 같은 IP에 5분 잠금 알림이 중복으로 나가지 않게 하기 위해서다."""
     locked = False
@@ -267,8 +266,8 @@ def _lock_if_suspicious(ip: str, username: str) -> bool:
 def member_logout():
     """회원 로그아웃 처리.
 
-    admin_logout()과 달리 session.clear()를 쓰지 않고 회원 관련 키(username,
-    user_id)만 콕 집어 지운다 — 만약 같은 브라우저에서 관리자로도 로그인되어
+    admin_logout()처럼 session.clear()를 쓰지 않고 회원 관련 키(username,
+    user_id, session_version)만 콕 집어 지운다 — 만약 같은 브라우저에서 관리자로도 로그인되어
     있었다면, 회원만 로그아웃하고 관리자 세션은 그대로 유지하기 위해서다.
     """
     clear_member_session()

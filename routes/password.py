@@ -6,7 +6,7 @@
 #   GET  /password/reset    메일 링크가 여는 새 비밀번호 입력 화면 (토큰을 소비하지 않음)
 #   POST /password/reset    새 비밀번호 검사 → 토큰 1회 소비 → 비밀번호 변경 → 모든 기기 로그아웃
 #
-# 판단·발송은 email_verification.py가 한다. 원칙은 영구 잠금 복구(routes/recovery.py)와 같다 —
+# 판단·발송은 services/email_verification.py가 한다. 원칙은 영구 잠금 복구(routes/recovery.py)와 같다 —
 # 계정 존재 여부·인증 여부를 응답 문구로도 응답 시간으로도 드러내지 않고, 링크는 PUBLIC_BASE_URL로만
 # 만들며, GET은 화면만 보여준다. 두 POST에는 app.py가 IP당 분당 한도를 따로 건다.
 # ============================================================================
@@ -17,10 +17,9 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 import config
 import db
-import email_verification
-import soar
-from helpers import get_request_ip, is_bot_submission, mask_username
-from routes.recovery import run_with_fixed_response_time
+from helpers import get_request_ip, is_bot_submission, mask_username, run_with_fixed_response_time
+from security import soar
+from services import email_verification
 
 password_bp = Blueprint("password", __name__)
 

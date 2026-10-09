@@ -66,10 +66,11 @@
 import argparse
 import sys
 import time
-from urllib.parse import urlparse
 
 import requests
 from dotenv import load_dotenv
+
+from _sim_common import is_local_host
 
 
 load_dotenv()
@@ -81,21 +82,6 @@ DEFAULT_PATH = "/"
 DEFAULT_ATTEMPTS = 21
 DEFAULT_INTERVAL = 0.1
 REQUEST_TIMEOUT = 5
-
-
-def is_local_host(host: str) -> bool:
-    """입력받은 서버 주소가 로컬 주소인지 확인한다.
-
-    urlparse()를 사용하여 전체 URL에서 호스트 부분만 추출한다.
-
-    허용되는 로컬 주소:
-        - 127.0.0.1
-        - localhost
-        - ::1
-    """
-    hostname = urlparse(host).hostname or ""
-
-    return hostname in ("127.0.0.1", "localhost", "::1")
 
 
 def normalize_path(path: str) -> str:

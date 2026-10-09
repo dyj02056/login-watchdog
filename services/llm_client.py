@@ -1,10 +1,10 @@
 # ============================================================================
-# llm_client.py — Groq(LLM) 호출을 담당하는 유일한 창구 (Track A, guide31)
+# services/llm_client.py — Groq(LLM) 호출을 담당하는 유일한 창구 (Track A, guide31)
 #
 # 원래 scripts/daily_report.py 안에만 있던 Groq 호출 로직(재시도, 타임아웃,
 # 에러 처리)을 이 파일로 옮겨 일반화했다. daily_report.py의 "하루치 리포트
-# 요약"과 soar.py의 "임계값 코앞 조기 경보 판단"이 똑같은 Groq 호출 부품을
-# 재사용하게 된다 — db.py가 "데이터베이스와 대화하는 유일한 창구"인 것과
+# 요약"과 security/soar/의 "임계값 코앞 조기 경보 판단"이 똑같은 Groq 호출 부품을
+# 재사용하게 된다 — db 패키지가 "데이터베이스와 대화하는 유일한 창구"인 것과
 # 같은 원칙으로, 이 파일이 "Groq와 대화하는 유일한 창구"가 된다.
 # ============================================================================
 
@@ -157,10 +157,10 @@ def judge_early_warning(
 
     soar.consider_early_warning()이 이 함수의 유일한 호출부다 — 이 함수 자체는
     "판단 결과를 어떻게 쓸지"(access_requests에 등록할지 등)는 전혀 모르고,
-    그저 "위험해 보이는가/왜 그런가"만 answering해서 돌려준다(detector.py가
-    판단만 하고 조치는 soar.py에 맡기는 것과 같은 분리 원칙).
+    그저 "위험해 보이는가/왜 그런가"만 판단해서 돌려준다(security/detector.py가
+    판단만 하고 조치는 security/soar/에 맡기는 것과 같은 분리 원칙).
 
-    처음 버전은 count/threshold 숫자 두 개만 보여줬는데, soar.py가 이미 계산해둔
+    처음 버전은 count/threshold 숫자 두 개만 보여줬는데, security/soar/가 이미 계산해둔
     context_count(distinct_usernames/distinct_ips)와 path를 프롬프트에 안 넣고
     버리고 있었다 — "정황을 보고 판단해달라"면서 정작 정황 정보를 안 준 것이라
     이번에 추가했다. prior_occurrences(db.count_recent_requests_for_target())도
@@ -169,7 +169,7 @@ def judge_early_warning(
     반영하고, risky=False로 넘어간 근처 구간 진입은 잡아내지 못하는 한계가 있다.
 
     반환값은 {"risky": bool, "reason": str} 또는, API 키가 없거나 호출/응답
-    해석에 실패하면 None이다. None을 받은 쪽(soar.py)은 "아직 규칙이 발동하지
+    해석에 실패하면 None이다. None을 받은 쪽(security/soar/)은 "아직 규칙이 발동하지
     않은 원래 사각지대로 그냥 남겨두고 조용히 넘어간다" — 이 조기 경보 기능은
     "원래 없던 걸 덤으로 추가하는" 성격이라, 실패해도 예외를 전파해 로그인
     흐름 자체를 막으면 안 된다.

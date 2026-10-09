@@ -217,53 +217,80 @@ python scripts/create_admin.py --username sktadmin123 --password <비밀번호> 
 
 ## 프로젝트 구조
 
-`app.py`(1,108줄)와 `db.py`(1,030줄)가 파일 하나에 너무 많은 책임을 담고 있어 원하는 코드를 찾기 어려워졌던 것을 계기로, 각각 `routes/` Blueprint(지금은 5개)와 `db/` 표 묶음별 패키지로 쪼갰습니다(배경은 [docs/refactor/2026-09-15-file-split.md](docs/refactor/2026-09-15-file-split.md) 참고). 호출부(`app.py`/`detector.py`/`soar.py`/`scripts/*.py`/테스트)는 지금도 예전처럼 `import db` 후 `db.log_attempt(...)`처럼 쓰며, 어느 파일이 실제로 그 함수를 담고 있는지는 몰라도 됩니다.
+`app.py`(1,108줄)와 `db.py`(1,030줄)가 파일 하나에 너무 많은 책임을 담고 있어 원하는 코드를 찾기 어려워졌던 것을 계기로, 각각 `routes/` Blueprint와 `db/` 표 묶음별 패키지로 쪼갰습니다(배경은 [docs/refactor/2026-09-15-file-split.md](docs/refactor/2026-09-15-file-split.md) 참고). 이후 루트에 흩어져 있던 모듈 13개를 기능별 폴더(`security/`, `notify/`, `services/`, `helpers/`)로 묶고, 200줄이 훨씬 넘던 `routes/admin.py`·`soar.py`·`helpers.py`·대시보드 JS도 기능 묶음별로 나눴습니다(배경은 [docs/refactor/2026-10-09-module-plan.md](docs/refactor/2026-10-09-module-plan.md) 참고). 모듈 이름은 그대로라서 호출부는 `from security import soar` 후 `soar.enforce_lockout(...)`, `import db` 후 `db.log_attempt(...)`처럼 쓰며, 패키지 안의 어느 파일이 실제로 그 함수를 담고 있는지는 몰라도 됩니다.
 
 ```
 login-watchdog/
-├── app.py                         # Flask 진입점(축소) — 앱 생성, 세션/CSRF 설정, 에러 핸들러, before_request, Blueprint 4개 등록
-├── helpers.py                     # 라우트 전체가 공유하는 문지기 데코레이터(login_required/require_permission/member_login_required)·공용 함수
-├── routes/                        # Blueprint 5개 — 실제 화면 라우트 (app.py에서 분리)
+├── app.py                         # Flask 진입점(Vercel이 루트의 app을 찾음) — 앱 생성, 세션/CSRF/요청 한도 설정, Blueprint 등록
+├── config.py                      # 임계값·윈도우·잠금시간·입력 형식 규칙 등 상수
+├── security/                      # 보안 엔진: 탐지 → 상관분석 → 대응
+│   ├── detector.py                #   "수상한가?" 판정 (임계값 비교, 잠금 상태 조회)
+│   ├── correlate.py               #   같은 IP의 서로 다른 이벤트를 사건으로 묶기 (SIEM)
+│   ├── lockdown.py                #   영구 잠금 승격·해제·이메일 복구 반영
+│   └── soar/                      #   판정 결과를 실제 조치로 실행 (SOAR) — 함수는 __init__.py가 재내보내기
+│       ├── lockouts.py            #     enforce_*(잠금 집행), try_release_expired_*/manual_release_*(해제)
+│       ├── observe.py             #     notify_*(알림 + 기록만), record_rejection(HIGH 거부 기록)
+│       ├── early_warning.py       #     LLM 조기 경보, 관리자 승인/반려
+│       └── _events.py             #     이벤트 기록 + 상관분석 훅(공용)
+├── notify/                        # 밖으로 알리는 채널
+│   ├── alert.py                   #   Slack 알림
+│   └── mailer.py                  #   메일 발송 (console/SMTP, 실패 원인 분류 + Slack 알림)
+├── services/                      # 외부 연동·계정 부가 흐름
+│   ├── email_verification.py      #   이메일 인증·변경 확인·비밀번호 재설정 토큰
+│   ├── llm_client.py              #   Groq LLM 호출, 조기 경보 판정
+│   ├── geoip.py                   #   IP 위치(국가·도시) 조회, 캐싱
+│   └── ip_utils.py                #   IP 정규화(IPv6 /64 대역)
+├── helpers/                       # 라우트 공용 함수 — `from helpers import ...`로 사용 (__init__.py가 재내보내기)
+│   ├── auth.py                    #   관리자/회원 세션, login_required/require_permission/member_login_required
+│   ├── request_utils.py           #   get_request_ip, 허니팟, 위치 붙이기, 아이디 가리기
+│   ├── device.py                  #   hash_secret, 기기 쿠키
+│   ├── timing.py                  #   응답 시간 고정(계정 존재 여부 노출 방지)
+│   └── hooks.py                   #   모든 요청에 걸리는 훅(보안 헤더, 404 기록, 반복 접근·매크로 관찰)
+├── routes/                        # Blueprint — 실제 화면 라우트
 │   ├── auth.py                    #   auth_bp: /signup, /login
-│   ├── admin.py                   #   admin_bp: /admin/login, /admin/dashboard, /api/*(관리자용, RBAC로 세분화)
+│   ├── admin/                     #   admin_bp: /admin/*, /api/*(관리자용, RBAC로 세분화)
+│   │   ├── login.py               #     /admin/login, /admin/logout
+│   │   ├── status.py              #     /admin/dashboard, /api/status(대시보드 폴링)
+│   │   ├── locks.py               #     잠금 해제, 영구 잠금, IP 예외·복구 요청 회수
+│   │   ├── incidents.py           #     AI 조기 경보 승인/반려, 보안 이벤트·연관 사건 처리
+│   │   └── manage.py              #     회원·회원가입 설정·게시판·관리자 계정 관리
 │   ├── board.py                   #   board_bp: /board/*
 │   ├── member.py                  #   member_bp: /dashboard/* (프로필, 비밀번호 변경)
+│   ├── email.py                   #   email_bp: /email/confirm (이메일 인증 링크)
+│   ├── password.py                #   password_bp: /password/* (비밀번호 찾기)
 │   └── recovery.py                #   recovery_bp: /recovery/* (영구 잠금 이메일 인증 복구)
-├── db/                             # Supabase 연동 — 표 묶음별로 분리된 패키지 (db.py에서 분리)
-│   ├── __init__.py                 #   하위 모듈 함수를 전부 다시 내보내기(re-export), 호출부는 여전히 db.함수명()으로 사용
-│   ├── _client.py                  #   get_client(), _now_iso() — Supabase 연결(HTTP/1.1 + 조회 1회 재시도)
-│   ├── attempts.py                 #   login_attempts (로그인 시도 기록)
-│   ├── lockouts.py                 #   lockouts (IP 잠금 현재 상태 — 임시/영구)
-│   ├── lock_history.py             #   lock_history (잠금 이력 — 영구 승격 횟수 판단)
-│   ├── recovery.py                 #   recovery_requests, ip_lock_exemptions, users.email_status (이메일 복구)
-│   ├── account_lockouts.py         #   account_lockouts (계정 단위 잠금, 분산 브루트포스 대응)
-│   ├── admin.py                    #   admin_users, admin_login_log (관리자 계정/로그인 기록/역할)
-│   ├── roles.py                    #   roles, permissions (RBAC — 역할별 허용 액션)
-│   ├── users.py                    #   users (회원 계정)
-│   ├── settings.py                 #   app_settings, signup_attempts (설정값, 가입 빈도 제한)
-│   ├── geoip_cache.py              #   ip_locations (IP 위치 조회 캐시)
-│   ├── board.py                    #   posts, comments, post_attempts, comment_attempts (게시판)
-│   ├── security_events.py          #   not_found/unauthorized/page_access_attempts, security_events
-│   ├── incidents.py                #   security_incidents (SIEM 상관분석)
-│   └── api_access_log.py           #   api_access_log (매크로/봇 탐지)
-├── detector.py                    # 브루트포스 판정 로직
-├── soar.py                        # 판정 결과에 따른 조치(잠금/해제) 실행
-├── correlate.py                   # 상관분석 판정 로직 (같은 IP의 서로 다른 이벤트를 사건으로 묶을지)
-├── lockdown.py                    # 영구 잠금 승격·해제·이메일 복구 반영 (soar/correlate 순환 import 방지용 분리)
-├── mailer.py                      # 복구·알림 메일 발송 (console/SMTP, 실패 원인 분류 + Slack 알림)
-├── alert.py                       # Slack 알림 전송
-├── geoip.py                       # IP 위치(국가·도시) 조회, 캐싱
-├── config.py                      # 임계값·윈도우·잠금시간 등 상수
-├── templates/                     # Jinja2 HTML 템플릿
-├── public/css, public/js/dashboard/ # 스타일 및 대시보드 자바스크립트(ES 모듈 6개)
+├── db/                            # Supabase 연동 — 표 묶음별 패키지, 호출부는 db.함수명()으로 사용
+│   ├── __init__.py                #   하위 모듈 함수를 전부 다시 내보내기(re-export)
+│   ├── _client.py                 #   get_client(), _now_iso() — Supabase 연결(HTTP/1.1 + 조회 1회 재시도)
+│   ├── attempts.py                #   login_attempts (로그인 시도 기록)
+│   ├── lockouts.py                #   lockouts (IP 잠금 현재 상태 — 임시/영구)
+│   ├── lock_history.py            #   lock_history (잠금 이력 — 영구 승격 횟수 판단)
+│   ├── recovery.py                #   recovery_requests, users.email_status (이메일 복구)
+│   ├── ip_exemptions.py           #   ip_lock_exemptions (IP 영구 잠금 본인 기기 예외)
+│   ├── account_lockouts.py        #   account_lockouts (계정 단위 잠금, 분산 브루트포스 대응)
+│   ├── admin.py                   #   admin_users, admin_login_log (관리자 계정/로그인 기록/역할)
+│   ├── admin_lockouts.py          #   admin_account_lockouts (관리자 계정 단위 잠금)
+│   ├── roles.py                   #   roles, permissions (RBAC — 역할별 허용 액션)
+│   ├── users.py                   #   users (회원 계정)
+│   ├── settings.py                #   app_settings, signup_attempts (설정값, 가입 빈도 제한)
+│   ├── geoip_cache.py             #   ip_locations (IP 위치 조회 캐시)
+│   ├── board.py                   #   posts, comments, post_attempts, comment_attempts (게시판)
+│   ├── access_logs.py             #   not_found/unauthorized/page_access_attempts (요청 로그)
+│   ├── security_events.py         #   security_events (위험등급 이벤트)
+│   ├── incidents.py               #   security_incidents (SIEM 상관분석)
+│   ├── access_requests.py         #   access_requests (AI 조기 경보 승인 대기)
+│   ├── email_tokens.py            #   email_tokens (이메일 인증·변경·비밀번호 재설정 링크)
+│   └── api_access_log.py          #   api_access_log (매크로/봇 탐지)
+├── templates/                     # Jinja2 HTML 템플릿 (admin_dashboard/ — 관리자 대시보드 표 영역 조각)
+├── public/css, public/js/dashboard/ # 스타일 및 대시보드 자바스크립트(ES 모듈 — api.js 조회, actions.js 변경, render/ 표 그리기)
 ├── tests/                         # pytest 단위 테스트
-├── scripts/                       # 유지보수 스크립트 (bruteforce_sim.py, daily_report.py, unlock_ip.py, create_admin.py 등 — 위 "유지보수 스크립트" 참고)
+├── scripts/                       # 유지보수 스크립트 (bruteforce_sim.py, daily_report.py, unlock_ip.py, create_admin.py 등 — 위 "유지보수 스크립트" 참고, _sim_common.py는 시뮬레이션 공용 부품)
 ├── docs/schema.sql                # Supabase 테이블 정의
 ├── docs/migrations/               # 기존 DB에 추가로 실행할 SQL (guide33 영구 잠금, guide35 비밀번호 변경, guide38 관리자 계정 잠금, guide40 이메일 인증)
 ├── docker-compose.mailpit.yml     # 개발용 가짜 메일 서버(Mailpit) — 실제 발송 없이 메일 흐름 확인
-├── docs/beginner-guide/           # 비전공자용 단계별 구현 해설서 (36단계, 단계별 파일로 분리)
+├── docs/beginner-guide/           # 비전공자용 단계별 구현 해설서 (단계별 파일로 분리)
 ├── docs/board-comment/            # 게시판·댓글 기능 설계 문서(분석 → 결정 → 계획 → 결과)
-├── docs/refactor/                 # app.py/db.py/dashboard.js 파일 분리 리팩터링 배경 기록
+├── docs/refactor/                 # 파일 분리·모듈화 리팩터링 배경 기록
 └── plan.md, research.md           # 설계 근거 문서
 ```
 
@@ -273,6 +300,7 @@ login-watchdog/
 - [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide42_ipv6_prefix.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
 - [docs/board-comment/](docs/board-comment) — 게시판·댓글 기능을 왜 이렇게 설계했는지(구현 전 분석 → 모호한 질문 11개 결정 → 구현 계획 → 결과 보고) 순서대로 기록한 문서 4종
 - [docs/refactor/2026-09-15-file-split.md](docs/refactor/2026-09-15-file-split.md) — `app.py`/`db.py`/`dashboard.js`를 각각 `routes/`+`helpers.py`, `db/` 패키지, `public/js/dashboard/` ES 모듈로 나눈 리팩터링 배경과 과정
+- [docs/refactor/2026-10-09-module-plan.md](docs/refactor/2026-10-09-module-plan.md) — 루트 모듈을 `security/`·`notify/`·`services/`·`helpers/`로 묶고 큰 파일(`routes/admin.py`, `soar.py` 등)을 나눈 계획과 결과
 
 ## 알려진 제한사항
 

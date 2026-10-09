@@ -27,7 +27,7 @@ def flask_app(monkeypatch):
     monkeypatch.setenv("SUPABASE_KEY", "test-supabase-key")
 
     import db
-    import detector
+    from security import detector
     monkeypatch.setattr(db, "ensure_bootstrap_admin", lambda: None)
 
     # track_page_access()(21단계, attack_response_state.md 구현 대상 #4)는 GET으로
@@ -75,8 +75,8 @@ def flask_app(monkeypatch):
     app_module.app.config.update(TESTING=True)
     # 만료된 잠금 정리 간격(guide46)은 서버 인스턴스(모듈)에 기억된다 — 테스트마다 "아직 정리한 적
     # 없음"에서 시작해야 /api/status 첫 호출이 항상 정리를 한다.
-    import routes.admin
-    monkeypatch.setitem(routes.admin._expiry_release_state, "at", None)
+    import routes.admin.status
+    monkeypatch.setitem(routes.admin.status._expiry_release_state, "at", None)
     yield app_module.app
 
     sys.modules.pop("app", None)
@@ -111,8 +111,8 @@ def _stub_permanent_lock_defaults(request, monkeypatch):
         return
 
     import db
-    import detector
-    import lockdown
+    from security import detector
+    from security import lockdown
 
     monkeypatch.setattr(db, "insert_lock_history", lambda *a, **k: None)
     monkeypatch.setattr(db, "count_lock_history", lambda *a, **k: 0)

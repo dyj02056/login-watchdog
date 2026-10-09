@@ -11,7 +11,7 @@
 // ============================================================================
 
 // admin_dashboard.html의 <meta name="csrf-token"> 태그에서 서버가 발급한 CSRF
-// 토큰 값을 읽어온다. api.js가 fetch()로 서버 상태를 바꾸는 POST 요청을 보낼
+// 토큰 값을 읽어온다. actions.js가 fetch()로 서버 상태를 바꾸는 POST 요청을 보낼
 // 때마다 이 값을 X-CSRFToken 헤더에 실어 보내야, 서버의 CSRFProtect가 "이
 // 요청이 정말 이 화면에서 나왔다"고 확인해줄 수 있다 (CSRF 방어, app.py의
 // CSRFProtect 설명 참고).
@@ -29,8 +29,8 @@ export const SEVERITY_LABELS = {
     MEDIUM: "🟡 MEDIUM",
 };
 
-// 표 7개(최근 로그인 시도/회원/게시글/댓글/관리자 로그인 기록/보안 이벤트/
-// 연관 사건)가 지금 몇 페이지를 보고 있는지 기억해둔다. board_list.html의 URL
+// 표 8개(최근 로그인 시도/회원/게시글/댓글/관리자 로그인 기록/보안 이벤트/
+// 연관 사건/AI 조기 경보)가 지금 몇 페이지를 보고 있는지 기억해둔다. board_list.html의 URL
 // 쿼리 파라미터(?page=)와 같은 역할이지만, 이 화면은 서버 렌더링이 아니라 매번
 // fetch()로 다시 그리는 방식이라 URL 대신 이 객체로 상태를 들고 있는다.
 export const pages = {
@@ -58,7 +58,7 @@ export const totalPages = {
 };
 
 // 회원가입 토글 버튼을 누르면 "지금 상태의 반대"로 바꿔야 하는데, 그러려면
-// "지금 상태가 뭔지"를 어딘가 기억해둬야 한다. render.js의 renderSignupStatus()가
+// "지금 상태가 뭔지"를 어딘가 기억해둬야 한다. render/tables.js의 renderSignupStatus()가
 // 매번 이 값을 최신으로 갱신해둔다.
 export const signupState = {
     enabled: true,

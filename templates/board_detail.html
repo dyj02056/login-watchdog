@@ -3,7 +3,7 @@
 
   data-post-id / data-comment-count / data-latest-at 세 속성은 board.js가
   읽어서 "페이지가 처음 그려졌을 때의 댓글 상태"를 기억하는 데 쓴다 — 이후
-  15초마다 폴링한 값과 비교해서 달라지면 "새로운 댓글이 추가되었습니다"
+  data-poll-interval-ms(config.BOARD_COMMENT_POLL_MS, 기본 5초)마다 폴링한 값과 비교해서 달라지면 "새로운 댓글이 추가되었습니다"
   배너를 띄운다(결정 #6, plan_board.md 5-5절 참고).
 -->
 <!doctype html>

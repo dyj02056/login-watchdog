@@ -21,11 +21,9 @@
 # ============================================================================
 
 import config
-import detector
-import soar
-import geoip
 import db
-import email_verification
+from security import detector, soar
+from services import email_verification, geoip
 from tests.admin_session import login_admin_session, stub_admin_role  # noqa: E402
 
 
@@ -648,7 +646,7 @@ def test_api_access_logs_request_to_api_path(client, monkeypatch):
     # /api/status는 admin.api_status로, 자동 폴링 API라 track_api_access()
     # 관찰 대상에서 제외된다 — 실제로 관찰되는 경로(/api/unlock)로 확인한다.
     # 로그인 없이 부르면 login_required가 먼저 401을 돌려주면서 별도로
-    # unauthorized_attempts도 기록하는데(helpers.py 참고), 이 테스트가 확인하려는
+    # unauthorized_attempts도 기록하는데(helpers/auth.py 참고), 이 테스트가 확인하려는
     # 건 그게 아니므로 조용히 통과하게 막아둔다. CSRF도 통과해야 이 훅까지
     # 도달하므로 /login에서 진짜 토큰을 받아온다.
     monkeypatch.setattr(db, "log_unauthorized_attempt", lambda ip, path: None)
@@ -1344,7 +1342,7 @@ def test_board_comment_delete_rejected_when_not_owner(client, monkeypatch):
 def test_api_board_comments_latest_requires_login(client):
     # 이 API는 member_login_required로 보호된다 — login_required(관리자용)와
     # 달리 "/api/" 경로 특례가 없어, 미인증 시에도 401 JSON이 아니라 로그인
-    # 화면으로 리다이렉트된다(app.py의 member_login_required 정의 참고).
+    # 화면으로 리다이렉트된다(helpers/auth.py의 member_login_required 정의 참고).
     response = client.get("/api/board/1/comments/latest")
 
     assert response.status_code == 302

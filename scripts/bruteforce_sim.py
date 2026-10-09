@@ -14,7 +14,7 @@
 # 아닌 주소를 지정하면 --i-know-what-im-doing 플래그 없이는 실행을 거부한다.
 #
 # --ip 옵션(선택): 로컬 환경에서는 팀원 전원이 똑같이 127.0.0.1로 접속하게
-# 되어 "서로 다른 공격자 IP에서 왔다"는 상황을 재현할 수 없다. app.py의
+# 되어 "서로 다른 공격자 IP에서 왔다"는 상황을 재현할 수 없다. helpers/request_utils.py의
 # get_request_ip()는 config.TRUST_FORWARDED_FOR가 true일 때만(데모 전용 설정)
 # X-Forwarded-For 헤더 값을 진짜 접속 IP처럼 믿어주므로, 이 옵션을 쓰면 그
 # 헤더에 원하는 IP를 실어 보내 "가짜 공격자 IP"를 흉내낼 수 있다. 단, 대상
@@ -25,24 +25,15 @@
 import argparse
 import os
 import sys
-from urllib.parse import urlparse
 
 import requests
 from dotenv import load_dotenv
 
+from _sim_common import is_local_host
+
 load_dotenv()
 
 LOCKED_MESSAGE = "잠긴 계정입니다"
-
-
-def is_local_host(host: str) -> bool:
-    """--host로 받은 주소가 로컬(내 컴퓨터) 서버인지 확인한다.
-
-    urlparse().hostname으로 "http://127.0.0.1:5000" 같은 문자열에서 호스트
-    부분만 뽑아내, localhost/127.0.0.1 계열인지만 확인한다.
-    """
-    hostname = urlparse(host).hostname or ""
-    return hostname in ("127.0.0.1", "localhost", "::1")
 
 
 def fetch_csrf_token(session: requests.Session, base_url: str, login_path: str = "/login") -> str:
@@ -66,7 +57,7 @@ def attempt_login(
 ) -> requests.Response:
     """/login에 아이디/비밀번호를 폼(form) 형식으로 제출하는 요청 한 건을 보낸다.
 
-    app.py의 login_submit()이 request.form.get(...)으로 값을 읽으므로, JSON이
+    routes/auth.py의 login_submit()이 request.form.get(...)으로 값을 읽으므로, JSON이
     아니라 브라우저 폼 제출과 똑같은 방식(data=... 로 보내면 requests가 자동으로
     application/x-www-form-urlencoded 형식을 써준다)으로 보내야 한다. csrf_token도
     폼 필드 중 하나이므로 같은 data 딕셔너리에 함께 실어 보낸다.

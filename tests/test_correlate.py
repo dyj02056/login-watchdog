@@ -1,16 +1,16 @@
 # ============================================================================
-# test_correlate.py — correlate.py(형사 역할)가 "사건으로 묶어야 하는가"를
+# test_correlate.py — security/correlate.py(형사 역할)가 "사건으로 묶어야 하는가"를
 # 올바르게 판단하는지 확인하는 단위 테스트 (Track C guide27, SIEM 상관분석)
 #
-# 여기서는 db.py가 진짜로 뭘 저장하는지가 아니라, correlate.py가 db.py의
+# 여기서는 db가 진짜로 뭘 저장하는지가 아니라, security/correlate.py가 db의
 # 함수들을 올바른 조건에서, 올바른 값으로 부르는지만 확인한다 — test_soar.py와
 # 같은 스타일.
 # ============================================================================
 
-import alert
 import config
-import correlate
 import db
+from notify import alert
+from security import correlate
 
 # 대부분의 테스트는 record_incident()의 반환값 자체가 아니라 "누가 어떤 값으로
 # 불렸는가"만 보므로, _maybe_escalate()가 더 진행하지 않도록 escalated=True인

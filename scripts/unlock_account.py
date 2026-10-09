@@ -8,7 +8,7 @@
 # 이때 IP가 아니라 "계정 자체"를 잠근다(L7 공격 보강 계획 Tier 1: 분산/저속
 # 브루트포스 대응). 관리자 대시보드에는 이 계정 잠금을 풀어주는 화면이 따로
 # 없으므로(현재 잠긴 IP 카드는 IP 잠금만 보여준다), unlock_ip.py와 동일한 방식으로
-# 웹 화면을 거치지 않고 db.py를 통해 Supabase의 account_lockouts 표를 직접
+# 웹 화면을 거치지 않고 db 패키지를 통해 Supabase의 account_lockouts 표를 직접
 # 갱신하는 스크립트를 별도로 둔다.
 #
 # --admin을 붙이면 회원 계정이 아니라 관리자 계정 잠금(admin_account_lockouts, guide38)을
@@ -34,8 +34,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv()
 
 import db  # noqa: E402  (load_dotenv()가 SUPABASE_URL 등을 먼저 읽어들인 뒤에 import 해야 함)
-import lockdown  # noqa: E402
-import soar  # noqa: E402
+from security import lockdown  # noqa: E402
+from security import soar  # noqa: E402
 
 
 # --permanent로 영구 잠금을 풀 때 lock_history에 남길 기본 사유(--note로 바꿀 수 있다).

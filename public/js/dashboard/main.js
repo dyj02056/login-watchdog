@@ -18,16 +18,18 @@
 // 원래 dashboard.js 파일 하나(558줄)에 모든 게 들어있었다. 파일이 너무 커서
 // 원하는 부분을 찾기 어려워져서, 역할별로 아래처럼 나눴다:
 //   state.js   — 여러 함수가 공유하는 상태값 (페이지 번호, CSRF 토큰 등)
-//   utils.js   — escapeHtml, formatTime, renderPagination (범용 헬퍼)
-//   render.js  — 서버 데이터를 표/카드 HTML로 그리는 함수들
-//   api.js     — fetch()로 서버와 주고받는 함수들 (조회 폴링 + 상태 변경 요청)
-//   events.js  — 버튼 클릭 등 화면 이벤트를 api.js 함수와 연결
+//   utils.js   — escapeHtml, formatTime/formatDateTime, renderPagination, 처리 중 버튼 표시(markBusy/runAction), 사유 입력 모달(askNote)
+//   render.js  — 서버 데이터를 표/카드 HTML로 그리는 함수들 (render/ 3개 파일을 재내보내기)
+//   api.js     — fetch()로 상태를 받아와 그리는 조회 함수들 (폴링, 표 단위 조회)
+//   actions.js — 서버 상태를 바꾸는 요청들 (잠금 해제, 삭제, 처리 완료 등)
+//   events.js  — 버튼 클릭 등 화면 이벤트를 actions.js/api.js 함수와 연결
 //   main.js    — (이 파일) 위 조각들을 불러와 조립하고 최초 실행을 시작
 //
 // 이 화면(templates/admin_dashboard.html)의 <script> 태그가 type="module"로
 // 바뀌면서 이 파일 하나만 로드하면 나머지는 import 구문이 알아서 불러온다.
 //
 // docs/refactor/2026-09-15-file-split.md — 이 분리 작업의 배경과 계획 문서.
+// docs/refactor/2026-10-09-module-plan.md — render.js / api.js를 한 번 더 나눈 작업.
 // ============================================================================
 
 import { startPolling } from "../polling.js";

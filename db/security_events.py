@@ -1,12 +1,11 @@
 # ============================================================================
-# db/security_events.py — not_found_attempts / unauthorized_attempts /
-# page_access_attempts / security_events 표 관련 함수
+# db/security_events.py — security_events 표 관련 함수
 #
-# 앞의 세 표는 각각 Web Scanning(21단계), Unauthorized Access, 반복 페이지
-# 접근을 탐지하기 위한 요청 로그다(attack_response_state.md 구현 대상 #1/#2/#4).
-# security_events는 그 중 MEDIUM/HIGH/CRITICAL 이상행위를 위험등급과 함께
-# 기록하는 공통 표다(security-risk-response-summary.md 5절 참고). LOW는 여기
-# 저장하지 않고 위 개별 테이블 조회로만 추세를 본다.
+# security_events는 MEDIUM/HIGH/CRITICAL 이상행위를 위험등급과 함께 기록하는
+# 공통 표다(security-risk-response-summary.md 5절 참고). LOW는 여기 저장하지 않고
+# 요청 로그 표(not_found/unauthorized/page_access_attempts — db/access_logs.py)
+# 조회로만 추세를 본다. 그 세 표의 함수는 원래 이 파일에 있었는데 2026-10-09에
+# db/access_logs.py로 나눴다.
 #
 # db.get_client() 호출 이유는 db/attempts.py 상단 설명 참고.
 # ============================================================================
@@ -15,72 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 from postgrest.exceptions import APIError
 
-import config
 import db
-
-
-def log_not_found_attempt(ip: str, path: str) -> None:
-    """404가 발생한 요청 한 건을 not_found_attempts 표에 기록한다."""
-    db.get_client().table("not_found_attempts").insert({"ip_address": ip, "path": path}).execute()
-
-
-def count_recent_not_found_attempts(
-    ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS
-) -> int:
-    """이 IP가 최근 몇 초(기본 60초) 안에 몇 번이나 404를 유발했는지 센다."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
-    res = (
-        db.get_client()
-        .table("not_found_attempts")
-        .select("id", count="exact")
-        .eq("ip_address", ip)
-        .gte("attempted_at", cutoff)
-        .execute()
-    )
-    return res.count or 0
-
-
-def log_unauthorized_attempt(ip: str, path: str) -> None:
-    """세션 없이 관리자 API에 접근한 요청 한 건을 unauthorized_attempts 표에 기록한다."""
-    db.get_client().table("unauthorized_attempts").insert({"ip_address": ip, "path": path}).execute()
-
-
-def count_recent_unauthorized_attempts(
-    ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS
-) -> int:
-    """이 IP가 최근 몇 초(기본 60초) 안에 몇 번이나 세션 없이 관리자 API를 두드렸는지 센다."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
-    res = (
-        db.get_client()
-        .table("unauthorized_attempts")
-        .select("id", count="exact")
-        .eq("ip_address", ip)
-        .gte("attempted_at", cutoff)
-        .execute()
-    )
-    return res.count or 0
-
-
-def log_page_access_attempt(ip: str, path: str) -> None:
-    """GET 페이지 요청 한 건을 page_access_attempts 표에 기록한다."""
-    db.get_client().table("page_access_attempts").insert({"ip_address": ip, "path": path}).execute()
-
-
-def count_recent_page_access_attempts(
-    ip: str, path: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS
-) -> int:
-    """이 IP가 최근 몇 초(기본 60초) 안에 이 경로를 몇 번이나 요청했는지 센다."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
-    res = (
-        db.get_client()
-        .table("page_access_attempts")
-        .select("id", count="exact")
-        .eq("ip_address", ip)
-        .eq("path", path)
-        .gte("attempted_at", cutoff)
-        .execute()
-    )
-    return res.count or 0
 
 
 def insert_security_event(
@@ -161,7 +95,7 @@ def resolve_security_event(event_id: int) -> bool:
 
     CRITICAL 이벤트는 이 함수로 처리하지 않는다 — CRITICAL은 잠금이 풀릴 때
     resolve_security_events_for_ip()가 자동으로 처리하는 것이 유일한 경로여야
-    한다. 화면(dashboard.js)에서는 CRITICAL 행에 "처리 완료" 버튼 자체를 안
+    한다. 화면(dashboard/render/security.js)에서는 CRITICAL 행에 "처리 완료" 버튼 자체를 안
     보여주지만, 그건 화면 쪽 제약일 뿐이라 API를 직접 호출하면 우회할 수
     있었다 — .neq("severity", "CRITICAL")로 서버 쪽에서도 막는다(그러면 IP가
     아직 잠긴 채로 CRITICAL 이벤트만 "처리 완료"로 표시되는 상태가 생기지 않는다).

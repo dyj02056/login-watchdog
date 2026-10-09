@@ -1,7 +1,7 @@
 # ============================================================================
 # db/__init__.py — 데이터베이스(Supabase)와 대화하는 유일한 창구
 #
-# 이 프로그램의 다른 파일(detector.py, soar.py, app.py 등)은 데이터베이스에
+# 이 프로그램의 다른 파일(security/detector.py, security/soar/, app.py 등)은 데이터베이스에
 # 직접 말을 걸지 않고, 항상 이 db 패키지의 함수를 통해서만 데이터를 읽고 씁니다.
 # 그래야 "데이터를 어떻게 저장/조회하는지"에 대한 규칙이 한 곳에만 있어서
 # 관리하기 쉬워집니다.
@@ -12,21 +12,26 @@
 #   _client.py         — Supabase 연결, 공용 시각 헬퍼
 #   attempts.py         — login_attempts (로그인 시도 기록)
 #   lockouts.py         — lockouts (IP 잠금 현재 상태)
+#   account_lockouts.py — account_lockouts (회원 계정 단위 잠금, 분산 브루트포스 대응)
 #   admin.py            — admin_users, admin_login_log (관리자 계정/로그인 기록)
 #   admin_lockouts.py   — admin_account_lockouts (관리자 계정 단위 잠금, guide38)
+#   roles.py            — roles, permissions (RBAC 역할별 허용 액션, Track B guide26)
 #   users.py            — users (회원 계정)
 #   settings.py         — app_settings, signup_attempts (설정값, 가입 빈도 제한)
 #   geoip_cache.py       — ip_locations (IP 위치 조회 캐시)
 #   board.py            — posts, comments, post_attempts, comment_attempts (게시판)
-#   security_events.py  — not_found/unauthorized/page_access_attempts, security_events
+#   access_logs.py      — not_found/unauthorized/page_access_attempts (요청 로그)
+#   security_events.py  — security_events (위험등급 이벤트)
 #   incidents.py         — security_incidents (SIEM 상관분석, Track C guide27)
 #   api_access_log.py    — api_access_log (매크로/봇 탐지, Track C guide29)
+#   access_requests.py   — access_requests (AI 조기 경보 등 관리자 승인 대기, Track A guide31)
 #   lock_history.py      — lock_history (잠금 이력 append-only, guide33 영구 잠금)
-#   recovery.py          — recovery_requests / ip_lock_exemptions (이메일 복구, guide34-a)
+#   recovery.py          — recovery_requests, users.email_status (이메일 복구, guide34-a)
+#   ip_exemptions.py     — ip_lock_exemptions (IP 영구 잠금 본인 기기 예외, guide34-a)
 #   email_tokens.py      — email_tokens (이메일 인증·변경 확인·비밀번호 재설정 링크, guide40)
 #
 # 이 파일은 위 각 모듈의 함수를 그대로 다시 내보내기(re-export)만 한다 — 그래서
-# app.py/detector.py/soar.py/scripts/*.py나 테스트 코드는 예전처럼
+# app.py, routes/, security/, services/, scripts/*.py나 테스트 코드는 예전처럼
 # `import db` 후 `db.log_attempt(...)`, `db.create_lockout(...)`처럼 그대로 쓰면 된다.
 # 어느 파일이 실제로 그 함수를 담고 있는지는 몰라도 되고, 호출부 코드는 이 분리
 # 작업 때문에 단 한 줄도 바뀌지 않았다.
@@ -35,6 +40,14 @@
 # ============================================================================
 
 from ._client import _now_iso, get_client
+from .access_logs import (
+    count_recent_not_found_attempts,
+    count_recent_page_access_attempts,
+    count_recent_unauthorized_attempts,
+    log_not_found_attempt,
+    log_page_access_attempt,
+    log_unauthorized_attempt,
+)
 from .access_requests import (
     count_recent_requests_for_target,
     decide_request,
@@ -140,32 +153,31 @@ from .lockouts import (
     release_lockout,
     release_permanent_lockout,
 )
+from .ip_exemptions import (
+    get_active_ip_exemption,
+    insert_ip_exemption,
+    list_active_ip_exemptions,
+    revoke_ip_exemption,
+)
 from .recovery import (
     consume_recovery_request,
     count_recovery_requests_by_ip,
     count_recovery_requests_by_user,
     create_recovery_request,
     expire_old_recovery_requests,
-    get_active_ip_exemption,
     get_email_statuses,
     get_latest_pending_recovery_for_username,
     get_latest_recovery_request_time,
     get_pending_recovery_by_token_hash,
     get_recovery_activity,
-    insert_ip_exemption,
-    list_active_ip_exemptions,
     list_recent_recovery_requests,
     reserve_recovery_code_attempt,
-    revoke_ip_exemption,
     revoke_recovery_request,
     set_user_email_status,
 )
 from .roles import has_permission, list_role_permissions
 from .security_events import (
     ADMIN_ACCOUNT_LOCK_EVENT_TYPE,
-    count_recent_not_found_attempts,
-    count_recent_page_access_attempts,
-    count_recent_unauthorized_attempts,
     count_security_events,
     delete_all_security_events,
     delete_resolved_security_events,
@@ -175,9 +187,6 @@ from .security_events import (
     insert_security_event_or_bump,
     list_resolved_critical_events_since,
     list_security_events,
-    log_not_found_attempt,
-    log_page_access_attempt,
-    log_unauthorized_attempt,
     resolve_security_event,
     resolve_security_events_for_ip,
     resolve_security_events_for_username,

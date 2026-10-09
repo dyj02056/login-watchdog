@@ -1,8 +1,9 @@
 # ============================================================================
-# alert.py — "전화 교환원" 역할: Slack에 실제로 메시지를 전송한다
+# notify/alert.py — "전화 교환원" 역할: Slack에 실제로 메시지를 전송한다
 #
 # 이 파일이 하는 일은 딱 하나, "메시지를 조립해서 Slack 웹훅 주소로 던지는 것"뿐이다.
-# "언제 알림을 보낼지"를 결정하는 판단은 이 파일의 몫이 아니고 soar.py가 결정해서
+# "언제 알림을 보낼지"를 결정하는 판단은 이 파일의 몫이 아니고 security/soar/(대부분),
+# security/correlate.py·lockdown.py, notify/mailer.py(메일 발송 실패)가 결정해서
 # 이 파일의 함수를 호출해줄 때만 동작한다.
 # ============================================================================
 
@@ -28,7 +29,7 @@ def _safe_print(text: str) -> None:
 def _send_slack_message(message: str) -> None:
     """조립된 메시지 문자열 하나를 Slack 웹훅으로 전송한다 (없으면 콘솔 출력으로 대체).
 
-    send_lockout_alert()/send_web_scanning_alert() 둘 다 "메시지를 어떻게
+    이 파일의 send_*_alert() 함수들은 전부 "메시지를 어떻게
     조립하는지"만 다르고 "그 메시지를 어떻게 내보내는지"는 완전히 같으므로,
     전송 부분만 이 함수로 뽑아서 공유한다.
     """
@@ -173,7 +174,7 @@ def send_incident_escalation_alert(ip: str, event_types: list[str], severity_max
 
     send_lockout_alert() 등 개별 이벤트 알림은 이미 각자 따로 나가고 있으므로,
     이 알림은 "그 이벤트들이 사실 한 IP에서 겹치고 있다"는 상관관계 자체를
-    강조하는 것이 목적이다 — correlate.py가 이미 CRITICAL·서로 다른 유형
+    강조하는 것이 목적이다 — security/correlate.py가 이미 CRITICAL·서로 다른 유형
     config.INCIDENT_ESCALATION_MIN_EVENT_TYPES개 이상일 때만, 그리고 사건당
     한 번만(db.mark_incident_escalated) 호출한다.
     """
@@ -319,7 +320,9 @@ _MAIL_FAILURE_HINTS = {
 
 
 def send_mail_failure_alert(category: str, detail: str) -> None:
-    """복구 메일을 보내지 못했다는 사실(설정 문제 가능성)을 Slack에 알린다. 사용자 화면에는
+    """메일(복구·이메일 인증·비밀번호 재설정 등)을 보내지 못했다는 사실(설정 문제 가능성)을
+    Slack에 알린다. 메시지 제목은 "복구 메일"이지만 notify/mailer.py가 보내는 모든 메일의
+    실패가 여기로 온다. 사용자 화면에는
     계정 존재 여부가 드러나지 않게 항상 같은 안내가 나가므로, 이 알림이 없으면 메일 설정이
     틀려도 아무도 모른다. detail에는 비밀번호·토큰·메일 본문이 들어가지 않는다."""
     message = (

@@ -13,8 +13,8 @@ def has_permission(role: str, action: str) -> bool:
     """이 role이 이 action을 해도 되는지 permissions 표를 조회해서 확인한다.
 
     db/settings.py의 get_signup_enabled()와 같은 이유로 캐싱하지 않고 매번
-    Supabase를 직접 조회한다 — 역할별 권한은 관리자가 대시보드에서 실시간으로
-    바뀔 수 있는 값이라, 한 번 메모리에 담아두면 다른 서버 인스턴스(로컬/Vercel)나
+    Supabase를 직접 조회한다 — 역할별 권한(permissions 표)은 운영 중에 Supabase에서
+    바뀔 수 있는 값이라(대시보드에는 권한 편집 화면이 없다), 한 번 메모리에 담아두면 다른 서버 인스턴스(로컬/Vercel)나
     이미 로그인된 세션에서 권한 변경이 즉시 반영되지 않는다.
     """
     res = (

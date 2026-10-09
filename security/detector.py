@@ -1,11 +1,11 @@
 # ============================================================================
-# detector.py — "판사" 역할: 지금 이 IP가 수상한지, 지금 잠겨있는지만 판단한다
+# security/detector.py — "판사" 역할: 지금 이 IP가 수상한지, 지금 잠겨있는지만 판단한다
 #
 # 이 파일은 데이터베이스의 상태를 절대 바꾸지 않는다(아무것도 저장/수정/삭제하지 않음).
-# 오직 db.py에게 "지금 상태가 어때?"라고 물어보고, 그 답을 바탕으로
+# 오직 db에게 "지금 상태가 어때?"라고 물어보고, 그 답을 바탕으로
 # True/False 같은 "판정 결과"만 돌려준다.
 #
-# 실제로 잠그거나 알림을 보내는 "실행"은 이 파일이 아니라 soar.py가 담당한다
+# 실제로 잠그거나 알림을 보내는 "실행"은 이 파일이 아니라 security/soar/가 담당한다
 # (판단과 실행을 분리해두면, "판단 기준만 바꾸고 싶다" 같은 수정이 훨씬 쉬워진다).
 # ============================================================================
 
@@ -65,7 +65,7 @@ def is_account_suspicious(username: str) -> tuple[bool, int]:
 
 def count_distinct_ips_by_username(username: str) -> int:
     """soar.enforce_account_lockout이 "몇 개의 서로 다른 IP에서 시도됐는지"를
-    잠금 알림에 표시할 수 있도록, db.py가 센 값을 그대로 전달한다.
+    잠금 알림에 표시할 수 있도록, db가 센 값을 그대로 전달한다.
     """
     return db.count_recent_distinct_ips_by_username(username)
 
@@ -97,7 +97,7 @@ def is_admin_account_locked(username: str) -> bool:
 
 def count_distinct_usernames(ip: str) -> int:
     """soar.enforce_lockout이 잠금 알림에 "몇 개의 서로 다른 아이디가 관련됐는지"
-    (Brute Force인지 Password Spraying인지) 표시할 수 있도록, db.py가 센 값을
+    (Brute Force인지 Password Spraying인지) 표시할 수 있도록, db가 센 값을
     그대로 전달한다. is_suspicious()와 마찬가지로 login_attempts를 본다.
     """
     return db.count_recent_distinct_usernames(ip)
@@ -154,7 +154,7 @@ def is_web_scanning(ip: str) -> tuple[bool, int, bool]:
 
     세 번째 반환값(is_first_over_threshold)은 "지금 이 카운트가 임계값을 막
     넘긴 바로 그 순간인가"를 뜻한다 — count가 임계값+1일 때만 True다. 호출하는
-    쪽(app.py)이 이 값으로 "새로 감지된 시점에만 대응 실행"을 판단해서, 임계값을
+    쪽(helpers/hooks.py의 handle_not_found)이 이 값으로 "새로 감지된 시점에만 대응 실행"을 판단해서, 임계값을
     넘긴 뒤에도 계속되는 요청마다 Slack 알림이 중복 발송되는 걸 막는다(알림
     피로 방지 — 원래 app.py가 count == threshold + 1로 직접 계산하던 걸 판정
     로직 쪽으로 옮겨왔다).
