@@ -35,12 +35,12 @@ from datetime import datetime, timezone
 import requests
 from dotenv import load_dotenv
 
-# 이 스크립트는 scripts/ 폴더 안에 있어서, "python scripts/daily_report.py"로
+# 이 스크립트는 scripts/ 폴더 안에 있어서, "python scripts/management/daily_report.py"로
 # 실행하면 파이썬이 기본적으로 scripts/ 폴더 안에서만 다른 파일(모듈)을 찾는다.
 # db 패키지는 프로젝트 루트(scripts/의 부모 폴더)에 있으므로, 그 루트 폴더를
 # sys.path(파이썬이 모듈을 찾아보는 폴더 목록)에 직접 추가해줘야 "import db"가
 # 이 스크립트를 어느 위치에서 실행하든 항상 성공한다.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 # .env 파일에 적어둔 값들(SUPABASE_URL, GROQ_API_KEY 등)을 환경변수로 읽어온다.
 # 아래에서 db를 import하기 전에 반드시 먼저 실행해야 한다 — db 모듈이 켜지자마자

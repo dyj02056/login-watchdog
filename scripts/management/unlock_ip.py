@@ -26,8 +26,8 @@ import sys
 from dotenv import load_dotenv
 
 # daily_report.py와 동일한 이유: scripts/ 폴더 밖(프로젝트 루트)에 있는 db 패키지를
-# "python scripts/unlock_ip.py"로 실행해도 항상 찾을 수 있도록 경로를 추가해준다.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# "python scripts/management/unlock_ip.py"로 실행해도 항상 찾을 수 있도록 경로를 추가해준다.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 load_dotenv()
 
@@ -38,7 +38,7 @@ from services.ip_utils import normalize_ip  # noqa: E402
 
 # --permanent로 영구 잠금을 풀 때 lock_history에 남길 기본 사유 — 터미널에서 풀어도
 # "누가 언제 왜 풀었는지"가 비어 있지 않게 한다(--note로 바꿀 수 있다).
-DEFAULT_NOTE = "scripts/unlock_ip.py --permanent 로 긴급 해제"
+DEFAULT_NOTE = "scripts/management/unlock_ip.py --permanent 로 긴급 해제"
 
 
 def show_active_lockouts() -> list[dict]:

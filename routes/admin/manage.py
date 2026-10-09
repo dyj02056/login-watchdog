@@ -94,7 +94,7 @@ _CREATABLE_ADMIN_ROLES = ("security_viewer", "security_admin")
 def api_admin_users_create():
     """대시보드 "관리자 계정 관리" 카드의 생성 폼이 호출하는 API.
 
-    scripts/create_admin.py와 동일한 검증 규칙(아이디 형식, 비밀번호 길이)을
+    scripts/management/create_admin.py와 동일한 검증 규칙(아이디 형식, 비밀번호 길이)을
     쓰고, db.create_admin_user()도 그대로 재사용한다 — 다만 역할은
     _CREATABLE_ADMIN_ROLES 두 가지로만 제한한다. 화면(select 옵션)에서도
     super_admin을 아예 안 보여주지만, fetch()를 직접 조작해 super_admin을

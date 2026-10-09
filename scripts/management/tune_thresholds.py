@@ -5,7 +5,7 @@
 # 리포트 스크립트 (Track C guide30, 임계값 튜닝)
 #
 # "조기 해제"란? IP/계정을 잠근 뒤(CRITICAL 이벤트), 자동으로 풀릴 시각이 되기도
-# 전에 관리자가 대시보드의 "즉시 해제" 버튼이나 scripts/unlock_ip.py로 먼저
+# 전에 관리자가 대시보드의 "즉시 해제" 버튼이나 scripts/management/unlock_ip.py로 먼저
 # 풀어준 경우를 말한다. 이 비율이 높으면 "정상 사용자까지 잠그고 있어서
 # 관리자가 계속 수동으로 풀어주고 있다"는 신호로 볼 수 있다 — 그렇다면
 # FAILURE_THRESHOLD 같은 임계값을 더 느슨하게 조정하는 걸 검토해야 한다.
@@ -28,9 +28,9 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 # daily_report.py/unlock_ip.py와 동일한 이유: scripts/ 폴더 밖(프로젝트 루트)에
-# 있는 db 패키지와 config.py를 "python scripts/tune_thresholds.py"로 실행해도 항상
+# 있는 db 패키지와 config.py를 "python scripts/management/tune_thresholds.py"로 실행해도 항상
 # 찾을 수 있도록 경로를 추가해준다.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 load_dotenv()
 

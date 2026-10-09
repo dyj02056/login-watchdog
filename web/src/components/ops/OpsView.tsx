@@ -33,10 +33,15 @@ function Board() {
   const { status, error, refresh } = useOps();
   const [group, setGroup] = useState<GroupId>("respond");
 
-  // 주소 해시(#records)로 묶음을 기억한다 — 새로고침·링크 공유 때 같은 자리로 돌아온다
+  // 주소 해시(#records)로 묶음을 기억한다 — 새로고침·링크 공유·뒤로 가기 때 같은 자리로 돌아온다
   useEffect(() => {
-    const fromHash = window.location.hash.slice(1) as GroupId;
-    if (GROUPS.some((g) => g.id === fromHash)) setGroup(fromHash);
+    const sync = () => {
+      const fromHash = window.location.hash.slice(1) as GroupId;
+      if (GROUPS.some((g) => g.id === fromHash)) setGroup(fromHash);
+    };
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
   }, []);
   const choose = (id: GroupId) => {
     setGroup(id);

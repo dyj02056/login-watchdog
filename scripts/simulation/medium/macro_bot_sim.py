@@ -15,7 +15,7 @@
 # 훅(helpers/hooks.py의 track_api_access())은 실제 뷰 함수가 실행되기 훨씬 전에 먼저
 # 실행되므로, 403으로 거절되는 요청도 매크로/봇 탐지 로그에는 정상적으로
 # 기록된다. 계정이 없다면 먼저 다음처럼 만든다:
-#   python scripts/create_admin.py --username macro_test --password <비밀번호> --role security_viewer
+#   python scripts/management/create_admin.py --username macro_test --password <비밀번호> --role security_viewer
 #
 # bruteforce_sim.py/web_scanning_sim.py와 동일한 원칙으로, 팀이 소유한 로컬
 # 서버(기본값 http://127.0.0.1:5000)만 대상으로 한다.
@@ -25,6 +25,11 @@ import argparse
 import sys
 
 import requests
+
+# _sim_common.py는 위험도 폴더의 한 단계 위(scripts/simulation/)에 있으므로 경로를 추가한다.
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 
 from _sim_common import is_local_host
 
@@ -72,7 +77,7 @@ def log_in(session: requests.Session, base_url: str, username: str, password: st
     if "관리자 대시보드" not in response.text:
         raise RuntimeError(
             f"'{username}' 계정으로 로그인하지 못했습니다. 아이디/비밀번호를 확인하거나, "
-            "먼저 scripts/create_admin.py로 계정을 만들어주세요."
+            "먼저 scripts/management/create_admin.py로 계정을 만들어주세요."
         )
     print(f"[*] '{username}' 계정으로 로그인 성공")
     return response.text

@@ -1,6 +1,6 @@
 """화면 확인용 데모 서버 — 가짜 데이터로 관제 화면을 띄운다. Supabase에 접속하지 않는다.
 
-    python scripts/demo_server.py            # http://127.0.0.1:5077
+    python scripts/demo/demo_server.py            # http://127.0.0.1:5077
 
 실제 DB·Slack·메일에는 아무것도 보내지 않는다(DB 클라이언트를 빈 응답을 돌려주는 가짜로 바꾸고,
 Slack·메일은 보내지 않는다). 접속하면 관리자로 이미 로그인된 상태가 되어 /admin/dashboard가 바로 열린다.
@@ -16,7 +16,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))
 
 os.environ.setdefault("SECRET_KEY", "demo-only-secret-key")

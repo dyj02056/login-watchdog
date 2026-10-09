@@ -24,9 +24,9 @@ import sys
 from dotenv import load_dotenv
 
 # daily_report.py/unlock_ip.py와 동일한 이유: scripts/ 폴더 밖(프로젝트 루트)에
-# 있는 db 패키지를 "python scripts/delete_security_events.py"로 실행해도 항상
+# 있는 db 패키지를 "python scripts/management/delete_security_events.py"로 실행해도 항상
 # 찾을 수 있도록 경로를 추가해준다.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 load_dotenv()
 

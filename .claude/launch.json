@@ -24,7 +24,7 @@
       "name": "login-watchdog-demo",
       "runtimeExecutable": "venv/Scripts/python.exe",
       "runtimeArgs": [
-        "scripts/demo_server.py"
+        "scripts/demo/demo_server.py"
       ],
       "port": 5077,
       "autoPort": false

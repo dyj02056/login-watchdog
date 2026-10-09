@@ -33,7 +33,7 @@ auth_bp = Blueprint("auth", __name__)
 # ============================================================================
 
 # 아이디/비밀번호/이메일 규칙은 config.USERNAME_PATTERN / MIN_PASSWORD_LENGTH / EMAIL_PATTERN으로
-# 옮겨졌다 — scripts/create_admin.py, 대시보드 "관리자 계정 관리"(Track B guide26), 이메일 변경(routes/member.py)도
+# 옮겨졌다 — scripts/management/create_admin.py, 대시보드 "관리자 계정 관리"(Track B guide26), 이메일 변경(routes/member.py)도
 # 같은 규칙을 써야 해서 공용 상수가 됐다(config.py 상단 주석 참고).
 
 # 계정 잠금 안내(guide39) — 임시든 영구든 같은 문구와 같은 복구 링크를 보여준다. 영구 승격은

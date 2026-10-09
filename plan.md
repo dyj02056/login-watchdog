@@ -341,7 +341,7 @@ setInterval(2500ms) → fetch('/api/status')  # 세션 쿠키 자동 포함
 - `test_config.py`: 상수 값이 기획서 수치(5회, 60초, 300초)와 일치하는지 회귀 테스트
 
 ### 6-2. 통합 테스트 — 로컬 Supabase 프로젝트 대상 (실제 네트워크 호출)
-- 기획서 10장의 검증 스크립트(`scripts/bruteforce_sim.py`, 이번 계획 범위 밖이지만 검증 도구로는 재사용)를 로컬 `python app.py` 서버에 실행 → 6번째 시도에서 "잠긴 계정" 문구 확인
+- 기획서 10장의 검증 스크립트(`scripts/simulation/critical/bruteforce_sim.py`, 이번 계획 범위 밖이지만 검증 도구로는 재사용)를 로컬 `python app.py` 서버에 실행 → 6번째 시도에서 "잠긴 계정" 문구 확인
 - 5분 대기 후 재시도 → 자동 해제 확인(수동 시간 단축 테스트 시 `LOCKOUT_DURATION_SECONDS`를 `.env`에서 10초 등으로 임시 조정 — `config.py`가 override를 지원하는 이유)
 - 로그인하지 않은 상태로 `/dashboard`, `/api/status`, `/api/unlock` 접근 → 리다이렉트/401 확인
 - `/admin/login`으로 로그인 후 위 세 라우트에 정상 접근되는지, 대시보드 버튼 클릭 시 즉시 해제되는지 확인
@@ -361,8 +361,8 @@ setInterval(2500ms) → fetch('/api/status')  # 세션 쿠키 자동 포함
 
 ## 7. 제외할 범위 (이번 plan.md 대상 아님)
 
-- `scripts/bruteforce_sim.py` 자동화 스크립트 자체의 신규 기능 확장(랜덤 딜레이, argparse화, `rich` 출력) — 기획서 9-4절 스트레치
-- `scripts/daily_report.py` (AI 기반 일일 로그 요약, LLM 연동) — research.md 질문 8 그대로 정의 부족, 핵심 기능 완료 후 재검토
+- `scripts/simulation/critical/bruteforce_sim.py` 자동화 스크립트 자체의 신규 기능 확장(랜덤 딜레이, argparse화, `rich` 출력) — 기획서 9-4절 스트레치
+- `scripts/management/daily_report.py` (AI 기반 일일 로그 요약, LLM 연동) — research.md 질문 8 그대로 정의 부족, 핵심 기능 완료 후 재검토
 - Supabase Realtime 구독(폴링 대체) — 기획서 4-3절에 "여유가 있다면"으로 명시된 스트레치
 - IP 위치 조회(ip-api.com 연동)
 - PyInstaller `.exe` 패키징

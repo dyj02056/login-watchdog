@@ -9,7 +9,7 @@
 # 배포 환경의 값으로 확인하려면 Vercel 환경변수를 로컬로 가져오거나(.env에 같은 값을 넣고)
 # 실행한다. 비밀번호는 출력하지 않는다.
 #
-#   python scripts/send_test_mail.py --to 내이메일@gmail.com
+#   python scripts/management/send_test_mail.py --to 내이메일@gmail.com
 # ============================================================================
 
 import argparse
@@ -19,7 +19,7 @@ import sys
 from dotenv import load_dotenv
 
 # unlock_ip.py 등과 같은 이유: scripts/ 폴더 밖(프로젝트 루트)의 모듈을 항상 찾을 수 있게 경로를 추가한다.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 load_dotenv()
 

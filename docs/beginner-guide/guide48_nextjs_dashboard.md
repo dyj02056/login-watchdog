@@ -41,7 +41,7 @@ web/ (Next.js 소스)  ──npm run build──▶  spa/*.html          화면 
 
 | 주소 | 내용 | 데이터 |
 |---|---|---|
-| `/admin/dashboard` | 위협 현황: KPI, 시간대별 추이, 7일 로그량, 공격자 IP 히트맵, 공격 흐름도, 신규·지속·미처리·복합 공격 표 | `/api/stats` (30초) |
+| `/admin/dashboard` | 위협 현황: KPI, 시간대별 추이, 7일 로그량, 공격자 IP 히트맵, 공격 흐름도, 신규 공격자·잠금 현황·미처리 이벤트·연관 사건(미처리·방치) 표 | `/api/stats` (30초) |
 | `/admin/attack` | 공격 상세: 시간대별 탐지, 국가 흐름, 출발지·유형 Top 5, 경로 비중, 최근 이벤트, **L3/L4 "수집 전" 빈 상태** | `/api/stats` (15초) |
 | `/admin/ops` | 처리 작업대: 대응 / 기록 / 관리 세 묶음. 기존 대시보드의 처리 기능 전부 | `/api/status` (5초, 기존과 동일) |
 | `/login` `/signup` `/admin/login` | 인증 | 기존 라우트 |
@@ -77,6 +77,7 @@ npm run build       # 정적 빌드 + spa/, public/_next/ 갱신
 
 - `vercel.json`: 함수에 `spa/**`를 포함시키고, `/_next/static/*`을 오래 캐시한다.
 - `.vercelignore`: `web/`(소스·`node_modules`)는 올리지 않는다. 런타임에는 빌드 결과만 필요하다.
+- 빌드 ID를 고정(`generateBuildId`)해서 같은 소스는 항상 같은 결과가 나온다. 그래서 커밋된 결과와 비교할 수 있다.
 - 소스를 고쳤다면 **빌드 결과도 함께 커밋**해야 한다. CI(`.github/workflows/tests.yml`의 `web` 작업)가 타입 검사·빌드를 하고, 커밋된 결과와 다르면 경고를 남긴다.
 
 ## 테스트

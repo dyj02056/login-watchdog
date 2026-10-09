@@ -46,6 +46,11 @@ import time
 import requests
 from dotenv import load_dotenv
 
+# _sim_common.py는 위험도 폴더의 한 단계 위(scripts/simulation/)에 있으므로 경로를 추가한다.
+import os as _os
+import sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+
 from _sim_common import extract_csrf_token, is_local_host
 
 
