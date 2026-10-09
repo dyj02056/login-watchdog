@@ -2,16 +2,16 @@
 # test_early_warning.py — LLM 조기 경보(Track A, guide31) 단위 테스트
 #
 # test_soar.py와 동일한 원칙 — 진짜 Groq/Supabase를 부르지 않고, "호출된 사실을
-# 기록만 해두는 가짜 함수"로 바꿔치기해서 soar.py/llm_client.py의 판단·분기
+# 기록만 해두는 가짜 함수"로 바꿔치기해서 security/soar/·services/llm_client.py의 판단·분기
 # 로직만 확인한다.
 # ============================================================================
 
 import json
 
-import alert
 import db
-import llm_client
-import soar
+from notify import alert
+from security import soar
+from services import llm_client
 
 
 # ============================================================================
@@ -184,7 +184,7 @@ def test_consider_early_warning_registers_request_and_alerts_when_risky(monkeypa
     )
     assert insert_calls[0][1] == {"path": None, "context_count": 2, "context_ip": None}
     assert alert_calls == [("로그인 브루트포스(IP)", "ip", "1.2.3.4", 4, 5, "임계값을 피해가려는 패턴")]
-    # soar.py가 이미 계산해둔 context_count와, db에서 조회한 이력(prior_occurrences)이
+    # security/soar/가 이미 계산해둔 context_count와, db에서 조회한 이력(prior_occurrences)이
     # 실제로 judge_early_warning() 호출에 전달되는지 확인한다 — 처음 버전은 이
     # 값들을 계산해두고도 LLM에게는 넘기지 않고 있었다.
     assert judge_calls[0][1] == {"path": None, "context_count": 2, "prior_occurrences": 0}

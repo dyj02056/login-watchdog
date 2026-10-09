@@ -8,8 +8,8 @@
 # 정해지지 않아 "AI 요약 없이도 바로 쓸 수 있는 숫자 집계 리포트"만 먼저
 # 만들어뒀었다. 이 버전에서는 그 AI 요약 기능을 실제로 이어붙였다:
 #
-# Groq 호출 자체(재시도/타임아웃/에러 처리)는 llm_client.py로 옮겨졌다 —
-# Track A(guide31)에서 soar.py도 같은 Groq 호출 부품이 필요해져서, "Groq와
+# Groq 호출 자체(재시도/타임아웃/에러 처리)는 services/llm_client.py로 옮겨졌다 —
+# Track A(guide31)에서 security/soar/도 같은 Groq 호출 부품이 필요해져서, "Groq와
 # 대화하는 방법"을 이 스크립트 안에만 두지 않고 공용 모듈로 분리했다. 이
 # 파일에 남은 generate_ai_summary()는 "무엇을 물어볼지"(프롬프트 조립)만
 # 담당한다.
@@ -22,8 +22,8 @@
 #     자료로 보관하거나, 나중에 다른 곳에 첨부할 때 쓴다).
 #
 # 담당 범위: 이 스크립트는 "이미 쌓여있는 로그 데이터를 모아서 보여주는"
-# 역할만 한다 — 탐지 자체(누가 공격인지 판단하는 로직)는 detector.py가,
-# 실시간 알림은 alert.py/soar.py가 담당한다.
+# 역할만 한다 — 탐지 자체(누가 공격인지 판단하는 로직)는 security/detector.py가,
+# 실시간 알림은 notify/alert.py·security/soar/가 담당한다.
 # ============================================================================
 
 import argparse
@@ -48,7 +48,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv()
 
 import db  # noqa: E402  (load_dotenv()가 SUPABASE_URL 등을 먼저 읽어들인 뒤에 import 해야 함)
-import llm_client  # noqa: E402  (마찬가지로 load_dotenv() 이후에 import)
+from services import llm_client  # noqa: E402  (마찬가지로 load_dotenv() 이후에 import)
 
 
 def generate_ai_summary(report_text: str) -> str:

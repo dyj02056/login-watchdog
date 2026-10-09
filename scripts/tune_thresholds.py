@@ -28,7 +28,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 
 # daily_report.py/unlock_ip.py와 동일한 이유: scripts/ 폴더 밖(프로젝트 루트)에
-# 있는 db.py/config.py를 "python scripts/tune_thresholds.py"로 실행해도 항상
+# 있는 db 패키지와 config.py를 "python scripts/tune_thresholds.py"로 실행해도 항상
 # 찾을 수 있도록 경로를 추가해준다.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -44,6 +44,9 @@ DEFAULT_EARLY_RELEASE_RATIO = 0.5
 # 바꿔도 된다 — 이 스크립트는 판단을 대신 내려주는 게 아니라 판단에 참고할
 # 숫자만 보여준다.
 REVIEW_RECOMMENDATION_RATIO = 0.3
+
+# 임계값 튜닝과 무관한 이벤트 유형(영구 잠금 승격 기록) — build_report()에서 집계 대상에서 뺀다.
+EXCLUDED_EVENT_TYPES = {"PERMANENT_LOCK"}
 
 
 def elapsed_seconds(detected_at: str, resolved_at: str) -> float:
@@ -62,6 +65,10 @@ def build_report(days: int, early_release_ratio: float) -> str:
 
     by_type = defaultdict(lambda: {"total": 0, "early": 0})
     for event in events:
+        # 영구 잠금 이벤트는 "자동 만료를 기다리지 않고 풀었는가"라는 이 리포트의 기준 자체가
+        # 성립하지 않는다(자동 만료가 없어서 관리자가 풀 때까지 계속 남는다, guide33) — 제외한다.
+        if event["event_type"] in EXCLUDED_EVENT_TYPES:
+            continue
         elapsed = elapsed_seconds(event["detected_at"], event["resolved_at"])
         stats = by_type[event["event_type"]]
         stats["total"] += 1

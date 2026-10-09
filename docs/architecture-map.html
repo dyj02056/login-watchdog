@@ -185,21 +185,22 @@
   <header class="head">
     <span class="eyebrow">Project Architecture · Login Watchdog</span>
     <h1>폴더·파일이 파이프라인의 어느 단계를 맡는지 한눈에</h1>
-    <p class="sub">로그인 시도가 들어온 순간부터 관리자가 잠금을 해제하는 순간까지 요청이 어떤 파일을 거쳐 가는지, 그리고 회원가입·회원 전용 화면·IP 위치 조회·라이트/다크 테마처럼 이후 17단계에 걸쳐 늘어난 기능까지 각 파일의 역할·핵심 함수를 색으로 묶어 정리했습니다.</p>
+    <p class="sub">로그인 시도가 들어온 순간부터 관리자가 잠금을 해제하는 순간까지 요청이 어떤 파일을 거쳐 가는지, 그리고 회원 화면·게시판·영구 잠금·이메일 인증·로그 요약처럼 47단계에 걸쳐 늘어난 기능까지 각 폴더·파일의 역할과 핵심 함수를 색으로 묶어 정리했습니다.</p>
     <div class="meta-row">
-      <span><b>근거</b> 실제 코드(app.py·db.py 등) · docs/beginner-guide 17단계 기록</span>
-      <span><b>스택</b> Flask · Supabase · Slack Webhook · ip-api.com · Vercel</span>
-      <span><b>정리한 항목</b> 36개 (핵심 24 · 테스트 5 · 문서 3 · 미착수 4)</span>
+      <span><b>근거</b> 현재 코드(2026-10-09 모듈 정리 이후) · docs/beginner-guide 1~47단계 기록</span>
+      <span><b>스택</b> Flask · Supabase(PostgreSQL, pg_cron) · Slack Webhook · SMTP · Groq · ip-api.com · Vercel</span>
+      <span><b>정리한 항목</b> 39개 (서버 9 · 데이터 3 · 탐지 3 · 대응 2 · 알림·관리자 화면 6 · 외부 연동 4 · 회원 화면 4 · 디자인 3 · 스크립트·테스트·문서 5)</span>
     </div>
+    <p class="sub" style="margin-top:14px"><b>구조 한 줄 요약</b> — 루트에는 <code>app.py</code>(Vercel 진입점)와 <code>config.py</code>만 있고, 나머지는 역할별 폴더에 있습니다: 화면 주소 <code>routes/</code>, 라우트 공용 <code>helpers/</code>, 보안 엔진 <code>security/</code>(탐지 → 상관분석 → 대응), 밖으로 알리기 <code>notify/</code>, 외부 연동 <code>services/</code>, DB <code>db/</code>. 정리 배경은 <a href="refactor/2026-10-09-module-plan.md" style="color:var(--accent)">docs/refactor/2026-10-09-module-plan.md</a>.</p>
   </header>
 
   <section id="flow">
     <span class="eyebrow">01 · 요청의 이동 경로</span>
     <h2>로그인 시도 한 건이 파일 사이를 어떻게 지나가는가</h2>
-    <p class="lead">평소엔 위쪽 한 줄(정상 경로)만 돌지만, 같은 IP가 60초 안에 5회를 넘기는 순간 아래쪽 경로(SOAR 대응)가 열립니다. 점선은 해제가 다시 로그인 라우트로 돌아오는 경로입니다. (회원가입·회원 전용 화면·IP 위치 조회는 이 판정 흐름과 독립적으로 동작하며 03절에서 별도로 다룹니다.)</p>
+    <p class="lead">평소엔 위쪽 한 줄(정상 경로)만 돌지만, 같은 IP가 60초 안에 5회를 넘기는 순간 아래쪽 경로(SOAR 대응)가 열립니다. 점선은 해제가 다시 로그인 라우트로 돌아오는 경로입니다. 같은 계정이 여러 IP에 걸쳐 8회를 넘기면 계정 단위 잠금이, 반복되면 영구 잠금(04절)이 이어집니다.</p>
     <figure class="flow">
       <div class="svg-wrap">
-        <svg viewBox="0 0 1040 420" role="img" aria-label="로그인 시도가 app.py에서 db.py, detector.py를 거쳐 정상이면 admin_dashboard.html로, 임계값 초과면 soar.py를 거쳐 alert.py와 잠금 상태로 가고, 관리자 해제 또는 5분 자동 해제가 다시 app.py로 돌아오는 흐름도">
+        <svg viewBox="0 0 1040 420" role="img" aria-label="로그인 시도가 routes/auth.py에서 db 패키지와 security/detector.py를 거쳐 정상이면 관리자 대시보드로, 임계값 초과면 security/soar/를 거쳐 notify/alert.py와 잠금 상태로 가고, 관리자 해제 또는 5분 자동 해제가 다시 로그인 라우트로 돌아오는 흐름도">
           <defs>
             <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-muted)"></path>
@@ -209,12 +210,10 @@
             </marker>
           </defs>
 
-          <!-- return path (dashed, drawn first so it sits behind nodes) -->
           <polyline class="edge-line dashed" marker-end="url(#arrow-accent)"
             points="480,368 15,368 15,15 295,15 295,50" />
           <text class="edge-label accent" x="30" y="192" transform="rotate(-90 30 192)" text-anchor="middle">해제 · 수동 또는 5분 자동</text>
 
-          <!-- main edges -->
           <line class="edge-line" x1="180" y1="78" x2="220" y2="78" marker-end="url(#arrow)"></line>
           <text class="edge-label" x="200" y="70" text-anchor="middle">제출</text>
 
@@ -236,48 +235,40 @@
           <line class="edge-line" x1="675" y1="246" x2="630" y2="340" marker-end="url(#arrow)"></line>
           <text class="edge-label" x="670" y="285">잠금 실행</text>
 
-          <!-- nodes -->
           <g>
             <rect class="node-box" x="40" y="50" width="140" height="56" rx="9" style="stroke:var(--stage-people)"></rect>
             <text class="node-label" x="110" y="83" text-anchor="middle" font-size="13">사용자·공격자</text>
           </g>
-
           <g>
             <rect class="node-box" x="220" y="50" width="150" height="56" rx="9" style="stroke:var(--stage-server)"></rect>
-            <text class="node-label" x="295" y="74" text-anchor="middle" font-size="13">app.py</text>
-            <text class="node-role" x="295" y="90" text-anchor="middle" font-size="11">/login</text>
+            <text class="node-label" x="295" y="74" text-anchor="middle" font-size="12">routes/auth.py</text>
+            <text class="node-role" x="295" y="90" text-anchor="middle" font-size="11">POST /login</text>
           </g>
-
           <g>
             <rect class="node-box" x="410" y="50" width="150" height="56" rx="9" style="stroke:var(--stage-data)"></rect>
-            <text class="node-label" x="485" y="74" text-anchor="middle" font-size="13">db.py</text>
+            <text class="node-label" x="485" y="74" text-anchor="middle" font-size="13">db/</text>
             <text class="node-role" x="485" y="90" text-anchor="middle" font-size="11">기록 · 조회</text>
           </g>
-
           <g>
             <rect class="node-box" x="600" y="50" width="150" height="56" rx="9" style="stroke:var(--stage-detect)"></rect>
-            <text class="node-label" x="675" y="74" text-anchor="middle" font-size="13">detector.py</text>
+            <text class="node-label" x="675" y="74" text-anchor="middle" font-size="11">security/detector.py</text>
             <text class="node-role" x="675" y="90" text-anchor="middle" font-size="11">판정</text>
           </g>
-
           <g>
             <rect class="node-box" x="820" y="50" width="170" height="56" rx="9" style="stroke:var(--stage-output)"></rect>
-            <text class="node-label" x="905" y="72" text-anchor="middle" font-size="10.5">admin_dashboard.html</text>
+            <text class="node-label" x="905" y="72" text-anchor="middle" font-size="12">관리자 대시보드</text>
             <text class="node-role" x="905" y="90" text-anchor="middle" font-size="11">/api/status 폴링</text>
           </g>
-
           <g>
             <rect class="node-box" x="600" y="190" width="150" height="56" rx="9" style="stroke:var(--stage-response)"></rect>
-            <text class="node-label" x="675" y="214" text-anchor="middle" font-size="13">soar.py</text>
+            <text class="node-label" x="675" y="214" text-anchor="middle" font-size="12">security/soar/</text>
             <text class="node-role" x="675" y="230" text-anchor="middle" font-size="11">잠금 실행</text>
           </g>
-
           <g>
             <rect class="node-box" x="820" y="190" width="170" height="56" rx="9" style="stroke:var(--stage-output)"></rect>
-            <text class="node-label" x="905" y="214" text-anchor="middle" font-size="13">alert.py</text>
+            <text class="node-label" x="905" y="214" text-anchor="middle" font-size="12">notify/alert.py</text>
             <text class="node-role" x="905" y="230" text-anchor="middle" font-size="11">Slack 발송</text>
           </g>
-
           <g>
             <rect class="node-box" x="480" y="340" width="300" height="56" rx="9" style="stroke:var(--ink-muted);stroke-dasharray:4 3"></rect>
             <text class="node-label" x="630" y="364" text-anchor="middle" font-size="13">관리자 해제 / 5분 자동</text>
@@ -285,7 +276,7 @@
           </g>
         </svg>
       </div>
-      <figcaption>실선 = 매 요청마다 도는 판정 경로 · 점선(초록) = 해제가 app.py로 되돌아가는 경로 · admin_dashboard.html은 이 그림의 모든 노드 상태를 2.5초마다 폴링해 함께 보여줍니다</figcaption>
+      <figcaption>실선 = 매 요청마다 도는 판정 경로 · 점선(초록) = 해제가 로그인 라우트로 되돌아가는 경로 · 관리자 대시보드는 이 그림의 모든 노드 상태를 5초마다(탭이 보일 때만) 폴링해 함께 보여줍니다</figcaption>
     </figure>
   </section>
 
@@ -304,408 +295,426 @@
   </section>
 
   <section id="files">
-    <span class="eyebrow">03 · 파일별 역할</span>
-    <h2>스테이지별로 묶은 36개 항목</h2>
-    <p class="lead">각 카드의 왼쪽은 경로·도입 단계·상태, 오른쪽은 이 파일이 하는 일과 핵심 함수입니다. "GUIDE NN" 태그는 <a href="beginner-guide/beginner-guide.md" style="color:var(--accent)">docs/beginner-guide</a>에서 그 파일이 처음 만들어지거나 크게 바뀐 단계를 가리킵니다.</p>
+    <span class="eyebrow">03 · 폴더·파일별 역할</span>
+    <h2>스테이지별로 묶은 39개 항목</h2>
+    <p class="lead">각 카드의 왼쪽은 경로·처음 만들어진 단계, 오른쪽은 하는 일과 핵심 함수입니다. "GUIDE NN" 태그는 <a href="beginner-guide/beginner-guide.md" style="color:var(--accent)">docs/beginner-guide</a>에서 그 파일이 처음 만들어지거나 크게 바뀐 단계를 가리킵니다.</p>
 
     <div class="stage-groups">
 
       <div class="stage-group" data-stage="server">
-        <div class="stage-head"><span class="name">서버 · 진입점</span><span class="count">3개 파일</span></div>
+        <div class="stage-head"><span class="name">서버 · 진입점</span><span class="count">9개 항목</span></div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">app.py</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 05</span><span class="tag status-core">핵심</span></div>
-          </div>
+          <div class="file-id"><span class="file-path">app.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 05</span><span class="tag status-core">핵심</span></div></div>
           <div class="file-body">
-            <p class="file-role">Flask 단일 진입점(Blueprint 미사용). 회원가입·감시 대상 로그인·관리자 로그인·회원 대시보드·관리자 대시보드·모든 /api/* 라우트가 전부 이 한 파일에 등록되어 있다. db·detector·soar·geoip를 엮어 요청 하나가 전체 파이프라인을 통과하게 만드는 유일한 파일.</p>
-            <div class="fn-list">
-              <span class="fn">GET/POST /login</span><span class="fn">GET/POST /signup</span><span class="fn">GET/POST /admin/login</span><span class="fn">GET /dashboard</span><span class="fn">GET /dashboard/history</span><span class="fn">GET/POST /dashboard/profile</span><span class="fn">GET /admin/dashboard</span><span class="fn">GET /api/status</span><span class="fn">POST /api/unlock</span><span class="fn">POST /api/users/delete</span><span class="fn">POST /api/settings/signup</span>
-            </div>
+            <p class="file-role">Flask 앱을 만들고(Vercel이 루트의 <code>app</code>을 찾음) 세션·CSRF·전역 요청 한도를 설정한 뒤 Blueprint 7개를 등록하는 "조립" 파일. 복구·이메일 확인·비밀번호 찾기에는 라우트별로 더 좁은 요청 한도를 건다.</p>
+            <div class="fn-list"><span class="fn">CSRFProtect</span><span class="fn">Limiter (분당 120회)</span><span class="fn">handle_rate_limit_exceeded()</span><span class="fn">handle_csrf_error()</span><span class="fn">register_request_hooks(app)</span></div>
           </div>
         </div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">templates/login_form.html</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 11</span><span class="tag status-core">핵심</span></div>
-          </div>
+          <div class="file-id"><span class="file-path">routes/auth.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 05</span><span class="tag status-core">핵심</span></div></div>
           <div class="file-body">
-            <p class="file-role">감시 대상(/login)과 관리자(/admin/login) 로그인 화면이 겉보기에 하나로 통합된 공용 템플릿. 실제 어느 라우트로 제출할지는 <span class="fn" style="padding:1px 6px">form_action</span> 인자로만 구분되고, 인증 로직 자체는 여전히 완전히 분리되어 있다.</p>
+            <p class="file-role">감시 대상 로그인과 회원가입. 로그인 실패를 기록하고 IP·계정 기준을 넘으면 잠금, 기준 코앞이면 LLM 조기 경보를 판단한다. 영구 잠금 IP는 이메일 복구로 예외를 받은 "본인 + 본인 기기"만 통과시킨다.</p>
+            <div class="fn-list"><span class="fn">GET/POST /signup</span><span class="fn">GET/POST /login</span><span class="fn">ACCOUNT_LOCKED_MESSAGE</span></div>
           </div>
         </div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">templates/signup.html</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 06</span><span class="tag status-core">핵심</span></div>
-          </div>
+          <div class="file-id"><span class="file-path">routes/admin/</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 12</span><span class="tag status-core">핵심</span></div></div>
           <div class="file-body">
-            <p class="file-role">감시 대상 /login에 실제로 로그인할 계정을 만드는 회원가입 폼. 관리자가 대시보드에서 회원가입을 꺼두면 폼 대신 안내 문구만 표시.</p>
+            <p class="file-role">관리자 Blueprint 하나를 기능별 파일 5개로 나눈 패키지 — login(관리자 로그인·계정 단위 잠금), status(대시보드·폴링 API), locks(잠금 해제·영구 잠금·IP 예외·복구 요청), incidents(AI 조기 경보 승인/반려·보안 이벤트·연관 사건), manage(회원·회원가입 설정·게시판·관리자 계정).</p>
+            <div class="fn-list"><span class="fn">GET /admin/dashboard</span><span class="fn">GET /api/status(?only=)</span><span class="fn">POST /api/unlock*</span><span class="fn">POST /api/permanent-locks/*</span><span class="fn">POST /api/access-requests/*</span><span class="fn">POST /api/admin-users/*</span></div>
+          </div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">routes/member.py · routes/board.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 13 · 20</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body">
+            <p class="file-role">회원 대시보드(로그인 기록·프로필·이메일 변경·비밀번호 변경)와 회원 전용 게시판(글·댓글, 본인 것만 수정·삭제, 새 댓글 배너용 가벼운 API).</p>
+            <div class="fn-list"><span class="fn">/dashboard/*</span><span class="fn">POST /dashboard/email/change</span><span class="fn">POST /dashboard/password</span><span class="fn">/board/*</span><span class="fn">GET /api/board/&lt;id&gt;/comments/latest</span></div>
+          </div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">routes/recovery.py · email.py · password.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 34 · 40 · 41</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body">
+            <p class="file-role">메일로 이어지는 화면들 — 영구 잠금 이메일 복구, 이메일 인증·변경 확인 링크, 비밀번호 찾기. 링크(GET)는 확인 화면만 보여주고 실제 처리는 POST에서 한 번만 일어난다. 복구·찾기 요청은 계정 존재 여부가 응답 시간으로 드러나지 않게 5초 고정으로 응답한다.</p>
+            <div class="fn-list"><span class="fn">/recovery/*</span><span class="fn">/email/confirm</span><span class="fn">/password/forgot</span><span class="fn">/password/reset</span></div>
+          </div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">helpers/</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 37 · 46</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body">
+            <p class="file-role">라우트 공용 패키지(<code>from helpers import ...</code>로 사용). auth — 관리자/회원 세션과 문지기(요청마다 DB 계정과 대조), request_utils — 요청 IP(IPv6는 /64 대역)·허니팟, device — 기기 쿠키·해시, timing — 응답 시간 고정, hooks — 모든 요청에 걸리는 보안 헤더·404 기록·반복 접근·매크로 관찰.</p>
+            <div class="fn-list"><span class="fn">login_required</span><span class="fn">require_permission(action)</span><span class="fn">member_login_required</span><span class="fn">get_request_ip()</span><span class="fn">run_with_fixed_response_time()</span><span class="fn">register_request_hooks()</span></div>
+          </div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">templates/login_form.html · signup.html</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 11</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">감시 대상(/login)과 관리자(/admin/login) 로그인이 겉보기에 하나로 통합된 공용 템플릿과 회원가입 폼. 제출 주소만 <code>form_action</code>으로 다르고, 모든 폼에 허니팟 숨김 칸이 있다.</p></div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">templates/recovery_* · email_confirm · password_*</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 34 · 40 · 41</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">복구 요청·확인·완료, 이메일 확인, 비밀번호 찾기·재설정 화면. 어떤 경우든 같은 문구로 답해 계정 존재 여부를 숨긴다.</p></div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">config.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 01</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body">
+            <p class="file-role">임계값·창·잠금 시간·요청 한도·폴링 주기·메일 설정 등 모든 숫자를 환경변수 기본값과 함께 한 곳에서 관리한다.</p>
+            <div class="fn-list"><span class="fn">FAILURE_THRESHOLD=5</span><span class="fn">ACCOUNT_FAILURE_THRESHOLD=8</span><span class="fn">LOCKOUT_DURATION_SECONDS=300</span><span class="fn">ADMIN_DASHBOARD_POLL_MS=5000</span><span class="fn">RECOVERY_MIN_RESPONSE_SECONDS=5</span></div>
           </div>
         </div>
       </div>
 
       <div class="stage-group" data-stage="data">
-        <div class="stage-head"><span class="name">데이터 계층</span><span class="count">2개 파일</span></div>
+        <div class="stage-head"><span class="name">데이터 계층</span><span class="count">3개 항목</span></div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">db.py</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 03</span><span class="tag status-core">핵심</span></div>
-          </div>
+          <div class="file-id"><span class="file-path">db/</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 03 · 36</span><span class="tag status-core">핵심</span></div></div>
           <div class="file-body">
-            <p class="file-role">Supabase 연동 단일 창구 — 다른 모든 파일은 이 파일을 거치지 않고는 Supabase에 직접 말을 걸지 않는다. 로그인 시도·잠금·관리자·회원 계정·회원가입 On/Off·IP 위치 캐시까지 25개 함수로 정리.</p>
-            <div class="fn-list">
-              <span class="fn">get_client()</span><span class="fn">log_attempt()</span><span class="fn">count_recent_failures()</span><span class="fn">create_lockout()</span><span class="fn">get_active_lockout()</span><span class="fn">release_lockout()</span><span class="fn">list_active_lockouts()</span><span class="fn">list_expired_active_lockouts()</span><span class="fn">ensure_bootstrap_admin()</span><span class="fn">verify_admin_credentials()</span><span class="fn">create_user()</span><span class="fn">verify_user_credentials()</span><span class="fn">update_user_profile()</span><span class="fn">list_users()</span><span class="fn">delete_user()</span><span class="fn">get_signup_enabled()</span><span class="fn">set_signup_enabled()</span><span class="fn">get_cached_ip_locations()</span><span class="fn">save_ip_location()</span>
-            </div>
+            <p class="file-role">Supabase와 대화하는 유일한 창구. 표 묶음별 모듈 20개(attempts, lockouts, account_lockouts, admin, admin_lockouts, roles, users, settings, geoip_cache, board, access_logs, security_events, incidents, access_requests, api_access_log, lock_history, recovery, ip_exemptions, email_tokens + _client)를 <code>db/__init__.py</code>가 재내보내기해 호출부는 <code>db.함수명()</code>으로 쓴다. 연결은 HTTP/1.1 + 조회 1회 재시도(<code>_client.py</code>).</p>
+            <div class="fn-list"><span class="fn">get_client()</span><span class="fn">log_attempt()</span><span class="fn">create_lockout()</span><span class="fn">insert_security_event()</span><span class="fn">record_incident()</span><span class="fn">consume_email_token()</span></div>
           </div>
         </div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">docs/schema.sql</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 02</span><span class="tag status-core">핵심</span></div>
-          </div>
+          <div class="file-id"><span class="file-path">docs/schema.sql · docs/migrations/</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 02</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">테이블 30개의 정의(새 DB에 한 번 실행)와, 기존 DB에 추가로 실행할 단계별 SQL(guide33·35·38·40·44·47).</p></div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">DB 예약 작업 (pg_cron)</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 44 · 47</span><span class="tag status-core">핵심</span></div></div>
           <div class="file-body">
-            <p class="file-role">Supabase SQL 편집기에 1회 실행하는 마이그레이션 기록. 최초 5개 테이블(users·login_attempts·lockouts·admin_users·admin_login_log)에 이후 app_settings(회원가입 On/Off, GUIDE 11)와 ip_locations(위치 캐시, GUIDE 14)가 추가되어 총 7개 테이블.</p>
+            <p class="file-role">매일 새벽 3시(한국 시간) Supabase 안에서 어제 하루치를 시간대·IP 수·노린 주소·나라별로 요약한 뒤, 보관 기간(30·90일)이 지난 원본 기록을 지운다. 앱 코드와 무관하게 DB 안에서만 돈다.</p>
+            <div class="fn-list"><span class="fn">run_daily_log_maintenance()</span><span class="fn">summarize_pending_log_days()</span><span class="fn">cleanup_old_logs()</span><span class="fn">log_daily_summary</span><span class="fn">log_daily_breakdown</span></div>
           </div>
         </div>
       </div>
 
       <div class="stage-group" data-stage="detect">
-        <div class="stage-head"><span class="name">이상탐지</span><span class="count">2개 파일</span></div>
+        <div class="stage-head"><span class="name">이상탐지</span><span class="count">3개 항목</span></div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">detector.py</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 04</span><span class="tag status-core">핵심</span></div>
-          </div>
+          <div class="file-id"><span class="file-path">security/detector.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 04</span><span class="tag status-core">핵심</span></div></div>
           <div class="file-body">
-            <p class="file-role">판정만 전담 — 실행(soar.py)과 분리해 "판정 로직이 두 파일에 따로 구현되는" 사고를 방지. 데이터베이스에 아무것도 쓰지 않고 조회만 한다.</p>
-            <div class="fn-list"><span class="fn">is_suspicious(ip)</span><span class="fn">is_locked(ip)</span></div>
+            <p class="file-role">"판사" — 판정만 하고 DB에 아무것도 쓰지 않는다. IP·회원 계정·관리자 계정 브루트포스, 가입·글·댓글 빈도, 웹 스캐닝, 미인증 접근, 반복 페이지 접근, API 매크로 패턴을 임계값과 비교하고, 잠금 상태(없음/임시/영구)를 알려준다.</p>
+            <div class="fn-list"><span class="fn">is_suspicious()</span><span class="fn">is_account_suspicious()</span><span class="fn">is_admin_account_suspicious()</span><span class="fn">is_web_scanning()</span><span class="fn">is_macro_pattern_suspicious()</span><span class="fn">get_ip_lock_state()</span></div>
           </div>
         </div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">config.py</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 01</span><span class="tag status-core">핵심</span></div>
-          </div>
+          <div class="file-id"><span class="file-path">security/correlate.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 27 · 28</span><span class="tag status-core">핵심</span></div></div>
           <div class="file-body">
-            <p class="file-role">임계값·윈도우·잠금시간·IP 신뢰 설정을 한 곳에서 관리 — 이 값들을 app/detector/soar 여러 곳에 흩어 적으면 하나만 바꿔도 빠뜨리기 쉬워서 config.py 한 곳으로 모았다.</p>
-            <div class="fn-list"><span class="fn">FAILURE_THRESHOLD=5</span><span class="fn">DETECTION_WINDOW_SECONDS=60</span><span class="fn">LOCKOUT_DURATION_SECONDS=300</span><span class="fn">TRUST_FORWARDED_FOR</span></div>
+            <p class="file-role">"형사" — 같은 IP가 5분 안에 서로 다른 이벤트를 2개 이상 남기면 하나의 사건으로 묶고(SIEM), CRITICAL·3종 이상이면 에스컬레이션 알림을 한 번 보낸다(SOAR 플레이북). 사건 등급에 따라 영구 잠금 승격도 요청한다.</p>
+            <div class="fn-list"><span class="fn">check_and_correlate()</span><span class="fn">PLAYBOOKS</span></div>
           </div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">services/ip_utils.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 42</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">접속 IP를 탐지·잠금 단위로 정규화한다 — IPv4는 그대로, IPv6는 /64 대역 키. 모든 탐지가 이 단위로 센다.</p>
+            <div class="fn-list"><span class="fn">normalize_ip()</span><span class="fn">lookup_address()</span></div></div>
         </div>
       </div>
 
       <div class="stage-group" data-stage="response">
-        <div class="stage-head"><span class="name">SOAR 대응</span><span class="count">1개 파일</span></div>
+        <div class="stage-head"><span class="name">SOAR 대응</span><span class="count">2개 항목</span></div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">soar.py</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 04</span><span class="tag status-core">핵심</span></div>
-          </div>
+          <div class="file-id"><span class="file-path">security/soar/</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 04 · 31</span><span class="tag status-core">핵심</span></div></div>
           <div class="file-body">
-            <p class="file-role">판정 결과를 실제 조치로 옮기는 손발 — 잠금 생성, 알림 트리거, 자동/수동 해제까지 세 가지를 모두 담당. "이 사람이 관리자가 맞는지" 확인은 app.py의 login_required가 먼저 걸러주므로 이 파일은 실행에만 집중한다.</p>
-            <div class="fn-list"><span class="fn">enforce_lockout(ip, count)</span><span class="fn">try_release_expired_lockouts()</span><span class="fn">manual_release(ip)</span></div>
+            <p class="file-role">"집행관" — 판정을 실제 조치로 옮긴다. lockouts(IP·회원·관리자 계정 잠금과 자동/수동 해제), observe(잠그지 않고 알림·기록만, HIGH 거부 기록), early_warning(임계값 코앞에서 LLM에게 묻고 위험하면 관리자 승인 대기로 등록, 승인 시 원래 조치 실행), _events(이벤트 기록 + 상관분석 훅). 권한 확인은 라우트의 문지기가 먼저 한다.</p>
+            <div class="fn-list"><span class="fn">enforce_lockout()</span><span class="fn">enforce_account_lockout()</span><span class="fn">notify_web_scanning()</span><span class="fn">record_rejection()</span><span class="fn">consider_early_warning()</span><span class="fn">execute_approved_request()</span></div>
+          </div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">security/lockdown.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 33</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body">
+            <p class="file-role">영구 잠금 담당. 30일 안 2번째 잠금이면 영구로 올리고(허용 목록 IP·없는 아이디 제외), SIEM 사건 등급에 따라 승격하며(HIGH는 관리자 승인 대기), 관리자 해제와 이메일 복구 결과(계정 해제 / IP 예외)를 반영한다.</p>
+            <div class="fn-list"><span class="fn">after_temporary_lock()</span><span class="fn">promote_ip()</span><span class="fn">consider_incident_promotion()</span><span class="fn">release()</span><span class="fn">apply_recovery()</span></div>
           </div>
         </div>
       </div>
 
       <div class="stage-group" data-stage="output">
-        <div class="stage-head"><span class="name">알림 · 관리자 화면</span><span class="count">5개 파일</span></div>
+        <div class="stage-head"><span class="name">알림 · 관리자 화면</span><span class="count">6개 항목</span></div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">alert.py</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 07</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body">
-            <p class="file-role">Slack Incoming Webhook 발송 — 잠금이 실행되는 순간에만 호출(알림 피로 방지). SLACK_WEBHOOK_URL이 비어있으면 콘솔 로그로 자동 대체되고, 값이 채워지면 코드 수정 없이 실제 전송으로 전환된다.</p>
-            <div class="fn-list"><span class="fn">send_lockout_alert(ip, count, locked_at)</span></div>
-          </div>
+          <div class="file-id"><span class="file-path">notify/alert.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 07</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">Slack 웹훅 발송만 담당(웹훅이 없으면 콘솔로 대체). 잠금·탐지·사건 에스컬레이션·조기 경보 승인 요청·영구 잠금·복구 완료·메일 발송 실패 알림을 등급 표시와 함께 조립한다.</p>
+            <div class="fn-list"><span class="fn">send_lockout_alert()</span><span class="fn">send_incident_escalation_alert()</span><span class="fn">send_pending_approval_alert()</span><span class="fn">send_mail_failure_alert()</span></div></div>
         </div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">geoip.py</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 14</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body">
-            <p class="file-role">ip-api.com으로 IP → 국가/도시를 조회해 회원·관리자 대시보드의 로그인 기록에 위치를 붙여준다. 분당 45건 무료 한도를 지키기 위해 db.py의 ip_locations 캐시를 먼저 확인하고, 캐시에 없는 IP만 실제로 조회한다.</p>
-            <div class="fn-list"><span class="fn">get_locations(ips)</span><span class="fn">format_location(location)</span></div>
-          </div>
+          <div class="file-id"><span class="file-path">notify/mailer.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 34</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">사용자에게 가는 메일(복구·완료 안내·비밀번호 변경 알림·이메일 인증·변경 확인·비밀번호 재설정) 발송(console / SMTP). 실패 원인을 CONFIG·AUTH·CONNECT·OTHER·INTERNAL로 나눠 Slack에 알린다. 운영에서는 console 백엔드를 거부한다.</p>
+            <div class="fn-list"><span class="fn">send_recovery_email()</span><span class="fn">send_email_verification()</span><span class="fn">send_password_reset_email()</span><span class="fn">report_failure()</span></div></div>
         </div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">templates/admin_dashboard.html</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 13</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body">
-            <p class="file-role">관리자 모니터링 화면의 정적 뼈대. 원래 /dashboard였다가, 회원 전용 대시보드가 그 주소를 대신 쓰게 되면서 /admin/dashboard로 옮겨졌다. 실제 데이터는 dashboard.js가 채움.</p>
-          </div>
+          <div class="file-id"><span class="file-path">templates/admin_dashboard.html (+ admin_dashboard/ 조각 3개)</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 13</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">관리자 화면의 정적 뼈대. 표 영역은 보안(_security), 잠금(_locks), 기록·관리(_records) 조각으로 나눠 include한다. 실제 데이터는 JS가 채운다.</p></div>
         </div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">public/css/dashboard.css</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 15</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body">
-            <p class="file-role">관리자 대시보드 전용 스타일. 로그 테이블·잠금 카드·회원 목록을 구분. 색상은 하드코딩 대신 tokens.css의 var(--이름)을 가져다 쓴다.</p>
-          </div>
+          <div class="file-id"><span class="file-path">public/js/dashboard/</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 06 · 46</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">ES 모듈 — main(진입점), state(공유 상태), api(5초 폴링·표 하나만 다시 받기), actions(해제·삭제·승인 등 상태 변경 요청), events(버튼 연결), render/(표·카드 그리기 3개), utils(escapeHtml·페이지 이동 줄·"처리 중" 표시·사유 입력 모달).</p>
+            <div class="fn-list"><span class="fn">fetchStatus()</span><span class="fn">goToPage()</span><span class="fn">sendAction()</span><span class="fn">runAction()</span><span class="fn">renderLockoutCards()</span></div></div>
         </div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">public/js/dashboard.js</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 06</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body">
-            <p class="file-role">2.5초마다 /api/status를 폴링해 화면을 갱신하고, 해제·회원 삭제·회원가입 토글 버튼 클릭을 각각 /api/unlock · /api/users/delete · /api/settings/signup으로 전달.</p>
-            <div class="fn-list"><span class="fn">fetchStatus()</span><span class="fn">renderAttemptsTable()</span><span class="fn">renderLockoutCards()</span><span class="fn">renderUsersTable()</span><span class="fn">renderAdminLoginLog()</span><span class="fn">unlockIp(ip)</span><span class="fn">deleteUser(id)</span><span class="fn">toggleSignup()</span></div>
-          </div>
+          <div class="file-id"><span class="file-path">public/js/polling.js</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 45</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">관리자 대시보드와 게시글 화면이 같이 쓰는 폴링 부품. 탭이 숨겨지면 멈추고 돌아오면 즉시 갱신하며, 응답을 받은 뒤에 다음 요청을 예약해 요청이 겹치지 않는다.</p>
+            <div class="fn-list"><span class="fn">startPolling(task, intervalMs)</span></div></div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">public/css/dashboard.css</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 15</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">관리자 대시보드 전용 스타일(잠금 카드, 위험등급 배지, 표별 열 너비, "불러오는 중" 표시, 사유 입력 모달). 색은 tokens.css 변수만 쓴다.</p></div>
+        </div>
+      </div>
+
+      <div class="stage-group" data-stage="support">
+        <div class="stage-head"><span class="name">외부 연동 · 서비스</span><span class="count">4개 항목</span></div>
+
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">services/llm_client.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 25 · 31</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">Groq(LLM)와 대화하는 유일한 창구. 일일 리포트의 AI 총평과, 임계값 코앞 조기 경보 판단(낮은 temperature + 프롬프트 인젝션 방어)에 쓴다. 실패하면 None을 돌려줘 로그인 흐름을 막지 않는다.</p>
+            <div class="fn-list"><span class="fn">ask_groq()</span><span class="fn">judge_early_warning()</span></div></div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">services/geoip.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 14</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">ip-api.com으로 IP → 국가/도시를 조회해 로그인 기록에 위치를 붙인다. 분당 45건 무료 한도 때문에 DB 캐시(ip_locations)를 먼저 보고, IP 형식이 아니면 외부 요청 자체를 보내지 않는다(SSRF 방지).</p>
+            <div class="fn-list"><span class="fn">get_locations(ips)</span><span class="fn">format_location()</span></div></div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">services/email_verification.py</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 40 · 41</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">이메일 인증·이메일 변경 확인·비밀번호 재설정 링크를 만들고 처리한다. 토큰은 해시만 저장하고, 링크는 PUBLIC_BASE_URL로만 만들며, 재설정은 인증된 이메일에만 보낸다.</p>
+            <div class="fn-list"><span class="fn">send_verification()</span><span class="fn">request_email_change()</span><span class="fn">confirm()</span><span class="fn">request_password_reset()</span><span class="fn">reset_password()</span></div></div>
+        </div>
+
+        <div class="file-row">
+          <div class="file-id"><span class="file-path">Slack · SMTP · Groq · ip-api.com</span>
+            <div class="tag-row"><span class="tag owner">외부 서비스</span></div></div>
+          <div class="file-body"><p class="file-role">알림(Slack Incoming Webhook), 메일(배포는 SMTP, 개발은 console 또는 Mailpit), AI 판단(Groq), IP 위치(ip-api.com). 키가 없으면 각각 콘솔 출력·메일 미발송·조기 경보 생략으로 조용히 넘어간다.</p></div>
         </div>
       </div>
 
       <div class="stage-group" data-stage="member">
-        <div class="stage-head"><span class="name">회원 전용 화면</span><span class="count">4개 파일</span></div>
+        <div class="stage-head"><span class="name">회원 전용 화면</span><span class="count">4개 항목</span></div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">templates/member_dashboard.html</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 13</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body">
-            <p class="file-role">로그인한 회원 본인을 위한 첫 화면(/dashboard). 인사말과 "최근 로그인 기록"·"프로필 보기·수정" 이동 버튼만 보여준다. 관리자 대시보드와 이름이 비슷하지만 세션 키(username)가 달라 완전히 분리된다.</p>
-          </div>
+          <div class="file-id"><span class="file-path">templates/member_dashboard · member_history · member_profile</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 13 · 35 · 40</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">회원 첫 화면(이메일 미인증이면 인증 안내 배너), 본인 로그인 기록(서버 렌더링, 위치 포함), 프로필(표시 이름 · 이메일 변경 · 비밀번호 변경). 관리자 세션과 세션 키가 달라 완전히 분리된다.</p></div>
         </div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">templates/member_history.html</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 13</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body">
-            <p class="file-role">본인의 최근 로그인 시도만 서버 렌더링으로 한 번에 보여준다(폴링 없음). db.list_attempts_by_username()이 애초에 본인 것만 조회하므로 다른 회원 기록은 조회조차 되지 않는다.</p>
-          </div>
+          <div class="file-id"><span class="file-path">templates/board_list · board_detail · board_form</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 20</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">회원 전용 게시판 화면. 본문은 Jinja2 auto-escape로 출력하고, 글쓰기·수정은 같은 폼을 공유한다.</p></div>
         </div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">templates/member_profile.html</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 13</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body">
-            <p class="file-role">표시 이름·이메일 조회/수정 화면. 아이디(username)는 다른 표와 문자열로 연결되어 있어 수정 불가(readonly)로 표시.</p>
-          </div>
+          <div class="file-id"><span class="file-path">public/js/board.js</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 20 · 45</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">게시글 화면에서 새 댓글이 달렸는지만 가볍게 폴링해 배너를 띄우고, 삭제 확인창을 붙인다(CSP 때문에 인라인 이벤트 대신 외부 파일).</p></div>
         </div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">public/css/member.css</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 13</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body">
-            <p class="file-role">회원 화면 3종 공통 스타일 — 카드를 화면 정중앙에 배치하고, 입력창 테두리는 --input-border 전용 토큰(GUIDE 17)을 써서 눈에 잘 띄게 만들었다.</p>
-          </div>
+          <div class="file-id"><span class="file-path">public/css/member.css · board.css</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 13 · 20</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">회원 화면과 게시판 공통 스타일. 카드 배치·입력창·이메일 인증 배지.</p></div>
         </div>
       </div>
 
       <div class="stage-group" data-stage="support">
-        <div class="stage-head"><span class="name">공통 · 디자인 시스템</span><span class="count">3개 파일</span></div>
+        <div class="stage-head"><span class="name">공통 · 디자인 시스템</span><span class="count">3개 항목</span></div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">public/css/tokens.css</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 15</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body">
-            <p class="file-role">색상·글꼴·전환 효과를 한 곳에 모은 CSS 변수(디자인 토큰) 파일. 다크모드는 "방문자가 직접 고른 값(data-theme) &gt; OS 설정(prefers-color-scheme) &gt; 기본값(라이트)" 3단 우선순위로 구성(GUIDE 16·17). auth.css/dashboard.css/member.css가 전부 이 파일의 var(--이름)만 참조한다.</p>
-          </div>
+          <div class="file-id"><span class="file-path">public/css/tokens.css</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 15</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">색상·글꼴·전환 효과를 한 곳에 모은 디자인 토큰. 다크모드는 "방문자가 고른 값 &gt; OS 설정 &gt; 라이트" 순서. 허니팟 숨김 칸 스타일도 여기 있다.</p></div>
         </div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">public/css/auth.css</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 06</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body">
-            <p class="file-role">로그인·회원가입 화면 공통 스타일. 카드 제목 가운데 정렬과 입력창 테두리 강화는 GUIDE 17에서 반영.</p>
-          </div>
+          <div class="file-id"><span class="file-path">public/css/auth.css</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 06</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">로그인·회원가입·복구·비밀번호 찾기·이메일 확인 화면이 같이 쓰는 카드 스타일.</p></div>
         </div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">public/js/theme.js</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 17</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body">
-            <p class="file-role">우측 상단 라이트/다크 전환 버튼의 동작. 화면이 그려지기 전에 localStorage에 저장된 선택을 &lt;html data-theme&gt;에 즉시 반영해 테마 깜빡임을 막는다.</p>
-            <div class="fn-list"><span class="fn">currentlyDark()</span><span class="fn">updateButtonLabel(btn)</span></div>
-          </div>
+          <div class="file-id"><span class="file-path">public/js/theme.js</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 17</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">라이트/다크 전환 버튼. 화면이 그려지기 전에 저장된 선택을 적용해 깜빡임을 막는다.</p></div>
         </div>
       </div>
 
       <div class="stage-group" data-stage="support">
-        <div class="stage-head"><span class="name">공통 · 설정</span><span class="count">4개 항목</span></div>
+        <div class="stage-head"><span class="name">스크립트 · 테스트 · 문서</span><span class="count">5개 항목</span></div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">requirements.txt</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 01</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body"><p class="file-role">flask, supabase, python-dotenv, requests, pytest(dev). 텔레그램 전용 패키지는 불필요(알림은 Slack 웹훅만 사용).</p></div>
+          <div class="file-id"><span class="file-path">scripts/ (공격 시뮬레이션)</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 21~29</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">브루트포스·패스워드 스프레이·가입 도배·글 도배·웹 스캐닝·미인증 접근·반복 접근·API 매크로를 로컬 서버에 재현하는 검증 스크립트 8개. 공용 부품은 <code>_sim_common.py</code>. 로컬이 아닌 주소는 <code>--i-know-what-im-doing</code> 없이 거부한다.</p></div>
         </div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">.env / .env.example</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 01</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body"><p class="file-role">SUPABASE_URL, SUPABASE_KEY, SLACK_WEBHOOK_URL, SECRET_KEY, ADMIN_USERNAME, ADMIN_PASSWORD, TRUST_FORWARDED_FOR. .env는 .gitignore로 보호, .env.example만 커밋.</p></div>
+          <div class="file-id"><span class="file-path">scripts/ (운영 도구)</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 22~34</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">서버 없이 터미널에서 쓰는 도구 — 잠금 해제(unlock_ip / unlock_account, 영구 잠금은 <code>--permanent --note</code>), 관리자 생성, 보안 이벤트 정리, 일일 리포트(AI 총평), 임계값 튜닝 리포트, 메일 설정 점검.</p></div>
         </div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">.gitignore</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 01</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body"><p class="file-role">.env, venv/, __pycache__/, *.pyc, .pytest_cache/ 제외.</p></div>
+          <div class="file-id"><span class="file-path">tests/</span>
+            <div class="tag-row"><span class="tag owner">GUIDE 08</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">pytest 693개. 실제 Supabase 없이 가짜 클라이언트와 monkeypatch로 판정·조치·라우트·SQL 규칙(표 분류, 칸 이름, 권한)까지 검증하며 몇 초 안에 끝난다.</p></div>
         </div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">README.md</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 10</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body"><p class="file-role">프로젝트 소개, 주요 기능, 기술 스택, 로컬 실행 방법, 배포 주소(login-watchdog.vercel.app)를 안내.</p></div>
-        </div>
-      </div>
-
-      <div class="stage-group" data-stage="support">
-        <div class="stage-head"><span class="name">테스트</span><span class="count">5개 파일 · 36개 테스트</span></div>
-
-        <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">tests/test_db.py</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 08</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body"><p class="file-role">실제 Supabase 대신 손으로 만든 가짜(Fake) 클라이언트(.table/.select/.eq/.upsert/.in_ 등 체이닝 지원)로 db.py의 CRUD 함수들을 검증.</p></div>
+          <div class="file-id"><span class="file-path">docs/beginner-guide/</span>
+            <div class="tag-row"><span class="tag owner">공통</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">비전공자용 단계별 해설서 47단계. 각 단계에서 무엇을 왜 했는지와 확인 결과를 기록한다.</p></div>
         </div>
 
         <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">tests/test_detector.py</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 08</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body"><p class="file-role">count_recent_failures를 monkeypatch해 임계값 경계(4/5/6회)에서 is_suspicious가 올바르게 동작하는지 검증.</p></div>
-        </div>
-
-        <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">tests/test_soar.py</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 08</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body"><p class="file-role">enforce_lockout이 잠금→알림 순서로 호출하는지, manual_release가 이미 풀린 IP에는 아무 일도 하지 않는지 mock으로 검증.</p></div>
-        </div>
-
-        <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">tests/test_config.py</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 08</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body"><p class="file-role">상수 값이 기획 수치(5회·60초·300초)와 일치하는지 회귀 테스트.</p></div>
-        </div>
-
-        <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">tests/test_geoip.py</span>
-            <div class="tag-row"><span class="tag owner">GUIDE 14</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body"><p class="file-role">ip-api.com 응답을 monkeypatch로 대체해 캐시 적중/미스, 조회 실패 처리, format_location() 문구 조합을 검증.</p></div>
-        </div>
-      </div>
-
-      <div class="stage-group" data-stage="support">
-        <div class="stage-head"><span class="name">문서</span><span class="count">3개 항목</span></div>
-
-        <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">docs/beginner-guide/*.md</span>
-            <div class="tag-row"><span class="tag owner">공통</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body"><p class="file-role">비전공자용 진행 해설서. 마스터 파일(beginner-guide.md) + guide01_setup부터 guide17_theme까지 17개 단계별 파일(총 18개)로 분리되어, 각 단계에서 "무엇을 왜 했는지"와 실제 코드를 함께 기록.</p></div>
-        </div>
-
-        <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">plan.md</span>
-            <div class="tag-row"><span class="tag owner">공통</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body"><p class="file-role">최초 기획 문서. 팀 역할 분담(A·B·C·D)과 9~12일차 스트레치 목표를 담고 있었으나, 실제 구현은 이 아키텍처 맵과 beginner-guide 기록이 최신 상태를 대표한다.</p></div>
-        </div>
-
-        <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">research.md</span>
-            <div class="tag-row"><span class="tag owner">공통</span><span class="tag status-core">핵심</span></div>
-          </div>
-          <div class="file-body"><p class="file-role">설계 결정의 근거 조사 기록(예: login_attempts와 lockouts를 분리한 이유).</p></div>
-        </div>
-      </div>
-
-      <div class="stage-group" data-stage="detect">
-        <div class="stage-head"><span class="name">미착수 · 기획 단계에 머문 파일</span><span class="count">4개 항목</span></div>
-
-        <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">scripts/bruteforce_sim.py</span>
-            <div class="tag-row"><span class="tag owner">미착수</span><span class="tag status-optional">0줄</span></div>
-          </div>
-          <div class="file-body"><p class="file-role">빈 파일. 무차별 대입 공격 시뮬레이션 스크립트로 기획됐으나 실제 브루트포스 검증은 매번 즉석 파이썬 스크립트(requests, 1초 간격)로 대체 수행했다.</p></div>
-        </div>
-
-        <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">scripts/daily_report.py</span>
-            <div class="tag-row"><span class="tag owner">미착수</span><span class="tag status-optional">0줄</span></div>
-          </div>
-          <div class="file-body"><p class="file-role">빈 파일. AI 기반 일일 로그 요약 스트레치 목표 — 착수 안 됨.</p></div>
-        </div>
-
-        <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">docs/scenario.md</span>
-            <div class="tag-row"><span class="tag owner">미착수</span><span class="tag status-optional">0줄</span></div>
-          </div>
-          <div class="file-body"><p class="file-role">빈 파일. 시연 시나리오 문서로 기획됐으나 착수 안 됨.</p></div>
-        </div>
-
-        <div class="file-row">
-          <div class="file-id">
-            <span class="file-path">docs/architecture.png · demo.gif · before-after.png</span>
-            <div class="tag-row"><span class="tag owner">미착수</span><span class="tag status-optional">0바이트</span></div>
-          </div>
-          <div class="file-body"><p class="file-role">발표·README 게시용 시각자료로 기획된 빈 placeholder 파일. 이 아키텍처 맵(architecture-map.html) 자체가 사실상 이 자리를 대신하고 있다.</p></div>
+          <div class="file-id"><span class="file-path">docs/feature-reference/ · scenario.md · refactor/</span>
+            <div class="tag-row"><span class="tag owner">공통</span><span class="tag status-core">핵심</span></div></div>
+          <div class="file-body"><p class="file-role">기능별 코드 실행 가이드(기능 순서 / 계층 순서), DB 스키마 가이드와 ERD, 시연 대본, 파일 분리·모듈 정리 기록.</p></div>
         </div>
       </div>
 
     </div>
   </section>
 
+  <section id="extension">
+    <span class="eyebrow">04 · 반복 공격 대응 (33~47단계)</span>
+    <h2>영구 잠금과 이메일 복구는 어느 파일을 거쳐 가는가</h2>
+    <p class="lead">위쪽 줄은 반복해서 잠긴 IP·계정이 영구 잠금으로 올라가는 경로, 아래쪽 줄은 잠긴 사용자가 이메일 인증으로 스스로 푸는 경로입니다. 승격·해제·복구 반영은 모두 <b>security/lockdown.py</b> 한 곳에서 처리합니다 — security/soar/가 이미 security/correlate.py를 import하고 있어서, 서로를 부르는 순환을 피하려고 따로 뺐습니다.</p>
+    <figure class="flow">
+      <div class="svg-wrap">
+        <svg viewBox="0 0 1040 340" role="img" aria-label="security/soar/와 security/correlate.py가 security/lockdown.py로 영구 승격을 요청하고, lockdown이 lockouts와 lock_history에 기록하며 관리자 화면의 영구 잠금 카드에 나타나는 흐름, 그리고 잠긴 사용자가 routes/recovery.py에서 복구를 요청하면 notify/mailer.py가 메일을 보내고 같은 기기에서 링크나 코드를 입력하면 lockdown이 해제하거나 예외를 발급하는 흐름도">
+          <polyline class="edge-line dashed" marker-end="url(#arrow-accent)" points="905,146 905,196 400,196 400,148" />
+          <text class="edge-label accent" x="650" y="214" text-anchor="middle">영구 해제 · super_admin · 사유 필수</text>
+
+          <polyline class="edge-line dashed" marker-end="url(#arrow-accent)" points="715,296 715,322 300,322 300,298" />
+          <text class="edge-label accent" x="508" y="316" text-anchor="middle">링크(어느 기기든) 또는 6자리 코드(요청한 기기에서만)</text>
+
+          <line class="edge-line" x1="190" y1="68" x2="300" y2="104" marker-end="url(#arrow)"></line>
+          <text class="edge-label" x="240" y="72" text-anchor="middle">30일 안 2회째</text>
+          <line class="edge-line" x1="190" y1="168" x2="300" y2="132" marker-end="url(#arrow)"></line>
+          <text class="edge-label" x="236" y="170" text-anchor="middle">CRITICAL·HIGH</text>
+          <line class="edge-line" x1="470" y1="104" x2="560" y2="70" marker-end="url(#arrow)"></line>
+          <line class="edge-line" x1="470" y1="132" x2="560" y2="166" marker-end="url(#arrow)"></line>
+          <line class="edge-line" x1="710" y1="68" x2="820" y2="104" marker-end="url(#arrow)"></line>
+          <text class="edge-label" x="768" y="74" text-anchor="middle">카드 표시</text>
+
+          <line class="edge-line" x1="190" y1="268" x2="230" y2="268" marker-end="url(#arrow)"></line>
+          <line class="edge-line" x1="380" y1="268" x2="430" y2="268" marker-end="url(#arrow)"></line>
+          <text class="edge-label" x="405" y="260" text-anchor="middle">발송</text>
+          <line class="edge-line" x1="580" y1="268" x2="640" y2="268" marker-end="url(#arrow)"></line>
+          <line class="edge-line" x1="330" y1="240" x2="360" y2="148" marker-end="url(#arrow)"></line>
+          <text class="edge-label" x="352" y="222">복구 반영</text>
+
+          <g><rect class="node-box" x="40" y="40" width="150" height="56" rx="9" style="stroke:var(--stage-response)"></rect>
+            <text class="node-label" x="115" y="64" text-anchor="middle" font-size="12">security/soar/</text>
+            <text class="node-role" x="115" y="80" text-anchor="middle" font-size="11">임시 잠금 직후</text></g>
+          <g><rect class="node-box" x="40" y="140" width="150" height="56" rx="9" style="stroke:var(--stage-detect)"></rect>
+            <text class="node-label" x="115" y="164" text-anchor="middle" font-size="11">security/correlate.py</text>
+            <text class="node-role" x="115" y="180" text-anchor="middle" font-size="11">SIEM 사건 등급</text></g>
+          <g><rect class="node-box" x="300" y="90" width="170" height="56" rx="9" style="stroke:var(--stage-response)"></rect>
+            <text class="node-label" x="385" y="114" text-anchor="middle" font-size="11.5">security/lockdown.py</text>
+            <text class="node-role" x="385" y="130" text-anchor="middle" font-size="11">승격 · 해제 · 복구 반영</text></g>
+          <g><rect class="node-box" x="560" y="40" width="150" height="56" rx="9" style="stroke:var(--stage-data)"></rect>
+            <text class="node-label" x="635" y="64" text-anchor="middle" font-size="12">db/lockouts.py</text>
+            <text class="node-role" x="635" y="80" text-anchor="middle" font-size="11">lock_type=PERMANENT</text></g>
+          <g><rect class="node-box" x="560" y="140" width="150" height="56" rx="9" style="stroke:var(--stage-data)"></rect>
+            <text class="node-label" x="635" y="164" text-anchor="middle" font-size="12">db/lock_history.py</text>
+            <text class="node-role" x="635" y="180" text-anchor="middle" font-size="11">잠금 이력 · 횟수</text></g>
+          <g><rect class="node-box" x="820" y="90" width="170" height="56" rx="9" style="stroke:var(--stage-output)"></rect>
+            <text class="node-label" x="905" y="114" text-anchor="middle" font-size="12">관리자 대시보드</text>
+            <text class="node-role" x="905" y="130" text-anchor="middle" font-size="11">영구 잠금·복구·IP 예외</text></g>
+
+          <g><rect class="node-box" x="40" y="240" width="150" height="56" rx="9" style="stroke:var(--stage-people)"></rect>
+            <text class="node-label" x="115" y="264" text-anchor="middle" font-size="13">잠긴 사용자</text>
+            <text class="node-role" x="115" y="280" text-anchor="middle" font-size="11">아이디 입력</text></g>
+          <g><rect class="node-box" x="230" y="240" width="150" height="56" rx="9" style="stroke:var(--stage-server)"></rect>
+            <text class="node-label" x="305" y="264" text-anchor="middle" font-size="12">routes/recovery.py</text>
+            <text class="node-role" x="305" y="280" text-anchor="middle" font-size="11">응답 5초 고정 · IP당 분당 5회</text></g>
+          <g><rect class="node-box" x="430" y="240" width="150" height="56" rx="9" style="stroke:var(--stage-output)"></rect>
+            <text class="node-label" x="505" y="264" text-anchor="middle" font-size="12">notify/mailer.py</text>
+            <text class="node-role" x="505" y="280" text-anchor="middle" font-size="11">SMTP</text></g>
+          <g><rect class="node-box" x="640" y="240" width="150" height="56" rx="9" style="stroke:var(--ink-muted);stroke-dasharray:4 3"></rect>
+            <text class="node-label" x="715" y="264" text-anchor="middle" font-size="13">사용자 메일함</text>
+            <text class="node-role" x="715" y="280" text-anchor="middle" font-size="11">15분 · 1회용</text></g>
+        </svg>
+      </div>
+      <figcaption>실선 = 자동으로 일어나는 경로 · 점선(초록) = 사람이 개입하는 경로(관리자 해제, 사용자의 링크·코드 입력) · 계정 잠금은 완전 해제, IP 잠금은 "그 회원 + 그 기기"에게만 예외 발급 · 관리자 계정 잠금(38단계)은 영구로 올리지 않음</figcaption>
+    </figure>
+
+    <div class="stage-groups" style="margin-top:24px">
+      <div class="stage-group" data-stage="support">
+        <div class="stage-head"><span class="name">33~47단계에서 더해진 것과 담당 위치</span><span class="count">14단계</span></div>
+        <div class="file-row"><div class="file-id"><span class="file-path">GUIDE 33 · 34</span></div>
+          <div class="file-body"><p class="file-role">영구 잠금 + 이메일 복구 — security/lockdown.py, routes/recovery.py, notify/mailer.py, db/lock_history.py · recovery.py · ip_exemptions.py</p></div></div>
+        <div class="file-row"><div class="file-id"><span class="file-path">GUIDE 35 · 36 · 37</span></div>
+          <div class="file-body"><p class="file-role">비밀번호 변경·다른 기기 로그아웃(routes/member.py), DB 연결 안정화(db/_client.py), 복구 코드 시도권 예약·관리자 세션 검증(db/recovery.py, helpers/auth.py)</p></div></div>
+        <div class="file-row"><div class="file-id"><span class="file-path">GUIDE 38 · 39</span></div>
+          <div class="file-body"><p class="file-role">관리자 계정 단위 잠금(routes/admin/login.py, db/admin_lockouts.py), 계정 존재 여부 노출 방지(routes/auth.py, routes/recovery.py)</p></div></div>
+        <div class="file-row"><div class="file-id"><span class="file-path">GUIDE 40 · 41</span></div>
+          <div class="file-body"><p class="file-role">이메일 인증·변경 보호, 비밀번호 찾기 — services/email_verification.py, routes/email.py · password.py, db/email_tokens.py</p></div></div>
+        <div class="file-row"><div class="file-id"><span class="file-path">GUIDE 42 · 43</span></div>
+          <div class="file-body"><p class="file-role">IPv6 /64 대역 단위(services/ip_utils.py, helpers/request_utils.py), 복구 요청 한도·처리 시간 기록(app.py, helpers/timing.py)</p></div></div>
+        <div class="file-row"><div class="file-id"><span class="file-path">GUIDE 44 · 47</span></div>
+          <div class="file-body"><p class="file-role">로그 자동 정리 + 일별 요약 — DB 예약 작업(docs/migrations/guide44_log_retention.sql, guide47_daily_log_summary.sql)</p></div></div>
+        <div class="file-row"><div class="file-id"><span class="file-path">GUIDE 45 · 46</span></div>
+          <div class="file-body"><p class="file-role">보이지 않는 탭 폴링 중지(public/js/polling.js), 대시보드 즉시 반응(routes/admin/status.py의 ?only=, public/js/dashboard/api.js · actions.js)</p></div></div>
+      </div>
+    </div>
+  </section>
+
   <footer>
     <span>login-watchdog</span>
     <span>·</span>
-    <span>36 items across 6 stages</span>
+    <span>39 items across 7 stages</span>
     <span>·</span>
     <span>배포: login-watchdog.vercel.app</span>
     <span>·</span>
-    <span>근거: app.py·db.py 등 실제 코드 + docs/beginner-guide (guide01~guide17)</span>
+    <span>근거: 현재 코드(2026-10-09) + docs/beginner-guide guide01~guide47</span>
   </footer>
 
 </div>

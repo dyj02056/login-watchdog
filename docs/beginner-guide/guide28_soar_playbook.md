@@ -82,8 +82,8 @@ def send_incident_escalation_alert(ip, event_types, severity_max):
 
 - [docs/schema.sql](../schema.sql) — `security_incidents.escalated` 컬럼 추가
 - [config.py](../../config.py) — `INCIDENT_ESCALATION_MIN_EVENT_TYPES` 추가
-- [correlate.py](../../correlate.py) — `PLAYBOOKS`, `_maybe_escalate()` 추가
-- [alert.py](../../alert.py) — `send_incident_escalation_alert()` 신규
+- [correlate.py](../../security/correlate.py) — `PLAYBOOKS`, `_maybe_escalate()` 추가
+- [alert.py](../../notify/alert.py) — `send_incident_escalation_alert()` 신규
 - [db/incidents.py](../../db/incidents.py) — `record_incident()`가 최종 사건 상태를 리턴하도록 변경, `mark_incident_escalated()` 신규
 - [db/__init__.py](../../db/__init__.py)
 - [tests/test_correlate.py](../../tests/test_correlate.py), [tests/test_db.py](../../tests/test_db.py)

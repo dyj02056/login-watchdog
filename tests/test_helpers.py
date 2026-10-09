@@ -1,5 +1,5 @@
 # ============================================================================
-# test_helpers.py — helpers.py의 get_request_ip()/is_bot_submission()이
+# test_helpers.py — helpers/request_utils.py의 get_request_ip()/is_bot_submission()이
 # 올바르게 판단하는지 확인하는 단위 테스트 (L7 공격 보강 계획 Tier 3)
 #
 # get_request_ip()는 request.remote_addr/request.headers를 읽어야 하므로,
@@ -29,7 +29,7 @@ def test_get_request_ip_trusts_valid_forwarded_header_when_enabled(flask_app, mo
 
 
 def test_get_request_ip_falls_back_when_forwarded_header_is_not_a_valid_ip(flask_app, monkeypatch):
-    # SSRF 방지 — 헤더 값이 진짜 IP 형식이 아니면(예: geoip.py의 외부 요청
+    # SSRF 방지 — 헤더 값이 진짜 IP 형식이 아니면(예: services/geoip.py의 외부 요청
     # 주소 조작을 노린 문자열), 신뢰하지 않고 실제 접속 IP로 되돌아가야 한다.
     monkeypatch.setattr(config, "TRUST_FORWARDED_FOR", True)
     with flask_app.test_request_context(

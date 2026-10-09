@@ -93,17 +93,17 @@ Groq API 키(`GROQ_API_KEY`)가 없는 환경에서도 `judge_early_warning()`�
 
 ## 이 단계에서 만들어지거나 바뀐 파일
 
-- [llm_client.py](../../llm_client.py) — 신규, Groq 호출 공통화
+- [llm_client.py](../../services/llm_client.py) — 신규, Groq 호출 공통화
 - [scripts/daily_report.py](../../scripts/daily_report.py) — `llm_client.ask_groq()` 사용으로 리팩터링
 - [db/access_requests.py](../../db/access_requests.py) — 신규
 - [db/__init__.py](../../db/__init__.py)
 - [db/admin.py](../../db/admin.py) — `get_admin_id_by_username()` 신규
-- [soar.py](../../soar.py) — `consider_early_warning()`/`execute_approved_request()`/`reject_pending_request()` 신규
-- [alert.py](../../alert.py) — `send_pending_approval_alert()` 신규
-- [detector.py](../../detector.py) — `is_signup_rate_limited()` 반환 타입 변경
+- [soar.py](../../security/soar/) — `consider_early_warning()`/`execute_approved_request()`/`reject_pending_request()` 신규
+- [alert.py](../../notify/alert.py) — `send_pending_approval_alert()` 신규
+- [detector.py](../../security/detector.py) — `is_signup_rate_limited()` 반환 타입 변경
 - [config.py](../../config.py) — `EARLY_WARNING_BAND` 신규
-- [routes/auth.py](../../routes/auth.py), [app.py](../../app.py), [helpers.py](../../helpers.py) — 근처 구간 호출부 7곳
-- [routes/admin.py](../../routes/admin.py) — 승인/반려 API, `/api/status`에 `access_requests` 추가
+- [routes/auth.py](../../routes/auth.py), [app.py](../../app.py), [helpers.py](../../helpers/) — 근처 구간 호출부 7곳
+- [routes/admin.py](../../routes/admin/) — 승인/반려 API, `/api/status`에 `access_requests` 추가
 - [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [public/css/dashboard.css](../../public/css/dashboard.css)
 - [public/js/dashboard/state.js](../../public/js/dashboard/state.js), [render.js](../../public/js/dashboard/render.js), [api.js](../../public/js/dashboard/api.js), [events.js](../../public/js/dashboard/events.js)
 - [docs/schema.sql](../../docs/schema.sql) — `access_requests` 표 + `approve_pending_action` 권한

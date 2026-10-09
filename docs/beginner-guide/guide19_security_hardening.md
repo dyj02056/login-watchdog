@@ -96,8 +96,8 @@ def is_admin_suspicious(ip: str) -> tuple[bool, int]:
 `pytest tests/ -v` 전체(59개)를 돌려 전부 통과하는 것도 확인했습니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [db.py](../../db.py) (`count_recent_admin_failures` 신규 추가)
-- [detector.py](../../detector.py) (`is_admin_suspicious` 신규 추가)
+- [db.py](../../db/) (`count_recent_admin_failures` 신규 추가)
+- [detector.py](../../security/detector.py) (`is_admin_suspicious` 신규 추가)
 - [app.py](../../app.py) (`admin_login_submit()`에 잠금 판정·실행 로직 추가)
 - [tests/test_app.py](../../tests/test_app.py), [tests/test_detector.py](../../tests/test_detector.py) (관련 테스트 추가)
 
@@ -220,8 +220,8 @@ username = request.form.get("username", "").strip()
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [docs/schema.sql](../schema.sql) (`signup_attempts` 표 추가, Supabase 프로젝트에도 SQL Editor로 직접 반영 완료)
 - [config.py](../../config.py) (`SIGNUP_RATE_LIMIT` 추가)
-- [db.py](../../db.py) (`log_signup_attempt`, `count_recent_signup_attempts` 추가)
-- [detector.py](../../detector.py) (`is_signup_rate_limited` 추가)
+- [db.py](../../db/) (`log_signup_attempt`, `count_recent_signup_attempts` 추가)
+- [detector.py](../../security/detector.py) (`is_signup_rate_limited` 추가)
 - [app.py](../../app.py) (`signup_submit()`에 빈도 제한 체크 추가)
 - [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py) (관련 테스트 추가)
 
@@ -234,7 +234,7 @@ username = request.form.get("username", "").strip()
 또한 3번 항목에서는 "코드를 고쳤다고 끝이 아니라, 그 코드가 의존하는 데이터베이스 표까지 실제 운영 환경에 반영해야 완성"이라는 2단계의 교훈을 다시 한번 확인했습니다.
 
 ### 이 단계 전체에서 바뀐 파일 모음
-- [app.py](../../app.py), [config.py](../../config.py), [db.py](../../db.py), [detector.py](../../detector.py)
+- [app.py](../../app.py), [config.py](../../config.py), [db.py](../../db/), [detector.py](../../security/detector.py)
 - [docs/schema.sql](../schema.sql)
 - [requirements.txt](../../requirements.txt)
 - [tests/test_app.py](../../tests/test_app.py), [tests/test_detector.py](../../tests/test_detector.py)

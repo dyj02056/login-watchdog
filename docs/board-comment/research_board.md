@@ -44,14 +44,14 @@ app.py (라우트 등록 + 세션/CSRF/입력검증)
 | 파일 | 역할 | 게시판/댓글과의 관계 |
 |---|---|---|
 | [app.py](../../app.py) | 라우트·세션·CSRF·입력검증 등록의 "정문" | 새 라우트(`/board`, `/board/<id>`, `/board/<id>/comments` 등)를 여기에 추가하게 됨 |
-| [db.py](../../db.py) | Supabase와 대화하는 유일한 창구 | 게시글/댓글 CRUD 함수를 여기에 추가 |
+| [db.py](../../db/) | Supabase와 대화하는 유일한 창구 | 게시글/댓글 CRUD 함수를 여기에 추가 |
 | [config.py](../../config.py) | 임계값·상수 중앙 관리 | 페이지당 글 수, 게시글 빈도 제한 등 새 상수를 추가할 자리 |
-| [detector.py](../../detector.py) / [soar.py](../../soar.py) | 판정/실행 분리 패턴 (브루트포스 전용) | 게시글은 "수상한지 판단→잠금"류 로직이 없어 이 패턴이 그대로 맞지 않음 (2-3절 참고) |
+| [detector.py](../../security/detector.py) / [soar.py](../../security/soar/) | 판정/실행 분리 패턴 (브루트포스 전용) | 게시글은 "수상한지 판단→잠금"류 로직이 없어 이 패턴이 그대로 맞지 않음 (2-3절 참고) |
 | [docs/schema.sql](../schema.sql) | Supabase 테이블 정의 (문서 기록용, 실제 실행은 Supabase SQL Editor) | `posts`, `comments` 테이블 설계를 추가해야 함 |
 | [templates/*.html](../../templates) | Jinja2 템플릿 | `board_list.html`, `board_detail.html` 등 새 템플릿 필요 |
 | [public/css/tokens.css](../../public/css/tokens.css) | 색상/폰트 CSS 변수 (라이트/다크 공용) | 새 화면도 이 토큰만 사용해야 다크모드·디자인이 자동으로 맞음 |
 | [public/css/member.css](../../public/css/member.css) | 회원 화면 공통 스타일 | 게시판이 회원 전용이라면 이 파일을 확장하거나 `board.css` 신설 |
-| [public/js/dashboard.js](../../public/js/dashboard.js) | fetch+CSRF+escapeHtml 패턴의 실제 예시 | 댓글을 폴링/동적 렌더링한다면 이 패턴을 그대로 따라야 함 |
+| [public/js/dashboard.js](../../public/js/dashboard/) | fetch+CSRF+escapeHtml 패턴의 실제 예시 | 댓글을 폴링/동적 렌더링한다면 이 패턴을 그대로 따라야 함 |
 | [tests/test_app.py](../../tests/test_app.py) | Flask test_client 기반 라우트 통합 테스트, CSRF 토큰 획득 헬퍼 포함 | 새 라우트 테스트를 같은 스타일로 추가 |
 | [tests/conftest.py](../../tests/conftest.py) | Supabase 접속을 막고 가짜 client 주입 | 게시판 테스트도 이 fixture를 그대로 재사용 |
 

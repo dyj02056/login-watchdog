@@ -55,6 +55,7 @@ Vercel 배포는 사용자님의 Vercel 계정으로 GitHub 저장소를 연결�
 4. Vercel이 `requirements.txt`를 보고 자동으로 "Flask 프로젝트"로 인식합니다(별도 설정 파일 없이도 인식되는 걸 "제로 설정(zero-configuration)"이라고 부릅니다)
 5. **Environment Variables** 섹션에서 로컬 `.env`에 있는 값들을 그대로 하나씩 입력:
    `SUPABASE_URL`, `SUPABASE_KEY`, `SLACK_WEBHOOK_URL`, `SECRET_KEY`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `TRUST_FORWARDED_FOR`
+   (33~36단계 이후 추가로 필요한 값은 아래 "이후 단계에서 추가된 배포 설정" 참고)
    (이 화면은 Vercel이 안전하게 암호화해서 보관하는 곳으로, `.env` 파일이 깃에 안 올라가는 것과 같은 이유로 여기서만 따로 입력합니다)
 6. **Deploy** 클릭 → 몇 분 뒤 `https://프로젝트이름.vercel.app` 같은 실제 주소가 발급됩니다
 
@@ -88,6 +89,50 @@ def index():
     return redirect(url_for("login"))
 ```
 `redirect(url_for("login"))`은 "화면을 직접 그리지 말고, 브라우저에게 '/login으로 다시 가봐'라고 알려줘라"는 뜻입니다. 브라우저는 이 안내를 받으면 자동으로 `/login`에 새 요청을 보내고, 사용자 눈에는 그냥 로그인 화면이 바로 뜨는 것처럼 보입니다. 코드 한 줄로 해결되는 문제였고, 실제로 재배포 후 도메인 주소만 입력해도 정상적으로 로그인 화면이 뜨는 것까지 확인했습니다.
+
+### 이후 단계에서 추가된 배포 설정 (33~36단계)
+
+10단계 이후 기능이 늘면서 Vercel에 추가로 넣어야 하는 값과 배포 순서가 생겼습니다. 새로 배포하거나 환경을 옮길 때 아래를 함께 확인하세요.
+
+**1) Supabase SQL을 코드보다 먼저 실행**
+
+| SQL | 실행하지 않으면 |
+|---|---|
+| [docs/migrations/guide33_permanent_lock.sql](../migrations/guide33_permanent_lock.sql) | 잠금·복구 관련 기능이 DB 오류로 동작하지 않음 |
+| [docs/migrations/guide35_password_change.sql](../migrations/guide35_password_change.sql) | **회원 화면과 게시판 전체가 오류** (요청마다 `users.session_version`을 조회하기 때문) |
+
+두 파일 모두 여러 번 실행해도 안전합니다. 새 DB라면 [docs/schema.sql](../schema.sql) 전체를 실행하면 같은 내용이 들어 있습니다.
+
+**2) Vercel 환경변수 (Settings → Environment Variables → Production)**
+
+| 변수 | 값 | 비고 |
+|---|---|---|
+| `FLASK_ENV` | `production` | 세션·기기 쿠키에 Secure 적용, console 메일 백엔드 차단 |
+| `TRUST_FORWARDED_FOR` | `false` | 배포에서 `true`면 헤더 위조로 임의 IP를 잠그거나 잠금을 우회할 수 있음 |
+| `MAIL_BACKEND` | `smtp` | 복구·알림 메일 실제 발송 |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_STARTTLS` | 예: `smtp-relay.brevo.com` / `587` / `true` | 현재 운영은 Brevo SMTP |
+| `SMTP_USER` / `SMTP_PASSWORD` | 메일 서비스의 SMTP 로그인 값 / SMTP 키 | `SMTP_PASSWORD`는 Sensitive로 등록 |
+| `MAIL_FROM` | `이름 <인증한 발신 주소>` | 메일 서비스에서 인증한 주소와 같아야 함 |
+| `PUBLIC_BASE_URL` | `https://login-watchdog.vercel.app` | 복구 링크·프로필 링크의 기준 주소(없으면 운영에서 복구 메일을 보내지 않음) |
+| `PERMANENT_LOCK_IP_ALLOWLIST` | `127.0.0.1,::1,관리자 PC 공인 IP` | 관리자 IP가 영구 잠금되는 것을 막음 |
+
+나머지 값(영구 잠금 기준 횟수, 복구 정책, 메일 타임아웃 등)은 기본값으로 충분합니다. 자세한 설명은 [34단계 "배포(Vercel)에서 복구 메일 보내기"](guide34a_email_recovery.md)를 참고하세요. 환경변수를 바꾼 뒤에는 **재배포**해야 적용됩니다.
+
+**3) 배포 전후 점검**
+
+```bash
+# 배포 전: 같은 메일 설정으로 테스트 메일 한 통 보내기
+python scripts/send_test_mail.py --to 내이메일@gmail.com
+```
+
+- 배포 후 Vercel 런타임 로그에 `[mailer] 경고:`가 없는지 확인합니다(운영에서 메일 설정이 비어 있으면 서버 시작 시 찍힘).
+- 응답 쿠키에 `Secure`가 붙는지 확인합니다. 없으면 `FLASK_ENV=production`이 빠진 것입니다.
+- 무료(Hobby) 플랜은 런타임 로그를 **1시간만** 보관합니다. 오류를 확인하려면 문제가 생긴 직후에 봐야 합니다.
+- 복구 요청은 계정 존재 여부를 숨기려고 응답이 약 8초로 고정돼 있습니다. 무료 플랜 함수 시간 안에서 동작하는 것을 확인했습니다.
+
+**4) 서버리스 DB 연결**
+
+Vercel은 함수가 잠시 쉬었다 깨어나는 구조라, 쉬던 DB 연결이 끊겨 가끔 500이 나는 문제가 있었습니다. 36단계에서 연결 방식을 바꿔 해결했습니다 — [36단계](guide36_db_connection.md) 참고.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
 - `static/` → [public/](../../public/) 폴더 이름 변경 (내용은 그대로, 파일 3개)

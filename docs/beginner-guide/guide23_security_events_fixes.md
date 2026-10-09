@@ -72,7 +72,7 @@ CRITICAL 이벤트 id를 넘기면 이 조건에 걸려 아무 행도 바뀌지 
 `tests/test_db.py`에 "CRITICAL 이벤트는 이 함수로 처리되지 않는다" 검증 테스트를 추가했습니다. 실제로 IP가 아직 잠긴 상태에서 그 CRITICAL 이벤트 id로 API를 직접 호출해봤더니 `{"success": false}` 응답, 미해결 상태 그대로 유지되는 것을 로컬·배포 사이트 양쪽에서 확인했습니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [db.py](../../db.py) (`resolve_security_event`)
+- [db.py](../../db/) (`resolve_security_event`)
 - [tests/test_db.py](../../tests/test_db.py)
 
 ---
@@ -101,8 +101,8 @@ db.insert_security_event_or_bump(event_type, "HIGH", ip, path, count, "REJECTED"
 `tests/test_soar.py`/`tests/test_db.py`에 관련 테스트를 갱신·추가했습니다. 실제로 `/signup`을 여러 차례에 걸쳐 총 13번 추가로 거부시켜봤더니, 새 행이 쌓이는 대신 **같은 행 하나의 count가 5 → 17로 정확히 누적**되는 것을 확인했습니다(5 + 6 + 6 = 17). 대시보드 화면에도 그대로 반영됐습니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [db.py](../../db.py) (`get_unresolved_security_event`, `update_security_event_count` 추가)
-- [soar.py](../../soar.py) (`record_rejection` 수정)
+- [db.py](../../db/) (`get_unresolved_security_event`, `update_security_event_count` 추가)
+- [soar.py](../../security/soar/) (`record_rejection` 수정)
 - [tests/test_db.py](../../tests/test_db.py), [tests/test_soar.py](../../tests/test_soar.py)
 
 ---
@@ -147,8 +147,8 @@ def insert_security_event_or_bump(event_type, severity, ip, path, count, action)
 
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [docs/schema.sql](../schema.sql) (`idx_security_events_high_open_incident` 부분 유니크 인덱스 추가)
-- [db.py](../../db.py) (`insert_security_event_or_bump` 추가)
-- [soar.py](../../soar.py) (`record_rejection`이 `insert_security_event_or_bump` 사용하도록 수정)
+- [db.py](../../db/) (`insert_security_event_or_bump` 추가)
+- [soar.py](../../security/soar/) (`record_rejection`이 `insert_security_event_or_bump` 사용하도록 수정)
 - [tests/test_db.py](../../tests/test_db.py)
 
 ---

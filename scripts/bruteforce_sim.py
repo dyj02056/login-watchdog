@@ -14,7 +14,7 @@
 # 아닌 주소를 지정하면 --i-know-what-im-doing 플래그 없이는 실행을 거부한다.
 #
 # --ip 옵션(선택): 로컬 환경에서는 팀원 전원이 똑같이 127.0.0.1로 접속하게
-# 되어 "서로 다른 공격자 IP에서 왔다"는 상황을 재현할 수 없다. app.py의
+# 되어 "서로 다른 공격자 IP에서 왔다"는 상황을 재현할 수 없다. helpers/request_utils.py의
 # get_request_ip()는 config.TRUST_FORWARDED_FOR가 true일 때만(데모 전용 설정)
 # X-Forwarded-For 헤더 값을 진짜 접속 IP처럼 믿어주므로, 이 옵션을 쓰면 그
 # 헤더에 원하는 IP를 실어 보내 "가짜 공격자 IP"를 흉내낼 수 있다. 단, 대상
@@ -25,27 +25,18 @@
 import argparse
 import os
 import sys
-from urllib.parse import urlparse
 
 import requests
 from dotenv import load_dotenv
+
+from _sim_common import is_local_host
 
 load_dotenv()
 
 LOCKED_MESSAGE = "잠긴 계정입니다"
 
 
-def is_local_host(host: str) -> bool:
-    """--host로 받은 주소가 로컬(내 컴퓨터) 서버인지 확인한다.
-
-    urlparse().hostname으로 "http://127.0.0.1:5000" 같은 문자열에서 호스트
-    부분만 뽑아내, localhost/127.0.0.1 계열인지만 확인한다.
-    """
-    hostname = urlparse(host).hostname or ""
-    return hostname in ("127.0.0.1", "localhost", "::1")
-
-
-def fetch_csrf_token(session: requests.Session, base_url: str) -> str:
+def fetch_csrf_token(session: requests.Session, base_url: str, login_path: str = "/login") -> str:
     """/login 화면을 한 번 GET으로 받아와서, 폼에 숨겨진 csrf_token 값을 뽑아온다.
 
     app.py에 CSRFProtect가 적용된 뒤로는(2번째 보안 수정), 이 토큰 없이 POST를
@@ -53,7 +44,7 @@ def fetch_csrf_token(session: requests.Session, base_url: str) -> str:
     화면을 먼저 열어서 이 토큰을 자동으로 받아두므로, 이 스크립트도 실제 로그인
     시도를 흉내내려면 똑같이 먼저 화면을 한 번 열어봐야 한다.
     """
-    response = session.get(f"{base_url}/login", timeout=5)
+    response = session.get(f"{base_url}{login_path}", timeout=5)
     marker = 'name="csrf_token" value="'
     start = response.text.index(marker) + len(marker)
     end = response.text.index('"', start)
@@ -61,11 +52,12 @@ def fetch_csrf_token(session: requests.Session, base_url: str) -> str:
 
 
 def attempt_login(
-    session: requests.Session, base_url: str, username: str, password: str, csrf_token: str
+    session: requests.Session, base_url: str, username: str, password: str, csrf_token: str,
+    login_path: str = "/login",
 ) -> requests.Response:
     """/login에 아이디/비밀번호를 폼(form) 형식으로 제출하는 요청 한 건을 보낸다.
 
-    app.py의 login_submit()이 request.form.get(...)으로 값을 읽으므로, JSON이
+    routes/auth.py의 login_submit()이 request.form.get(...)으로 값을 읽으므로, JSON이
     아니라 브라우저 폼 제출과 똑같은 방식(data=... 로 보내면 requests가 자동으로
     application/x-www-form-urlencoded 형식을 써준다)으로 보내야 한다. csrf_token도
     폼 필드 중 하나이므로 같은 data 딕셔너리에 함께 실어 보낸다.
@@ -76,7 +68,7 @@ def attempt_login(
     것과 같은 원리) — requests.Session이 쿠키를 요청 사이에 자동으로 이어준다.
     """
     return session.post(
-        f"{base_url}/login",
+        f"{base_url}{login_path}",
         data={"username": username, "password": password, "csrf_token": csrf_token},
         timeout=5,
     )
@@ -84,7 +76,7 @@ def attempt_login(
 
 def run(
     base_url: str, username: str, attempts: int, ip: str | None = None,
-    bypass_secret: str | None = None,
+    bypass_secret: str | None = None, login_path: str = "/login",
 ) -> bool:
     """실패 요청을 `attempts`번 순차로 보낸 뒤, 마지막(6번째) 요청의 응답에
     잠금 문구가 포함돼 있는지 확인한다.
@@ -101,18 +93,22 @@ def run(
     보낸다. --host가 Vercel 프리뷰 주소일 때만 의미가 있고, 로컬 서버
     대상으로는 아무 효과가 없다.
 
+    login_path를 "/admin/login"으로 주면(--admin) 관리자 로그인을 대상으로 한다(guide38).
+    --ip를 바꿔가며 IP당 4회씩 여러 번 실행하면, IP 잠금(5회 초과)은 걸리지 않고 관리자 계정
+    단위 잠금(15분 안에 8회 초과)만 걸리는 분산 브루트포스를 재현할 수 있다.
+
     반환값: 검증 통과 여부(True/False). main()에서 이 값을 프로세스 종료
     코드로 변환해서, CI 등 다른 도구가 성공/실패를 스크립트 실행만으로
     판단할 수 있게 한다.
     """
-    print(f"[*] {base_url}/login 에 틀린 비밀번호로 {attempts}회 연속 로그인 시도")
+    print(f"[*] {base_url}{login_path} 에 틀린 비밀번호로 {attempts}회 연속 로그인 시도")
 
     session = requests.Session()
     # Flask-WTF는 HTTPS 요청에 대해 Referer 헤더가 있는지 검사한다
     # (WTF_CSRF_SSL_STRICT 기본값 True). 로컬(HTTP)에서는 이 검사가 적용되지
     # 않아 지금까지 드러나지 않았지만, HTTPS로 배포된 사이트(Vercel 등)를
     # 대상으로 하면 이 헤더 없이는 CSRF 토큰이 맞아도 매번 400으로 거부된다.
-    session.headers["Referer"] = f"{base_url}/login"
+    session.headers["Referer"] = f"{base_url}{login_path}"
     if ip:
         session.headers["X-Forwarded-For"] = ip
         print(f"[*] X-Forwarded-For: {ip} 헤더를 함께 보냅니다 "
@@ -122,11 +118,13 @@ def run(
         session.headers["x-vercel-set-bypass-cookie"] = "true"
         print("[*] x-vercel-protection-bypass 헤더를 함께 보냅니다 "
               "(Vercel Authentication이 걸린 프리뷰 주소일 때만 의미가 있음)")
-    csrf_token = fetch_csrf_token(session, base_url)
+    csrf_token = fetch_csrf_token(session, base_url, login_path)
 
     response = None
     for i in range(1, attempts + 1):
-        response = attempt_login(session, base_url, username, "wrong-password-on-purpose", csrf_token)
+        response = attempt_login(
+            session, base_url, username, "wrong-password-on-purpose", csrf_token, login_path
+        )
         locked = LOCKED_MESSAGE in response.text
         print(f"    시도 {i}/{attempts} - 상태 코드 {response.status_code}"
               f"{' - 이미 잠김' if locked else ''}")
@@ -173,6 +171,10 @@ def main() -> None:
              "VERCEL_AUTOMATION_BYPASS_SECRET 값을 대신 사용한다. 로컬 서버 대상일 때는 "
              "필요 없다.",
     )
+    parser.add_argument(
+        "--admin", action="store_true",
+        help="/login 대신 관리자 로그인(/admin/login)을 대상으로 한다(guide38 관리자 계정 잠금 시연용).",
+    )
     args = parser.parse_args()
 
     if not is_local_host(args.host) and not args.i_know_what_im_doing:
@@ -185,7 +187,8 @@ def main() -> None:
         )
         sys.exit(2)
 
-    success = run(args.host, args.username, args.attempts, args.ip, args.bypass_secret)
+    login_path = "/admin/login" if args.admin else "/login"
+    success = run(args.host, args.username, args.attempts, args.ip, args.bypass_secret, login_path)
     sys.exit(0 if success else 1)
 
 

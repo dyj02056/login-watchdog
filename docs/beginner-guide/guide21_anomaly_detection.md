@@ -105,10 +105,10 @@ else:
 `tests/test_db.py`(dedup 로직: 같은 아이디 2번 + 다른 아이디 1번 → 결과 2), `tests/test_detector.py`(단순 전달 확인), `tests/test_soar.py`/`tests/test_app.py`(세 번째 인자가 `enforce_lockout`까지 정확히 전달되는지, 회원 로그인은 3개 아이디, 관리자 로그인은 1개 아이디 시나리오로 각각)에 테스트를 추가했습니다. 매개변수가 늘어나며 기존 잠금 테스트 4개도 함께 손봐야 했습니다(19단계에서 `SIGNUP_RATE_LIMIT` 추가 때 겪었던 것과 같은 종류의 작업). `pytest tests/ -v` 전체(100개) 통과를 확인했습니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [db.py](../../db.py) (`count_recent_distinct_usernames`, `count_recent_distinct_admin_usernames` 신규 추가)
-- [detector.py](../../detector.py) (`count_distinct_usernames`, `count_distinct_admin_usernames` 신규 추가)
-- [soar.py](../../soar.py) (`enforce_lockout`에 `distinct_usernames` 매개변수 추가)
-- [alert.py](../../alert.py) (`send_lockout_alert`에 공격 유형 구분 줄 추가)
+- [db.py](../../db/) (`count_recent_distinct_usernames`, `count_recent_distinct_admin_usernames` 신규 추가)
+- [detector.py](../../security/detector.py) (`count_distinct_usernames`, `count_distinct_admin_usernames` 신규 추가)
+- [soar.py](../../security/soar/) (`enforce_lockout`에 `distinct_usernames` 매개변수 추가)
+- [alert.py](../../notify/alert.py) (`send_lockout_alert`에 공격 유형 구분 줄 추가)
 - [app.py](../../app.py) (`login_submit()`, `admin_login_submit()` 두 호출부 모두 수정)
 - [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_soar.py](../../tests/test_soar.py), [tests/test_app.py](../../tests/test_app.py)
 
@@ -161,10 +161,10 @@ create index idx_not_found_attempts_ip_time on not_found_attempts (ip_address, a
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [docs/schema.sql](../schema.sql) (`not_found_attempts` 표 추가 — Supabase 프로젝트에는 아직 미반영, 위 SQL을 직접 실행 필요)
 - [config.py](../../config.py) (`WEB_SCANNING_ALERT_THRESHOLD` 추가)
-- [db.py](../../db.py) (`log_not_found_attempt`, `count_recent_not_found_attempts` 추가)
-- [detector.py](../../detector.py) (`is_web_scanning` 추가)
-- [alert.py](../../alert.py) (`send_web_scanning_alert` 추가, 웹훅 전송 로직을 `_send_slack_message`로 공통화)
-- [soar.py](../../soar.py) (`notify_web_scanning` 추가)
+- [db.py](../../db/) (`log_not_found_attempt`, `count_recent_not_found_attempts` 추가)
+- [detector.py](../../security/detector.py) (`is_web_scanning` 추가)
+- [alert.py](../../notify/alert.py) (`send_web_scanning_alert` 추가, 웹훅 전송 로직을 `_send_slack_message`로 공통화)
+- [soar.py](../../security/soar/) (`notify_web_scanning` 추가)
 - [app.py](../../app.py) (`@app.errorhandler(404)` 신규 추가)
 - [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py)
 
@@ -214,10 +214,10 @@ create index idx_unauthorized_attempts_ip_time on unauthorized_attempts (ip_addr
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [docs/schema.sql](../schema.sql) (`unauthorized_attempts` 표 추가 — Supabase 프로젝트에는 아직 미반영)
 - [config.py](../../config.py) (`UNAUTHORIZED_ACCESS_ALERT_THRESHOLD` 추가)
-- [db.py](../../db.py) (`log_unauthorized_attempt`, `count_recent_unauthorized_attempts` 추가)
-- [detector.py](../../detector.py) (`is_unauthorized_access_suspicious` 추가)
-- [alert.py](../../alert.py) (`send_unauthorized_access_alert` 추가)
-- [soar.py](../../soar.py) (`notify_unauthorized_access` 추가)
+- [db.py](../../db/) (`log_unauthorized_attempt`, `count_recent_unauthorized_attempts` 추가)
+- [detector.py](../../security/detector.py) (`is_unauthorized_access_suspicious` 추가)
+- [alert.py](../../notify/alert.py) (`send_unauthorized_access_alert` 추가)
+- [soar.py](../../security/soar/) (`notify_unauthorized_access` 추가)
 - [app.py](../../app.py) (`login_required()`의 401 분기에 기록·알림 로직 추가)
 - [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py)
 
@@ -280,10 +280,10 @@ create index idx_page_access_attempts_ip_path_time on page_access_attempts (ip_a
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [docs/schema.sql](../schema.sql) (`page_access_attempts` 표 추가 — Supabase 프로젝트에는 아직 미반영)
 - [config.py](../../config.py) (`PAGE_ACCESS_ALERT_THRESHOLD` 추가)
-- [db.py](../../db.py) (`log_page_access_attempt`, `count_recent_page_access_attempts` 추가)
-- [detector.py](../../detector.py) (`is_page_access_suspicious` 추가)
-- [alert.py](../../alert.py) (`send_page_access_alert` 추가)
-- [soar.py](../../soar.py) (`notify_page_access` 추가)
+- [db.py](../../db/) (`log_page_access_attempt`, `count_recent_page_access_attempts` 추가)
+- [detector.py](../../security/detector.py) (`is_page_access_suspicious` 추가)
+- [alert.py](../../notify/alert.py) (`send_page_access_alert` 추가)
+- [soar.py](../../security/soar/) (`notify_page_access` 추가)
 - [app.py](../../app.py) (`@app.before_request track_page_access()` 신규 추가)
 - [tests/conftest.py](../../tests/conftest.py) (`flask_app` fixture에 새 훅 기본 무력화 추가)
 - [tests/test_db.py](../../tests/test_db.py), [tests/test_detector.py](../../tests/test_detector.py), [tests/test_app.py](../../tests/test_app.py)

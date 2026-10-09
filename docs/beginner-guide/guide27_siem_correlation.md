@@ -101,11 +101,11 @@ Track B(RBAC, guide26)는 guide26에서 1/3 단계(기본 구조)까지만 완�
 
 - [docs/schema.sql](../schema.sql) — `security_incidents` 표 + `idx_security_incidents_open_ip`
 - [config.py](../../config.py) — `INCIDENT_CORRELATION_WINDOW_MINUTES` 추가
-- [correlate.py](../../correlate.py) — 신규, `check_and_correlate()`
+- [correlate.py](../../security/correlate.py) — 신규, `check_and_correlate()`
 - [db/incidents.py](../../db/incidents.py) — 신규, `get_recent_distinct_event_types()`, `get_open_incident()`, `record_incident()`, `close_open_incident_for_ip()`, `list_security_incidents()`
 - [db/__init__.py](../../db/__init__.py)
-- [soar.py](../../soar.py) — `_record_event()` 내부 헬퍼 추가, 7개 조치 함수가 이를 경유하도록 변경, 잠금 해제 경로에 `close_open_incident_for_ip()` 연결
-- [routes/admin.py](../../routes/admin.py) — `/api/status`에 `security_incidents`/`security_incidents_total_pages` 추가
+- [soar.py](../../security/soar/) — `_record_event()` 내부 헬퍼 추가, 7개 조치 함수가 이를 경유하도록 변경, 잠금 해제 경로에 `close_open_incident_for_ip()` 연결
+- [routes/admin.py](../../routes/admin/) — `/api/status`에 `security_incidents`/`security_incidents_total_pages` 추가
 - [templates/admin_dashboard.html](../../templates/admin_dashboard.html) — "연관 사건" 표 섹션
 - [public/js/dashboard/state.js](../../public/js/dashboard/state.js), [api.js](../../public/js/dashboard/api.js), [render.js](../../public/js/dashboard/render.js), [events.js](../../public/js/dashboard/events.js)
 - [public/css/dashboard.css](../../public/css/dashboard.css)

@@ -1,8 +1,8 @@
 # Supabase DB 스키마 가이드 (비전공자용)
 
-이 문서는 [docs/schema.sql](schema.sql)에 정의된 Supabase 테이블 22개를 "이게 왜 있고, 어떤 값이 들어가는지" 비전공자도 알 수 있게 정리한 문서입니다.
+이 문서는 [docs/schema.sql](../schema.sql)에 정의된 Supabase 테이블 30개를 "이게 왜 있고, 어떤 값이 들어가는지" 비전공자도 알 수 있게 정리한 문서입니다.
 
-> 실제 스키마 정의(SQL)는 [docs/schema.sql](schema.sql)이 원본입니다. 이 문서는 그걸 읽기 쉽게 풀어 쓴 참고 자료이며, 스키마가 바뀌면 이 문서도 함께 업데이트해야 합니다.
+> 실제 스키마 정의(SQL)는 [docs/schema.sql](../schema.sql)이 원본입니다. 이 문서는 그걸 읽기 쉽게 풀어 쓴 참고 자료이며, 스키마가 바뀌면 이 문서도 함께 업데이트해야 합니다.
 
 ## 한눈에 보는 전체 목록
 
@@ -11,8 +11,9 @@
 | 분류 | 의미 | 해당 테이블 |
 |---|---|---|
 | **자산 / 콘텐츠** | 앱이 다루는 "진짜 데이터" (사람이 직접 만든 것) | `users`, `admin_users`, `posts`, `comments`, `roles`, `permissions`, `app_settings` |
-| **과거 기록 (로그)** | "언제 무슨 일이 있었는지" 계속 쌓이기만 하는 표 | `login_attempts`, `admin_login_log`, `signup_attempts`, `post_attempts`, `comment_attempts`, `not_found_attempts`, `unauthorized_attempts`, `page_access_attempts`, `api_access_log` |
-| **현재 상태 / 판정 결과** | "지금 이 순간 어떤 상태인지"를 나타내는 표 | `lockouts`, `account_lockouts`, `security_events`, `security_incidents`, `access_requests`, `ip_locations`(캐시) |
+| **과거 기록 (로그)** | "언제 무슨 일이 있었는지" 계속 쌓이기만 하는 표 | `login_attempts`, `admin_login_log`, `signup_attempts`, `post_attempts`, `comment_attempts`, `not_found_attempts`, `unauthorized_attempts`, `page_access_attempts`, `api_access_log`, `lock_history` |
+| **현재 상태 / 판정 결과** | "지금 이 순간 어떤 상태인지"를 나타내는 표 | `lockouts`, `account_lockouts`, `admin_account_lockouts`, `security_events`, `security_incidents`, `access_requests`, `recovery_requests`, `ip_lock_exemptions`, `email_tokens`, `ip_locations`(캐시) |
+| **요약 (통계)** | 원본 기록을 하루 단위로 요약해 영구히 남기는 표 — 원본은 보관 기간이 지나면 지워짐 | `log_daily_summary`, `log_daily_breakdown`, `log_summary_state` |
 
 **로그와 상태 표의 차이가 헷갈릴 수 있는데**, 예를 들어 `login_attempts`(로그)는 "10시에 실패, 10시 1분에 실패, 10시 2분에 성공"처럼 있었던 일을 전부 쌓아두는 표이고, `lockouts`(상태)는 "지금 이 IP가 잠겨있다/아니다"라는 딱 하나의 결론만 담아두는 표입니다.
 
@@ -30,6 +31,9 @@
 | `name` | 글자 | 화면에 보여줄 표시 이름. 가입 직후엔 빈 값이고, 나중에 프로필 수정에서 채움 |
 | `password_hash` | 글자 | 비밀번호를 그대로 저장하지 않고 암호화(해시)한 값 — 원문 비밀번호는 DB 어디에도 없음 |
 | `created_at` | 날짜/시각 | 가입한 시각 |
+| `email_status` | 글자 | `UNKNOWN`(미인증) / `VERIFIED`(메일 링크를 눌러 메일함 주인임이 확인됨, guide40) / `UNDELIVERABLE`(메일 서버가 수신자를 영구 거부 — 이 계정의 영구 잠금은 관리자만 해제). 비밀번호 재설정 메일은 `VERIFIED`에만 감 |
+| `email_status_checked_at` | 날짜/시각 (없을 수 있음) | `email_status`를 마지막으로 확인한 시각 |
+| `session_version` | 숫자 | 로그인 세션 "세대 번호". 비밀번호를 바꾸면 1 올라가서 다른 기기의 로그인 세션이 모두 끊김(guide35) |
 
 ---
 
@@ -55,9 +59,13 @@
 |---|---|---|
 | `ip_address` | 글자 (기본키) | 잠긴 IP 주소 |
 | `locked_at` | 날짜/시각 | 잠긴 시각 |
-| `unlock_at` | 날짜/시각 | 자동으로 풀릴 예정 시각 |
+| `unlock_at` | 날짜/시각 (영구 잠금은 없음) | 자동으로 풀릴 예정 시각. 영구 잠금이면 비어 있다 |
 | `failure_count` | 숫자 | 잠기게 된 원인이 된 실패 횟수 |
 | `active` | 참/거짓 | 지금도 잠겨있는 상태인지 |
+| `lock_type` | 글자 | `TEMPORARY`(5분 후 자동 해제) / `PERMANENT`(영구 — 이메일 인증이나 관리자 해제로만 풀림) |
+| `recoverable` | 글자 | 영구 잠금을 어떻게 풀 수 있는지: `SELF`(이메일로 완전 해제) / `EXEMPTION`(이메일로 "본인+본인 기기 예외"만 발급) / `ADMIN_ONLY`(관리자만) |
+| `permanent_reason` | 글자 (없을 수 있음) | 영구로 올라간 이유 (`REPEAT_OFFENDER`, `SIEM_CRITICAL`, `SIEM_HIGH`, `ADMIN_MANUAL` 등) |
+| `promoted_at` | 날짜/시각 (없을 수 있음) | 영구 잠금으로 올라간 시각 |
 
 ---
 
@@ -69,9 +77,14 @@
 |---|---|---|
 | `username` | 글자 (기본키) | 잠긴 계정의 아이디 |
 | `locked_at` | 날짜/시각 | 잠긴 시각 |
-| `unlock_at` | 날짜/시각 | 자동으로 풀릴 예정 시각 |
+| `unlock_at` | 날짜/시각 (영구 잠금은 없음) | 자동으로 풀릴 예정 시각. 영구 잠금이면 비어 있다 |
 | `failure_count` | 숫자 | 잠기게 된 총 실패 횟수 (여러 IP 합산) |
 | `active` | 참/거짓 | 지금도 잠겨있는지 |
+| `lock_type` | 글자 | `TEMPORARY`(5분 후 자동 해제) / `PERMANENT`(영구) |
+| `recoverable` | 글자 | 영구 잠금을 푸는 방법: `SELF`(본인 이메일 인증으로 해제) / `ADMIN_ONLY`(관리자만). 계정에는 IP 전용 개념인 `EXEMPTION`이 없다 |
+| `permanent_reason` | 글자 (없을 수 있음) | 영구로 올라간 이유 (`REPEAT_OFFENDER`, `ADMIN_MANUAL` 등) |
+| `promoted_at` | 날짜/시각 (없을 수 있음) | 영구 잠금으로 올라간 시각 |
+| `probation_until` | 날짜/시각 (없을 수 있음) | 이메일 복구 후 보호관찰이 끝나는 시각(기본 24시간). 그 전에 다시 잠기면 관리자 전용 영구 잠금이 된다 |
 
 ---
 
@@ -232,12 +245,12 @@ IP로 국가/도시를 알아내주는 외부 서비스(`ip-api.com`)는 분당 
 | 컬럼 | 값 종류 | 설명 |
 |---|---|---|
 | `id` | 숫자 | 이벤트 번호 |
-| `event_type` | 글자 | 어떤 종류의 이벤트인지 (예: `BRUTE_FORCE`, `BOT_DETECTED`, `WEB_SCANNING` 등) |
+| `event_type` | 글자 | 어떤 종류의 이벤트인지 (예: `BRUTE_FORCE`, `BOT_DETECTED`, `WEB_SCANNING` 등). 영구 잠금이 걸리면 `PERMANENT_LOCK`(CRITICAL), 복구 메일이 수신 거부되면 `EMAIL_UNDELIVERABLE`(MEDIUM)도 기록된다 |
 | `severity` | 글자 | 위험 등급 — `MEDIUM` / `HIGH` / `CRITICAL` |
 | `ip_address` | 글자 | 관련된 IP |
 | `path` | 글자 (없을 수 있음) | 관련된 경로 (경로와 무관한 이벤트는 비어있음) |
 | `count` | 숫자 | 이 이벤트가 지금까지 몇 번 반복됐는지 |
-| `action` | 글자 | 자동으로 취한 조치 (예: `LOCK_IP`, `REJECTED`) |
+| `action` | 글자 | 자동으로 취한 조치 (예: `LOCK_IP`, `REJECTED`, 영구 잠금은 `PERMANENT_LOCKED`) |
 | `username` | 글자 (없을 수 있음) | 계정 단위 이벤트일 때만 채워짐 |
 | `detected_at` | 날짜/시각 | 처음 탐지된 시각 |
 | `resolved_at` | 날짜/시각 (없을 수 있음) | 처리 완료된 시각. 비어있으면 아직 "미해결" 상태 |
@@ -282,6 +295,15 @@ IP로 국가/도시를 알아내주는 외부 서비스(`ip-api.com`)는 분당 
 | `role` | 글자 | 조치를 할 수 있는 역할 (`roles` 표와 연결) |
 | `action` | 글자 | 허용된 조치 (예: `unlock_ip`, `delete_user`, `manage_admin_users`, `approve_pending_action`, `resolve_incident` 등) |
 
+영구 잠금 관리용 조치 4개(guide33)는 이렇게 나뉩니다. 영구 잠금의 **완전 해제는 `super_admin`만** 할 수 있습니다.
+
+| action | 하는 일 | security_admin | super_admin |
+|---|---|:---:|:---:|
+| `promote_permanent_lock` | IP·계정을 관리자가 직접 영구 잠금 | ○ | ○ |
+| `release_permanent_lock` | 영구 잠금 완전 해제(사유 필수) | ✕ | ○ |
+| `revoke_ip_exemption` | IP 예외(본인+본인 기기 출입증) 회수 | ○ | ○ |
+| `revoke_recovery_request` | 진행 중인 이메일 복구 요청 취소 | ○ | ○ |
+
 ---
 
 ## 21. `api_access_log` — `/api/*` 요청 전체 기록 (매크로/봇 탐지용)
@@ -305,8 +327,8 @@ IP로 국가/도시를 알아내주는 외부 서비스(`ip-api.com`)는 분당 
 | 컬럼 | 값 종류 | 설명 |
 |---|---|---|
 | `request_id` | 숫자 | 요청 번호 |
-| `event_type` | 글자 | 어떤 유형의 조기 경보인지 (`BRUTE_FORCE`, `WEB_SCANNING` 등) |
-| `pending_action` | 글자 | 승인되면 실제로 실행할 조치 (`LOCK_IP` / `LOCK_ACCOUNT` / `ALERT_ONLY`) |
+| `event_type` | 글자 | 어떤 유형의 조기 경보인지 (`BRUTE_FORCE`, `WEB_SCANNING` 등). SIEM 상관분석 사건이 HIGH가 되어 영구 잠금 승인을 기다리는 건은 `SIEM_HIGH_INCIDENT` |
+| `pending_action` | 글자 | 승인되면 실제로 실행할 조치 (`LOCK_IP` / `LOCK_ACCOUNT` / `ALERT_ONLY` / `PERMANENT_LOCK_IP`(영구 잠금)) |
 | `target_kind` | 글자 | 대상이 IP인지 계정인지 (`ip` / `account`) |
 | `target_value` | 글자 | 대상이 되는 IP 주소 또는 계정 아이디 |
 | `path` | 글자 (없을 수 있음) | 관련 경로 (해당하는 유형만) |
@@ -322,10 +344,141 @@ IP로 국가/도시를 알아내주는 외부 서비스(`ip-api.com`)는 분당 
 
 ---
 
+## 23. `lock_history` — 잠금이 걸린 이력 (영구 잠금 판단의 근거)
+
+`lockouts`/`account_lockouts`는 같은 IP·계정이 다시 잠기면 같은 줄을 덮어쓰기 때문에 "최근 30일 안에 몇 번 잠겼나"를 셀 수 없습니다. 이 표는 잠금이 걸릴 때마다 **한 줄씩 추가만** 해서 그 횟수를 셉니다. (줄을 고치거나 지우지 않는 "append-only" 표입니다.)
+
+| 컬럼 | 값 종류 | 설명 |
+|---|---|---|
+| `id` | 숫자 | 이력 번호 |
+| `target_kind` / `target_value` | 글자 | 대상이 IP인지 회원 계정인지 관리자 계정인지(`ip`/`account`/`admin_account`, 관리자는 guide38)와 그 값 |
+| `lock_type` | 글자 | `TEMPORARY` / `PERMANENT` |
+| `trigger_reason` | 글자 | `THRESHOLD`(임계값 초과) / `REPEAT_OFFENDER`(반복 위반) / `SIEM_CRITICAL` / `SIEM_HIGH` / `NETWORK_IDS` / `ADMIN_MANUAL` |
+| `source_event_type` | 글자 (없을 수 있음) | 어떤 공격 유형 때문에 잠겼는지 (`BRUTE_FORCE`, `ADMIN_BRUTE_FORCE` 등) |
+| `incident_id` | 숫자 (없을 수 있음) | 연결된 연관 사건 |
+| `trigger_note` | 글자 (없을 수 있음) | 관리자 수동 승격 사유 |
+| `locked_at` | 날짜/시각 | 잠긴 시각 |
+| `released_at` / `released_by` / `release_note` | (없을 수 있음) | 풀린 시각, 푼 주체(`EMAIL_RECOVERY`, `admin:<아이디>`, `script:<이름>`), 해제 사유 |
+
+---
+
+## 24. `recovery_requests` — 이메일로 보낸 1회용 복구 링크/코드
+
+영구 잠금된 사용자가 `/recovery`에서 본인 인증을 요청하면 한 줄이 생깁니다. 토큰(링크)과 6자리 코드는 **원문이 아니라 해시(지문)만** 저장해서, DB가 유출돼도 진짜 링크는 알 수 없습니다.
+
+| 컬럼 | 값 종류 | 설명 |
+|---|---|---|
+| `id` | 숫자 | 요청 번호 |
+| `user_id` | 숫자 | 복구를 요청한 회원 (회원이 삭제되면 함께 삭제) |
+| `target_kind` / `target_value` | 글자 | 풀려는 대상 — 계정(`account`) 또는 요청한 IP(`ip`) |
+| `token_hash` | 글자 | 메일 링크 토큰의 SHA-256 해시 (중복 불가) |
+| `code_hash` | 글자 | 6자리 코드의 SHA-256 해시 |
+| `device_hash` | 글자 (없을 수 있음) | 요청한 기기 쿠키(`lw_dev`)의 해시 — IP 복구는 이 기기에서만 완료 가능 |
+| `requested_ip` | 글자 | 요청한 IP |
+| `status` | 글자 | `PENDING`(대기) → `VERIFIED`(완료) / `EXPIRED`(만료) / `REVOKED`(취소·코드 5회 실패) |
+| `code_attempts` | 숫자 | 6자리 코드를 틀린 횟수 |
+| `expires_at` / `created_at` / `verified_at` | 날짜/시각 | 만료·요청·완료 시각 (유효시간 15분) |
+
+같은 (회원, 대상)에 `PENDING`은 동시에 1건만 존재할 수 있습니다(부분 유니크 인덱스).
+
+---
+
+## 25. `ip_lock_exemptions` — IP 영구 잠금의 "본인 + 본인 기기" 출입증
+
+IP가 영구 잠금되어도, 이메일 인증을 마친 **그 회원이 그 기기로** 접속하는 경우만 통과시키는 표입니다. 같은 와이파이(NAT)를 쓰는 공격자가 피해자의 아이디를 알아도, 기기 쿠키가 없으면 계속 막힙니다.
+
+| 컬럼 | 값 종류 | 설명 |
+|---|---|---|
+| `id` | 숫자 | 예외 번호 |
+| `ip_address` | 글자 | 예외가 적용되는 IP |
+| `user_id` | 숫자 | 예외를 받은 회원 |
+| `device_hash` | 글자 | 예외를 받은 기기 쿠키의 해시 |
+| `granted_via` | 글자 | `EMAIL_RECOVERY` / `ADMIN` |
+| `status` | 글자 | `ACTIVE` → `REVOKED`(관리자 회수·연속 로그인 실패) / `EXPIRED` |
+| `granted_at` / `expires_at` | 날짜/시각 | 발급·만료 시각 (기본 30일) |
+| `revoked_reason` | 글자 (없을 수 있음) | 회수 사유 |
+
+---
+
+## 26. `admin_account_lockouts` — 관리자 계정 단위 잠금의 "현재 상태" (guide38)
+
+`account_lockouts`의 관리자 버전입니다. 회원 표를 같이 쓰면 회원 `alice`와 관리자 `alice`가 같은 줄을 쓰게 되어(아이디가 기본키) 따로 만들었습니다. IP와 무관하게 한 관리자 아이디가 15분 안에 8회를 넘게 실패하면 5분간 잠깁니다. 영구 잠금으로는 올리지 않습니다.
+
+| 컬럼 | 값 종류 | 설명 |
+|---|---|---|
+| `username` | 글자 (기본키) | 잠긴 관리자 아이디 (실제로 없는 아이디여도 똑같이 잠김 — 존재 여부를 숨기기 위해) |
+| `locked_at` | 날짜/시각 | 잠긴 시각 |
+| `unlock_at` | 날짜/시각 | 자동으로 풀릴 시각 |
+| `failure_count` | 숫자 | 잠길 때까지의 실패 횟수 |
+| `active` | 참/거짓 | 지금 잠겨 있는가 |
+
+---
+
+## 27. `email_tokens` — 이메일 인증·이메일 변경 확인·비밀번호 재설정 링크 (guide40/41)
+
+메일로 보내는 1회용 링크 한 건 한 건입니다. 영구 잠금 복구(`recovery_requests`)와 원칙은 같지만(토큰은 해시만 저장, 조건부 UPDATE로 한 번만 소비) 표를 나눴습니다 — 복구의 하루 한도·대시보드 카드·기기 쿠키·6자리 코드와 섞이지 않게 하기 위해서입니다.
+
+| 컬럼 | 값 종류 | 설명 |
+|---|---|---|
+| `id` | 숫자 | 토큰 번호 |
+| `user_id` | 숫자 | 대상 회원 (회원이 삭제되면 함께 삭제) |
+| `purpose` | 글자 | `EMAIL_VERIFY`(이메일 인증) / `EMAIL_CHANGE`(이메일 변경 확인) / `PASSWORD_RESET`(비밀번호 재설정) |
+| `email` | 글자 | 이 토큰이 확인하는 주소 — 변경이면 **새 주소**. 보낸 뒤 회원 이메일이 바뀌면 옛 링크는 무효 |
+| `token_hash` | 글자 | 링크 토큰의 SHA-256 해시 (중복 불가) |
+| `requested_ip` | 글자 | 요청한 IP (비밀번호 재설정의 IP당 한도 계산에 씀) |
+| `status` | 글자 | `PENDING`(대기) → `USED`(사용) / `EXPIRED`(만료) / `REVOKED`(취소 — 새로 요청했거나 메일 발송 실패) |
+| `expires_at` / `created_at` / `used_at` | 날짜/시각 | 만료(15분)·발급·사용 시각 |
+
+같은 (회원, 용도)에 `PENDING`은 동시에 1건만 존재할 수 있습니다(부분 유니크 인덱스) — 새로 보내면 이전 링크는 `REVOKED`가 됩니다.
+
+---
+
+## 28. `log_daily_summary` — 하루·시간대별 기록 건수 요약 (guide44/47)
+
+매일 새벽 3시(한국 시간) Supabase 예약 작업이 **어제 하루치** 원본 기록을 세어 여기에 적습니다. 원본은 보관 기간(30·90일)이 지나면 지워지지만 이 요약은 지우지 않아서, 처음 기록된 날부터 어제까지의 추이를 그래프로 그릴 수 있습니다. IP·아이디 같은 개인 정보는 남지 않고 건수만 남습니다.
+
+| 컬럼 | 값 종류 | 설명 |
+|---|---|---|
+| `day` | 날짜 | 날짜 (한국 시간 기준) |
+| `hour` | 숫자 | 시간대 0~23 (한국 시간). 예전 방식(guide44)으로 요약된 줄은 `-1`(시간 미상) |
+| `source` | 글자 | 원본 표 이름 (`login_attempts`, `not_found_attempts`, `security_events` 등) |
+| `category` | 글자 | 종류 — 로그인은 `success`/`failure`, API는 요청 방식(`GET`/`POST`), 보안 이벤트는 유형(`HTTP_FLOOD` 등), 단순 접속 기록은 `all` |
+| `count` | 숫자 | 건수 |
+
+기본키는 (`day`, `hour`, `source`, `category`)입니다. 같은 날을 다시 요약하면 더하지 않고 **덮어씁니다**.
+
+---
+
+## 29. `log_daily_breakdown` — 하루 상세 (IP 수·노린 주소·나라) (guide47)
+
+`log_daily_summary`가 "몇 건"이라면, 이 표는 "어떤 모양의 하루였는지"를 남깁니다. 공격 유형을 구분하는 데 씁니다(IP 1개·아이디 1개면 브루트포스, IP 1개·아이디 여러 개면 패스워드 스프레이, IP 여러 개·아이디 1개면 분산 공격).
+
+| 컬럼 | 값 종류 | 설명 |
+|---|---|---|
+| `day` | 날짜 | 날짜 (한국 시간) |
+| `source` | 글자 | 원본 표 이름 |
+| `dimension` | 글자 | `distinct_ips`(서로 다른 IP 수) / `failed_usernames`(로그인 실패에서 노린 서로 다른 아이디 수, 로그인 기록만) / `top_path`(많이 노린 주소 상위 5개 + 나머지 합계 `(그 외)`) / `country`(나라별 건수, 로그인 기록만) |
+| `value` | 글자 | `top_path`는 주소, `country`는 나라 이름(모르면 `알 수 없음`), 나머지는 빈칸 |
+| `count` | 숫자 | 그 값의 건수 |
+
+---
+
+## 30. `log_summary_state` — 어디까지 요약했는지 (guide47)
+
+줄이 딱 하나뿐인 표입니다(`id = 1`). 마지막으로 요약을 마친 날짜(`last_summarized_day`)를 적어 두고, 다음 날 새벽 작업이 그 다음 날부터 어제까지를 채웁니다. 하루 이틀 작업이 실패해도 다음 실행 때 빠진 날을 모두 채웁니다. 원본 삭제는 이 날짜를 넘지 않아서, **요약하지 않은 기록은 절대 지우지 않습니다**.
+
+| 컬럼 | 값 종류 | 설명 |
+|---|---|---|
+| `id` | 숫자 | 항상 1 |
+| `last_summarized_day` | 날짜 (없을 수 있음) | 마지막으로 요약한 날 |
+
+---
+
 ## 용어가 낯설다면
 
 - **참/거짓(boolean)**: "예/아니오"만 담는 값. 예를 들어 `active`가 참이면 "지금 잠겨있다", 거짓이면 "잠겨있지 않다".
 - **null(비어있음)**: 그 칸에 해당 사항이 없어서 값이 아예 안 들어간 상태. "0"이나 "빈 글자"와는 다릅니다.
 - **기본키(Primary Key)**: 그 표에서 각 줄을 서로 구별해주는 "고유한 값" — 같은 값이 두 번 나올 수 없습니다.
 - **해시(hash)**: 원래 값을 알아볼 수 없게 암호화한 값. 비밀번호를 그대로 저장하지 않고 해시로 저장하면, DB가 유출되어도 실제 비밀번호는 알 수 없습니다.
+- **pg_cron(예약 작업)**: Supabase(Postgres) 안에서 정해진 시각에 SQL을 실행하는 기능. 로그 요약·정리(28~30번)가 이걸로 매일 새벽 돈다.
 - **캐시(cache)**: 나중에 또 쓸 걸 대비해서 미리 계산/조회한 결과를 저장해두는 것 — 매번 새로 조회하는 수고를 덜어줍니다.
