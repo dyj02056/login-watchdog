@@ -182,14 +182,37 @@ npm run build   # 빌드 후 spa/ 와 public/_next/ 를 갱신
 </tr>
 </table>
 
-> 관리자 대시보드(`/admin/dashboard`) 스크린샷은 실제 접속 로그(IP·위치 등 민감 정보)가 노출되어 이 문서에는 포함하지 않았습니다.
+### 관리자 관제 화면
+
+<table>
+<tr>
+<td align="center"><b>위협 현황</b> <code>/admin/dashboard</code></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/admin_dashboard.png" width="760"></td>
+</tr>
+<tr>
+<td align="center"><b>공격 상세</b> <code>/admin/attack</code></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/admin_attack.png" width="760"></td>
+</tr>
+<tr>
+<td align="center"><b>처리 작업대</b> <code>/admin/ops</code></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/admin_ops.png" width="760"></td>
+</tr>
+</table>
+
+> 관리자 화면 스크린샷은 실제 접속 로그가 아니라 데모 서버(`scripts/demo/demo_server.py`)의 가짜 데이터로 찍었습니다. IP는 문서용 대역(RFC 5737)만 쓰므로 민감 정보가 없습니다.
 
 ## 테스트 실행
 
 ```bash
 pytest tests/
 ```
-실제 Supabase에 접속하지 않고 가짜 데이터(monkeypatch)로 판정 로직만 검증하므로 몇 초 안에 끝납니다. 현재 총 718개 테스트가 모두 통과합니다.
+실제 Supabase에 접속하지 않고 가짜 데이터(monkeypatch)로 판정 로직만 검증하므로 몇 초 안에 끝납니다. 현재 총 720개 테스트가 모두 통과합니다.
 
 ## 유지보수 스크립트
 
