@@ -1,5 +1,5 @@
 # ============================================================================
-# test_tune_thresholds.py — scripts/tune_thresholds.py(Track C guide30)가
+# test_tune_thresholds.py — scripts/management/tune_thresholds.py(Track C guide30)가
 # CRITICAL 이벤트의 조기 해제 비율을 올바르게 집계하는지 확인하는 단위 테스트
 #
 # test_unlock_ip.py와 동일한 이유로, scripts/ 폴더를 sys.path에 추가해서
@@ -10,7 +10,7 @@ import os
 import sys
 
 sys.path.insert(
-    0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
+    0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "management")
 )
 
 import config

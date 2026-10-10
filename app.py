@@ -40,6 +40,7 @@ load_dotenv()
 import config
 import db
 from helpers import get_request_ip
+from helpers import spa
 from helpers.hooks import PAGE_ACCESS_EXCLUDED_ENDPOINTS, register_request_hooks
 from notify import mailer
 from routes.admin import admin_bp
@@ -214,6 +215,9 @@ app.jinja_env.filters["kr_time"] = format_kr_time
 
 # 보안 헤더·404 기록·반복 접근/매크로 관찰 훅(helpers/hooks.py). 위의 Limiter보다 뒤에 등록해야
 # 전역 요청 한도가 관찰 훅보다 먼저 돈다(register_request_hooks 설명 참고).
+# Next.js 정적 화면 연결(helpers/spa.py) — Limiter 뒤, 관찰 훅 앞에 등록한다. web/ 빌드(spa/)가
+# 없으면 아무 일도 하지 않아 예전 Jinja 화면이 그대로 나온다.
+spa.register(app)
 register_request_hooks(app)
 
 
@@ -254,4 +258,6 @@ if __name__ == "__main__":
     # WSGI 서버로 띄워야 한다 — 예: `gunicorn app:app --bind 0.0.0.0:5000`.
     debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
     port = int(os.environ.get("PORT", 5000))
-    app.run(debug=debug, port=port)
+    # threaded=True: 요청마다 스레드를 써서 탭 여러 개가 서로를 막지 않게 한다(Flask 기본값이지만 명시).
+    # use_reloader=False: 디버그 모드여도 파일 감시로 서버가 저절로 다시 시작되지 않게 한다.
+    app.run(debug=debug, port=port, threaded=True, use_reloader=False)

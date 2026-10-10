@@ -24,7 +24,13 @@ from security import detector, soar
 # Blueprint로 분리하면서 각 라우트의 엔드포인트 이름이 "api_status"에서
 # "admin.api_status"처럼 "<블루프린트 이름>.<함수 이름>"으로 바뀌었다 — 이 집합도
 # 그 이름을 그대로 맞춰줘야 폴링 API가 계속 관찰 대상에서 제외된다.
-PAGE_ACCESS_EXCLUDED_ENDPOINTS = {"static", "admin.api_status", "board.api_board_comments_latest"}
+PAGE_ACCESS_EXCLUDED_ENDPOINTS = {
+    "static",
+    "admin.api_status",
+    "admin.api_stats",
+    "spa_session",
+    "board.api_board_comments_latest",
+}
 
 
 def set_security_headers(response):

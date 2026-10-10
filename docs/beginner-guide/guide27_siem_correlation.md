@@ -87,15 +87,15 @@ security_incidents_future = executor.submit(
 
 Track B(RBAC, guide26)는 guide26에서 1/3 단계(기본 구조)까지만 완료된 상태입니다. 이번 Track C는 Track B의 나머지 단계(예외승인/감사추적)를 기다리지 않고 독립적으로 진행했습니다 — `security_incidents`는 `admin_users`/`roles`/`permissions`와 아무 의존 관계가 없습니다.
 
-## 6. 라이브 검증에서 발견한 문제 — `scripts/unlock_ip.py`가 사건을 안 닫던 버그
+## 6. 라이브 검증에서 발견한 문제 — `scripts/management/unlock_ip.py`가 사건을 안 닫던 버그
 
-`soar.manual_release()`(대시보드 "즉시 해제" 버튼)에는 `close_open_incident_for_ip()`를 연결했지만, 터미널 전용 스크립트 [scripts/unlock_ip.py](../../scripts/unlock_ip.py)는 `soar.py`를 거치지 않고 `db.release_lockout()`/`db.resolve_security_events_for_ip()`를 직접 부르는 별도 구현이라, 이 훅이 빠져 있었습니다. 그대로 뒀다면 이 스크립트로 IP를 풀 때마다 사건이 영원히 "진행 중"으로 남는 조용한 버그가 됐을 것입니다. 실제로 로컬 서버 + 시뮬레이션 스크립트로 라이브 검증을 하던 중 이 경로를 직접 타면서 발견해서, `close_open_incident_for_ip()` 호출을 추가하고 `tests/test_unlock_ip.py`에 검증을 더했습니다.
+`soar.manual_release()`(대시보드 "즉시 해제" 버튼)에는 `close_open_incident_for_ip()`를 연결했지만, 터미널 전용 스크립트 [scripts/management/unlock_ip.py](../../scripts/management/unlock_ip.py)는 `soar.py`를 거치지 않고 `db.release_lockout()`/`db.resolve_security_events_for_ip()`를 직접 부르는 별도 구현이라, 이 훅이 빠져 있었습니다. 그대로 뒀다면 이 스크립트로 IP를 풀 때마다 사건이 영원히 "진행 중"으로 남는 조용한 버그가 됐을 것입니다. 실제로 로컬 서버 + 시뮬레이션 스크립트로 라이브 검증을 하던 중 이 경로를 직접 타면서 발견해서, `close_open_incident_for_ip()` 호출을 추가하고 `tests/test_unlock_ip.py`에 검증을 더했습니다.
 
 ## 실제로 확인한 것
 
-`pytest tests/` 전체 268개 통과(guide26 시점 253개 + 이번 추가 15개: `db/incidents.py` 관련 10개, `correlate.py` 관련 3개, `soar.py` 연동 확인 2개; `scripts/unlock_ip.py` 수정은 기존 테스트에 검증 추가). 기존 `test_soar.py`의 7개 테스트는 새로 추가된 상관분석 훅을 명시적으로 꺼둔 채(no-op으로 monkeypatch) 원래 검증하던 "잠그기 → 알리기 → 이벤트 기록" 순서를 그대로 재확인했고, 훅 자체의 동작(올바른 인자로 불리는지, 서로 다른 유형이 2개 미만이면 아무 것도 안 하는지, 병합/충돌 처리)은 새 테스트에서 별도로 확인했습니다.
+`pytest tests/` 전체 268개 통과(guide26 시점 253개 + 이번 추가 15개: `db/incidents.py` 관련 10개, `correlate.py` 관련 3개, `soar.py` 연동 확인 2개; `scripts/management/unlock_ip.py` 수정은 기존 테스트에 검증 추가). 기존 `test_soar.py`의 7개 테스트는 새로 추가된 상관분석 훅을 명시적으로 꺼둔 채(no-op으로 monkeypatch) 원래 검증하던 "잠그기 → 알리기 → 이벤트 기록" 순서를 그대로 재확인했고, 훅 자체의 동작(올바른 인자로 불리는지, 서로 다른 유형이 2개 미만이면 아무 것도 안 하는지, 병합/충돌 처리)은 새 테스트에서 별도로 확인했습니다.
 
-로컬 서버(`python app.py`) + 실제 Supabase로도 전체 흐름을 검증했습니다: `scripts/bruteforce_sim.py`(브루트포스, CRITICAL)와 `scripts/web_scanning_sim.py`(웹 스캐닝, MEDIUM)를 같은 IP(127.0.0.1)로 순서대로 실행하자 — 마침 두 스크립트 사이 트래픽으로 전역 HTTP 플러딩 방어(`HTTP_FLOOD`, HIGH)까지 함께 걸려 세 가지 서로 다른 event_type이 겹쳤고 — `security_incidents`에 `event_types: ["BRUTE_FORCE", "HTTP_FLOOD", "WEB_SCANNING"]`, `severity_max: "CRITICAL"`, `status: "OPEN"` 사건이 실제로 생성되어 관리자 대시보드 "연관 사건" 표에 나타나는 것을 확인했습니다. 이후 IP 잠금을 해제하자 같은 사건이 `status: "CLOSED"`("종료")로 자동 전환되는 것도 확인했습니다. 테스트용으로 만든 관리자 계정(`trackc_verify_tmp`)은 확인 후 삭제했습니다.
+로컬 서버(`python app.py`) + 실제 Supabase로도 전체 흐름을 검증했습니다: `scripts/simulation/critical/bruteforce_sim.py`(브루트포스, CRITICAL)와 `scripts/simulation/medium/web_scanning_sim.py`(웹 스캐닝, MEDIUM)를 같은 IP(127.0.0.1)로 순서대로 실행하자 — 마침 두 스크립트 사이 트래픽으로 전역 HTTP 플러딩 방어(`HTTP_FLOOD`, HIGH)까지 함께 걸려 세 가지 서로 다른 event_type이 겹쳤고 — `security_incidents`에 `event_types: ["BRUTE_FORCE", "HTTP_FLOOD", "WEB_SCANNING"]`, `severity_max: "CRITICAL"`, `status: "OPEN"` 사건이 실제로 생성되어 관리자 대시보드 "연관 사건" 표에 나타나는 것을 확인했습니다. 이후 IP 잠금을 해제하자 같은 사건이 `status: "CLOSED"`("종료")로 자동 전환되는 것도 확인했습니다. 테스트용으로 만든 관리자 계정(`trackc_verify_tmp`)은 확인 후 삭제했습니다.
 
 ## 이 단계에서 만들어지거나 바뀐 파일
 
@@ -110,7 +110,7 @@ Track B(RBAC, guide26)는 guide26에서 1/3 단계(기본 구조)까지만 완�
 - [public/js/dashboard/state.js](../../public/js/dashboard/state.js), [api.js](../../public/js/dashboard/api.js), [render.js](../../public/js/dashboard/render.js), [events.js](../../public/js/dashboard/events.js)
 - [public/css/dashboard.css](../../public/css/dashboard.css)
 - [README.md](../../README.md)
-- [scripts/unlock_ip.py](../../scripts/unlock_ip.py) — 라이브 검증 중 발견한 버그 수정, `close_open_incident_for_ip()` 연결
+- [scripts/management/unlock_ip.py](../../scripts/management/unlock_ip.py) — 라이브 검증 중 발견한 버그 수정, `close_open_incident_for_ip()` 연결
 - [tests/test_db.py](../../tests/test_db.py), [tests/test_soar.py](../../tests/test_soar.py), [tests/test_app.py](../../tests/test_app.py), [tests/test_unlock_ip.py](../../tests/test_unlock_ip.py), [tests/test_correlate.py](../../tests/test_correlate.py)(신규)
 
 ---
@@ -120,6 +120,6 @@ Track B(RBAC, guide26)는 guide26에서 1/3 단계(기본 구조)까지만 완�
 위 설명 중 "IP 잠금이 풀리면 `close_open_incident_for_ip()`가 사건을 자동으로 닫는다"는 부분은 더 이상 사실이 아닙니다(이 단계 당시의 기록으로 남겨둡니다).
 
 - **왜 바꿨나**: 잠금 해제는 "접속 차단을 거두는 조치"이고, 사건 해결은 "관리자가 내용을 확인하고 조사가 끝났다는 판단"입니다. 둘을 묶어두면 5분 뒤 자동 해제만으로 사건이 "종료"로 보여, 관리자가 검토하기 전에 사건이 사라진 것처럼 보였습니다. 또 잠금 없이 MEDIUM/HIGH 이벤트만으로 열린 사건이나 계정 잠금 사건은 닫을 방법이 없어 영원히 열려 있었습니다.
-- **지금 동작**: `close_open_incident_for_ip()`는 삭제됐고, 잠금 해제(`manual_release`, `try_release_expired_lockouts`, `scripts/unlock_ip.py`)는 사건을 건드리지 않습니다. 사건은 대시보드 "연관 사건" 표의 "해결" 버튼(`POST /api/security-incidents/resolve`, 권한 `resolve_incident`)으로만 `CLOSED`가 되고, 해결자(`resolved_by`)와 시각(`resolved_at`)이 기록됩니다.
+- **지금 동작**: `close_open_incident_for_ip()`는 삭제됐고, 잠금 해제(`manual_release`, `try_release_expired_lockouts`, `scripts/management/unlock_ip.py`)는 사건을 건드리지 않습니다. 사건은 대시보드 "연관 사건" 표의 "해결" 버튼(`POST /api/security-incidents/resolve`, 권한 `resolve_incident`)으로만 `CLOSED`가 되고, 해결자(`resolved_by`)와 시각(`resolved_at`)이 기록됩니다.
 - **IDLE 상태**: 열린 사건의 마지막 이벤트로부터 `INCIDENT_MERGE_IDLE_MINUTES`(기본 30분)가 지난 뒤 같은 IP에서 새 이벤트가 오면, 옛 사건은 `IDLE`("활동 없음", 아직 미해결)로 옮기고 새 사건을 엽니다. 이렇게 하지 않으면 이미 `escalated`된 옛 사건에 새 공격이 병합되어 에스컬레이션 알림이 조용히 사라질 수 있습니다. `idx_security_incidents_open_ip`는 `OPEN`에만 걸려 있어서, 옛 사건이 `IDLE`로 빠져야 새 `OPEN` 사건을 만들 수 있습니다.
 - **DB 변경**: `docs/schema.sql` 맨 아래의 "사건 해결을 잠금 해제와 분리" 블록(상태 제약에 `IDLE` 추가, `resolved_at`/`resolved_by` 컬럼, `resolve_incident` 권한)을 Supabase에서 먼저 실행해야 합니다.

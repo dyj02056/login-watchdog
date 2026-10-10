@@ -1,0 +1,121 @@
+/*
+  Panel — 관제 보드의 기본 칸. 얇은 선 + 모서리 두 곳의 L자 표시(왼쪽 위·오른쪽 아래)로
+  "계기판" 느낌을 낸다. 배경은 바탕보다 한 단계만 밝다.
+*/
+.panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-2) 80%, transparent), color-mix(in srgb, var(--bg-1) 92%, transparent));
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+}
+
+.panel::before,
+.panel::after {
+  content: "";
+  position: absolute;
+  width: 0.7rem;
+  height: 0.7rem;
+  border: 0 solid var(--cyan);
+  pointer-events: none;
+}
+.panel::before {
+  top: -1px;
+  left: -1px;
+  border-top-width: 2px;
+  border-left-width: 2px;
+}
+.panel::after {
+  right: -1px;
+  bottom: -1px;
+  border-right-width: 2px;
+  border-bottom-width: 2px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  min-height: 2.5rem;
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-base);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--ink-0);
+  text-wrap: balance;
+}
+.title::before {
+  content: "";
+  flex: none;
+  width: 0.3125rem;
+  height: 0.3125rem;
+  background: var(--signal);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  color: var(--ink-1);
+  font-size: var(--fs-xs);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  padding: var(--s-3);
+}
+.bodyFlush {
+  flex: 1;
+  min-height: 0;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-xs);
+  color: var(--ink-1);
+}
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.swatch,
+.swatchDashed {
+  flex: none;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 1px;
+  background: var(--tone, var(--cyan));
+}
+.swatchDashed {
+  height: 0;
+  width: 0.875rem;
+  border-top: 2px dashed var(--tone, var(--cyan));
+  background: none;
+}
+
+.today { --tone: var(--series-today); }
+.yesterday { --tone: var(--series-yesterday); }
+.week { --tone: var(--series-week); }
+.cyan { --tone: var(--cyan); }
+.critical { --tone: var(--sev-critical); }
+.high { --tone: var(--sev-high); }
+.medium { --tone: var(--sev-medium); }
+.ok { --tone: var(--ok); }

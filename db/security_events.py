@@ -69,7 +69,7 @@ def list_resolved_critical_events_since(hours: int) -> list[dict]:
     CRITICAL 이벤트 전체를 가져온다 (Track C guide30, 임계값 튜닝 리포트).
 
     list_attempts_since()와 동일한 "기준 시각 이후만" 패턴이다.
-    scripts/tune_thresholds.py가 각 이벤트의 detected_at~resolved_at 간격을
+    scripts/management/tune_thresholds.py가 각 이벤트의 detected_at~resolved_at 간격을
     계산해서, config.LOCKOUT_DURATION_SECONDS(자동 만료 시간)보다 훨씬 빨리
     수동으로 풀린 이벤트가 얼마나 되는지("오탐 후보") 집계할 때 쓴다. 아직
     안 풀린(resolved_at이 비어있는) 이벤트는 간격을 계산할 수 없으므로 제외한다.
@@ -194,7 +194,7 @@ def update_security_event_count(event_id: int, count: int) -> None:
 def count_security_events() -> dict:
     """보안 이벤트 총 건수와 처리완료/미해결 건수를 나눠서 센다.
 
-    scripts/delete_security_events.py가 아무 옵션 없이 실행됐을 때(=삭제하지
+    scripts/management/delete_security_events.py가 아무 옵션 없이 실행됐을 때(=삭제하지
     않고 조회만 할 때) 지금 표에 뭐가 얼마나 쌓여있는지 보여주는 용도다.
     """
     total = db.get_client().table("security_events").select("id", count="exact").execute().count or 0
@@ -215,7 +215,7 @@ def delete_security_event(event_id: int) -> bool:
 
     resolve_security_event()와 달리 행 자체를 지우므로 되돌릴 수 없다 — 대시보드
     화면(관리자가 실수로 누르기 쉬운 곳)에는 이 기능을 두지 않고, 터미널에서만
-    실행하는 scripts/delete_security_events.py 전용으로 db 계층에만 만들어둔다.
+    실행하는 scripts/management/delete_security_events.py 전용으로 db 계층에만 만들어둔다.
     """
     res = db.get_client().table("security_events").delete().eq("id", event_id).execute()
     return bool(res.data)
@@ -242,7 +242,7 @@ def delete_resolved_security_events() -> int:
 def delete_all_security_events() -> int:
     """보안 이벤트 표 전체(미해결 포함)를 영구 삭제하고, 삭제된 건수를 돌려준다.
 
-    scripts/delete_security_events.py의 --all 전용 — 미해결 이벤트까지 지우므로
+    scripts/management/delete_security_events.py의 --all 전용 — 미해결 이벤트까지 지우므로
     가장 위험한 삭제다. id는 항상 1 이상이므로 .neq("id", 0)은 "전부"를
     뜻하는 필터다(PostgREST는 delete에 필터가 최소 하나 있어야 한다).
     """

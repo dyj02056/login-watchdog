@@ -57,7 +57,7 @@ VPN이 연결된 상태를 유지한 채로, 프로젝트 폴더에서 가상환
 `login-watchdog.vercel.app`이 아님)를 사용한다.
 
 ```bash
-python scripts/bruteforce_sim.py --host https://<브랜치-프리뷰-주소>.vercel.app --username test1 --i-know-what-im-doing
+python scripts/simulation/critical/bruteforce_sim.py --host https://<브랜치-프리뷰-주소>.vercel.app --username test1 --i-know-what-im-doing
 ```
 
 - `--i-know-what-im-doing`: 로컬(127.0.0.1)이 아닌 주소를 대상으로 실행하려면 반드시 필요한
@@ -103,7 +103,7 @@ python scripts/bruteforce_sim.py --host https://<브랜치-프리뷰-주소>.ver
 데모가 끝나면 테스트로 잠긴 IP를 풀어준다.
 
 ```bash
-python scripts/unlock_ip.py --all   # 활성 잠금 전부 즉시 해제
+python scripts/management/unlock_ip.py --all   # 활성 잠금 전부 즉시 해제
 ```
 
 ---

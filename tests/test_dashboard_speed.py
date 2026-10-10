@@ -180,3 +180,25 @@ def test_stale_responses_never_overwrite_newer_screens():
     assert api.count("if (requestId !== latestStatusRequest)") == 2
     assert api.count("if (requestId !== latestSectionRequest[name])") == 2
     assert "sectionEpoch[name] === epochAtSend[name]" in api   # 전체 갱신이 넘긴 표를 되돌리지 않는다
+
+
+def test_status_and_stats_are_shared_between_tabs_within_the_cache_window(flask_app, monkeypatch):
+    # 탭 여러 개가 같은 조회를 따로 보내지 않는다: 보관 시간 안에는 DB 조회가 한 번이다. 처리 요청(POST)이 끝나면 바로 비워진다.
+    import config
+    from db import stats as db_stats
+    from routes.admin import status as admin_status
+
+    monkeypatch.setattr(config, "ADMIN_STATS_CACHE_SECONDS", 60)
+    db_stats._cache.update(at=None, key=None, value=None)
+    calls = []
+    monkeypatch.setattr(db_stats, "_compute", lambda locks, pending: calls.append(1) or {"kpi": {}})
+    for _ in range(3):
+        db_stats.get_threat_stats(1, 2)
+    assert len(calls) == 1
+    db_stats.get_threat_stats(5, 2)  # 잠금 수가 바뀌면 새로 계산한다
+    assert len(calls) == 2
+
+    admin_status._status_cache["k"] = (0, {})
+    with flask_app.test_request_context("/api/unlock", method="POST"):
+        admin_status._clear_status_cache_after_change(flask_app.response_class())
+    assert admin_status._status_cache == {}

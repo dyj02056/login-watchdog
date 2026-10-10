@@ -122,7 +122,7 @@ def index():
 
 ```bash
 # 배포 전: 같은 메일 설정으로 테스트 메일 한 통 보내기
-python scripts/send_test_mail.py --to 내이메일@gmail.com
+python scripts/management/send_test_mail.py --to 내이메일@gmail.com
 ```
 
 - 배포 후 Vercel 런타임 로그에 `[mailer] 경고:`가 없는지 확인합니다(운영에서 메일 설정이 비어 있으면 서버 시작 시 찍힘).

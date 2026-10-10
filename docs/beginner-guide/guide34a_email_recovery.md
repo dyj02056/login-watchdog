@@ -100,7 +100,7 @@ Mailpit은 개발용이라 실제 주소로는 메일이 가지 않습니다. �
 
 ```bash
 # .env(또는 환경변수)에 위 값을 넣고, 내 메일로 테스트 메일 한 통 보내기
-python scripts/send_test_mail.py --to 내이메일@gmail.com
+python scripts/management/send_test_mail.py --to 내이메일@gmail.com
 ```
 
 - 성공하면 수신함(스팸함 포함)에 "메일 발송 테스트"가 옵니다. 실패하면 원인(`CONFIG`/`AUTH`/`CONNECT`/`OTHER`)과 고칠 곳을 알려줍니다.
@@ -130,5 +130,5 @@ python scripts/send_test_mail.py --to 내이메일@gmail.com
 
 ## 이 단계에서 만들어지거나 바뀐 파일
 
-- 신규: [scripts/send_test_mail.py](../../scripts/send_test_mail.py)(메일 설정 점검), [mailer.py](../../notify/mailer.py)(`SENT`/`REFUSED`/`FAILED` 반환, 실패 원인 분류·Slack 알림), [routes/recovery.py](../../routes/recovery.py), [db/recovery.py](../../db/recovery.py), [templates/recovery_request.html](../../templates/recovery_request.html), [recovery_verify.html](../../templates/recovery_verify.html), [recovery_done.html](../../templates/recovery_done.html), [docker-compose.mailpit.yml](../../docker-compose.mailpit.yml), [tests/test_recovery.py](../../tests/test_recovery.py)
+- 신규: [scripts/management/send_test_mail.py](../../scripts/management/send_test_mail.py)(메일 설정 점검), [mailer.py](../../notify/mailer.py)(`SENT`/`REFUSED`/`FAILED` 반환, 실패 원인 분류·Slack 알림), [routes/recovery.py](../../routes/recovery.py), [db/recovery.py](../../db/recovery.py), [templates/recovery_request.html](../../templates/recovery_request.html), [recovery_verify.html](../../templates/recovery_verify.html), [recovery_done.html](../../templates/recovery_done.html), [docker-compose.mailpit.yml](../../docker-compose.mailpit.yml), [tests/test_recovery.py](../../tests/test_recovery.py)
 - 수정: [lockdown.py](../../security/lockdown.py)(`apply_recovery`), [helpers.py](../../helpers/)(기기 쿠키·해시 헬퍼), [routes/auth.py](../../routes/auth.py)(예외 통과·회수·가입 거부), [routes/admin.py](../../routes/admin/), [templates/login_form.html](../../templates/login_form.html), [config.py](../../config.py), [.env.example](../../.env.example), [app.py](../../app.py)(Blueprint 등록)

@@ -1,0 +1,117 @@
+.page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--s-6) var(--s-4);
+  background:
+    radial-gradient(90% 70% at 50% 0%, color-mix(in srgb, var(--bg-3) 65%, transparent), transparent 70%),
+    var(--bg-0);
+}
+
+.stack {
+  display: grid;
+  justify-items: center;
+  gap: var(--s-5);
+  width: min(26rem, 100%);
+}
+
+.logo {
+  display: grid;
+  justify-items: center;
+  gap: var(--s-2);
+}
+
+.mark {
+  width: 2.75rem;
+  height: 2.75rem;
+  fill: none;
+  stroke: var(--cyan);
+  stroke-width: 1.75;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.mark path:last-child {
+  stroke: var(--signal);
+  stroke-width: 2.25;
+}
+
+.name {
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--signal);
+}
+
+.card {
+  position: relative;
+  display: grid;
+  gap: var(--s-4);
+  width: 100%;
+  padding: var(--s-5);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-2) 82%, transparent), color-mix(in srgb, var(--bg-1) 94%, transparent));
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+}
+.card::before,
+.card::after {
+  content: "";
+  position: absolute;
+  width: 0.7rem;
+  height: 0.7rem;
+  border: 0 solid var(--cyan);
+  pointer-events: none;
+}
+.card::before {
+  top: -1px;
+  left: -1px;
+  border-top-width: 2px;
+  border-left-width: 2px;
+}
+.card::after {
+  right: -1px;
+  bottom: -1px;
+  border-right-width: 2px;
+  border-bottom-width: 2px;
+}
+
+.title {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+.lead {
+  max-width: 52ch;
+  font-size: var(--fs-sm);
+  line-height: 1.65;
+  color: var(--ink-1);
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-sm);
+}
+
+/* 확인 화면에서 "무엇을 하려는지" 한눈에 보여주는 정의 목록 */
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--s-1) var(--s-3);
+  margin: 0;
+  padding: var(--s-3);
+  font-size: var(--fs-sm);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+}
+.facts dt {
+  color: var(--ink-2);
+}
+.facts dd {
+  margin: 0;
+  color: var(--ink-0);
+}

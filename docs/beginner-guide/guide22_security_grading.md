@@ -163,7 +163,7 @@ HIGH/MEDIUM용으로는 새 API(`POST /api/security-events/resolve`)와 `db.reso
 등급별로 배지 색을 다르게 표시하기 위해 `public/css/tokens.css`에 HIGH용 `--warning`/`--warning-soft` 색상 토큰을 새로 추가했습니다(CRITICAL은 기존 `--danger`, MEDIUM은 기존 `--accent` 재사용). "처리 완료" 버튼은 `resolved_at`이 비어있고 CRITICAL이 아닌 행에만 나타나고, CRITICAL 미해결 행에는 대신 "자동 해제 대기" 문구가 뜹니다(4번 항목 참고).
 
 ### 실제로 확인한 것
-로컬 서버를 띄워 관리자로 로그인한 뒤, 브루트포스 시뮬레이션(`scripts/bruteforce_sim.py`)과 `/signup` 반복 요청으로 실제 이벤트를 발생시켜 표에 정확한 등급 배지·유형·상태가 뜨는지, "처리 완료" 버튼이 실제로 동작하는지 직접 확인했습니다(3·4번 항목 참고). 서버 로그·브라우저 콘솔에 관련 에러가 없는 것도 확인했습니다.
+로컬 서버를 띄워 관리자로 로그인한 뒤, 브루트포스 시뮬레이션(`scripts/simulation/critical/bruteforce_sim.py`)과 `/signup` 반복 요청으로 실제 이벤트를 발생시켜 표에 정확한 등급 배지·유형·상태가 뜨는지, "처리 완료" 버튼이 실제로 동작하는지 직접 확인했습니다(3·4번 항목 참고). 서버 로그·브라우저 콘솔에 관련 에러가 없는 것도 확인했습니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
 - [templates/admin_dashboard.html](../../templates/admin_dashboard.html) ("보안 이벤트" 섹션 추가)

@@ -1,5 +1,7 @@
 # 로그인 워치독 — 구현 전 리서치 노트
 
+> **읽기 전에**: 이 문서는 2026-09-02 분석 시점의 기록입니다. 이후 리팩터링으로 파일 위치가 바뀌었습니다 — `soar.py`→`security/soar/`, `detector.py`·`correlate.py`·`lockdown.py`→`security/`, `alert.py`·`mailer.py`→`notify/`, `geoip.py`·`llm_client.py`·`email_verification.py`→`services/`, `routes/admin.py`→`routes/admin/`, `helpers.py`→`helpers/`, `scripts/*.py`→`scripts/{simulation,management,demo}/`. 코드 링크는 지금 위치로 고쳐 두었고, 현재 구조는 [README의 "프로젝트 구조"](README.md#프로젝트-구조)를 참고하세요.
+
 > 작성일: 2026-09-02
 > 근거 문서:
 > - `login_watchdog_supabase.md` (종합 기획서)
@@ -88,7 +90,7 @@
 - 표시 항목: 실시간 로그 테이블, 실패 횟수 카드, 잠금 상태, 즉시 해제 버튼
 - 스트레치: Supabase Realtime 구독으로 폴링 대체 가능(선택사항)
 
-### 공격 시뮬레이션 (스트레치, `scripts/bruteforce_sim.py`)
+### 공격 시뮬레이션 (스트레치, `scripts/simulation/critical/bruteforce_sim.py`)
 - `http://127.0.0.1:5000/login`에만 POST 요청 5회 순차 전송 후, 6번째 요청으로 "잠긴 계정" 문구가 응답에 포함되는지 검증
 - 원칙: 팀이 소유한 로컬 서버만 대상으로 하며, 실제 서비스/타인 계정에는 절대 사용 금지 (문서에 명시된 안전 원칙)
 
@@ -110,8 +112,8 @@
 | `templates/dashboard.html` | 대시보드 화면 | D | Flask 규칙상 폴더명 고정 |
 | `static/css/dashboard.css` | 대시보드 스타일 | D | |
 | `static/js/dashboard.js` | 2~3초 폴링 갱신 로직 | D | |
-| `scripts/bruteforce_sim.py` | 공격 시뮬레이션(선택) | A·B | 예시 코드 10장/07장에 전체 구현 존재 |
-| `scripts/daily_report.py` | AI 로그 요약 리포트(선택) | C | LLM 프롬프트 연동, 세부 사양 없음 |
+| `scripts/simulation/critical/bruteforce_sim.py` | 공격 시뮬레이션(선택) | A·B | 예시 코드 10장/07장에 전체 구현 존재 |
+| `scripts/management/daily_report.py` | AI 로그 요약 리포트(선택) | C | LLM 프롬프트 연동, 세부 사양 없음 |
 | `docs/architecture.png`, `demo.gif`, `before-after.png`, `scenario.md` | 발표/README용 시각자료 | D | |
 | `README.md` | 프로젝트 소개 | D | |
 
