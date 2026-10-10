@@ -48,6 +48,15 @@ web/ (Next.js 소스)  ──npm run build──▶  spa/*.html          화면 
 | `/dashboard` `/dashboard/history` `/dashboard/profile` | 회원 | 기존 라우트 |
 | `/board` `/board/new` `/board/<id>` `/board/<id>/edit` | 게시판 | 기존 라우트 |
 | `/recovery` `/recovery/verify` `/password/forgot` `/password/reset` `/email/confirm` | 복구 흐름 | 기존 라우트 |
+| (존재하지 않는 모든 주소) | **404 화면** — `web/src/app/not-found.tsx`(`AuthLayout` 재사용, 로그인·회원가입 링크) | `handle_not_found`가 `spa/404.html`을 404 상태로 응답 |
+
+**404 화면.** 예전에는 존재하지 않는 주소를 열면 스타일 없는 Flask 기본 영어 화면이 나왔다. 이제 `helpers/hooks.py`의 `handle_not_found`가 404를 **기록·탐지한 뒤**(이 부분은 그대로) `helpers/spa.py`의 `not_found_page()`로 `spa/404.html`을 **404 상태 그대로** 내려준다. 껍데기와 같은 방식으로 인라인 스크립트의 CSP 해시를 붙인다. 화면은 정적이라 로그인 여부를 모르므로 로그인·회원가입 링크만 둔다. 다음 경우에는 기존 응답을 그대로 쓴다.
+
+- 어댑터 요청(`X-Requested-With: login-watchdog-spa`) — 기존대로 `{"status": 404, "messages": [...]}` JSON
+- `/api/` 경로, HTML을 받지 않는 요청(`Accept: application/json` 등), GET·HEAD가 아닌 요청 — Flask 기본 404
+- `spa/404.html`이 없거나 `SPA_ENABLED=false` — Flask 기본 404
+
+`web/scripts/postbuild.mjs`는 `404.html`을 `spa/`로 옮기고(`_not-found.html`은 같은 내용의 중복이라 건너뜀), 다른 화면과 똑같이 인라인 `style`·`<style>`이 없는지 검사한다. 그래서 404 화면도 CSS 모듈·공용 클래스만 써야 한다. 테스트는 `tests/test_spa.py`의 "404 화면" 묶음이다.
 
 차트에 쓰는 집계는 `db/stats.py`가 만든다. 새 표나 마이그레이션 없이 기존 표(`security_events`, `login_attempts`, `log_daily_summary` 등)에서 계산한다. 계산 부분(`build_threat_stats`)은 DB 없이 테스트할 수 있다(`tests/test_stats.py`).
 
@@ -73,6 +82,23 @@ npm run build       # 정적 빌드 + spa/, public/_next/ 갱신
 - 숫자·IP·시각은 `JetBrains Mono`(자릿수 고정), 본문은 `Noto Sans KR`.
 - 위험 등급은 색과 함께 글자(critical·high·medium)를 쓴다 — 색만으로 구분하지 않는다.
 - 탭이 숨겨지면 폴링을 멈춘다(`web/src/lib/usePolling.ts`, 45단계의 규칙 그대로).
+
+## 시각 표시와 표·차트 레이아웃 규칙
+
+시각이 시:분:초만 나오면 며칠에 걸친 기록(잠금 해제 예정, 연관 사건 등)을 읽을 수 없어서, 처리 작업대(`/admin/ops`)와 공격 상세의 표는 모두 **날짜가 붙은 시각**을 쓴다. 변환 함수는 `web/src/lib/format.ts`에 모여 있고, 모든 시각은 한국 시간(KST)이다.
+
+| 함수 | 결과 | 쓰는 곳 |
+|---|---|---|
+| `formatDateTime(값)` | `2026-10-09 15:30:12` | 칸이 넉넉한 표(가로 전체를 쓰고 컬럼이 적은 표): 등록된 회원 가입 시각, 관리자 계정 생성 시각, AI 조기 경보 요청 시각, 관리자 로그인 기록, 영구 잠금·복구 요청·IP 예외 |
+| `formatShortDateTime(값, true)` | `10-09 15:30:12` | 초까지 필요한 기록: 최근 로그인 시도, 보안 이벤트(처리 작업대·공격 상세), 연관 사건의 해결 시각 |
+| `formatShortDateTime(값)` | `10-09 15:30` | 좁은 표(처리 작업대에서 화면 절반만 쓰는 표, 시각 컬럼이 둘인 표): 해제 예정, 게시글·댓글 작성 시각, 연관 사건의 시작·마지막 활동 |
+| `formatTime(값)` | `15:30:12` | 갱신 직후 안내처럼 날짜가 필요 없는 곳(위협 현황의 "갱신 실패" 문구) |
+
+- 처리 작업대는 2열 격자(`ops.module.css`의 `.cols`, `.wide`는 전체 폭)다. 새 표를 만들 때는 **절반 폭이면 줄임 형식, 전체 폭이고 컬럼이 적으면 전체 형식**을 고른다. 표 칸은 줄바꿈하지 않으므로(`nowrap`) 칸이 모자라면 표가 옆으로 스크롤된다.
+- 흐름도(Sankey, `FlowChart`)는 노드(공격 유형)가 10여 개라 라벨 줄 간격이 나오려면 높이가 필요하다. 그래서 위협 현황 흐름도·히트맵과 공격 상세 국가 흐름도 칸은 26rem(모바일 흐름도는 40rem)이고, 노드 간격 14, 라벨 12px로 맞췄다. 라벨이 겹치면 작은 노드의 라벨을 숨긴다(`labelLayout.hideOverlap`) — 값은 가리키면 툴팁으로 본다.
+- 차트는 칸 너비를 받아서(`build(theme, { width, height })`) 좁으면 모양을 바꾼다. 일별 로그량 막대는 480px 미만에서 요일 없이 월/일만 보여주고, 경로 도넛은 480px 미만에서 도넛을 줄이고 라벨 폭을 칸에 맞춘다(고정 폭이면 오른쪽 라벨이 잘린다).
+- `성공`·`실패`처럼 짧은 칸은 `white-space: nowrap`을 줘서 좁은 화면에서 글자 단위로 세로로 쪼개지지 않게 한다(`member.module.css`의 `.nowrap`).
+- 화면을 고친 뒤에는 `demo_server.py`로 1440·1100·768·390px 너비에서 겹침·잘림·가로 스크롤을 확인한다. 관리자 3개 화면, 회원 화면(`/__demo_member`), 인증 화면을 모두 본다.
 
 ## 배포 (Vercel)
 

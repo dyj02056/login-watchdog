@@ -23,6 +23,9 @@
 #    이 헤더는 다른 사이트가 보낼 수 없다(브라우저가 사전 검사 없이는 교차 출처 요청에
 #    임의 헤더를 붙이지 못한다) — CSRF 토큰 검사와는 별개의 보조 방어선이다.
 #
+# 3) 404 화면 — 존재하지 않는 주소를 브라우저가 열면 not_found_page()가 spa/404.html을 404 상태로 내려준다
+#    (helpers/hooks.py의 handle_not_found가 기록·탐지를 끝낸 뒤 부른다).
+#
 # web/out(Next 정적 빌드)이 없으면 아무것도 바꾸지 않는다 → 예전 Jinja 화면 그대로 동작한다.
 # ============================================================================
 
@@ -166,6 +169,26 @@ def serve_shell():
     response = send_file(html_path, mimetype="text/html", max_age=0)
     response.headers["Cache-Control"] = "no-store"
     response.headers["X-Spa-Shell"] = filename
+    response.headers["X-Spa-Script-Hashes"] = " ".join(inline_script_hashes(html_path))
+    return response
+
+
+def not_found_page() -> Response | None:
+    """handle_not_found(helpers/hooks.py)가 부른다 — 브라우저가 존재하지 않는 주소를 직접 열면
+    기본 영어 404 대신 스타일 있는 화면(spa/404.html)을 404 상태로 내려준다.
+
+    어댑터 요청(JSON 응답), /api/ 경로, HTML을 받지 않는 요청, GET·HEAD가 아닌 요청은 건드리지 않는다
+    (None을 돌려주면 호출부가 기존 404 응답을 그대로 쓴다). 404 기록·탐지는 호출부가 이미 끝낸 뒤다.
+    """
+    if request.method not in ("GET", "HEAD") or is_spa_request() or not is_enabled():
+        return None
+    if request.path.startswith("/api/") or not request.accept_mimetypes.accept_html:
+        return None
+    html_path = SPA_DIR / "404.html"
+    if not html_path.is_file():
+        return None
+    response = Response(html_path.read_bytes(), status=404, mimetype="text/html")
+    response.headers["Cache-Control"] = "no-store"
     response.headers["X-Spa-Script-Hashes"] = " ".join(inline_script_hashes(html_path))
     return response
 
