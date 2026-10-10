@@ -34,6 +34,15 @@ export function formatTime(value: string | null | undefined): string {
   return date ? time.format(date) : "-";
 }
 
+/** 좁은 표용: 10-09 15:30 (초까지 필요하면 withSeconds → 10-09 15:30:12) */
+export function formatShortDateTime(value: string | null | undefined, withSeconds = false): string {
+  const date = toDate(value);
+  if (!date) return "-";
+  // sv-SE 형식 "2026-10-09 15:30:12"에서 연도(앞 5자)와 필요 없는 초(뒤 3자)를 자른다
+  const text = dateTime.format(date).slice(5);
+  return withSeconds ? text : text.slice(0, -3);
+}
+
 // sv-SE는 월/일만 뽑으면 "09/10"(일/월)로 나오는 환경이 있어서, 부분을 직접 집어 월/일 순서로 조립한다.
 function monthSlashDay(date: Date): string {
   const parts = monthDay.formatToParts(date);

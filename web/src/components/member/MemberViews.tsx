@@ -90,7 +90,7 @@ export function MemberHistory() {
                 <th scope="col">시각</th>
                 <th scope="col">IP</th>
                 <th scope="col">위치</th>
-                <th scope="col">결과</th>
+                <th scope="col" className={styles.nowrap}>결과</th>
               </tr>
             </thead>
             <tbody>
@@ -99,7 +99,7 @@ export function MemberHistory() {
                   <td className="num">{formatDateTime(attempt.attempted_at)}</td>
                   <td className="num">{attempt.ip_address}</td>
                   <td>{attempt.location ?? "-"}</td>
-                  <td>{attempt.success ? "성공" : "실패"}</td>
+                  <td className={styles.nowrap}>{attempt.success ? "성공" : "실패"}</td>
                 </tr>
               ))}
             </tbody>
