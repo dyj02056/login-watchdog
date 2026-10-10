@@ -74,11 +74,13 @@
 
 | 파일 | 줄 | 판정 |
 |---|---:|---|
-| `password_spraying_sim.py` 511, `spam_sim.py` 475, `repeated_access_sim.py` 361, `signup_abuse_sim.py` 312, `unauthorized_access_sim.py` 255, `bruteforce_sim.py` 205 | | **중복 추출**: `is_local_host`, `fetch_csrf_token`, `CsrfTokenParser`가 최대 6개 파일에 반복 → `scripts/_sim_common.py` |
+| `password_spraying_sim.py` 511, `spam_sim.py` 475, `repeated_access_sim.py` 361, `signup_abuse_sim.py` 312, `unauthorized_access_sim.py` 255, `bruteforce_sim.py` 205 | | **중복 추출**: `is_local_host`, `fetch_csrf_token`, `CsrfTokenParser`가 최대 6개 파일에 반복 → `scripts/simulation/_sim_common.py` |
 | `daily_report.py` 275, `unlock_account.py` 218 | | 유지 |
 
-`scripts/` 안의 파일 **위치는 바꾸지 않는다** — `docs/beginner-guide/` 20개 이상 문서가
-`python scripts/xxx.py` 경로를 안내하고 있다.
+이 계획을 세울 때는 `scripts/` 안의 파일 **위치를 바꾸지 않기로** 했다 — `docs/beginner-guide/` 20개 이상 문서가
+`python scripts/xxx.py` 경로를 안내하고 있었기 때문이다. 이후 `scripts/`를 `simulation/`·`management/`·`demo/`로
+나누면서(아래 "후속 작업") 문서의 경로도 함께 고쳤다. 이 문서의 표에 적힌 `scripts/simulation/_sim_common.py` 등은
+**지금 위치**로 적은 것이다(계획 당시에는 `scripts/_sim_common.py`).
 
 ### 1-5. 프론트엔드
 
@@ -252,7 +254,7 @@ from notify import alert
 | 3c | `security/` 만들고 `detector`, `correlate`, `lockdown` 이동 | 중 | ~35줄 |
 | 3d | `soar.py` → `security/soar/` 쪼개기 | 중 | ~23줄 |
 | 4 | JS `render.js` / `api.js` 분할 | 낮음 | `events.js` 1줄 |
-| 5 | `scripts/_sim_common.py` 추출 | 낮음 | sim 파일들 |
+| 5 | `scripts/simulation/_sim_common.py` 추출 | 낮음 | sim 파일들 |
 | 6 (선택) | `db/recovery.py`, `db/security_events.py` 분할, `app.py` 훅 분리, 대시보드 템플릿 include | 낮음 | 없음 |
 
 각 단계 후 문서도 같이 고친다: 파일 머리 주석의 경로, `README.md`의 구조 설명,
@@ -281,7 +283,7 @@ from notify import alert
 | 3a~c | `notify/`, `services/`, `security/`로 이동, import 줄 일괄 변경 | 693 passed |
 | 3d | `security/soar/` 4개 파일(lockouts 213 / early_warning 175 / observe 106 / _events 33줄) | 693 passed |
 | 4 | `render.js` → `render/` 3개 + 재내보내기, `api.js` → `api.js`(조회 179) + `actions.js`(변경 336). `test_every_action_request_marks_its_button_busy`가 `actions.js`를 읽도록 변경. 브라우저에서 모듈 import와 render 함수 14개 실행 확인 | 693 passed |
-| 5 | `scripts/_sim_common.py` (`is_local_host` 4곳, CSRF 추출기 2곳) | 693 passed |
+| 5 | `scripts/simulation/_sim_common.py` (`is_local_host` 4곳, CSRF 추출기 2곳) | 693 passed |
 | 6 | `db/access_logs.py`, `db/ip_exemptions.py` 분리 / `app.py` 훅 → `helpers/hooks.py` (397 → 255줄) / 대시보드 템플릿 → `templates/admin_dashboard/` 조각 3개 | 693 passed |
 
 ### 계획과 달라진 점
@@ -302,6 +304,23 @@ from notify import alert
 
 - 경로 언급 치환 정규식에서 ``가 한글을 단어 문자로 봐서 `soar.py가` 같은 주석이 안 바뀌었다 —
   ASCII 경계(`(?![A-Za-z0-9_])`)로 바꿔 다시 처리했다.
-- `scripts/signup_abuse_sim.py`는 argparse를 쓰지 않아서 `--help`를 줘도 실제로 실행된다(로컬 서버에 가입 요청 3회).
+- `scripts/simulation/high/signup_abuse_sim.py`는 argparse를 쓰지 않아서 `--help`를 줘도 실제로 실행된다(로컬 서버에 가입 요청 3회).
   이번 작업과 무관한 기존 동작이다.
 - `tests/test_app.py`의 `geoip`, `tests/test_recovery.py`의 `lockdown` import는 작업 전부터 쓰이지 않던 것이라 그대로 뒀다.
+
+## 후속 작업 — `scripts/` 용도별 폴더 분리 (2026-10-09, 같은 날 이어서)
+
+모듈 분리 뒤에도 `scripts/` 바로 아래에 공격 시뮬레이터와 운영 도구가 섞여 20개 가까이 있어, 용도별 폴더로 나눴다.
+파일 내용은 그대로이고 위치와 `sys.path` 계산(한 단계 깊어진 만큼 `parent`를 늘림)만 바꿨다. 배경과 새 시뮬레이터는
+[guide49_scripts_reorganization.md](../beginner-guide/guide49_scripts_reorganization.md)에 정리했다.
+
+| 폴더 | 들어 있는 것 |
+|---|---|
+| `scripts/simulation/` | 공통 부품 `_sim_common.py` + 위험등급별 `critical/`·`high/`·`medium/` 시뮬레이터 |
+| `scripts/management/` | `create_admin`, `daily_report`, `delete_security_events`, `send_test_mail`, `tune_thresholds`, `unlock_account`, `unlock_ip` |
+| `scripts/demo/` | `demo_server.py`, `check_simulations.py`, `memory_supabase.py` |
+
+- 문서(README, `docs/` 전체, `plan.md`, `research.md`)의 `scripts/xxx.py` 경로를 새 경로로 치환했다.
+  치환 뒤 문서 안 상대 링크가 모두 실제 파일을 가리키는지 확인했다.
+- 테스트(`test_unlock_ip`, `test_unlock_permanent`, `test_tune_thresholds`, `test_send_test_mail`, `test_password_spraying_sim`,
+  `test_admin_account_lockout`)는 새 위치에서 스크립트를 가져오도록 고쳤다.

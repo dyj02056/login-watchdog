@@ -26,7 +26,7 @@ from tests.admin_session import login_admin_session, stub_admin_role
 from tests.test_app import get_csrf_token  # noqa: E402
 
 sys.path.insert(
-    0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
+    0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "management")
 )
 import unlock_account  # noqa: E402
 
@@ -378,7 +378,7 @@ def test_api_status_includes_active_admin_account_lockouts(client, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# CLI: scripts/unlock_account.py --admin
+# CLI: scripts/management/unlock_account.py --admin
 # ---------------------------------------------------------------------------
 
 def test_cli_admin_unlocks_through_soar(monkeypatch, capsys):

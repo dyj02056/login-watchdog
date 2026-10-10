@@ -150,7 +150,7 @@ def _send_mail(to_address: str, subject: str, body: str) -> str:
 
 
 def send_test_mail(to_address: str) -> tuple[str, str | None, str]:
-    """설정 점검용 테스트 메일(scripts/send_test_mail.py). 실패해도 Slack 알림은 보내지 않고
+    """설정 점검용 테스트 메일(scripts/management/send_test_mail.py). 실패해도 Slack 알림은 보내지 않고
     (결과, 실패 원인 분류, 설명)을 그대로 돌려준다."""
     return _deliver(
         to_address,

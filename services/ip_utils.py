@@ -12,7 +12,7 @@
 #
 # helpers.get_request_ip()가 이 함수를 거친 값을 돌려주므로, 그 값을 쓰는 로그인 실패 집계·IP 잠금·
 # 요청 제한·보안 이벤트·상관분석·IP 예외·복구/재설정 IP 한도가 전부 같은 단위로 동작한다.
-# Flask에 의존하지 않는 순수 함수라 security/lockdown.py(허용 목록)와 scripts/unlock_ip.py도 같이 쓴다.
+# Flask에 의존하지 않는 순수 함수라 security/lockdown.py(허용 목록)와 scripts/management/unlock_ip.py도 같이 쓴다.
 # ============================================================================
 
 import ipaddress

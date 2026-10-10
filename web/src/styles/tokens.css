@@ -1,0 +1,75 @@
+/*
+  tokens.css — 디자인 토큰. 색·간격·글자 크기는 전부 여기서만 정하고, 다른 파일은 var()로만 쓴다.
+
+  세계관: 밤샘 관제실의 벽 모니터. 짙은 남청 바탕에 얇은 청록 선, 의미가 있는 색(위험 등급, 정상)만 채도를 준다.
+  대비는 본문 4.5:1 이상으로 맞췄다(--ink-2는 #0a1827 위에서 약 5.2:1).
+*/
+:root {
+  color-scheme: dark;
+
+  /* 바탕 — 같은 남청 색조(약 210~215도)에서 밝기만 단계로 올린다 */
+  --bg-0: #040b13;
+  --bg-1: #08141f;
+  --bg-2: #0d1f31;
+  --bg-3: #143049;
+
+  /* 선 */
+  --line: #17344d;
+  --line-strong: #25506f;
+
+  /* 글자 */
+  --ink-0: #e6f1fa;
+  --ink-1: #a2bbd0;
+  --ink-2: #7690a8;
+
+  /* 포인트 — 하나는 정보(청록), 하나는 정상·제목(녹색) */
+  --cyan: #3cc8f0;
+  --cyan-dim: #1c6f8c;
+  --signal: #34e08c;
+
+  /* 위험 등급 — 의미가 정해진 색. 장식에 쓰지 않는다 */
+  --sev-critical: #ff4d5e;
+  --sev-high: #ff9a3c;
+  --sev-medium: #f2d04b;
+  --sev-low: #3cc8f0;
+
+  /* 차트 계열 */
+  --series-today: #3cc8f0;
+  --series-yesterday: #e9568f;
+  --series-week: #86a1bb;
+
+  /* 상태 */
+  --ok: #34e08c;
+  --danger: #ff4d5e;
+  --warn: #f2d04b;
+
+  /* 간격(4px 기준) */
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.5rem;
+  --s-6: 2rem;
+  --s-7: 3rem;
+
+  /* 모서리 — 관제 화면은 각진 편이 맞다 */
+  --r-1: 2px;
+  --r-2: 4px;
+
+  /* 글자 */
+  --font-body: var(--font-sans), "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  --font-num: var(--font-mono), ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --fs-2xs: 0.6875rem;
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.8125rem;
+  --fs-base: 0.875rem;
+  --fs-md: 1rem;
+  --fs-lg: 1.125rem;
+  --fs-xl: 1.5rem;
+  --fs-2xl: 2.125rem;
+
+  /* 움직임 */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-fast: 120ms;
+  --t-mid: 240ms;
+}

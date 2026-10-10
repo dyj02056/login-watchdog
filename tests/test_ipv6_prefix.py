@@ -24,7 +24,7 @@ from services.ip_utils import lookup_address, normalize_ip
 from tests.test_app import get_csrf_token  # noqa: E402
 
 sys.path.insert(
-    0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
+    0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "management")
 )
 import unlock_ip  # noqa: E402
 
