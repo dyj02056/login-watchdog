@@ -99,13 +99,14 @@ export function DailyVolume({ volume }: { volume: Stats["log_volume"] }) {
     <Chart
       label="최근 7일 날짜별 로그 발생량 막대 그래프"
       deps={[volume]}
-      build={(t) => ({
+      build={(t, { width }) => ({
         animationDuration: 500,
         grid: { left: 40, right: 8, top: 22, bottom: 34 },
         tooltip: { trigger: "axis", axisPointer: { type: "shadow", shadowStyle: { color: `${t.cyan}14` } }, ...tooltipBase(t) },
         xAxis: {
           type: "category",
-          data: volume.map((v) => formatDayWithWeekday(v.day)),
+          // 좁은 화면에서는 요일까지 붙이면 라벨이 서로 겹치므로 월/일만 보여준다
+          data: volume.map((v) => (width < 480 ? formatMonthDay(v.day) : formatDayWithWeekday(v.day))),
           axisTick: { show: false },
           axisLine: { lineStyle: { color: t.lineStrong } },
           axisLabel: { ...axisText(t), fontSize: 10, interval: 0 },
@@ -240,7 +241,7 @@ export function FlowChart({ links, sourceLabel }: { links: { source: string; tar
               top: 8,
               bottom: 8,
               nodeWidth: 14,
-              nodeGap: 12,
+              nodeGap: 14,
               draggable: false,
               // 가리킨 경로만 밝게, 나머지는 흐리게
               emphasis: { focus: "adjacency", lineStyle: { opacity: 0.85 } },
@@ -251,11 +252,11 @@ export function FlowChart({ links, sourceLabel }: { links: { source: string; tar
                 itemStyle: { color: nodeColor(name, kind) },
                 label: {
                   formatter: `${display(name, kind)}  {n|${formatCount(total(name))}건}`,
-                  rich: { n: { color: t.ink1, fontFamily: t.mono, fontSize: 12 } },
+                  rich: { n: { color: t.ink1, fontFamily: t.mono, fontSize: 11 } },
                   color: t.ink0,
                   fontFamily: t.font,
-                  fontSize: 13,
-                  fontWeight: 600,
+                  fontSize: 12,
+                  fontWeight: 500,
                 },
               })),
               links: links.map((link) => {
@@ -264,6 +265,8 @@ export function FlowChart({ links, sourceLabel }: { links: { source: string; tar
                 return { ...link, lineStyle: { color: typeColor.get(typeName) ?? t.week, opacity: 0.5 } };
               }),
               lineStyle: { curveness: 0.5 },
+              // 노드가 많아 라벨이 겹치면 작은 노드의 라벨을 숨긴다(값은 가리키면 툴팁으로 확인)
+              labelLayout: { hideOverlap: true },
             },
           ],
         };
@@ -333,7 +336,7 @@ export function PathDonut({ items, pathless, pathlessTotal }: { items: Named; pa
         const both = hasPaths && hasUnknown;
         const narrow = both && width < 640; // 좁으면 두 도넛을 위아래로 쌓는다
 
-        const big = narrow ? { outer: 58, inner: 36 } : { outer: 96, inner: 58 };
+        const big = narrow ? { outer: 58, inner: 36 } : width < 480 ? { outer: 50, inner: 30 } : { outer: 96, inner: 58 };
         const small = { outer: Math.round(big.outer * 0.75), inner: Math.round(big.inner * 0.75) };
         const labelSpace = 130; // 도넛 바깥 라벨이 들어갈 좌우 여백
         // 칸이 넓어도 두 도넛 사이가 한없이 멀어지지 않게 묶음 폭을 제한하고 가운데에 둔다.
@@ -371,6 +374,8 @@ export function PathDonut({ items, pathless, pathlessTotal }: { items: Named; pa
         }));
 
         const pieBase = { type: "pie" as const, minAngle: 6, itemStyle: { borderColor: t.bg1, borderWidth: 2 }, labelLine: { lineStyle: { color: t.lineStrong } } };
+        // 세로로 쌓은 좁은 화면에서는 도넛 좌우 여백이 라벨 폭을 정한다 — 고정 폭이면 오른쪽 라벨이 칸 밖으로 잘린다
+        const sideLabel = Math.max(40, Math.floor(width / 2 - big.outer - 14));
         const labelBase = { color: t.ink1, fontFamily: t.font, fontSize: 11, overflow: "truncate" as const };
 
         // 화살표: 큰 도넛의 "미확인" 조각 바깥 가장자리에서 시작해 작은 도넛 바깥 가장자리 바로 앞에서 끝난다.
@@ -391,7 +396,7 @@ export function PathDonut({ items, pathless, pathlessTotal }: { items: Named; pa
                     radius: [big.inner, big.outer],
                     center: [bigCenter.x, bigCenter.y],
                     startAngle,
-                    label: { ...labelBase, width: leftSpace - 25, formatter: "{b}" },
+                    label: { ...labelBase, width: width < 480 ? sideLabel : leftSpace - 25, formatter: "{b}" },
                     data: bigData,
                   },
                 ]
@@ -403,7 +408,7 @@ export function PathDonut({ items, pathless, pathlessTotal }: { items: Named; pa
                     name: UNKNOWN_NAME,
                     radius: [small.inner, small.outer],
                     center: [smallCenter.x, smallCenter.y],
-                    label: { ...labelBase, width: labelSpace - 20, formatter: "{b}\n{c}건" },
+                    label: { ...labelBase, width: width < 480 ? sideLabel : labelSpace - 20, formatter: "{b}\n{c}건" },
                     tooltip: { formatter: (p: { name: string; value: number; percent: number }) => `${p.name}<br/>${p.value}건 · ${UNKNOWN_NAME} 중 ${p.percent}%` },
                     data: smallData,
                   },
