@@ -12,6 +12,7 @@ from flask import request
 
 import config
 import db
+from helpers import spa
 from helpers.request_utils import get_request_ip
 from security import detector, soar
 
@@ -71,10 +72,13 @@ def set_security_headers(response):
 def handle_not_found(error):
     """존재하지 않는 경로 요청(404)을 기록하고, 반복되면 Web Scanning 의심 알림을 보낸다.
 
-    화면에 보여주는 내용은 Flask/Werkzeug 기본 404 응답 그대로 둔다(error.get_response())
-    — 이 라우트의 목적은 사용자 경험을 바꾸는 게 아니라, 그동안 아무 기록도 남기지
-    않던 404 요청을 관찰 가능하게 만드는 것뿐이다 (21단계, attack_response_state.md
-    구현 대상 #1).
+    이 핸들러의 목적은 그동안 아무 기록도 남기지 않던 404 요청을 관찰 가능하게 만드는
+    것이다 (21단계, attack_response_state.md 구현 대상 #1). 기록·탐지는 화면과 무관하게
+    항상 먼저 실행한다.
+
+    화면은 브라우저가 연 일반 페이지 요청이면 Next.js 404 화면(spa/404.html, 404 상태 그대로)을,
+    그 외(어댑터·/api/·HTML을 받지 않는 요청, 빌드가 없을 때)는 Flask/Werkzeug 기본 404 응답을
+    그대로 쓴다(error.get_response()).
 
     알림은 "임계값을 막 넘긴 바로 그 요청"에서 딱 한 번만 보낸다(count가 정확히
     threshold+1일 때). enforce_lockout처럼 "잠긴 상태"라는 별도 표시가 없는 대신,
@@ -94,7 +98,7 @@ def handle_not_found(error):
             path=request.path,
         )
 
-    return error.get_response()
+    return spa.not_found_page() or error.get_response()
 
 
 def track_page_access():

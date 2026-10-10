@@ -136,8 +136,10 @@ def handle_not_found(error):
     if suspicious and count == config.WEB_SCANNING_ALERT_THRESHOLD + 1:
         soar.notify_web_scanning(ip, count, request.path)
 
-    return error.get_response()  # 화면은 Flask 기본 404 그대로 유지
+    return error.get_response()  # 화면은 Flask 기본 404 그대로 유지 (이 단계 당시. 지금은 아래 노트 참고)
 ```
+
+> **이후 변경 (48단계 뒤):** 핸들러는 지금 `helpers/hooks.py`에 있고, 기록·탐지는 그대로 한 다음 마지막 줄만 `return spa.not_found_page() or error.get_response()`로 바뀌었다. 브라우저가 연 일반 페이지 요청이면 Next.js 404 화면(`spa/404.html`)을 404 상태로 내려주고, `/api/`·어댑터·HTML을 받지 않는 요청이나 화면 빌드가 없을 때는 예전처럼 Flask 기본 404다. 자세한 내용은 [guide48](guide48_nextjs_dashboard.md)의 "404 화면" 참고.
 
 `enforce_lockout()`은 "잠긴 상태"라는 별도 표시(`lockouts.active`)가 있어서 알림을 딱 한 번만 보내지만, 404에는 그런 상태가 없습니다. 대신 "카운트가 정확히 `임계값+1`이 되는 바로 그 요청"에서만 알리도록 해서 같은 효과(임계값을 넘는 매 요청마다 알림이 반복되는 "알림 피로"를 방지)를 냈습니다.
 
