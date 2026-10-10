@@ -48,6 +48,15 @@ web/ (Next.js 소스)  ──npm run build──▶  spa/*.html          화면 
 | `/dashboard` `/dashboard/history` `/dashboard/profile` | 회원 | 기존 라우트 |
 | `/board` `/board/new` `/board/<id>` `/board/<id>/edit` | 게시판 | 기존 라우트 |
 | `/recovery` `/recovery/verify` `/password/forgot` `/password/reset` `/email/confirm` | 복구 흐름 | 기존 라우트 |
+| (존재하지 않는 모든 주소) | **404 화면** — `web/src/app/not-found.tsx`(`AuthLayout` 재사용, 로그인·회원가입 링크) | `handle_not_found`가 `spa/404.html`을 404 상태로 응답 |
+
+**404 화면.** 예전에는 존재하지 않는 주소를 열면 스타일 없는 Flask 기본 영어 화면이 나왔다. 이제 `helpers/hooks.py`의 `handle_not_found`가 404를 **기록·탐지한 뒤**(이 부분은 그대로) `helpers/spa.py`의 `not_found_page()`로 `spa/404.html`을 **404 상태 그대로** 내려준다. 껍데기와 같은 방식으로 인라인 스크립트의 CSP 해시를 붙인다. 화면은 정적이라 로그인 여부를 모르므로 로그인·회원가입 링크만 둔다. 다음 경우에는 기존 응답을 그대로 쓴다.
+
+- 어댑터 요청(`X-Requested-With: login-watchdog-spa`) — 기존대로 `{"status": 404, "messages": [...]}` JSON
+- `/api/` 경로, HTML을 받지 않는 요청(`Accept: application/json` 등), GET·HEAD가 아닌 요청 — Flask 기본 404
+- `spa/404.html`이 없거나 `SPA_ENABLED=false` — Flask 기본 404
+
+`web/scripts/postbuild.mjs`는 `404.html`을 `spa/`로 옮기고(`_not-found.html`은 같은 내용의 중복이라 건너뜀), 다른 화면과 똑같이 인라인 `style`·`<style>`이 없는지 검사한다. 그래서 404 화면도 CSS 모듈·공용 클래스만 써야 한다. 테스트는 `tests/test_spa.py`의 "404 화면" 묶음이다.
 
 차트에 쓰는 집계는 `db/stats.py`가 만든다. 새 표나 마이그레이션 없이 기존 표(`security_events`, `login_attempts`, `log_daily_summary` 등)에서 계산한다. 계산 부분(`build_threat_stats`)은 DB 없이 테스트할 수 있다(`tests/test_stats.py`).
 
