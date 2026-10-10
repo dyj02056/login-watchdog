@@ -71,7 +71,7 @@ def admin_login_submit():
 
     # 2) 이미 잠긴 IP라면 자격 증명 확인 자체를 건너뛰고 즉시 거부
     #    영구 잠금(T5)된 관리자 IP에는 이메일 복구·예외가 없다 — 관리자 로그인은 위험도가
-    #    가장 높아서 오직 관리자 해제(대시보드/scripts/unlock_ip.py --permanent)로만 풀린다.
+    #    가장 높아서 오직 관리자 해제(대시보드/scripts/management/unlock_ip.py --permanent)로만 풀린다.
     if detector.is_locked(ip):
         if detector.get_ip_lock_state(ip) == detector.LOCK_STATE_PERMANENT:
             flash("이 네트워크는 차단되어 있습니다. 관리자에게 문의해주세요.")

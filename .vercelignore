@@ -1,0 +1,7 @@
+# Next.js 소스와 의존성은 배포에 필요 없다 — 빌드 결과(spa/, public/_next)를 저장소에 함께 올려 두고 그것만 서빙한다.
+web/
+docs/
+tests/
+scripts/
+venv/
+.github/

@@ -1,12 +1,12 @@
 # ============================================================================
-# test_send_test_mail.py — scripts/send_test_mail.py (메일 설정 점검 스크립트, guide34-a)
+# test_send_test_mail.py — scripts/management/send_test_mail.py (메일 설정 점검 스크립트, guide34-a)
 # ============================================================================
 
 import os
 import sys
 
 sys.path.insert(
-    0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
+    0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "management")
 )
 
 import config

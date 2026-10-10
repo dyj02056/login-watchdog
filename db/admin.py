@@ -119,7 +119,7 @@ def get_admin_role_by_id(admin_id: int) -> str | None:
 def create_admin_user(username: str, password: str, role: str) -> bool:
     """새 관리자 계정을 role과 함께 만든다.
 
-    scripts/create_admin.py(터미널 스크립트)와 대시보드 "관리자 계정 관리"
+    scripts/management/create_admin.py(터미널 스크립트)와 대시보드 "관리자 계정 관리"
     (routes/admin/manage.py)가 둘 다 이 함수를 통해서만 계정을 만든다 — insert 로직이
     두 곳에 따로 있으면 한쪽만 고치고 잊어버리는 사고가 나기 쉽다.
 

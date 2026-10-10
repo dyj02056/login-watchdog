@@ -69,11 +69,11 @@ def api_users_delete(): ...
 
 ## 4. 새 관리자 계정 생성 — 스크립트 + (super_admin 한정) 대시보드
 
-`admin_users`는 원래도 회원가입 화면이 없는 표입니다(부트스트랩 계정 1개만 `.env`로 자동 생성). 처음엔 [scripts/create_admin.py](../../scripts/create_admin.py)를 터미널에서 직접 실행하는 방법만 있었습니다.
+`admin_users`는 원래도 회원가입 화면이 없는 표입니다(부트스트랩 계정 1개만 `.env`로 자동 생성). 처음엔 [scripts/management/create_admin.py](../../scripts/management/create_admin.py)를 터미널에서 직접 실행하는 방법만 있었습니다.
 
 ```bash
-python scripts/create_admin.py --username sktviewer123 --password <비밀번호> --role security_viewer
-python scripts/create_admin.py --username sktadmin123 --password <비밀번호> --role security_admin
+python scripts/management/create_admin.py --username sktviewer123 --password <비밀번호> --role security_viewer
+python scripts/management/create_admin.py --username sktadmin123 --password <비밀번호> --role security_admin
 ```
 
 이미 있는 아이디면 아무것도 만들지 않고 건너뜁니다(`unlock_account.py` 등 기존 스크립트와 동일한 "실수로 두 번 실행해도 안전" 원칙). 이 스크립트는 `--role`에 `super_admin`도 선택할 수 있습니다 — 터미널 접근 자체가 이미 신뢰된 사람만 할 수 있는 작업이라는 전제입니다.
@@ -110,7 +110,7 @@ if role is not None and db.has_permission(role, "manage_admin_users"):
 - [helpers.py](../../helpers/) — `require_permission()` 추가
 - [routes/admin.py](../../routes/admin/) — `/api/admin-users/create`, `/api/admin-users/delete` 신규 + `/api/status` 조건부 `admin_users` 필드
 - [routes/auth.py](../../routes/auth.py) — 아이디/비밀번호 규칙을 `config.py`에서 가져오도록 변경
-- [scripts/create_admin.py](../../scripts/create_admin.py) — 신규, 이후 `db.create_admin_user()` 재사용하도록 리팩터링
+- [scripts/management/create_admin.py](../../scripts/management/create_admin.py) — 신규, 이후 `db.create_admin_user()` 재사용하도록 리팩터링
 - [templates/admin_dashboard.html](../../templates/admin_dashboard.html) — "관리자 계정 관리" 카드
 - [public/js/dashboard/render.js](../../public/js/dashboard/render.js), [api.js](../../public/js/dashboard/api.js), [events.js](../../public/js/dashboard/events.js)
 - [public/css/dashboard.css](../../public/css/dashboard.css)

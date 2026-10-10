@@ -80,7 +80,7 @@
 | 5분 뒤 자동 해제 | — |
 | 대시보드 카드의 "즉시 해제" (`POST /api/unlock-admin-account`) | **super_admin만** (`unlock_admin_account` 권한). 다른 역할에는 "해제는 super_admin만 가능" 안내만 보임 |
 | 허용 목록 IP에서 그냥 로그인 | 잠긴 본인 |
-| `python scripts/unlock_account.py --admin --username <아이디>` | 서버 접근 권한이 있는 사람 (super_admin 본인이 잠겼는데 허용 목록 밖일 때의 비상 수단). `--admin`만 주면 목록 조회만 함 |
+| `python scripts/management/unlock_account.py --admin --username <아이디>` | 서버 접근 권한이 있는 사람 (super_admin 본인이 잠겼는데 허용 목록 밖일 때의 비상 수단). `--admin`만 주면 목록 조회만 함 |
 
 회원 계정 해제(`/api/unlock-account`)는 `unlock_ip` 권한(security_admin도 보유)인데, 관리자 계정 해제는 위험도가 더 높아서 권한을 따로 나눴습니다.
 
@@ -89,9 +89,9 @@
 `.env`에 `TRUST_FORWARDED_FOR=true`를 켜고, IP를 바꿔가며 **IP당 4회씩**(IP 잠금 기준 5회 초과에 걸리지 않게) 보냅니다.
 
 ```bash
-python scripts/bruteforce_sim.py --admin --username demo_admin --attempts 4 --ip 203.0.113.21
-python scripts/bruteforce_sim.py --admin --username demo_admin --attempts 4 --ip 203.0.113.22
-python scripts/bruteforce_sim.py --admin --username demo_admin --attempts 4 --ip 203.0.113.23
+python scripts/simulation/critical/bruteforce_sim.py --admin --username demo_admin --attempts 4 --ip 203.0.113.21
+python scripts/simulation/critical/bruteforce_sim.py --admin --username demo_admin --attempts 4 --ip 203.0.113.22
+python scripts/simulation/critical/bruteforce_sim.py --admin --username demo_admin --attempts 4 --ip 203.0.113.23
 ```
 
 앞의 두 번은 `[FAIL]`(잠금 문구 없음)로 끝나는 게 정상입니다 — IP 잠금이 걸리지 않았다는 뜻입니다. 세 번째 실행의 첫 시도에서 총 9회가 되어 계정이 잠기고, 이후 시도는 "이미 잠김"으로 표시됩니다. 허용 목록 기본값에 `127.0.0.1`이 있지만, 가짜 IP(`--ip`)로 보낸 요청에는 적용되지 않습니다.
@@ -115,4 +115,4 @@ python scripts/bruteforce_sim.py --admin --username demo_admin --attempts 4 --ip
 ## 이 단계에서 만들어지거나 바뀐 파일
 
 - 신규: [db/admin_lockouts.py](../../db/admin_lockouts.py), [docs/migrations/guide38_admin_account_lockout.sql](../migrations/guide38_admin_account_lockout.sql), [tests/test_admin_account_lockout.py](../../tests/test_admin_account_lockout.py)
-- 수정: [routes/admin.py](../../routes/admin/), [soar.py](../../security/soar/), [detector.py](../../security/detector.py), [alert.py](../../notify/alert.py), [config.py](../../config.py), [db/security_events.py](../../db/security_events.py), [db/\_\_init\_\_.py](../../db/__init__.py), `db/lock_history.py`(설명), [docs/schema.sql](../schema.sql), `public/js/dashboard/{render,api,events}.js`, [scripts/unlock_account.py](../../scripts/unlock_account.py), [scripts/bruteforce_sim.py](../../scripts/bruteforce_sim.py), `tests/conftest.py`
+- 수정: [routes/admin.py](../../routes/admin/), [soar.py](../../security/soar/), [detector.py](../../security/detector.py), [alert.py](../../notify/alert.py), [config.py](../../config.py), [db/security_events.py](../../db/security_events.py), [db/\_\_init\_\_.py](../../db/__init__.py), `db/lock_history.py`(설명), [docs/schema.sql](../schema.sql), `public/js/dashboard/{render,api,events}.js`, [scripts/management/unlock_account.py](../../scripts/management/unlock_account.py), [scripts/simulation/critical/bruteforce_sim.py](../../scripts/simulation/critical/bruteforce_sim.py), `tests/conftest.py`

@@ -85,7 +85,7 @@
 - **"영구 잠금" 카드** — 대상·승격 사유·복구 방식·승격 시각을 보여주고, 시간 대신 "영구" 배지를 표시합니다(영구 행은 아래 "현재 잠긴 IP / 계정" 임시 잠금 카드에서 빠집니다). 이메일을 신뢰할 수 없는 계정에는 "이메일 확인 불가" 배지가 붙습니다.
 - **"영구 해제" 버튼** — `super_admin`에게만 보입니다(다른 역할에는 "super_admin 전용" 문구). 누르면 사유 입력창이 뜨고 사유가 비어 있으면 닫히지 않습니다. 화면에서 버튼을 숨기는 건 편의일 뿐이고 서버가 `require_permission`으로 따로 403을 돌려줍니다.
 - **수동 승격 폼**, **복구 요청**(진행 중이면 "취소"), **IP 예외**("회수") 카드도 각자의 권한이 있는 관리자에게만 버튼이 보입니다.
-- 터미널에서는 `python scripts/unlock_ip.py --ip <IP> --permanent`, `python scripts/unlock_account.py --username <아이디> --permanent`로 풉니다(`--permanent` 없이는 영구 잠금을 건너뜁니다, `--note`로 사유 지정).
+- 터미널에서는 `python scripts/management/unlock_ip.py --ip <IP> --permanent`, `python scripts/management/unlock_account.py --username <아이디> --permanent`로 풉니다(`--permanent` 없이는 영구 잠금을 건너뜁니다, `--note`로 사유 지정).
 
 ## 로그인/가입에서의 판정
 
@@ -97,11 +97,11 @@
 ## 이 단계에서 만들어지거나 바뀐 파일
 
 - 신규: [lockdown.py](../../security/lockdown.py), [db/lock_history.py](../../db/lock_history.py), [docs/migrations/guide33_permanent_lock.sql](../migrations/guide33_permanent_lock.sql), [tests/test_permanent_lock.py](../../tests/test_permanent_lock.py), [tests/test_permanent_admin_api.py](../../tests/test_permanent_admin_api.py)
-- 수정: [config.py](../../config.py), [soar.py](../../security/soar/), [correlate.py](../../security/correlate.py), [detector.py](../../security/detector.py), [alert.py](../../notify/alert.py), [db/lockouts.py](../../db/lockouts.py), [db/account_lockouts.py](../../db/account_lockouts.py), [db/incidents.py](../../db/incidents.py), [db/roles.py](../../db/roles.py), [routes/admin.py](../../routes/admin/), [routes/auth.py](../../routes/auth.py), 대시보드(`templates/admin_dashboard.html`, `public/js/dashboard/*`, `public/css/dashboard.css`), `scripts/unlock_ip.py`, `scripts/unlock_account.py`, `scripts/tune_thresholds.py`(영구 잠금 이벤트는 "조기 해제" 집계에서 제외)
+- 수정: [config.py](../../config.py), [soar.py](../../security/soar/), [correlate.py](../../security/correlate.py), [detector.py](../../security/detector.py), [alert.py](../../notify/alert.py), [db/lockouts.py](../../db/lockouts.py), [db/account_lockouts.py](../../db/account_lockouts.py), [db/incidents.py](../../db/incidents.py), [db/roles.py](../../db/roles.py), [routes/admin.py](../../routes/admin/), [routes/auth.py](../../routes/auth.py), 대시보드(`templates/admin_dashboard.html`, `public/js/dashboard/*`, `public/css/dashboard.css`), `scripts/management/unlock_ip.py`, `scripts/management/unlock_account.py`, `scripts/management/tune_thresholds.py`(영구 잠금 이벤트는 "조기 해제" 집계에서 제외)
 - 스키마: [docs/schema.sql](../schema.sql) 맨 아래 + 같은 내용의 마이그레이션 파일. 여러 번 실행해도 안전합니다.
 
 ## 알려진 제한
 
 - 영구 IP 잠금은 `TRUST_FORWARDED_FOR=true`에서 헤더 위조로 악용될 수 있고, Vercel에서는 `remote_addr` 확인이 필요합니다(README "알려진 제한사항").
 - 영구 잠금은 이미 로그인된 세션을 끊지 않습니다.
-- 관리자 로그인 IP가 영구 잠금되면 그 IP에서는 관리자 로그인이 안 되므로 `scripts/unlock_ip.py --permanent`나 다른 관리자가 필요합니다.
+- 관리자 로그인 IP가 영구 잠금되면 그 IP에서는 관리자 로그인이 안 되므로 `scripts/management/unlock_ip.py --permanent`나 다른 관리자가 필요합니다.

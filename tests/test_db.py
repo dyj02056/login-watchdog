@@ -733,7 +733,7 @@ def test_list_security_events_returns_rows_and_count_from_client(monkeypatch):
 
 
 def test_list_resolved_critical_events_since_filters_by_severity_and_resolved(monkeypatch):
-    # list_attempts_since()와 동일한 패턴 — scripts/tune_thresholds.py(Track C
+    # list_attempts_since()와 동일한 패턴 — scripts/management/tune_thresholds.py(Track C
     # guide30)가 이 함수로 조기 해제 비율을 계산한다.
     rows = [
         {"event_type": "BRUTE_FORCE", "detected_at": "2026-09-25T09:00:00+00:00", "resolved_at": "2026-09-25T09:01:00+00:00"},

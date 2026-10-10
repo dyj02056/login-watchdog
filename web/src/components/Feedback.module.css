@@ -1,0 +1,70 @@
+.dialog {
+  width: min(28rem, calc(100vw - 2rem));
+  padding: 0;
+  color: var(--ink-0);
+  background: var(--bg-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-2);
+}
+.dialog::backdrop {
+  background: color-mix(in srgb, var(--bg-0) 78%, transparent);
+}
+
+.form {
+  display: grid;
+  gap: var(--s-4);
+  padding: var(--s-5);
+}
+
+.title {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  text-wrap: balance;
+}
+
+.body {
+  max-width: 60ch;
+  color: var(--ink-1);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+
+.toasts {
+  position: fixed;
+  right: var(--s-4);
+  bottom: var(--s-4);
+  display: grid;
+  gap: var(--s-2);
+  max-width: min(26rem, calc(100vw - 2rem));
+  pointer-events: none;
+}
+
+.toast {
+  margin: 0;
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--ink-0);
+  background: var(--bg-2);
+  border: 1px solid var(--cyan-dim);
+  border-radius: var(--r-1);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+  animation: toast-in var(--t-mid) var(--ease-out);
+}
+.toastError {
+  border-color: color-mix(in srgb, var(--sev-critical) 70%, transparent);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

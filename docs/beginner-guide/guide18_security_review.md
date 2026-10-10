@@ -144,7 +144,7 @@ def handle_csrf_error(error):
 ## 3. 검증 스크립트 미구현 (신규 주제)
 
 ### 무엇이 문제였는가
-`plan.md`는 "`bruteforce_sim.py`로 6번째 시도에서 계정이 잠기는지 검증한다"는 절차를 명시하고 있었지만, [scripts/bruteforce_sim.py](../../scripts/bruteforce_sim.py)와 [scripts/daily_report.py](../../scripts/daily_report.py) 둘 다 실제로는 **0바이트(빈 파일)**였습니다. 즉 문서에는 "이렇게 검증한다"고 적혀있는데 실제로 그 검증을 자동으로 돌려볼 방법이 없었고, 데모 시나리오를 재현하려면 매번 사람이 로그인 폼에 직접 6번 틀린 비밀번호를 입력해야 했습니다.
+`plan.md`는 "`bruteforce_sim.py`로 6번째 시도에서 계정이 잠기는지 검증한다"는 절차를 명시하고 있었지만, [scripts/simulation/critical/bruteforce_sim.py](../../scripts/simulation/critical/bruteforce_sim.py)와 [scripts/management/daily_report.py](../../scripts/management/daily_report.py) 둘 다 실제로는 **0바이트(빈 파일)**였습니다. 즉 문서에는 "이렇게 검증한다"고 적혀있는데 실제로 그 검증을 자동으로 돌려볼 방법이 없었고, 데모 시나리오를 재현하려면 매번 사람이 로그인 폼에 직접 6번 틀린 비밀번호를 입력해야 했습니다.
 
 ### 왜 필요한가
 사람이 직접 6번 클릭해서 확인하는 건 매번 번거롭고, 무엇보다 "정말 6번째에 잠기는지" 같은 **경계값**은 사람이 셀 때 실수하기 쉽습니다. 자동화된 스크립트가 있으면 코드를 수정할 때마다(예: `FAILURE_THRESHOLD` 값을 바꾸거나, `login_submit()` 로직을 리팩터링할 때) 매번 똑같은 조건으로 빠르게 재검증할 수 있습니다.
@@ -194,8 +194,8 @@ def list_attempts_since(hours: int = 24) -> list[dict]:
 3. `daily_report.py`를 처음 실행했을 때 `ModuleNotFoundError: No module named 'db'`가 발생하는 것도 발견했습니다 — `scripts/` 폴더 안에서 실행하면 파이썬이 프로젝트 루트에 있는 `db.py`를 못 찾기 때문이었습니다. 스크립트 맨 위에서 프로젝트 루트를 `sys.path`에 직접 추가하도록 고쳐서 해결했고, 이후 재실행하니 실제 Supabase 데이터를 정상적으로 집계해서 리포트를 출력하는 것을 확인했습니다.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [scripts/bruteforce_sim.py](../../scripts/bruteforce_sim.py) (신규 구현)
-- [scripts/daily_report.py](../../scripts/daily_report.py) (신규 구현 — 숫자 집계 버전)
+- [scripts/simulation/critical/bruteforce_sim.py](../../scripts/simulation/critical/bruteforce_sim.py) (신규 구현)
+- [scripts/management/daily_report.py](../../scripts/management/daily_report.py) (신규 구현 — 숫자 집계 버전)
 - [db.py](../../db/) (`list_attempts_since`, `list_lockouts_since` 추가)
 - [tests/test_db.py](../../tests/test_db.py) (위 두 함수에 대한 단위 테스트 추가)
 
@@ -347,7 +347,7 @@ jobs:
 ### 이 단계 전체에서 바뀐 파일 모음
 - [app.py](../../app.py), [db.py](../../db/), [public/js/dashboard.js](../../public/js/dashboard/)
 - [templates/login_form.html](../../templates/login_form.html), [templates/signup.html](../../templates/signup.html), [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [templates/member_dashboard.html](../../templates/member_dashboard.html), [templates/member_history.html](../../templates/member_history.html), [templates/member_profile.html](../../templates/member_profile.html)
-- [scripts/bruteforce_sim.py](../../scripts/bruteforce_sim.py), [scripts/daily_report.py](../../scripts/daily_report.py)
+- [scripts/simulation/critical/bruteforce_sim.py](../../scripts/simulation/critical/bruteforce_sim.py), [scripts/management/daily_report.py](../../scripts/management/daily_report.py)
 - [tests/conftest.py](../../tests/conftest.py), [tests/test_app.py](../../tests/test_app.py), [tests/test_db.py](../../tests/test_db.py)
 - [.github/workflows/tests.yml](../../.github/workflows/tests.yml)
 - [requirements.txt](../../requirements.txt)

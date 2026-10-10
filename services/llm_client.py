@@ -1,7 +1,7 @@
 # ============================================================================
 # services/llm_client.py — Groq(LLM) 호출을 담당하는 유일한 창구 (Track A, guide31)
 #
-# 원래 scripts/daily_report.py 안에만 있던 Groq 호출 로직(재시도, 타임아웃,
+# 원래 scripts/management/daily_report.py 안에만 있던 Groq 호출 로직(재시도, 타임아웃,
 # 에러 처리)을 이 파일로 옮겨 일반화했다. daily_report.py의 "하루치 리포트
 # 요약"과 security/soar/의 "임계값 코앞 조기 경보 판단"이 똑같은 Groq 호출 부품을
 # 재사용하게 된다 — db 패키지가 "데이터베이스와 대화하는 유일한 창구"인 것과

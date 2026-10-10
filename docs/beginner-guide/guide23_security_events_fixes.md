@@ -8,7 +8,7 @@
 
 | # | 문제 | 성격 |
 |---|---|---|
-| 1 | `scripts/unlock_ip.py`로 풀면 CRITICAL 보안 이벤트가 영원히 "자동 해제 대기"로 남음 | 기존 결함 보완 |
+| 1 | `scripts/management/unlock_ip.py`로 풀면 CRITICAL 보안 이벤트가 영원히 "자동 해제 대기"로 남음 | 기존 결함 보완 |
 | 2 | CRITICAL 이벤트를 API로 직접 "처리 완료" 처리할 수 있었음(서버 쪽 등급 검증 없음) | 기존 결함 보완 |
 | 3 | HIGH 이벤트의 count가 최초 거부 시점 값에 영원히 고정됨 | 설계 개선 |
 | 4 | 동시 요청이 겹치면 미해결 이벤트가 중복 생성될 수 있는 경쟁 조건 | 신규 설계(DB 제약) |
@@ -18,7 +18,7 @@
 ## 1. `unlock_ip.py`가 잠금만 풀고 보안 이벤트는 방치했다
 
 ### 무엇이 문제였는가
-관리자 본인 IP가 잠겨서 대시보드 접속 자체가 막혔을 때 쓰라고 만든 뒷문 스크립트 [scripts/unlock_ip.py](../../scripts/unlock_ip.py)가 `db.release_lockout()`만 호출했습니다. 대시보드의 "즉시 해제" 버튼(`soar.manual_release()`)과 자동 만료(`soar.try_release_expired_lockouts()`)는 둘 다 잠금을 풀 때 그 IP의 CRITICAL 보안 이벤트도 함께 "처리 완료"로 표시하는데(22단계에서 만든 `resolve_security_events_for_ip()`), 이 스크립트만 그 절차를 빠뜨리고 있었습니다.
+관리자 본인 IP가 잠겨서 대시보드 접속 자체가 막혔을 때 쓰라고 만든 뒷문 스크립트 [scripts/management/unlock_ip.py](../../scripts/management/unlock_ip.py)가 `db.release_lockout()`만 호출했습니다. 대시보드의 "즉시 해제" 버튼(`soar.manual_release()`)과 자동 만료(`soar.try_release_expired_lockouts()`)는 둘 다 잠금을 풀 때 그 IP의 CRITICAL 보안 이벤트도 함께 "처리 완료"로 표시하는데(22단계에서 만든 `resolve_security_events_for_ip()`), 이 스크립트만 그 절차를 빠뜨리고 있었습니다.
 
 ### 왜 위험한가
 이 스크립트가 정확히 필요한 상황(브루트포스 시뮬레이션 중 관리자 본인 IP까지 잠겨서 로그인 화면 자체가 막힌 경우)에서 쓰면, 로그인은 다시 되는데 보안 이벤트 표에는 그 사건이 "자동 해제 대기" 상태로 영원히 남습니다. 관리자가 나중에 이 표를 보고 "아직 처리 안 된 사건이 있나?"라고 착각하게 됩니다.
@@ -27,7 +27,7 @@
 `unlock_one()`, `unlock_all()` 두 곳 모두 `db.release_lockout()` 바로 다음 줄에 `db.resolve_security_events_for_ip()`를 추가해서, 대시보드 버튼과 완전히 같은 절차를 밟게 했습니다.
 
 ```python
-# scripts/unlock_ip.py — unlock_one()
+# scripts/management/unlock_ip.py — unlock_one()
 db.release_lockout(ip)
 db.resolve_security_events_for_ip(ip)
 ```
@@ -36,7 +36,7 @@ db.resolve_security_events_for_ip(ip)
 `tests/test_unlock_ip.py`의 관련 테스트 2개에 이 호출 검증을 추가했습니다. 실제로 IP를 잠근 뒤 이 스크립트로 풀어봤더니, 해당 CRITICAL 이벤트가 즉시 "처리 완료"로 바뀌는 것을 로컬 서버와 배포 사이트 양쪽에서 직접 확인했습니다. `pytest tests/ -v` 전체(160개) 통과.
 
 ### 이 단계에서 만들어지거나 바뀐 파일
-- [scripts/unlock_ip.py](../../scripts/unlock_ip.py)
+- [scripts/management/unlock_ip.py](../../scripts/management/unlock_ip.py)
 - [tests/test_unlock_ip.py](../../tests/test_unlock_ip.py)
 
 ---

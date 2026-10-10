@@ -69,7 +69,7 @@ def resolve_incident(incident_id, admin_username) -> bool:
 
 `OPEN` 또는 `IDLE`인 사건에만 적용되므로 이미 해결된 사건을 다시 눌러도 안전합니다(`False`를 돌려주고 원래 해결자·시각은 그대로 유지). `resolve_security_event()`와 같은 방식입니다.
 
-잠금 해제 경로(`soar.manual_release`, `soar.try_release_expired_lockouts`, `scripts/unlock_ip.py`)에서는 사건을 닫던 호출(`close_open_incident_for_ip`)을 **삭제**했습니다. 잠금 해제는 CRITICAL 보안 이벤트만 정리하고 사건은 건드리지 않습니다.
+잠금 해제 경로(`soar.manual_release`, `soar.try_release_expired_lockouts`, `scripts/management/unlock_ip.py`)에서는 사건을 닫던 호출(`close_open_incident_for_ip`)을 **삭제**했습니다. 잠금 해제는 CRITICAL 보안 이벤트만 정리하고 사건은 건드리지 않습니다.
 
 ## 4. API와 권한
 
@@ -112,7 +112,7 @@ def resolve_incident(incident_id, admin_username) -> bool:
 - [db/incidents.py](../../db/incidents.py) — `resolve_incident()`, `mark_incident_idle()`, `_is_idle()` 신규, `record_incident()` 변경, `close_open_incident_for_ip()` 삭제
 - [db/\_\_init\_\_.py](../../db/__init__.py) — 내보내기 목록 갱신
 - [config.py](../../config.py) — `INCIDENT_MERGE_IDLE_MINUTES` 신규
-- [soar.py](../../security/soar/), [scripts/unlock_ip.py](../../scripts/unlock_ip.py) — 잠금 해제 경로에서 사건을 닫던 호출 제거
+- [soar.py](../../security/soar/), [scripts/management/unlock_ip.py](../../scripts/management/unlock_ip.py) — 잠금 해제 경로에서 사건을 닫던 호출 제거
 - [routes/admin.py](../../routes/admin/) — `POST /api/security-incidents/resolve` 신규
 - [templates/admin_dashboard.html](../../templates/admin_dashboard.html), [public/css/dashboard.css](../../public/css/dashboard.css), [public/js/dashboard/render.js](../../public/js/dashboard/render.js), [api.js](../../public/js/dashboard/api.js), [events.js](../../public/js/dashboard/events.js) — "처리" 열과 "해결" 버튼
 - [docs/schema.sql](../schema.sql) — 상태 제약, `resolved_at`/`resolved_by`, `resolve_incident` 권한
