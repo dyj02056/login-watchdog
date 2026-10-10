@@ -34,10 +34,10 @@ def list_resolved_critical_events_since(hours: int) -> list[dict]:
     return res.data
 ```
 
-`scripts/tune_thresholds.py`는 이 데이터를 `event_type`별로 묶어서(BRUTE_FORCE/PASSWORD_SPRAYING/ADMIN_BRUTE_FORCE/DISTRIBUTED_BRUTE_FORCE 등), 각각 조기 해제 비율을 계산하고 30%(임의로 정한 기준, `REVIEW_RECOMMENDATION_RATIO`) 이상이면 "기준 재검토 권장" 표시를 붙입니다.
+`scripts/management/tune_thresholds.py`는 이 데이터를 `event_type`별로 묶어서(BRUTE_FORCE/PASSWORD_SPRAYING/ADMIN_BRUTE_FORCE/DISTRIBUTED_BRUTE_FORCE 등), 각각 조기 해제 비율을 계산하고 30%(임의로 정한 기준, `REVIEW_RECOMMENDATION_RATIO`) 이상이면 "기준 재검토 권장" 표시를 붙입니다.
 
 ```bash
-python scripts/tune_thresholds.py --days 7
+python scripts/management/tune_thresholds.py --days 7
 ```
 
 ## 실제로 돌려본 결과
@@ -61,12 +61,12 @@ BRUTE_FORCE: 3건 중 2건(67%) 조기 해제 <- 기준 재검토 권장
 
 `pytest tests/` 전체 295개 통과(guide29 시점 286개 + 이번 추가 9개 — `test_db.py` 1개, `test_tune_thresholds.py` 8개(신규)). `tests/test_db.py`의 공용 가짜 Supabase 클라이언트(`_FakeQuery`)에 `.not_` 속성이 빠져있던 것도 이번에 발견해서 추가했습니다 — `count_security_events()`/`delete_resolved_security_events()` 등 기존 함수들이 이미 `.not_.is_(...)`를 쓰고 있었지만 지금까지 이 가짜 클라이언트로 테스트된 적이 없었습니다.
 
-실제 Supabase 데이터로도 실행해서(`python scripts/tune_thresholds.py --days 7`), 위에 옮겨 적은 실제 리포트 결과를 확인했습니다. 스키마 변경이 없는 완전한 읽기 전용 스크립트라 별도 SQL 실행이나 정리 작업이 필요 없었습니다.
+실제 Supabase 데이터로도 실행해서(`python scripts/management/tune_thresholds.py --days 7`), 위에 옮겨 적은 실제 리포트 결과를 확인했습니다. 스키마 변경이 없는 완전한 읽기 전용 스크립트라 별도 SQL 실행이나 정리 작업이 필요 없었습니다.
 
 ## 이 단계에서 만들어지거나 바뀐 파일
 
 - [db/security_events.py](../../db/security_events.py) — `list_resolved_critical_events_since()` 신규
 - [db/__init__.py](../../db/__init__.py)
-- [scripts/tune_thresholds.py](../../scripts/tune_thresholds.py) — 신규
+- [scripts/management/tune_thresholds.py](../../scripts/management/tune_thresholds.py) — 신규
 - [tests/test_db.py](../../tests/test_db.py) — `_FakeQuery.not_` 속성 추가 + 새 테스트
 - [tests/test_tune_thresholds.py](../../tests/test_tune_thresholds.py) — 신규

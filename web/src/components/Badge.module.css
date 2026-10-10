@@ -1,0 +1,31 @@
+.badge {
+  display: inline-block;
+  min-width: 2.5rem;
+  padding: 0.0625rem 0.4375rem;
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: center;
+  white-space: nowrap;
+  color: var(--tone, var(--ink-1));
+  border: 1px solid color-mix(in srgb, var(--tone, var(--ink-1)) 55%, transparent);
+  background: color-mix(in srgb, var(--tone, var(--ink-1)) 12%, transparent);
+  border-radius: var(--r-1);
+}
+.critical,
+.danger {
+  --tone: var(--sev-critical);
+}
+.high {
+  --tone: var(--sev-high);
+}
+.medium,
+.warn {
+  --tone: var(--sev-medium);
+}
+.ok {
+  --tone: var(--ok);
+}
+.neutral {
+  --tone: var(--ink-1);
+}

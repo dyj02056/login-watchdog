@@ -25,6 +25,13 @@ def flask_app(monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "test-admin-password")
     monkeypatch.setenv("SUPABASE_URL", "http://supabase.invalid")
     monkeypatch.setenv("SUPABASE_KEY", "test-supabase-key")
+    # spa/(Next 정적 빌드)가 있으면 화면 주소가 껍데기 HTML로 응답한다 — 기존 테스트는 Jinja 화면을 기준으로
+    # 쓰여 있으므로 기본은 꺼 둔다. 어댑터를 검사하는 tests/test_spa.py만 다시 켠다.
+    monkeypatch.setenv("SPA_ENABLED", "false")
+    # 관리자 응답 캐시(config.ADMIN_*_CACHE_SECONDS)는 테스트마다 새 값을 기대하므로 끈다.
+    import config
+    monkeypatch.setattr(config, "ADMIN_STATUS_CACHE_SECONDS", 0)
+    monkeypatch.setattr(config, "ADMIN_STATS_CACHE_SECONDS", 0)
 
     import db
     from security import detector

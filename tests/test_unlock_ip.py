@@ -1,5 +1,5 @@
 # ============================================================================
-# test_unlock_ip.py — scripts/unlock_ip.py가 db를 올바른 조건으로 호출하는지
+# test_unlock_ip.py — scripts/management/unlock_ip.py가 db를 올바른 조건으로 호출하는지
 # 확인하는 단위 테스트
 #
 # test_soar.py와 같은 방식이다: 진짜 Supabase에 접속하는 대신, db의 함수를
@@ -15,7 +15,7 @@ import os
 import sys
 
 sys.path.insert(
-    0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
+    0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "management")
 )
 
 import db

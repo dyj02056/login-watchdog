@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 .pytest_cache/
 venv/
+
+# 샘플 로그 생성 결과(scripts/demo/generate_demo_logs.py)
+scripts/demo/output/

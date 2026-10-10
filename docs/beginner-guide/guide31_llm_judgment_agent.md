@@ -29,7 +29,7 @@
 
 ## 1. `llm_client.py` — Groq 호출 공통화
 
-`scripts/daily_report.py`에만 있던 Groq 호출 로직(재시도/타임아웃/에러 처리)을 이 파일로 옮겼습니다. `daily_report.py`는 이제 `llm_client.ask_groq()`를 호출하는 얇은 래퍼가 됐습니다(동작은 동일).
+`scripts/management/daily_report.py`에만 있던 Groq 호출 로직(재시도/타임아웃/에러 처리)을 이 파일로 옮겼습니다. `daily_report.py`는 이제 `llm_client.ask_groq()`를 호출하는 얇은 래퍼가 됐습니다(동작은 동일).
 
 ```python
 def judge_early_warning(label, target_kind, target_value, count, threshold) -> dict | None:
@@ -94,7 +94,7 @@ Groq API 키(`GROQ_API_KEY`)가 없는 환경에서도 `judge_early_warning()`�
 ## 이 단계에서 만들어지거나 바뀐 파일
 
 - [llm_client.py](../../services/llm_client.py) — 신규, Groq 호출 공통화
-- [scripts/daily_report.py](../../scripts/daily_report.py) — `llm_client.ask_groq()` 사용으로 리팩터링
+- [scripts/management/daily_report.py](../../scripts/management/daily_report.py) — `llm_client.ask_groq()` 사용으로 리팩터링
 - [db/access_requests.py](../../db/access_requests.py) — 신규
 - [db/__init__.py](../../db/__init__.py)
 - [db/admin.py](../../db/admin.py) — `get_admin_id_by_username()` 신규

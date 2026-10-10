@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 import requests
 
-from scripts import password_spraying_sim as sim
+from scripts.simulation.critical import password_spraying_sim as sim
 
 
 def make_response(status=200, body="잘못된 아이디 또는 비밀번호입니다.", **headers):

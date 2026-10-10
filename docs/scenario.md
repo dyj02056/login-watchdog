@@ -11,20 +11,23 @@
 | 메일 | 로컬은 Mailpit(`docker compose -f docker-compose.mailpit.yml up -d`, 메일함 http://127.0.0.1:8025) 또는 `MAIL_BACKEND=console`. 배포는 Gmail SMTP(앱 비밀번호, guide34a) |
 | 관리자 | `super_admin` 계정 1개, 가능하면 `security_admin` 계정 1개(권한 차이 시연용) |
 | 테스트 회원 | 받을 수 있는 이메일로 가입한 회원 1개(복구 메일 시연용) |
-| 화면 배치 | 관리자 대시보드(`/admin/dashboard`)를 한쪽에 띄워 두면 5초마다 결과가 갱신됨(대시보드 탭이 **보이는 상태**여야 갱신됨 — 다른 탭으로 가면 폴링이 멈췄다가 돌아오면 즉시 갱신) |
+| 화면 배치 | 관제 보드가 3개로 나뉘어 있습니다 — **위협 현황**(`/admin/dashboard`: KPI·시간대별 추이·히트맵·공격 흐름도), **공격 상세**(`/admin/attack`: Top 5·국가별 흐름·실시간 이벤트), **처리 작업대**(`/admin/ops`: 잠금·보안 이벤트·AI 조기 경보·영구 잠금 카드 등 버튼으로 처리하는 모든 기능). 이 대본의 "카드"·"표"는 따로 적지 않으면 처리 작업대에 있습니다. 한쪽에는 위협 현황(또는 공격 상세), 다른 쪽에는 처리 작업대를 띄워 두면 5초마다 결과가 갱신됨(탭이 **보이는 상태**여야 갱신됨 — 다른 탭으로 가면 폴링이 멈췄다가 돌아오면 즉시 갱신) |
+| 시연용 샘플 로그(선택) | 실제 공격을 돌리지 않고 대시보드만 보여 줄 때: 가상환경을 켠 뒤 `python scripts/demo/generate_demo_logs.py`(약 2분)로 7일치 기록을 만들고 `python scripts/demo/demo_server.py` → http://127.0.0.1:5077/__demo_login. 진짜 DB·Slack·메일 미접속. 배포 대시보드에 보여야 하면 `load_demo_to_supabase.py --apply`(선택, [guide50](beginner-guide/guide50_demo_sample_logs.md)) |
+| 시연 전 점검(선택) | `python scripts/demo/check_simulations.py` — 가짜 DB를 붙인 서버에서 시뮬레이터 전부를 돌려 기대한 보안 이벤트가 기록되는지 PASS/FAIL로 확인합니다(진짜 DB·Slack·메일 미접속, 5000번 포트를 쓰므로 `python app.py`는 끄고 실행). 화면 구성만 먼저 보고 싶다면 `python scripts/demo/demo_server.py` → http://127.0.0.1:5077/__demo_login |
 | AI 조기 경보(1-1) | `.env`에 `GROQ_API_KEY`가 있어야 동작. 없으면 조기 경보 단계만 조용히 건너뛰고 나머지 시연은 그대로 됨 |
 | 허용 목록 | 시연자 PC의 IP를 `PERMANENT_LOCK_IP_ALLOWLIST`에 넣어 두기(본인이 잠기는 사고 방지). 가짜 IP(`--ip`)는 넣지 않음 |
 
 ## 1. 브루트포스 → 자동 잠금 (3분)
 
-1. `python scripts/bruteforce_sim.py --host http://127.0.0.1:5000 --username demo --ip 203.0.113.10`
+1. `python scripts/simulation/critical/bruteforce_sim.py --host http://127.0.0.1:5000 --username demo --ip 203.0.113.10`
 2. 6번째 실패에서 "잠긴 계정입니다" — IP가 5분 잠김
 3. **보여줄 곳**: 대시보드 "현재 잠긴 IP / 계정" 카드, "보안 이벤트"의 `BRUTE_FORCE`(CRITICAL), Slack 알림
-4. 같은 아이디를 여러 개로 바꿔 시도하면 `PASSWORD_SPRAYING`으로 구분되는 것도 보여줄 수 있음(`scripts/password_spraying_sim.py`)
+4. 같은 아이디를 여러 개로 바꿔 시도하면 `PASSWORD_SPRAYING`으로 구분되는 것도 보여줄 수 있음(`scripts/simulation/critical/password_spraying_sim.py`)
+5. IP를 바꿔 가며 한 회원 계정만 노리는 분산 브루트포스는 `scripts/simulation/critical/distributed_bruteforce_sim.py` 한 번으로 재현됨 — 한 번도 실패하지 않은 새 IP에서도 계정이 잠겨 있으면 성공(`DISTRIBUTED_BRUTE_FORCE`)
 
 ## 1-1. 임계값 코앞 → AI 조기 경보 (2분, 선택)
 
-1. 새 가짜 IP로 기준(5회 초과) **바로 아래까지만** 실패: `python scripts/bruteforce_sim.py --username demo --attempts 4 --ip 203.0.113.30`
+1. 새 가짜 IP로 기준(5회 초과) **바로 아래까지만** 실패: `python scripts/simulation/critical/bruteforce_sim.py --username demo --attempts 4 --ip 203.0.113.30`
 2. 3~5회째 구간(기준 − `EARLY_WARNING_BAND`)에서 LLM(Groq)에게 "지켜볼 필요가 있는지" 묻고, 위험하다고 판단하면 승인 대기로 등록
 3. **보여줄 곳**: 대시보드 맨 위쪽 "AI 조기 경보" 표(유형·현재/기준·AI 판단 근거), Slack "[AI 조기 경보]" 알림 — 아직 잠기지 않은 상태라는 점
 4. "승인"을 누르면 원래 기준을 넘었을 때 하던 조치(IP 잠금)가 지금 실행되고, "반려"하면 아무 일도 일어나지 않음
@@ -32,13 +35,13 @@
 
 ## 2. 여러 공격이 겹치면 사건으로 묶임 (2분)
 
-1. 같은 가짜 IP로 `python scripts/web_scanning_sim.py --host http://127.0.0.1:5000` (존재하지 않는 경로 반복)
+1. 같은 가짜 IP로 `python scripts/simulation/medium/web_scanning_sim.py --host http://127.0.0.1:5000` (존재하지 않는 경로 반복)
 2. **보여줄 곳**: "연관 사건 (SIEM 상관분석)" 표에 한 IP의 여러 공격 유형이 한 줄로 묶임
 3. 사건은 잠금이 풀려도 남아 있고, 관리자가 "해결"을 눌러야 닫힌다는 점을 설명
 
 ## 3. 반복 위반 → 영구 잠금 (3분)
 
-1. `python scripts/unlock_ip.py --ip 203.0.113.10`으로 임시 잠금만 풀고, 1번을 다시 실행
+1. `python scripts/management/unlock_ip.py --ip 203.0.113.10`으로 임시 잠금만 풀고, 1번을 다시 실행
 2. 30일 안에 두 번째 잠금이라 **영구 잠금**으로 승격 — 로그인 화면이 "이 네트워크는 차단되어 있습니다"로 바뀌고, 올바른 비밀번호로도 막힘
 3. **보여줄 곳**: "영구 잠금" 카드("영구" 배지, 승격 사유 "반복 위반"), 보안 이벤트의 `PERMANENT_LOCK`, 같은 IP에서 회원가입도 거부됨
 4. 2번의 사건이 CRITICAL이었다면 이 단계 전에 이미 영구 잠금됐을 수 있음 — 그것도 "사건 등급 기반 승격"으로 설명
@@ -62,11 +65,27 @@
 ## 5-1. 관리자 계정 분산 브루트포스 → 계정 잠금 (2분)
 
 1. IP를 바꿔가며 IP당 4회씩(IP 잠금에 안 걸리게) 관리자 로그인에 실패:
-   `python scripts/bruteforce_sim.py --admin --username demo_admin --attempts 4 --ip 203.0.113.21` → `.22` → `.23`
+   `python scripts/simulation/critical/bruteforce_sim.py --admin --username demo_admin --attempts 4 --ip 203.0.113.21` → `.22` → `.23`
+   (한 번에 재현하려면 `python scripts/simulation/critical/admin_distributed_bruteforce_sim.py`)
 2. 앞의 두 번은 `[FAIL]`(IP 잠금 안 걸림)이 정상, 세 번째에 총 9회가 되어 **관리자 계정**이 잠김
 3. **보여줄 곳**: "현재 잠긴 IP / 계정"의 "관리자 계정 잠금" 카드(security_admin에게는 "해제는 super_admin만 가능"), 보안 이벤트 `ADMIN_DISTRIBUTED_BRUTE_FORCE`, Slack "관리자 계정: demo_admin"
 4. 없는 아이디(`demo_admin`)여도 똑같이 잠긴다는 점 — 응답으로 관리자 아이디 존재 여부를 알 수 없음
 5. 허용 목록 PC에서는 같은 계정이 잠겨 있어도 로그인할 수 있다는 점(관리자 쫓아내기 방지)을 설명
+
+## 5-2. (선택) 그 밖의 공격 유형 한 줄 시연 (각 1분)
+
+새 시뮬레이터로 등급별 방어를 짧게 보여줄 수 있습니다. 모두 로컬 서버 대상이고, 가짜 IP는 `TRUST_FORWARDED_FOR=true`일 때만 반영됩니다.
+
+| 보여줄 것 | 명령 | 기대 결과 |
+|---|---|---|
+| 관리자 로그인 무차별 대입(CRITICAL) | `python scripts/simulation/critical/admin_bruteforce_sim.py` | `ADMIN_BRUTE_FORCE`, 관리자 IP 잠금 |
+| 전역 HTTP 플러딩(HIGH) | `python scripts/simulation/high/http_flood_sim.py` | 429, `HTTP_FLOOD` |
+| 복구·비밀번호 찾기 폭주(HIGH) | `python scripts/simulation/high/recovery_flood_sim.py --target recovery` (`recovery-verify`·`password-forgot`·`password-reset`·`email-confirm`도 가능) | 엔드포인트별 좁은 한도 429 |
+| 댓글 도배(HIGH) | `python scripts/simulation/high/comment_spam_sim.py --username <회원> --password <비밀번호>` | `COMMENT_RATE_LIMIT` |
+| 허니팟 봇(MEDIUM) | `python scripts/simulation/medium/honeypot_bot_sim.py` | `BOT_DETECTED`, 로그인 실패로 세지 않음 |
+| 다단계 공격 → 사건화·영구 차단(CRITICAL) | `python scripts/simulation/critical/incident_correlation_sim.py` | 정찰→침투→브루트포스가 한 사건으로 묶이고 영구 차단 |
+
+**보여줄 곳**: 위협 현황(`/admin/dashboard`)의 공격자 히트맵·공격 흐름도, 공격 상세(`/admin/attack`)의 최근 이벤트, 처리 작업대의 보안 이벤트 표.
 
 ## 6. 비밀번호 변경 → 다른 기기 로그아웃 (2분)
 
@@ -102,13 +121,13 @@
 
 ## 7. 정리
 
-- `python scripts/unlock_ip.py --all --permanent --note "시연 정리"` — 시연에서 만든 잠금 전부 해제
-- `python scripts/unlock_account.py --admin --all` — 시연에서 잠근 관리자 계정 해제
+- `python scripts/management/unlock_ip.py --all --permanent --note "시연 정리"` — 시연에서 만든 잠금 전부 해제
+- `python scripts/management/unlock_account.py --admin --all` — 시연에서 잠근 관리자 계정 해제
 - 대시보드에서 시연용 사건 "해결", 시연용 IP 예외 "회수", 남은 "AI 조기 경보" 반려
 - `TRUST_FORWARDED_FOR`를 다시 `false`로 되돌리기
 
 ## 시연 시 주의
 
 - 여러 사람이 동시에 시뮬레이터를 돌리면 잠금·알림이 겹칠 수 있습니다. 한 사람만 실행하세요.
-- 관리자 로그인 화면에서 실패를 반복하면 관리자 IP가 잠기고, 두 번째에는 **관리자만 풀 수 있는 영구 잠금**이 됩니다. 이때는 `python scripts/unlock_ip.py --ip <IP> --permanent`로 풉니다.
+- 관리자 로그인 화면에서 실패를 반복하면 관리자 IP가 잠기고, 두 번째에는 **관리자만 풀 수 있는 영구 잠금**이 됩니다. 이때는 `python scripts/management/unlock_ip.py --ip <IP> --permanent`로 풉니다.
 - 무료 Vercel 플랜은 런타임 로그를 1시간만 보관합니다. 배포에서 시연한다면 로그 확인은 바로 직후에 하세요.
