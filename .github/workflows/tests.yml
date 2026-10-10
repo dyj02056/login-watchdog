@@ -38,3 +38,33 @@ jobs:
 
       - name: pytest 실행
         run: pytest tests/ -v
+
+  # Next.js 화면(web/)을 타입 검사·빌드하고, 저장소에 올려 둔 빌드 결과(spa/, public/_next)가 최신인지 확인한다.
+  # 소스를 고치고 `npm run build`를 안 돌린 채 커밋하면 배포 화면이 옛 모습으로 남기 때문이다.
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: 의존성 설치
+        working-directory: web
+        run: npm ci
+
+      - name: 타입 검사
+        working-directory: web
+        run: npm run typecheck
+
+      - name: 빌드
+        working-directory: web
+        run: npm run build
+
+      # 운영체제·폰트 내려받기 시점에 따라 해시가 달라질 수 있어 경고로만 둔다(실패해도 작업은 통과).
+      - name: 빌드 결과가 커밋된 것과 같은지 확인
+        continue-on-error: true
+        run: git diff --exit-code --stat -- spa public/_next

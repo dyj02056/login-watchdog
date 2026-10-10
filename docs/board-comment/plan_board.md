@@ -1,5 +1,7 @@
 # 게시판·댓글 기능 — 구현 계획
 
+> **읽기 전에**: 이 문서는 2026-09-04 기준 시점의 기록입니다. 이후 리팩터링으로 파일 위치가 바뀌었습니다 — `soar.py`→`security/soar/`, `detector.py`·`correlate.py`·`lockdown.py`→`security/`, `alert.py`·`mailer.py`→`notify/`, `geoip.py`·`llm_client.py`·`email_verification.py`→`services/`, `routes/admin.py`→`routes/admin/`, `helpers.py`→`helpers/`, `scripts/*.py`→`scripts/{simulation,management,demo}/`. 코드 링크는 지금 위치로 고쳐 두었고, 현재 구조는 [README의 "프로젝트 구조"](../../README.md#프로젝트-구조)를 참고하세요.
+
 > 작성 기준일: 2026-09-04 / 브랜치: `main`
 > 근거 문서: [research_board.md](research_board.md)(구현 전 분석) + [02-design-decisions.md](02-design-decisions.md)(11개 질문 결정 사항)
 > 참고: 이 저장소에는 별도의 "스키마/라우트 설계" 문서가 없었으며, 이 문서가 그 역할을 겸한다(하단 각 절 참고).

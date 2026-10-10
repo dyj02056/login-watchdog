@@ -12,10 +12,11 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from flask import g, jsonify, render_template, request
+from flask import g, jsonify, redirect, render_template, request, url_for
 
 import config
 import db
+from db import stats as db_stats
 from helpers import _attach_locations, login_required
 from routes.admin import admin_bp
 from security import soar
@@ -41,6 +42,20 @@ def admin_dashboard():
     상수들과 동일한 원칙 — 값을 바꾸려고 여러 파일을 찾아다닐 필요가 없게 함).
     """
     return render_template("admin_dashboard.html", poll_interval_ms=config.ADMIN_DASHBOARD_POLL_MS)
+
+
+@admin_bp.route("/admin/attack", methods=["GET"])
+@login_required
+def admin_attack():
+    """공격 상세 모니터링 화면. Next 화면(spa/)이 있을 때만 의미가 있고, 없으면 대시보드로 돌려보낸다."""
+    return redirect(url_for("admin.admin_dashboard"))
+
+
+@admin_bp.route("/admin/ops", methods=["GET"])
+@login_required
+def admin_ops():
+    """처리 작업대 화면. Next 화면(spa/)이 있을 때만 의미가 있고, 없으면 대시보드로 돌려보낸다."""
+    return redirect(url_for("admin.admin_dashboard"))
 
 
 def _page_param(name: str) -> int:
@@ -153,6 +168,41 @@ def _build_permanent_locks(ip_lockouts: list[dict], account_lockouts: list[dict]
     return locks
 
 
+@admin_bp.route("/api/stats", methods=["GET"])
+@login_required
+def api_stats():
+    """관제 화면(위협 현황·공격 상세)의 차트·히트맵·표 숫자를 한 번에 돌려준다(db/stats.py).
+
+    /api/status와 달리 목록 전체가 아니라 집계만 내려보낸다. 조회만 하므로 권한은 로그인 확인이면 충분하다.
+    """
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        locks = executor.submit(db.list_active_lockouts)
+        account_locks = executor.submit(db.list_active_account_lockouts)
+        admin_locks = executor.submit(db.list_active_admin_account_lockouts)
+        pending = executor.submit(db.list_pending_requests, 1, 1)
+        ip_locks, member_locks, admin_account_locks = locks.result(), account_locks.result(), admin_locks.result()
+        active = len(ip_locks) + len(member_locks) + len(admin_account_locks)
+        pending_count = pending.result()[1]
+    stats = db_stats.get_threat_stats(active_locks=active, pending_ai=pending_count)
+    # 잠금 목록은 건수가 같아도 내용이 바뀔 수 있어서(풀림·재잠금) 보관된 집계에 매번 새로 얹는다.
+    return jsonify({**stats, **db_stats.build_locks(ip_locks, member_locks, admin_account_locks)})
+
+
+# 전체 상태 응답을 잠깐 보관해 탭 여러 개가 같은 조회를 나눠 쓴다(config.ADMIN_STATUS_CACHE_SECONDS).
+# 권한(role)에 따라 응답이 다르므로 role과 쪽 번호(쿼리 문자열)별로 따로 둔다. 처리 요청(POST)이 끝나면
+# 바로 비워서, 방금 누른 버튼의 결과가 오래된 값에 가려지지 않게 한다.
+_status_cache: dict = {}
+_status_cache_lock = threading.Lock()
+
+
+@admin_bp.after_request
+def _clear_status_cache_after_change(response):
+    if request.method == "POST":
+        with _status_cache_lock:
+            _status_cache.clear()
+    return response
+
+
 @admin_bp.route("/api/status", methods=["GET"])
 @login_required
 def api_status():
@@ -195,6 +245,14 @@ def api_status():
     only = request.args.get("only")
     if only is not None:
         return _api_status_section(only)
+
+    ttl = config.ADMIN_STATUS_CACHE_SECONDS
+    cache_key = (g.admin["role"], request.query_string)
+    if ttl > 0:
+        with _status_cache_lock:
+            hit = _status_cache.get(cache_key)
+        if hit and time.monotonic() - hit[0] < ttl:
+            return jsonify(hit[1])
 
     _release_expired_locks_if_due()
 
@@ -305,4 +363,9 @@ def api_status():
     if can_manage_admins:
         response_data["admin_users"] = admin_users
 
+    if ttl > 0:
+        with _status_cache_lock:
+            _status_cache[cache_key] = (time.monotonic(), response_data)
+            if len(_status_cache) > 64:  # 쪽 번호 조합이 무한히 늘지 않게
+                _status_cache.pop(next(iter(_status_cache)))
     return jsonify(response_data)

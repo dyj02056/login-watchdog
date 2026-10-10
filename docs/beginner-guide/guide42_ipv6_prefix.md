@@ -57,7 +57,7 @@ IPv4 주소는 32비트라 한 사람이 쓸 수 있는 주소가 보통 하나(
 |---|---|
 | `geoip.py` (위치 조회) | `x::/64`는 IP 형식이 아니라 그대로면 조회가 막힌다 → 대역이면 **대표 주소(`2001:db8:1:2::`)로 조회**. IP도 대역도 아니면 외부로 요청을 보내지 않는 SSRF 방지는 그대로(`ip_utils.lookup_address`) |
 | `lockdown.is_ip_allowlisted()` | 요청 IP와 `.env`의 `PERMANENT_LOCK_IP_ALLOWLIST` 항목을 **둘 다 정규화해서 비교** — 관리자 PC의 IPv6 전체 주소를 적어도 같은 대역이면 인정 |
-| `scripts/unlock_ip.py --ip` | IPv6 전체 주소를 넣어도 대역 키로 바꿔서 해제 |
+| `scripts/management/unlock_ip.py --ip` | IPv6 전체 주소를 넣어도 대역 키로 바꿔서 해제 |
 | `X-Forwarded-For`(데모 전용 `TRUST_FORWARDED_FOR=true`) | 헤더의 IPv6도 똑같이 정규화. 형식이 이상하면 버리고 접속 주소로 되돌아가는 기존 규칙도 그대로 |
 
 ## 감수하는 점
@@ -83,4 +83,4 @@ IPv4 주소는 32비트라 한 사람이 쓸 수 있는 주소가 보통 하나(
 ## 이 단계에서 만들어지거나 바뀐 파일
 
 - 신규: [ip_utils.py](../../services/ip_utils.py), `tests/test_ipv6_prefix.py`
-- 수정: [helpers.py](../../helpers/)(`get_request_ip`), [lockdown.py](../../security/lockdown.py)(`is_ip_allowlisted`), [geoip.py](../../services/geoip.py), [config.py](../../config.py)(`IPV6_PREFIX_LENGTH`), [scripts/unlock_ip.py](../../scripts/unlock_ip.py)
+- 수정: [helpers.py](../../helpers/)(`get_request_ip`), [lockdown.py](../../security/lockdown.py)(`is_ip_allowlisted`), [geoip.py](../../services/geoip.py), [config.py](../../config.py)(`IPV6_PREFIX_LENGTH`), [scripts/management/unlock_ip.py](../../scripts/management/unlock_ip.py)

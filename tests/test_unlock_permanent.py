@@ -1,5 +1,5 @@
 # ============================================================================
-# test_unlock_permanent.py — scripts/unlock_ip.py / unlock_account.py의 --permanent 옵션 (guide33)
+# test_unlock_permanent.py — scripts/management/unlock_ip.py / unlock_account.py의 --permanent 옵션 (guide33)
 #
 # 영구 잠금은 --permanent가 있을 때만 lockdown.release()(대시보드 "영구 해제"와 같은 경로)로
 # 풀리고, 없으면 건너뛰어야 한다. 옵션을 받고도 main()에서 안 넘기던 버그가 실제 E2E에서
@@ -12,7 +12,7 @@ import sys
 import pytest
 
 sys.path.insert(
-    0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
+    0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts", "management")
 )
 
 import db

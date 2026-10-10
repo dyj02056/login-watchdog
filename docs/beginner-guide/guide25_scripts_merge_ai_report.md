@@ -10,9 +10,9 @@
 
 `scripts/jh/` 하위에 있던 공격 시뮬레이션 스크립트 3개를 `scripts/` 바로 아래로 옮기고, 빈 폴더가 된 `jh`는 삭제했습니다.
 
-- [scripts/web_scanning_sim.py](../../scripts/web_scanning_sim.py) — 로그인 없이 존재하지 않는 경로(`/admin.php`, `/.env` 등)로 GET 11회를 보내 Web Scanning 탐지를 재현
-- [scripts/unauthorized_access_sim.py](../../scripts/unauthorized_access_sim.py) — 로그인 세션 없는 새 `requests.Session()`으로 `/api/status`에 GET 11회를 보내 Unauthorized Access 탐지를 재현
-- [scripts/password_spraying_sim.py](../../scripts/password_spraying_sim.py) — `/login`에 매번 다른 아이디로 틀린 비밀번호를 6회 제출(IP·세션은 고정)해 Password Spraying 탐지를 재현
+- [scripts/simulation/medium/web_scanning_sim.py](../../scripts/simulation/medium/web_scanning_sim.py) — 로그인 없이 존재하지 않는 경로(`/admin.php`, `/.env` 등)로 GET 11회를 보내 Web Scanning 탐지를 재현
+- [scripts/simulation/medium/unauthorized_access_sim.py](../../scripts/simulation/medium/unauthorized_access_sim.py) — 로그인 세션 없는 새 `requests.Session()`으로 `/api/status`에 GET 11회를 보내 Unauthorized Access 탐지를 재현
+- [scripts/simulation/critical/password_spraying_sim.py](../../scripts/simulation/critical/password_spraying_sim.py) — `/login`에 매번 다른 아이디로 틀린 비밀번호를 6회 제출(IP·세션은 고정)해 Password Spraying 탐지를 재현
 
 세 파일 모두 "이 공격이 왜 이렇게 동작하는지", "왜 이 안전장치(로컬 서버만 허용, 민감정보 가림 등)가 필요한지"를 비전공자도 이해할 수 있도록 상단 설명 블록과 함수별 주석을 대폭 보강했습니다.
 
@@ -20,9 +20,9 @@
 
 `seunghoon` 브랜치에는 main에 없던 시뮬레이터 3개가 있었고, 충돌 없이 그대로 병합했습니다.
 
-- [scripts/repeated_access_sim.py](../../scripts/repeated_access_sim.py) — 같은 IP가 같은 페이지를 21회 반복 GET(서버의 `PAGE_ACCESS_ALERT_THRESHOLD=20`을 "초과"하는 지점)
-- [scripts/signup_abuse_sim.py](../../scripts/signup_abuse_sim.py) — `/signup`에 서로 다른 계정으로 POST 반복(서버의 `SIGNUP_RATE_LIMIT=5`와 연동)
-- [scripts/spam_sim.py](../../scripts/spam_sim.py) — 로그인 후 `/board/new`에 게시글 작성 POST를 6회 반복(서버의 `POST_RATE_LIMIT=5`를 "초과"하는 지점)
+- [scripts/simulation/medium/repeated_access_sim.py](../../scripts/simulation/medium/repeated_access_sim.py) — 같은 IP가 같은 페이지를 21회 반복 GET(서버의 `PAGE_ACCESS_ALERT_THRESHOLD=20`을 "초과"하는 지점)
+- [scripts/simulation/high/signup_abuse_sim.py](../../scripts/simulation/high/signup_abuse_sim.py) — `/signup`에 서로 다른 계정으로 POST 반복(서버의 `SIGNUP_RATE_LIMIT=5`와 연동)
+- [scripts/simulation/high/spam_sim.py](../../scripts/simulation/high/spam_sim.py) — 로그인 후 `/board/new`에 게시글 작성 POST를 6회 반복(서버의 `POST_RATE_LIMIT=5`를 "초과"하는 지점)
 
 병합 후, 각 스크립트의 기본 요청 횟수가 서버(`config.py`)의 실제 임계값과 어떻게 연결되는지("왜 하필 이 숫자인지"), CSRF 토큰이 뭔지, 성공/실패 판정 기준이 뭔지를 설명하는 주석을 추가했습니다.
 
@@ -50,7 +50,7 @@
 **Google Gemini API와 실제로 연동**했습니다. 별도 구글 SDK를 새로 설치하지 않고, 이 프로젝트가 이미 쓰는 `requests`로 Gemini의 REST API를 직접 호출하는 방식을 택했습니다.
 
 ```python
-# scripts/daily_report.py
+# scripts/management/daily_report.py
 def generate_ai_summary(report_text: str) -> str:
     api_key = os.environ.get("GEMINI_API_KEY")
     ...
@@ -66,7 +66,7 @@ def generate_ai_summary(report_text: str) -> str:
 ### 실제로 확인한 것 (로컬 테스트)
 
 ```
-$ python scripts/daily_report.py --ai
+$ python scripts/management/daily_report.py --ai
 ===== 로그인 워치독 보안 리포트 (최근 24시간 기준) =====
 ...
 --------------------------------------------------
@@ -84,11 +84,11 @@ $ python scripts/daily_report.py --ai
 
 ## 이 단계에서 만들어지거나 바뀐 파일
 
-- [scripts/web_scanning_sim.py](../../scripts/web_scanning_sim.py), [scripts/unauthorized_access_sim.py](../../scripts/unauthorized_access_sim.py), [scripts/password_spraying_sim.py](../../scripts/password_spraying_sim.py) (jh 폴더에서 이동 + 주석 보강)
-- [scripts/repeated_access_sim.py](../../scripts/repeated_access_sim.py), [scripts/signup_abuse_sim.py](../../scripts/signup_abuse_sim.py), [scripts/spam_sim.py](../../scripts/spam_sim.py) (seunghoon 병합 + 주석 보강)
+- [scripts/simulation/medium/web_scanning_sim.py](../../scripts/simulation/medium/web_scanning_sim.py), [scripts/simulation/medium/unauthorized_access_sim.py](../../scripts/simulation/medium/unauthorized_access_sim.py), [scripts/simulation/critical/password_spraying_sim.py](../../scripts/simulation/critical/password_spraying_sim.py) (jh 폴더에서 이동 + 주석 보강)
+- [scripts/simulation/medium/repeated_access_sim.py](../../scripts/simulation/medium/repeated_access_sim.py), [scripts/simulation/high/signup_abuse_sim.py](../../scripts/simulation/high/signup_abuse_sim.py), [scripts/simulation/high/spam_sim.py](../../scripts/simulation/high/spam_sim.py) (seunghoon 병합 + 주석 보강)
 - [db/__init__.py](../../db/__init__.py) (`list_attempts_between`/`list_lockouts_between` 등록 누락 수정)
 - [db/lockouts.py](../../db/lockouts.py) (`list_lockouts_between` 신규 구현)
-- [scripts/daily_report.py](../../scripts/daily_report.py) (입력 검증 추가, Gemini AI 연동, 주석 보강)
+- [scripts/management/daily_report.py](../../scripts/management/daily_report.py) (입력 검증 추가, Gemini AI 연동, 주석 보강)
 - [.env.example](../../.env.example) (`GEMINI_API_KEY` 항목 추가)
 
 ---
