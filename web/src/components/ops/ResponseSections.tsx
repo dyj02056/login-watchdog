@@ -3,7 +3,7 @@
 // 대응 묶음 — 잠금 해제, AI 조기 경보 승인, 보안 이벤트·연관 사건 처리, 영구 잠금, 복구 요청, IP 예외.
 // 버튼은 권한이 있는 관리자에게만 보인다. 숨김은 편의일 뿐이고 실제 검사는 서버가 요청마다 다시 한다.
 import { useState } from "react";
-import { formatDateTime, formatTime } from "@/lib/format";
+import { formatDateTime, formatShortDateTime } from "@/lib/format";
 import { actionLabel, eventTypeLabel } from "@/lib/labels";
 import { SeverityBadge, Pill } from "../Badge";
 import { DataTable } from "../DataTable";
@@ -44,7 +44,7 @@ export function LockSection() {
             { header: "종류", cell: (r) => KIND[r.kind] },
             { header: "대상", cell: (r) => r.target, num: true, grow: true },
             { header: "실패", cell: (r) => `${r.failure_count}회`, num: true, align: "right" },
-            { header: "해제 예정", cell: (r) => formatTime(r.unlock_at), num: true },
+            { header: "해제 예정", cell: (r) => formatShortDateTime(r.unlock_at), num: true },
             {
               header: "조치",
               cell: (r) => {
@@ -93,7 +93,7 @@ export function AccessRequestSection() {
       rowKey={(r) => r.request_id}
       empty={{ title: "대기 중인 AI 조기 경보가 없습니다.", hint: "임계값 직전에서 AI가 위험하다고 판단하면 여기에 올라옵니다." }}
       columns={[
-        { header: "요청 시각", cell: (r) => formatTime(r.requested_at), num: true },
+        { header: "요청 시각", cell: (r) => formatDateTime(r.requested_at), num: true },
         { header: "유형", cell: (r) => EARLY_WARNING_LABELS[r.event_type] ?? r.event_type },
         { header: "대상", cell: (r) => r.target_value, num: true },
         { header: "현재 / 기준", cell: (r) => `${r.count} / ${r.threshold}`, num: true },
@@ -148,7 +148,7 @@ export function SecurityEventSection() {
       rowKey={(r) => r.id}
       empty={{ title: "보안 이벤트가 없습니다." }}
       columns={[
-        { header: "시각", cell: (r) => formatTime(r.detected_at), num: true },
+        { header: "시각", cell: (r) => formatShortDateTime(r.detected_at, true), num: true },
         { header: "등급", cell: (r) => <SeverityBadge severity={r.severity} /> },
         { header: "유형", cell: (r) => eventTypeLabel(r.event_type) },
         { header: "IP", cell: (r) => r.ip_address, num: true },
@@ -197,8 +197,8 @@ export function IncidentSection() {
       rowKey={(r) => r.id}
       empty={{ title: "연관된 사건이 없습니다.", hint: "같은 IP가 짧은 시간에 서로 다른 유형을 2가지 이상 남기면 묶입니다." }}
       columns={[
-        { header: "시작", cell: (r) => formatTime(r.first_event_at), num: true },
-        { header: "마지막 활동", cell: (r) => formatTime(r.last_event_at), num: true },
+        { header: "시작", cell: (r) => formatShortDateTime(r.first_event_at), num: true },
+        { header: "마지막 활동", cell: (r) => formatShortDateTime(r.last_event_at), num: true },
         { header: "등급", cell: (r) => <SeverityBadge severity={r.severity_max} /> },
         { header: "관련 유형", cell: (r) => r.event_types.map(eventTypeLabel).join(", "), grow: true },
         { header: "IP", cell: (r) => r.ip_address, num: true },
@@ -206,7 +206,7 @@ export function IncidentSection() {
         {
           header: "처리",
           cell: (r) => {
-            if (r.status === "CLOSED") return r.resolved_by ? <span className="num">{r.resolved_by} · {formatTime(r.resolved_at)}</span> : "-";
+            if (r.status === "CLOSED") return r.resolved_by ? <span className="num">{r.resolved_by} · {formatShortDateTime(r.resolved_at, true)}</span> : "-";
             if (!can("resolve_incident")) return <span className={styles.muted}>-</span>;
             return (
               <ActionButton
