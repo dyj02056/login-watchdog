@@ -2,7 +2,7 @@
 
 // AttackView — 화면 B "공격 상세 모니터링". 시간대별 탐지, 국가 흐름, 출발지·유형·경로 Top 5, 실시간 이벤트.
 import { apiJson } from "@/lib/api";
-import { formatDateTime } from "@/lib/format";
+import { formatShortDateTime } from "@/lib/format";
 import { actionLabel, eventTypeLabel } from "@/lib/labels";
 import type { Stats } from "@/lib/types";
 import { usePolling } from "@/lib/usePolling";
@@ -110,14 +110,14 @@ export function AttackView() {
                 alignTop
                 empty={{ title: "보안 이벤트가 없습니다." }}
                 columns={[
-                  { header: "발생 시각", cell: (r) => formatDateTime(r.detected_at), num: true },
+                  { header: "발생 시각", cell: (r) => formatShortDateTime(r.detected_at, true), num: true },
                   { header: "등급", cell: (r) => <SeverityBadge severity={r.severity} /> },
-                  { header: "유형", cell: (r) => eventTypeLabel(r.event_type), wrap: true, maxWidth: "9rem" },
+                  { header: "유형", cell: (r) => eventTypeLabel(r.event_type) },
                   { header: "출발지 IP", cell: (r) => r.ip, num: true },
                   { header: "국가", cell: (r) => r.country ?? "-" },
                   { header: "대상 경로", cell: (r) => r.path ?? "-", wrap: true, maxWidth: "13rem" },
                   { header: "건수", cell: (r) => r.count, num: true, align: "right" },
-                  { header: "조치", cell: (r) => actionLabel(r.action), wrap: true, maxWidth: "6rem" },
+                  { header: "조치", cell: (r) => actionLabel(r.action) },
                   { header: "상태", cell: (r) => (r.resolved ? "처리됨" : "미처리") },
                 ]}
               />

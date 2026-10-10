@@ -2,7 +2,7 @@
 
 // 기록·관리 묶음 — 로그인 시도, 관리자 로그인 기록, 회원, 게시글, 댓글, 관리자 계정.
 import { useState } from "react";
-import { formatTime } from "@/lib/format";
+import { formatDateTime, formatShortDateTime } from "@/lib/format";
 import { Pill } from "../Badge";
 import { DataTable } from "../DataTable";
 import { useFeedback } from "../Feedback";
@@ -25,7 +25,7 @@ export function AttemptSection() {
       rowKey={(r, i) => `${r.attempted_at}-${r.ip_address}-${i}`}
       empty={{ title: "로그인 시도 기록이 없습니다." }}
       columns={[
-        { header: "시각", cell: (r) => formatTime(r.attempted_at), num: true },
+        { header: "시각", cell: (r) => formatShortDateTime(r.attempted_at, true), num: true },
         { header: "IP", cell: (r) => r.ip_address, num: true },
         { header: "접속 위치", cell: (r) => r.location ?? "-", grow: true },
         { header: "아이디", cell: (r) => r.username },
@@ -46,7 +46,7 @@ export function AdminLogSection() {
       rowKey={(r, i) => `${r.attempted_at}-${r.username}-${i}`}
       empty={{ title: "관리자 로그인 기록이 없습니다." }}
       columns={[
-        { header: "시각", cell: (r) => formatTime(r.attempted_at), num: true },
+        { header: "시각", cell: (r) => formatDateTime(r.attempted_at), num: true },
         { header: "아이디", cell: (r) => r.username, grow: true },
         { header: "IP", cell: (r) => r.ip_address, num: true },
         { header: "결과", cell: (r) => RESULT(r.success) },
@@ -81,7 +81,7 @@ export function UserSection() {
         ) : null
       }
       columns={[
-        { header: "가입 시각", cell: (r) => formatTime(r.created_at), num: true },
+        { header: "가입 시각", cell: (r) => formatDateTime(r.created_at), num: true },
         { header: "아이디", cell: (r) => r.username },
         {
           header: "이메일",
@@ -128,7 +128,7 @@ export function PostSection() {
       rowKey={(r) => r.id}
       empty={{ title: "등록된 게시글이 없습니다." }}
       columns={[
-        { header: "작성 시각", cell: (r) => formatTime(r.created_at), num: true },
+        { header: "작성 시각", cell: (r) => formatShortDateTime(r.created_at), num: true },
         { header: "제목", cell: (r) => <span className={styles.ellipsis}>{r.title}</span>, grow: true },
         { header: "작성자", cell: (r) => r.author_username },
         {
@@ -167,7 +167,7 @@ export function CommentSection() {
       rowKey={(r) => r.id}
       empty={{ title: "등록된 댓글이 없습니다." }}
       columns={[
-        { header: "작성 시각", cell: (r) => formatTime(r.created_at), num: true },
+        { header: "작성 시각", cell: (r) => formatShortDateTime(r.created_at), num: true },
         { header: "내용", cell: (r) => <span className={styles.ellipsis}>{r.body}</span>, grow: true },
         { header: "작성자", cell: (r) => r.author_username },
         {
@@ -221,7 +221,7 @@ export function AdminUserSection() {
         rowKey={(r) => r.id}
         empty={{ title: "관리자 계정이 없습니다." }}
         columns={[
-          { header: "생성 시각", cell: (r) => formatTime(r.created_at), num: true },
+          { header: "생성 시각", cell: (r) => formatDateTime(r.created_at), num: true },
           { header: "아이디", cell: (r) => r.username, grow: true },
           { header: "역할", cell: (r) => r.role },
           {

@@ -12,7 +12,8 @@ const out = join(web, "out");
 const spaDir = join(web, "..", "spa");
 const publicDir = join(web, "..", "public");
 
-const SKIP = new Set(["404.html", "_not-found.html"]);
+// 404.html(app/not-found.tsx)은 Flask가 404 응답 본문으로 쓰므로 spa/로 옮긴다. _not-found.html은 같은 내용의 중복이라 건너뛴다.
+const SKIP = new Set(["_not-found.html"]);
 
 function* walk(dir) {
   for (const name of readdirSync(dir)) {
