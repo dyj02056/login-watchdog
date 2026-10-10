@@ -28,11 +28,12 @@
 }
 .heat {
   grid-column: span 5;
-  height: 20rem;
+  height: 26rem;
 }
+/* 흐름도는 유형 노드가 10여 개라 라벨 줄 간격이 나오려면 높이가 필요하다 */
 .flow {
   grid-column: span 7;
-  height: 20rem;
+  height: 26rem;
 }
 
 .newIps,
@@ -67,5 +68,11 @@
   .open,
   .compound {
     grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 700px) {
+  .flow {
+    height: 40rem;
   }
 }

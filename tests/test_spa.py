@@ -11,6 +11,7 @@ import pytest
 
 import db
 from helpers import spa
+from security import detector
 
 SHELL = (
     "<!doctype html><html><body><div id=root></div>"
@@ -173,3 +174,65 @@ def test_admin_json_post_works_with_the_csrf_token_from_the_session_endpoint(cli
     denied = client.post("/api/unlock", json={"ip": "203.0.113.5"}, headers=HEADERS)
     assert denied.get_json()["status"] == 400
     assert released == ["203.0.113.5"]
+
+
+# ============================================================================
+# 404 화면 — 브라우저가 존재하지 않는 주소를 열면 spa/404.html을 404 상태로 내려준다.
+# 기록·탐지(helpers/hooks.py handle_not_found)는 화면과 무관하게 그대로 실행된다.
+# ============================================================================
+
+NOT_FOUND = SHELL.replace("<div id=root></div>", "<h1>찾을 수 없는 주소입니다</h1>")
+
+
+@pytest.fixture
+def not_found_dir(spa_dir, monkeypatch):
+    (spa_dir / "404.html").write_text(NOT_FOUND, encoding="utf-8")
+    logged = []
+    monkeypatch.setattr(db, "log_not_found_attempt", lambda ip, path: logged.append(path))
+    monkeypatch.setattr(detector, "is_web_scanning", lambda ip: (False, 1, False))
+    return logged
+
+
+def test_unknown_page_gets_styled_404_with_status_404_and_script_hash(client, not_found_dir):
+    response = client.get("/no-such-page", headers={"Accept": "text/html"})
+    assert response.status_code == 404
+    assert "찾을 수 없는 주소입니다".encode() in response.data
+    assert "script-src 'self' 'sha256-" in response.headers["Content-Security-Policy"]
+    assert "X-Spa-Script-Hashes" not in response.headers
+    assert response.headers["Cache-Control"] == "no-store"
+    assert not_found_dir == ["/no-such-page"]  # 화면이 바뀌어도 기록은 그대로 남는다
+
+
+@pytest.mark.parametrize(
+    "path, headers",
+    [
+        ("/api/no-such-endpoint", {"Accept": "text/html"}),      # /api/ 는 화면을 내려주지 않는다
+        ("/no-such-page", {"Accept": "application/json"}),       # HTML을 받지 않는 요청
+    ],
+)
+def test_non_page_requests_keep_the_plain_404(client, not_found_dir, path, headers):
+    response = client.get(path, headers=headers)
+    assert response.status_code == 404
+    assert "찾을 수 없는 주소입니다".encode() not in response.data
+    assert not_found_dir == [path]
+
+
+def test_adapter_request_on_unknown_page_returns_json_404(client, not_found_dir):
+    body = client.get("/no-such-page", headers=HEADERS).get_json()
+    assert body["status"] == 404
+    assert body["messages"] == ["찾을 수 없는 주소입니다."]
+
+
+def test_404_falls_back_to_default_when_page_missing_or_spa_disabled(client, spa_dir, monkeypatch):
+    monkeypatch.setattr(db, "log_not_found_attempt", lambda ip, path: None)
+    monkeypatch.setattr(detector, "is_web_scanning", lambda ip: (False, 1, False))
+    # 404.html이 없으면(예전 빌드) 기본 404
+    response = client.get("/no-such-page", headers={"Accept": "text/html"})
+    assert response.status_code == 404
+    assert "찾을 수 없는 주소입니다".encode() not in response.data
+    # 있어도 SPA_ENABLED=false면 기본 404
+    (spa_dir / "404.html").write_text(NOT_FOUND, encoding="utf-8")
+    monkeypatch.setenv("SPA_ENABLED", "false")
+    response = client.get("/no-such-page", headers={"Accept": "text/html"})
+    assert response.status_code == 404
+    assert "찾을 수 없는 주소입니다".encode() not in response.data
