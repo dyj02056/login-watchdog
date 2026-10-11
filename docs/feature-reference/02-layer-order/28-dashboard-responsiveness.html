@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>28. 대시보드 즉시 반응 — 코드 흐름도</title>
+<style>
+  :root{
+    --bg:#f4f6f3; --surface:#ffffff; --surface-2:#eaefe9; --ink:#12201c; --ink-muted:#5a6b63;
+    --border:#d9e0da; --accent:#0f6f66; --accent-soft:#e2ede9; --danger:#bf3b2b; --danger-soft:#f8e6e2;
+    --edge:#7b8a82; --edge-call:#8a97a0;
+    --k-screen:#767f78; --k-screen-soft:#eef0ee;
+    --k-route:#2f5fd6;  --k-route-soft:#e7edfb;
+    --k-helper:#b56b0c; --k-helper-soft:#f7ecd9;
+    --k-db:#7a4fce;     --k-db-soft:#efe8fa;
+    --k-config:#0f6f66; --k-config-soft:#e2ede9;
+    --k-later:#9aa39d;  --k-later-soft:#f4f6f3;
+    --code-bg:#fbfcfb; --code-hl:#fff3c4; --code-hl-bar:#e0a800; --code-gutter:#8a978f;
+    --c-comment:#6b7d73; --c-str:#a1470f; --c-kw:#7a3fc0; --c-fn:#1f5fd0; --c-num:#0b7a6c; --c-deco:#b0306e;
+    --shadow:0 1px 2px rgba(18,32,28,.06), 0 6px 20px rgba(18,32,28,.07);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0d1512; --surface:#141e1a; --surface-2:#1b2620; --ink:#e7efe9; --ink-muted:#93a49c;
+      --border:#28352e; --accent:#4fc9b8; --accent-soft:#17332d; --danger:#ec7a6a; --danger-soft:#3a1d19;
+      --edge:#6f8178; --edge-call:#5d6f67;
+      --k-screen:#9aa39d; --k-screen-soft:#1a221e;
+      --k-route:#7fa2f2;  --k-route-soft:#182236;
+      --k-helper:#e8a94c; --k-helper-soft:#31260f;
+      --k-db:#b49bee;     --k-db-soft:#241c34;
+      --k-config:#4fc9b8; --k-config-soft:#17332d;
+      --k-later:#6b7a72;  --k-later-soft:#111a16;
+      --code-bg:#0f1713; --code-hl:#3a3210; --code-hl-bar:#e8a94c; --code-gutter:#5f7068;
+      --c-comment:#7f9388; --c-str:#e9a27a; --c-kw:#c3a1f5; --c-fn:#8db3ff; --c-num:#6fd6c6; --c-deco:#f08ab8;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d1512; --surface:#141e1a; --surface-2:#1b2620; --ink:#e7efe9; --ink-muted:#93a49c;
+    --border:#28352e; --accent:#4fc9b8; --accent-soft:#17332d; --danger:#ec7a6a; --danger-soft:#3a1d19;
+    --edge:#6f8178; --edge-call:#5d6f67;
+    --k-screen:#9aa39d; --k-screen-soft:#1a221e;
+    --k-route:#7fa2f2;  --k-route-soft:#182236;
+    --k-helper:#e8a94c; --k-helper-soft:#31260f;
+    --k-db:#b49bee;     --k-db-soft:#241c34;
+    --k-config:#4fc9b8; --k-config-soft:#17332d;
+    --k-later:#6b7a72;  --k-later-soft:#111a16;
+    --code-bg:#0f1713; --code-hl:#3a3210; --code-hl-bar:#e8a94c; --code-gutter:#5f7068;
+    --c-comment:#7f9388; --c-str:#e9a27a; --c-kw:#c3a1f5; --c-fn:#8db3ff; --c-num:#6fd6c6; --c-deco:#f08ab8;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.55}
+  button{font:inherit;color:inherit;cursor:pointer}
+  code,.mono{font-family:var(--mono)}
+
+  .app{display:flex;height:100vh;min-height:0}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .top{padding:14px 20px 10px;border-bottom:1px solid var(--border);background:var(--surface)}
+  .top h1{margin:0;font-size:19px;letter-spacing:-.01em}
+  .top .sub{margin:2px 0 0;color:var(--ink-muted);font-size:13px}
+  .top-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+  .tabs{display:flex;gap:6px}
+  .tab{border:1px solid var(--border);background:var(--surface-2);border-radius:999px;padding:5px 14px;font-weight:600}
+  .tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+  :root[data-theme="dark"] .tab[aria-selected="true"]{color:#06201b}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tab[aria-selected="true"]{color:#06201b}}
+  .spacer{flex:1}
+  .btn{border:1px solid var(--border);background:var(--surface);border-radius:8px;padding:5px 11px;font-size:13px}
+  .btn:hover{border-color:var(--accent)}
+  .btn:disabled{opacity:.4;cursor:default}
+  .stepper{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-muted)}
+  .stepper b{color:var(--ink);min-width:42px;text-align:center}
+  a.link{color:var(--accent);text-decoration:none;font-size:13px}
+  a.link:hover{text-decoration:underline}
+
+  .intro{margin:0;padding:10px 20px;color:var(--ink-muted);font-size:13px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px 20px;font-size:12px;color:var(--ink-muted);border-bottom:1px solid var(--border)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+  .stage-wrap{flex:1;min-height:0;overflow:auto}
+  .stage{position:relative;display:grid;gap:26px 46px;padding:22px 22px 60px;width:max-content;min-width:100%}
+  .edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+  .edges path{fill:none;stroke:var(--edge);stroke-width:1.6}
+  .edges path.call{stroke:var(--edge-call);stroke-dasharray:5 4}
+  .edges path.active{stroke:var(--accent);stroke-width:2.4;stroke-dasharray:none}
+  .edges .head{fill:var(--edge)}
+  .edges .head-call{fill:var(--edge-call)}
+  .elabel{position:absolute;transform:translate(-50%,-50%);font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;
+    background:var(--surface);border:1px solid var(--border);color:var(--ink-muted);white-space:nowrap;pointer-events:none}
+
+  .colhead{font-size:12px;font-weight:700;color:var(--ink-muted);text-transform:none;border-bottom:2px solid var(--border);padding-bottom:6px;align-self:end}
+  .cell{display:flex;flex-direction:column;gap:12px;align-self:center;justify-content:center;position:relative;z-index:1}
+
+  .node{--k:var(--k-route);--ks:var(--k-route-soft);position:relative;background:var(--surface);border:1px solid var(--border);
+    border-left:5px solid var(--k);border-radius:10px;padding:10px 12px;box-shadow:var(--shadow);cursor:pointer;
+    transition:transform .08s, border-color .12s}
+  .node:hover{transform:translateY(-1px);border-color:var(--k)}
+  .node:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .node[aria-pressed="true"]{outline:3px solid var(--accent);outline-offset:1px}
+  .node.screen{--k:var(--k-screen);--ks:var(--k-screen-soft)}
+  .node.route{--k:var(--k-route);--ks:var(--k-route-soft)}
+  .node.helper{--k:var(--k-helper);--ks:var(--k-helper-soft)}
+  .node.db{--k:var(--k-db);--ks:var(--k-db-soft)}
+  .node.config{--k:var(--k-config);--ks:var(--k-config-soft)}
+  .node.later{--k:var(--k-later);--ks:var(--k-later-soft);background:var(--k-later-soft);box-shadow:none;border-style:dashed;border-left-style:solid;padding:8px 10px}
+  .n-title{font-weight:700;font-size:13.5px;letter-spacing:-.01em}
+  .n-plain{margin-top:3px;color:var(--ink-muted);font-size:12.5px}
+  .n-reject{margin-top:6px;font-size:12px;color:var(--danger);background:var(--danger-soft);border-radius:6px;padding:3px 8px}
+  .n-reject::before{content:"막히면 → ";font-weight:700}
+  .n-items{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+  .n-item{display:flex;flex-direction:column;gap:3px}
+  .n-call{overflow-wrap:anywhere;font-family:var(--mono);font-size:11.5px;color:var(--k);font-weight:600}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{max-width:100%;text-align:left;overflow-wrap:anywhere;border:1px solid var(--border);background:var(--ks);color:var(--ink);border-radius:6px;padding:1px 7px;font-family:var(--mono);font-size:11px}
+  .chip:hover{border-color:var(--k);color:var(--k)}
+  .chip.file::before{content:"📄 "}
+  .chip.fn::before{content:"ƒ ";color:var(--k);font-weight:700}
+  .chip.snip::before{content:"▤ ";color:var(--k);font-weight:700}
+  .tag-later{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:700;color:var(--ink-muted);border:1px solid var(--border);border-radius:999px;padding:0 7px;background:var(--surface)}
+
+  /* 코드 패널 */
+  .panel{width:440px;flex:none;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;min-height:0}
+  .p-head{padding:14px 16px 10px;border-bottom:1px solid var(--border)}
+  .p-head h2{margin:0;font-size:15.5px;letter-spacing:-.01em}
+  .p-head p{margin:4px 0 0;color:var(--ink-muted);font-size:13px}
+  .p-close{display:none}
+  .p-body{flex:1;min-height:0;overflow:auto;padding:12px 16px 24px}
+  .hint{color:var(--ink-muted);font-size:13px}
+  .hint li{margin:4px 0}
+  .itabs{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+  .itab{border:1px solid var(--border);background:var(--surface-2);border-radius:6px;padding:2px 9px;font-family:var(--mono);font-size:12px}
+  .itab[aria-selected="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700}
+  .fileline{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}
+  .fileline .path{font-family:var(--mono);font-size:12.5px;font-weight:700}
+  .fileline .lines{font-family:var(--mono);font-size:12px;color:var(--ink-muted)}
+  .alias{border:1px solid var(--border);background:var(--k-db-soft);border-radius:8px;padding:8px 10px;margin:0 0 10px;font-size:12.5px}
+  .alias .route{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:5px;font-family:var(--mono);font-size:12px}
+  .alias .route span.step{padding:1px 7px;border-radius:6px;border:1px solid var(--border);background:var(--surface)}
+  .alias .route span.real{border-color:var(--k-db);color:var(--k-db);font-weight:700}
+  .alias .arrow{color:var(--ink-muted)}
+  .codebox{border:1px solid var(--border);border-radius:8px;background:var(--code-bg);overflow:auto;max-height:62vh}
+  table.code{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12.2px;line-height:1.6}
+  table.code td{padding:0 10px;vertical-align:top;white-space:pre}
+  table.code td.ln{position:sticky;left:0;text-align:right;color:var(--code-gutter);user-select:none;background:var(--code-bg);border-right:1px solid var(--border);min-width:44px;padding-right:8px}
+  table.code tr.hl td{background:var(--code-hl)}
+  table.code tr.hl td.ln{background:var(--code-hl);color:var(--ink);font-weight:700;box-shadow:inset 3px 0 0 var(--code-hl-bar)}
+  .t-c{color:var(--c-comment);font-style:italic}.t-d{color:var(--c-comment)}.t-s{color:var(--c-str)}.t-k{color:var(--c-kw);font-weight:600}
+  .t-f{color:var(--c-fn)}.t-n{color:var(--c-num)}.t-a{color:var(--c-deco)}
+  .legend-hl{margin:8px 0 0;font-size:12px;color:var(--ink-muted)}
+  .legend-hl b{background:var(--code-hl);color:var(--ink);padding:0 6px;border-radius:4px}
+  .flist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:6px}
+  .flist button{width:100%;text-align:left;border:1px solid var(--border);background:var(--surface-2);border-radius:8px;padding:6px 10px}
+  .flist button:hover{border-color:var(--accent)}
+  .flist small{display:block;color:var(--ink-muted)}
+  details.hdr{margin-top:12px;font-size:13px}
+  details.hdr pre{white-space:pre-wrap;background:var(--surface-2);border-radius:8px;padding:10px;font-family:var(--sans);font-size:12.5px;color:var(--ink-muted)}
+
+  @media (max-width:900px){
+    .app{display:block;height:auto}
+    .stage-wrap{max-height:none;overflow-x:auto}
+    .panel{position:fixed;left:0;right:0;bottom:0;width:auto;height:62vh;border-left:0;border-top:2px solid var(--accent);
+      box-shadow:0 -10px 30px rgba(0,0,0,.25);z-index:20;transform:translateY(105%);transition:transform .18s}
+    body.open .panel{transform:none}
+    .p-close{display:inline-block;position:absolute;right:12px;top:10px}
+    .p-head{position:relative;padding-right:70px}
+    .top{padding:12px 16px 8px}
+    .stage{padding:16px 16px 70vh}
+  }
+  @media (prefers-reduced-motion: reduce){.node,.panel{transition:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="main">
+    <header class="top">
+      <h1 id="title"></h1>
+      <p class="sub" id="subtitle"></p>
+      <div class="top-row">
+        <div class="tabs" role="tablist" id="tabs"></div>
+        <div class="stepper"><button class="btn" id="prev">◀ 이전</button><b id="stepNo">–</b><button class="btn" id="next">다음 ▶</button></div>
+        <span class="spacer"></span>
+        <a class="link" id="mdlink" href="#">📝 설명 문서 보기</a>
+        <button class="btn" id="theme" title="라이트/다크 전환">🌓</button>
+      </div>
+    </header>
+    <p class="intro" id="intro"></p>
+    <div class="legend" aria-label="범례">
+      <span><i style="background:var(--k-screen)"></i>화면 · 도착지</span>
+      <span><i style="background:var(--k-route)"></i>routes (입구)</span>
+      <span><i style="background:var(--k-helper)"></i>판단 (security · helpers)</span>
+      <span><i style="background:var(--k-db)"></i>db (저장소)</span>
+      <span><i style="background:var(--k-config)"></i>설정값</span>
+      <span><i style="background:var(--k-later);opacity:.6"></i>다른 단원에서 자세히</span>
+      <span>━ 다음 단계 &nbsp; ┅ 함수 호출</span>
+    </div>
+    <div class="stage-wrap" id="stageWrap"><div class="stage" id="stage"></div></div>
+  </div>
+
+  <aside class="panel" id="panel" aria-live="polite">
+    <div class="p-head">
+      <h2 id="pTitle"></h2><p id="pSub"></p>
+      <button class="btn p-close" id="pClose">닫기</button>
+    </div>
+    <div class="p-body" id="pBody"></div>
+  </aside>
+</div>
+
+<script type="application/json" id="data">{"title": "28. 대시보드 즉시 반응", "subtitle": "버튼을 누르는 순간 화면이 먼저 반응하고, 표 하나만 다시 받는 대시보드 속도 개선의 코드 흐름도", "mdFile": "28-dashboard-responsiveness.md", "github": "https://github.com/dyj02056/login-watchdog/blob/main/", "columns": ["화면 · 도착지", "routes/ (입구)", "판단 (security · helpers)", "db/ · config.py (저장소 · 설정값)"], "scenarios": [{"id": "page", "name": "'다음 페이지' — 화면 먼저, 표 하나만 요청", "intro": "대시보드에서 버튼을 누르면 2초 넘게 아무 반응이 없었습니다(운영 측정 평균 2.22초). '다음 페이지' 하나를 눌러도 대시보드 전체(표 8개 + 카드 6개, DB 조회 약 21번)를 다시 받았고, 응답 전에는 화면 변화가 없어 같은 버튼을 다시 누르게 됐습니다.", "nodes": [{"id": "page_n1", "col": 0, "row": 0, "kind": "screen", "title": "'다음' 클릭", "plain": "페이지가 있는 표(로그인 시도·회원·게시글·댓글·관리자 로그인 기록·보안 이벤트·연관 사건·AI 조기 경보) 8개가 같은 방식입니다.", "reject": "", "later": "", "items": [{"block": "public/js/dashboard/api.js:31-40", "hl": null, "label": "SECTIONS 표 목록", "call": null, "snippet": true}]}, {"id": "page_n2", "col": 0, "row": 1, "kind": "screen", "title": "① 응답을 기다리지 않고 번호부터 바꾼다", "plain": "페이지 번호를 1~마지막 사이로 맞춰 바로 그리고, 표를 흐리게 만들어 '불러오는 중'임을 알립니다. 누른 지 3ms 만에 '2 / 8' 로 바뀝니다.", "reject": "", "later": "", "items": [{"block": "public/js/dashboard/api.js:66-74", "hl": null, "label": "goToPage()", "call": null, "snippet": true}]}, {"id": "page_n3", "col": 0, "row": 2, "kind": "screen", "title": "② 그 표 하나만 서버에 요청", "plain": "/api/status?only=attempts&attempts_page=2 처럼 표 이름과 쪽 번호만 보냅니다. DB 조회가 약 21번에서 1~2번으로 줄어듭니다.", "reject": "", "later": "", "items": [{"block": "public/js/dashboard/api.js:77-107", "hl": [79, 81], "label": "fetchSection()", "call": null, "snippet": true}]}, {"id": "page_n4", "col": 1, "row": 3, "kind": "route", "title": "③ 서버: 표 하나의 이번 쪽 + 전체 쪽 수만", "plain": "페이지가 있는 표 8개만 받을 수 있고, 모르는 이름은 400 입니다. 세션 확인 + 조회 1번(로그인 시도 표는 위치 캐시 1번 더)으로 끝납니다.", "reject": "알 수 없는 표입니다. (400)", "later": "", "items": [{"block": "routes/admin/status.py:_api_status_section", "hl": [93, 99], "label": "_api_status_section()", "call": null, "snippet": false}]}, {"id": "page_n5", "col": 2, "row": 3, "kind": "helper", "title": "표 이름 → 조회 함수 매핑", "plain": "이름·쪽 번호 파라미터·응답 키를 한곳에 모아 둡니다.", "reject": "", "later": "", "items": [{"block": "routes/admin/status.py:72-87", "hl": null, "label": "_PAGED_SECTIONS", "call": null, "snippet": true}]}, {"id": "page_n6", "col": 0, "row": 4, "kind": "screen", "title": "④ 늦게 도착한 옛 응답은 버린다", "plain": "'이전'을 6번 연타해도 요청은 1번뿐이고, 늦게 도착한 옛 응답이 사용자가 방금 넘긴 페이지를 되돌려 놓지 않습니다. 표마다 '가장 최근 요청 번호'를 기억해 마지막 요청의 응답만 그립니다.", "reject": "", "later": "", "items": [{"block": "public/js/dashboard/api.js:77-107", "hl": [82, 83], "label": "fetchSection()", "call": null, "snippet": true}]}, {"id": "page_n7", "col": 0, "row": 5, "kind": "screen", "title": "⑤ 응답이 오면 그 표만 다시 그린다", "plain": "표와 페이지 번호를 그리고 '불러오는 중' 흐림을 걷습니다. 그사이 항목이 줄어 지금 페이지가 없어졌다면 마지막 페이지로 다시 받습니다.", "reject": "", "later": "", "items": [{"block": "public/js/dashboard/api.js:52-58", "hl": null, "label": "drawSection()", "call": null, "snippet": true}]}], "edges": [{"from": "page_n1", "to": "page_n2", "label": "", "kind": "flow"}, {"from": "page_n2", "to": "page_n3", "label": "", "kind": "flow"}, {"from": "page_n3", "to": "page_n4", "label": "", "kind": "flow"}, {"from": "page_n4", "to": "page_n5", "label": "", "kind": "call"}, {"from": "page_n4", "to": "page_n6", "label": "", "kind": "flow"}, {"from": "page_n6", "to": "page_n7", "label": "", "kind": "flow"}], "steps": ["page_n1", "page_n2", "page_n3", "page_n4", "page_n6", "page_n7"]}, {"id": "action", "name": "처리 버튼 — 누르는 즉시 '처리 중…'", "intro": "처리 버튼(해제·삭제·처리 완료·승인 등 17종)은 누르는 즉시 '처리 중…'으로 바뀌고 두 번 눌리지 않습니다. 확인 팝업을 취소하면 버튼은 바뀌지 않습니다.", "nodes": [{"id": "action_n1", "col": 0, "row": 0, "kind": "screen", "title": "'즉시 해제' 클릭", "plain": "버튼을 눌러 처리가 시작됩니다. 이미 처리 중인 버튼이면 아무 일도 하지 않습니다(더블 클릭 방지).", "reject": "", "later": "", "items": [{"block": "public/js/dashboard/utils.js:93-110", "hl": null, "label": "runAction()", "call": null, "snippet": true}]}, {"id": "action_n2", "col": 0, "row": 1, "kind": "screen", "title": "① 요청을 보내는 순간 '처리 중…'", "plain": "확인 팝업·사유 입력을 취소하면 여기까지 오지 않으므로 버튼이 바뀌지 않습니다.", "reject": "", "later": "", "items": [{"block": "public/js/dashboard/actions.js:18-21", "hl": null, "label": "sendAction()", "call": null, "snippet": true}]}, {"id": "action_n3", "col": 0, "row": 1, "kind": "screen", "title": "버튼을 '처리 중…'으로", "plain": "원래 글자를 기억해 두고 버튼을 비활성화합니다.", "reject": "", "later": "", "items": [{"block": "public/js/dashboard/utils.js:77-84", "hl": null, "label": "markBusy()", "call": null, "snippet": true}]}, {"id": "action_n4", "col": 0, "row": 2, "kind": "screen", "title": "② 서버에 처리 요청 (CSRF 토큰과 함께)", "plain": "세션 쿠키는 자동으로 가지만 '이 화면에서 온 요청'임은 보장하지 못하므로, 화면이 서버에게 받은 CSRF 토큰을 헤더로 함께 보냅니다.", "reject": "", "later": "", "items": [{"block": "public/js/dashboard/actions.js:27-41", "hl": [28, 40], "label": "unlockIp()", "call": null, "snippet": true}]}, {"id": "action_n5", "col": 2, "row": 2, "kind": "later", "title": "즉시 해제 API", "plain": "권한 확인 후 잠금을 풉니다(12단원).", "reject": "", "later": "12단원", "items": [{"block": "routes/admin/locks.py:api_unlock", "hl": null, "label": "api_unlock()", "call": null, "snippet": false}]}, {"id": "action_n6", "col": 0, "row": 3, "kind": "screen", "title": "③ 끝나면 전체 갱신 + 버튼 복구", "plain": "다음 폴링을 기다리지 않고 한 번 더 갱신해서 카드가 바로 사라지는 걸 보여줍니다. 성공·실패·취소 모두 끝나면 버튼을 원래대로 돌립니다.", "reject": "", "later": "", "items": [{"block": "public/js/dashboard/api.js:115-179", "hl": null, "label": "fetchStatus()", "call": null, "snippet": true}]}, {"id": "action_n7", "col": 1, "row": 4, "kind": "route", "title": "④ 서버: 만료된 잠금 정리는 15초에 한 번만", "plain": "대시보드 갱신마다 정리하지 않고 정해진 간격(기본 15초)마다 한 번만 합니다. 동시에 들어온 갱신 둘이 함께 정리하지 않게 잠금으로 보호합니다.", "reject": "", "later": "", "items": [{"block": "routes/admin/status.py:_release_expired_locks_if_due", "hl": [115, 121], "label": "_release_expired_locks_if_due()", "call": null, "snippet": false}]}, {"id": "action_n8", "col": 3, "row": 4, "kind": "config", "title": "정리 간격 (15초)", "plain": "만료된 잠금이 화면에 '잠김'으로 최대 15초 더 보일 수 있습니다. 실제 차단 해제는 로그인 요청마다 따로 처리되므로 늦어지지 않습니다.", "reject": "", "later": "", "items": [{"block": "config.py:69-69", "hl": null, "label": "ADMIN_STATUS_RELEASE_INTERVAL_SECONDS", "call": null, "snippet": true}]}], "edges": [{"from": "action_n1", "to": "action_n2", "label": "", "kind": "flow"}, {"from": "action_n2", "to": "action_n3", "label": "", "kind": "call"}, {"from": "action_n2", "to": "action_n4", "label": "", "kind": "flow"}, {"from": "action_n4", "to": "action_n5", "label": "", "kind": "call"}, {"from": "action_n4", "to": "action_n6", "label": "", "kind": "flow"}, {"from": "action_n6", "to": "action_n7", "label": "", "kind": "flow"}, {"from": "action_n7", "to": "action_n8", "label": "", "kind": "call"}], "steps": ["action_n1", "action_n2", "action_n4", "action_n6", "action_n7"]}], "blocks": {"public/js/dashboard/api.js:31-40": {"path": "public/js/dashboard/api.js", "start": 31, "end": 40, "lang": "js", "code": "export const SECTIONS = {\n    attempts: { pageKey: \"attempts\", param: \"attempts_page\", rowsKey: \"recent_attempts\", totalKey: \"attempts_total_pages\", prefix: \"attempts\", render: renderAttemptsTable },\n    users: { pageKey: \"users\", param: \"users_page\", rowsKey: \"users\", totalKey: \"users_total_pages\", prefix: \"users\", render: renderUsersTable },\n    posts: { pageKey: \"posts\", param: \"posts_page\", rowsKey: \"recent_posts\", totalKey: \"posts_total_pages\", prefix: \"posts\", render: renderPostsTable },\n    comments: { pageKey: \"comments\", param: \"comments_page\", rowsKey: \"recent_comments\", totalKey: \"comments_total_pages\", prefix: \"comments\", render: renderCommentsTable },\n    admin_log: { pageKey: \"adminLog\", param: \"admin_log_page\", rowsKey: \"admin_login_log\", totalKey: \"admin_log_total_pages\", prefix: \"admin-log\", render: renderAdminLoginLog },\n    security_events: { pageKey: \"securityEvents\", param: \"security_events_page\", rowsKey: \"security_events\", totalKey: \"security_events_total_pages\", prefix: \"security-events\", render: renderSecurityEventsTable },\n    security_incidents: { pageKey: \"securityIncidents\", param: \"security_incidents_page\", rowsKey: \"security_incidents\", totalKey: \"security_incidents_total_pages\", prefix: \"security-incidents\", render: renderSecurityIncidentsTable },\n    access_requests: { pageKey: \"accessRequests\", param: \"access_requests_page\", rowsKey: \"access_requests\", totalKey: \"access_requests_total_pages\", prefix: \"access-requests\", render: renderAccessRequestsTable },\n};", "alias": null}, "public/js/dashboard/api.js:66-74": {"path": "public/js/dashboard/api.js", "start": 66, "end": 74, "lang": "js", "code": "export function goToPage(name, page) {\n    const section = SECTIONS[name];\n    const total = totalPages[section.pageKey] || 1;\n    pages[section.pageKey] = Math.min(Math.max(1, page), total);\n    sectionEpoch[name] += 1;\n    renderPagination(`${section.prefix}-pagination`, pages[section.pageKey], total, { loading: true });\n    document.getElementById(`${section.prefix}-table-body`).classList.add(\"is-loading\");\n    return fetchSection(name);\n}", "alias": null}, "public/js/dashboard/api.js:77-107": {"path": "public/js/dashboard/api.js", "start": 77, "end": 107, "lang": "js", "code": "export async function fetchSection(name) {\n    const section = SECTIONS[name];\n    const requestId = ++latestSectionRequest[name];\n    const params = new URLSearchParams({ only: name, [section.param]: pages[section.pageKey] });\n    const response = await fetch(`/api/status?${params}`);\n    if (requestId !== latestSectionRequest[name]) {\n        return; // 이 응답을 기다리는 동안 같은 표의 더 새로운 요청이 나갔다\n    }\n    if (response.status === 401) {\n        window.location.href = \"/admin/login\";\n        return;\n    }\n    if (!response.ok) {\n        // 실패하면 표를 흐린 채로 두지 않는다. 다음 폴링이 다시 그린다.\n        document.getElementById(`${section.prefix}-table-body`).classList.remove(\"is-loading\");\n        return;\n    }\n    const data = await response.json();\n    if (requestId !== latestSectionRequest[name]) {\n        return;\n    }\n    const total = data[section.totalKey];\n    if (pages[section.pageKey] > total) {\n        // 그사이 항목이 줄어 지금 페이지가 없어졌다 — 마지막 페이지로 다시 받는다.\n        pages[section.pageKey] = total;\n        totalPages[section.pageKey] = total;\n        await fetchSection(name);\n        return;\n    }\n    drawSection(name, data[section.rowsKey], total);\n}", "alias": null}, "routes/admin/status.py:_api_status_section": {"path": "routes/admin/status.py", "start": 90, "end": 99, "lang": "python", "code": "def _api_status_section(name: str):\n    \"\"\"표 하나의 이번 페이지만 돌려준다(?only=<이름>). 세션 확인 + 조회 1번(로그인 시도 표는 위치\n    캐시 1번 더)으로 끝난다 — 전체 조회는 약 21번이다. 만료된 잠금 정리는 전체 갱신이 맡는다.\"\"\"\n    if name not in _PAGED_SECTIONS:\n        return jsonify({\"error\": \"알 수 없는 표입니다.\"}), 400\n    page_param, query_name, rows_key, total_key = _PAGED_SECTIONS[name]\n    rows, count = getattr(db, query_name)(_page_param(page_param), config.ADMIN_PAGE_SIZE)\n    if name == \"attempts\":\n        rows = _attach_locations(rows)\n    return jsonify({rows_key: rows, total_key: max(1, math.ceil(count / config.ADMIN_PAGE_SIZE))})", "alias": null}, "routes/admin/status.py:72-87": {"path": "routes/admin/status.py", "start": 72, "end": 87, "lang": "python", "code": "_PAGED_SECTIONS = {\n    \"attempts\": (\"attempts_page\", \"list_recent_attempts\", \"recent_attempts\", \"attempts_total_pages\"),\n    \"users\": (\"users_page\", \"list_users\", \"users\", \"users_total_pages\"),\n    \"posts\": (\"posts_page\", \"list_posts\", \"recent_posts\", \"posts_total_pages\"),\n    \"comments\": (\"comments_page\", \"list_comments_admin\", \"recent_comments\", \"comments_total_pages\"),\n    \"admin_log\": (\"admin_log_page\", \"list_admin_login_log\", \"admin_login_log\", \"admin_log_total_pages\"),\n    \"security_events\": (\n        \"security_events_page\", \"list_security_events\", \"security_events\", \"security_events_total_pages\",\n    ),\n    \"security_incidents\": (\n        \"security_incidents_page\", \"list_security_incidents\", \"security_incidents\", \"security_incidents_total_pages\",\n    ),\n    \"access_requests\": (\n        \"access_requests_page\", \"list_pending_requests\", \"access_requests\", \"access_requests_total_pages\",\n    ),\n}", "alias": null}, "public/js/dashboard/api.js:52-58": {"path": "public/js/dashboard/api.js", "start": 52, "end": 58, "lang": "js", "code": "function drawSection(name, rows, total) {\n    const section = SECTIONS[name];\n    totalPages[section.pageKey] = total;\n    section.render(rows);\n    renderPagination(`${section.prefix}-pagination`, pages[section.pageKey], total);\n    document.getElementById(`${section.prefix}-table-body`).classList.remove(\"is-loading\");\n}", "alias": null}, "public/js/dashboard/utils.js:93-110": {"path": "public/js/dashboard/utils.js", "start": 93, "end": 110, "lang": "js", "code": "export async function runAction(button, action) {\n    if (button && (button.disabled || button.dataset.busyLabel !== undefined)) {\n        return undefined;\n    }\n    try {\n        return await action(button);\n    } finally {\n        if (button && button.dataset.busyLabel !== undefined) {\n            // 회원가입 토글처럼 다시 그려지지 않는 버튼은 그사이 새 글자가 들어갔을 수 있다 —\n            // 아직 \"처리 중…\"일 때만 원래 글자로 되돌린다.\n            if (button.textContent === BUSY_LABEL) {\n                button.textContent = button.dataset.busyLabel;\n            }\n            delete button.dataset.busyLabel;\n            button.disabled = false;\n        }\n    }\n}", "alias": null}, "public/js/dashboard/actions.js:18-21": {"path": "public/js/dashboard/actions.js", "start": 18, "end": 21, "lang": "js", "code": "function sendAction(button, url, options) {\n    markBusy(button);\n    return fetch(url, options);\n}", "alias": null}, "public/js/dashboard/utils.js:77-84": {"path": "public/js/dashboard/utils.js", "start": 77, "end": 84, "lang": "js", "code": "export function markBusy(button) {\n    if (!button || button.dataset.busyLabel !== undefined) {\n        return;\n    }\n    button.dataset.busyLabel = button.textContent;\n    button.disabled = true;\n    button.textContent = BUSY_LABEL;\n}", "alias": null}, "public/js/dashboard/actions.js:27-41": {"path": "public/js/dashboard/actions.js", "start": 27, "end": 41, "lang": "js", "code": "export async function unlockIp(ip, button) {\n    await sendAction(button, \"/api/unlock\", {\n        method: \"POST\",\n        headers: { \"Content-Type\": \"application/json\", \"X-CSRFToken\": csrfToken },\n        // 브라우저는 같은 사이트로 요청을 보낼 때 로그인 세션 쿠키를 자동으로 함께\n        // 보내주므로, 여기서 관리자 토큰 같은 걸 따로 넣지 않아도 서버가 \"로그인된\n        // 관리자의 요청\"임을 알 수 있다(helpers/auth.py의 login_required가 세션 쿠키로 확인).\n        // 다만 세션 쿠키만으로는 \"이 요청이 진짜 이 화면에서 왔는지\"까지는 보장하지\n        // 못하므로(CSRF), X-CSRFToken 헤더로 이 화면이 서버에게 받은 토큰을 함께 보낸다.\n        body: JSON.stringify({ ip: ip }),\n    });\n    // 해제 요청이 끝나면 화면을 바로 한 번 더 갱신해서, 다음 폴링 주기를\n    // 기다리지 않고도 즉시 카드가 사라지는 걸 볼 수 있게 한다.\n    await fetchStatus();\n}", "alias": null}, "routes/admin/locks.py:api_unlock": {"path": "routes/admin/locks.py", "start": 25, "end": 43, "lang": "python", "code": "@admin_bp.route(\"/api/unlock\", methods=[\"POST\"])\n@require_permission(\"unlock_ip\")\ndef api_unlock():\n    \"\"\"대시보드의 \"즉시 해제\" 버튼을 눌렀을 때 브라우저가 호출하는 API.\n\n    이 라우트가 require_permission(\"unlock_ip\")로 보호되어 있으므로, 이 함수가 실행되는\n    시점엔 이미 \"IP 잠금 해제 권한이 있는 로그인된 관리자의 요청\"이라는 게 보장된 상태다\n    — 그래서 soar.manual_release는 권한 확인을 다시 하지 않고 바로 실행에만 집중할 수\n    있다(4단계 security/soar/ 설명 참고).\n    \"\"\"\n    data = request.get_json(silent=True) or {}\n    ip = data.get(\"ip\")\n    if not ip:\n        return jsonify({\"success\": False, \"error\": \"ip 값이 필요합니다.\"}), 400\n\n    released = soar.manual_release(ip)\n    if not released and lockdown.is_permanent_ip(ip):\n        return jsonify({\"success\": False, \"error\": \"영구 잠금은 '영구 해제'로만 풀 수 있습니다.\"}), 409\n    return jsonify({\"success\": released})", "alias": null}, "public/js/dashboard/api.js:115-179": {"path": "public/js/dashboard/api.js", "start": 115, "end": 179, "lang": "js", "code": "export async function fetchStatus() {\n    // 표마다 각자 다른 페이지를 보고 있을 수 있으므로, 지금 기억해둔 페이지 번호를\n    // 매번 쿼리 파라미터로 함께 보낸다(routes/admin/status.py의 _page_param() 참고).\n    // 1보다 작은 페이지 번호는 1로 바로잡아 보낸다 — \"이전\"을 응답 전에 빠르게 연달아 누르면\n    // 0, -1, …까지 내려가 화면에 \"-4 / 8\"처럼 보였다(서버는 1페이지로 처리했다).\n    const params = new URLSearchParams();\n    for (const section of Object.values(SECTIONS)) {\n        if (!(pages[section.pageKey] >= 1)) {\n            pages[section.pageKey] = 1;\n        }\n        params.set(section.param, pages[section.pageKey]);\n    }\n    const epochAtSend = { ...sectionEpoch };\n    const requestId = ++latestStatusRequest;\n    const response = await fetch(`/api/status?${params}`);\n    if (requestId !== latestStatusRequest) {\n        return; // 이 응답을 기다리는 동안 더 새로운 요청이 나갔다\n    }\n\n    if (response.status === 401) {\n        // 401 = \"로그인이 안 되어 있다\"는 뜻. 예를 들어 관리자가 다른 탭에서\n        // 로그아웃했거나, 세션이 만료된 경우다. 이때는 로그인 화면으로 돌려보낸다.\n        window.location.href = \"/admin/login\";\n        return;\n    }\n\n    const data = await response.json(); // 서버가 보내준 JSON 응답을 자바스크립트 객체로 변환\n    if (requestId !== latestStatusRequest) {\n        return;\n    }\n\n    // 요청을 보낸 뒤 사용자가 페이지를 넘긴 표는 이 응답으로 그리지 않는다(그 표는 fetchSection이 그린다).\n    const freshSections = Object.keys(SECTIONS).filter((name) => sectionEpoch[name] === epochAtSend[name]);\n\n    // 삭제로 인해 항목이 줄어들어 지금 보던 페이지가 더 이상 존재하지 않게 된\n    // 경우(예: 마지막 페이지의 마지막 한 줄을 지웠을 때), 전체 페이지 수 안으로\n    // 페이지 번호를 되돌리고 즉시 다시 요청한다 — 그대로 두면 \"3 / 2\"처럼 있을 수\n    // 없는 페이지 번호가 보이거나 표가 텅 빈 채로 남는다.\n    let needsRefetch = false;\n    for (const name of freshSections) {\n        const section = SECTIONS[name];\n        if (pages[section.pageKey] > data[section.totalKey]) {\n            pages[section.pageKey] = data[section.totalKey];\n            needsRefetch = true;\n        }\n    }\n    if (needsRefetch) {\n        // 기다렸다가 끝내야 폴링(../polling.js)이 \"요청은 한 번에 하나\"를 지킬 수 있다.\n        await fetchStatus();\n        return;\n    }\n\n    // 현재 관리자의 권한을 먼저 기억해둬야 아래 render 함수들이 버튼 노출을 정할 수 있다.\n    permissionState.actions = data.permissions || [];\n    renderLockoutCards(data.active_lockouts, data.active_account_lockouts, data.active_admin_account_lockouts || []);\n    renderPermanentLocks(data.permanent_locks || []);\n    renderRecoveryRequests(data.recovery_requests || []);\n    renderIpExemptions(data.ip_exemptions || []);\n    renderSignupStatus(data.signup_enabled);\n    for (const name of freshSections) {\n        const section = SECTIONS[name];\n        drawSection(name, data[section.rowsKey], data[section.totalKey]);\n    }\n    renderAdminUsersTable(data.admin_users);\n}", "alias": null}, "routes/admin/status.py:_release_expired_locks_if_due": {"path": "routes/admin/status.py", "start": 109, "end": 130, "lang": "python", "code": "def _release_expired_locks_if_due() -> None:\n    \"\"\"만료된 잠금 정리 3종(IP·회원 계정·관리자 계정)을 정해진 간격마다 동시에 돌린다.\n\n    서로 무관하므로 동시에 돌리고(guide45), 호출한 쪽의 목록 조회보다는 먼저 끝난다 — 같이 돌리면\n    방금 풀린 잠금이 한 주기 동안 \"잠김\"으로 보일 수 있다. 예외는 .result()가 그대로 다시 일으킨다.\n    \"\"\"\n    interval = config.ADMIN_STATUS_RELEASE_INTERVAL_SECONDS\n    now = time.monotonic()\n    with _expiry_release_lock:\n        last = _expiry_release_state[\"at\"]\n        if interval > 0 and last is not None and now - last < interval:\n            return\n        _expiry_release_state[\"at\"] = now\n\n    with ThreadPoolExecutor(max_workers=3) as executor:\n        release_futures = [\n            executor.submit(soar.try_release_expired_lockouts),\n            executor.submit(soar.try_release_expired_account_lockouts),\n            executor.submit(soar.try_release_expired_admin_account_lockouts),\n        ]\n        for future in release_futures:\n            future.result()", "alias": null}, "config.py:69-69": {"path": "config.py", "start": 69, "end": 69, "lang": "python", "code": "ADMIN_STATUS_RELEASE_INTERVAL_SECONDS = int(os.environ.get(\"ADMIN_STATUS_RELEASE_INTERVAL_SECONDS\", 15))", "alias": null}}, "files": {"public/js/dashboard/api.js": {"role": "서버에서 상태를 받아 화면을 그리는 조회 함수들. 표 하나만 다시 받는 fetchSection/goToPage 가 있다.", "header": "", "github": "https://github.com/dyj02056/login-watchdog/blob/main/public/js/dashboard/api.js"}, "routes/admin/status.py": {"role": "대시보드 갱신 API. ?only=<표 이름> 으로 표 하나만 돌려주는 기능이 있다.", "header": "routes/admin/status.py — 관리자 대시보드 화면(/admin/dashboard)과 대시보드 폴링 API(/api/status)\n예전 routes/admin.py(798줄)를 기능 묶음별로 나눈 조각 중 하나다. Blueprint(admin_bp)는\nroutes/admin/__init__.py에서 하나만 만들고, 이 파일은 거기에 라우트를 붙이기만 한다\n— 그래서 엔드포인트 이름(url_for(\"admin.xxx\"))은 나누기 전과 똑같다.\n배경은 docs/refactor/2026-10-09-module-plan.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/routes/admin/status.py"}, "public/js/dashboard/utils.js": {"role": "화면 도구 모음. 버튼을 '처리 중…'으로 바꾸고 더블 클릭을 막는 markBusy/runAction 이 있다.", "header": "", "github": "https://github.com/dyj02056/login-watchdog/blob/main/public/js/dashboard/utils.js"}, "public/js/dashboard/actions.js": {"role": "서버 상태를 바꾸는 요청 모음(잠금 해제·삭제·처리 완료 등). 요청 직전에 버튼을 '처리 중…'으로 바꾼다.", "header": "", "github": "https://github.com/dyj02056/login-watchdog/blob/main/public/js/dashboard/actions.js"}, "routes/admin/locks.py": {"role": "routes/admin/locks.py — 잠금 해제·영구 잠금·IP 예외·복구 요청 관리 API 예전 routes/admin.py(798줄)를 기능 묶음별로 나눈 조각 중 하나다. Blueprint(admin_bp)는 routes/admin/__init__.py에서 하나만 만들고, 이", "header": "routes/admin/locks.py — 잠금 해제·영구 잠금·IP 예외·복구 요청 관리 API\n예전 routes/admin.py(798줄)를 기능 묶음별로 나눈 조각 중 하나다. Blueprint(admin_bp)는\nroutes/admin/__init__.py에서 하나만 만들고, 이 파일은 거기에 라우트를 붙이기만 한다\n— 그래서 엔드포인트 이름(url_for(\"admin.xxx\"))은 나누기 전과 똑같다.\n배경은 docs/refactor/2026-10-09-module-plan.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/routes/admin/locks.py"}, "config.py": {"role": "임계값·시간 창·잠금 시간·규칙값 등 프로젝트 공용 설정값을 한 곳에 모은 파일.", "header": "", "github": "https://github.com/dyj02056/login-watchdog/blob/main/config.py"}}}</script>
+<script>
+(function(){
+  "use strict";
+  var D = JSON.parse(document.getElementById("data").textContent);
+  var $ = function(id){ return document.getElementById(id); };
+  var KIND_LABEL = {screen:"화면 · 도착지", route:"routes", helper:"판단", db:"db", config:"설정값", later:"다른 단원"};
+
+  var state = { sc: 0, node: null, item: 0, file: null };
+
+  function el(tag, attrs, kids){
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function(k){
+      if (k === "class") e.className = attrs[k];
+      else if (k === "text") e.textContent = attrs[k];
+      else if (k.slice(0,2) === "on") e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    });
+    (kids || []).forEach(function(c){ if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function brk(t){ return t.replace(/([\/._])/g, "$1\u200b"); }
+  function scen(){ return D.scenarios[state.sc]; }
+  function nodeById(id){ return scen().nodes.filter(function(n){ return n.id === id; })[0]; }
+  function fnName(label){ return label; }
+
+  /* ---------- 간단 문법 강조 ---------- */
+  var PY = /(#[^\n]*)|("""[\s\S]*?"""|'''[\s\S]*?''')|([rbfRBF]{0,2}"(?:\\.|[^"\\\n])*"|[rbfRBF]{0,2}'(?:\\.|[^'\\\n])*')|\b(def|class|return|if|elif|else|for|while|import|from|as|try|except|finally|with|in|not|and|or|is|None|True|False|raise|pass|lambda|yield|global|nonlocal|assert|del|continue|break)\b|(@[A-Za-z_][\w.]*)|\b(\d+(?:\.\d+)?)\b|\b([A-Za-z_]\w*)(?=\()/g;
+  var PYC = [null,"t-c","t-d","t-s","t-k","t-a","t-n","t-f"];
+  var HT = /(<!--[\s\S]*?-->)|(\{[{%#][\s\S]*?[}%#]\})|(<\/?[A-Za-z][\w-]*)|("[^"\n]*")|(\/?>)/g;
+  var HTC = [null,"t-c","t-a","t-k","t-s","t-k"];
+  var JS = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(`(?:\\.|[^`\\])*`)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|\b(const|let|var|function|return|if|else|for|while|import|from|export|default|async|await|try|catch|finally|new|class|extends|typeof|interface|type|null|undefined|true|false|throw|switch|case|break|continue|of|in|as)\b|(@[A-Za-z_]\w*)|\b(\d+(?:\.\d+)?)\b|\b([A-Za-z_$][\w$]*)(?=\()/g;
+  var JSC = [null,"t-c","t-s","t-s","t-k","t-a","t-n","t-f"];
+  var SQ = /(--[^\n]*|\/\*[\s\S]*?\*\/)|((?!))|('(?:''|[^'])*')|\b(select|from|where|insert|into|values|update|set|delete|create|table|index|alter|add|drop|on|conflict|do|nothing|and|or|not|null|default|primary|key|references|cascade|if|exists|as|order|by|group|limit|desc|asc|join|left|inner|count|returns|function|language|begin|end|return|with|union|all|distinct|in|is|true|false|unique|check|constraint|timestamptz|text|integer|bigint|boolean|interval|now|replace|trigger|view|policy|enable|row|level|security|using)\b|((?!))|\b(\d+(?:\.\d+)?)\b|\b([a-z_]\w*)(?=\()/gi;
+  var SQC = [null,"t-c",null,"t-s","t-k",null,"t-n","t-f"];
+  var SH = /(#[^\n]*)|((?!))|("(?:\\.|[^"\\\n])*"|'[^'\n]*')|\b(if|then|else|fi|for|do|done|while|case|esac|function|echo|export|python|pip|git|cd|run|name|on|jobs|steps|uses|with|env)\b|((?!))|\b(\d+)\b/g;
+  var SHC = [null,"t-c",null,"t-s","t-k",null,"t-n"];
+  function tokenize(code, lang){
+    var re = PY, cls = PYC;
+    if (lang === "html"){ re = HT; cls = HTC; }
+    else if (lang === "js"){ re = JS; cls = JSC; }
+    else if (lang === "sql"){ re = SQ; cls = SQC; }
+    else if (lang === "sh"){ re = SH; cls = SHC; }
+    var lines = [[]];
+    function push(text, c){
+      var parts = text.split("\n");
+      parts.forEach(function(p, i){
+        if (i > 0) lines.push([]);
+        if (p) lines[lines.length-1].push([p, c]);
+      });
+    }
+    var last = 0, m;
+    re.lastIndex = 0;
+    while ((m = re.exec(code)) !== null){
+      if (m.index > last) push(code.slice(last, m.index), null);
+      var idx = 1; while (idx < m.length && m[idx] === undefined) idx++;
+      push(m[0], cls[idx] || null);
+      last = m.index + m[0].length;
+      if (m[0].length === 0) re.lastIndex++;
+    }
+    if (last < code.length) push(code.slice(last), null);
+    return lines;
+  }
+
+  function codeTable(block, hl){
+    var lines = tokenize(block.code, block.lang);
+    var tbody = el("tbody");
+    var hlFirst = null;
+    lines.forEach(function(segs, i){
+      var no = block.start + i;
+      var on = hl && no >= hl[0] && no <= hl[1];
+      var td = el("td", {class:"tx"});
+      segs.forEach(function(s){ td.appendChild(s[1] ? el("span", {class:s[1], text:s[0]}) : document.createTextNode(s[0])); });
+      if (!segs.length) td.appendChild(document.createTextNode(" "));
+      var tr = el("tr", on ? {class:"hl"} : null, [el("td", {class:"ln", text:String(no)}), td]);
+      if (on && !hlFirst) hlFirst = tr;
+      tbody.appendChild(tr);
+    });
+    var box = el("div", {class:"codebox"}, [el("table", {class:"code"}, [tbody])]);
+    box._hlFirst = hlFirst;
+    return box;
+  }
+
+  function copyText(text, btn){
+    var done = function(){ var o = btn.textContent; btn.textContent = "복사됨 ✓"; setTimeout(function(){ btn.textContent = o; }, 1200); };
+    try { navigator.clipboard.writeText(text).then(done, fallback); } catch(e){ fallback(); }
+    function fallback(){
+      var ta = el("textarea", {style:"position:fixed;opacity:0"}); ta.value = text; document.body.appendChild(ta);
+      ta.select(); try { document.execCommand("copy"); done(); } catch(e){} document.body.removeChild(ta);
+    }
+  }
+
+  /* ---------- 패널 ---------- */
+  function openPanel(){ document.body.classList.add("open"); }
+  function closePanel(){ document.body.classList.remove("open"); }
+
+  function showHint(){
+    $("pTitle").textContent = "코드 보는 법";
+    $("pSub").textContent = "카드나 파일 이름을 누르면 실제 코드가 여기에 열립니다.";
+    var ul = el("ul", {class:"hint"}, [
+      el("li", {text:"카드(상자)를 누르면 그 단계에서 실행되는 실제 함수 코드가 열려요."}),
+      el("li", {text:"카드 안의 📄 파일 이름을 누르면 그 파일이 어떤 역할인지, 이 단원에서 쓰이는 함수가 무엇인지 보여줘요."}),
+      el("li", {text:"ƒ 함수 이름을 누르면 해당 함수 코드로 바로 이동해요."}),
+      el("li", {text:"노란색 줄이 지금 단계가 담당하는 부분이에요."}),
+      el("li", {text:"db.함수() 처럼 적혀 있어도 실제 코드는 db/users.py 같은 다른 파일에 있어요. 카드에 그 '진짜 파일'을 표시하고, 코드 위에 찾아가는 길도 그려줘요."}),
+      el("li", {text:"위쪽 ◀ ▶ 버튼으로 실행 순서대로 한 단계씩 따라갈 수 있어요."})
+    ]);
+    var b = $("pBody"); b.textContent = ""; b.appendChild(ul);
+  }
+
+  function renderAlias(a){
+    if (!a) return null;
+    return el("div", {class:"alias"}, [
+      el("div", {text:"코드에는 이렇게 적혀 있지만, 실제 함수는 다른 파일에 있어요."}),
+      el("div", {class:"route"}, [
+        el("span", {class:"step", text:a.call}), el("span", {class:"arrow", text:"→"}),
+        el("span", {class:"step", text:a.via + " (창구)"}), el("span", {class:"arrow", text:"→"}),
+        el("span", {class:"step real", text:a.real})
+      ])
+    ]);
+  }
+
+  function selectNode(id, itemIdx){
+    var n = nodeById(id); if (!n) return;
+    state.node = id; state.item = itemIdx || 0; state.file = null;
+    $("pTitle").textContent = n.title;
+    $("pSub").textContent = n.plain;
+    var body = $("pBody"); body.textContent = "";
+    if (n.reject) body.appendChild(el("div", {class:"n-reject", text:n.reject, style:"margin:0 0 10px"}));
+    if (n.items.length > 1){
+      var tabs = el("div", {class:"itabs", role:"tablist"});
+      n.items.forEach(function(it, i){
+        tabs.appendChild(el("button", {class:"itab", role:"tab", "aria-selected":String(i === state.item), text:it.label,
+          onclick:function(){ selectNode(id, i); }}));
+      });
+      body.appendChild(tabs);
+    }
+    var it = n.items[state.item];
+    var block = D.blocks[it.block];
+    var linesTxt = it.hl ? (it.hl[0] === it.hl[1] ? it.hl[0] + "줄" : it.hl[0] + "–" + it.hl[1] + "줄") : "";
+    var fl = el("div", {class:"fileline"}, [
+      el("button", {class:"chip file", onclick:function(){ selectFile(block.path); }, text:block.path}),
+      el("span", {class:"lines", text: block.start + "–" + block.end + "줄 표시" + (linesTxt ? " · 노란색 " + linesTxt : "")}),
+      el("span", {class:"spacer"}),
+      el("button", {class:"btn", text:"복사", onclick:function(e){ copyText(block.code, e.currentTarget); }}),
+      el("a", {class:"btn link", href:D.files[block.path].github + "#L" + block.start + "-L" + block.end, target:"_blank", rel:"noopener", text:"GitHub ↗"})
+    ]);
+    body.appendChild(fl);
+    var al = renderAlias(block.alias); if (al) body.appendChild(al);
+    var box = codeTable(block, it.hl);
+    body.appendChild(box);
+    if (it.hl) body.appendChild(el("p", {class:"legend-hl"}, [el("b", {text:"노란색"}), " = 이 카드가 담당하는 줄"]));
+    refreshSelection();
+    openPanel();
+    if (box._hlFirst){
+      var off = box._hlFirst.offsetTop - 60;
+      box.scrollTop = Math.max(0, off);
+    }
+    updateStepper();
+  }
+
+  function selectFile(path){
+    state.file = path; state.node = null;
+    var f = D.files[path];
+    $("pTitle").textContent = "📄 " + path;
+    $("pSub").textContent = f.role;
+    var body = $("pBody"); body.textContent = "";
+    body.appendChild(el("div", {class:"fileline"}, [
+      el("a", {class:"btn link", href:f.github, target:"_blank", rel:"noopener", text:"GitHub에서 파일 열기 ↗"})
+    ]));
+    body.appendChild(el("h3", {text:"이 단원에서 쓰이는 함수", style:"font-size:13.5px;margin:12px 0 0"}));
+    var ul = el("ul", {class:"flist"}), seen = {};
+    D.scenarios.forEach(function(sc, si){
+      sc.nodes.forEach(function(n){
+        n.items.forEach(function(it, ii){
+          var b = D.blocks[it.block]; if (b.path !== path) return;
+          var key = si + n.id + ii; if (seen[key]) return; seen[key] = 1;
+          var li = el("li");
+          li.appendChild(el("button", {onclick:function(){
+            if (state.sc !== si) switchScenario(si);
+            selectNode(n.id, ii); scrollToNode(n.id);
+          }}, [
+            el("span", {class:"mono", text:it.label}), el("small", {text:sc.name + " · " + n.title})
+          ]));
+          ul.appendChild(li);
+        });
+      });
+    });
+    body.appendChild(ul);
+    if (f.header){
+      var d = el("details", {class:"hdr"}, [el("summary", {text:"파일 맨 위 설명 주석 보기"}), el("pre", {text:f.header})]);
+      body.appendChild(d);
+    }
+    refreshSelection();
+    openPanel();
+  }
+
+  /* ---------- 흐름도 ---------- */
+  var cols, colIndex, nodeEls = {};
+  function renderStage(){
+    var sc = scen();
+    var used = {}; sc.nodes.forEach(function(n){ used[n.col] = 1; });
+    cols = Object.keys(used).map(Number).sort(function(a,b){ return a-b; });
+    colIndex = {}; cols.forEach(function(c, i){ colIndex[c] = i + 1; });
+    var stage = $("stage");
+    stage.textContent = "";
+    stage.style.gridTemplateColumns = "repeat(" + cols.length + ", 196px)";
+    nodeEls = {};
+
+    var svgNS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("class", "edges"); svg.id = "edges";
+    svg.innerHTML = '<defs>' +
+      '<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head" d="M0 0L10 5L0 10z" style="stroke:none"/></marker>' +
+      '<marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head-call" d="M0 0L10 5L0 10z" style="stroke:none"/></marker>' +
+      '</defs>';
+    stage.appendChild(svg);
+
+    cols.forEach(function(c){
+      stage.appendChild(el("div", {class:"colhead", style:"grid-column:" + colIndex[c] + ";grid-row:1", text:D.columns[c]}));
+    });
+    var cells = {};
+    sc.nodes.forEach(function(n){
+      var k = n.row + ":" + n.col;
+      if (!cells[k]){
+        cells[k] = el("div", {class:"cell", style:"grid-column:" + colIndex[n.col] + ";grid-row:" + (n.row + 2)});
+        stage.appendChild(cells[k]);
+      }
+      var node = buildNode(n);
+      nodeEls[n.id] = node;
+      cells[k].appendChild(node);
+    });
+    $("intro").textContent = sc.intro;
+    scheduleEdges();
+  }
+
+  function buildNode(n){
+    var node = el("div", {class:"node " + n.kind, role:"button", tabindex:"0", "aria-pressed":"false", "data-id":n.id,
+      onclick:function(e){ if (e.target.closest(".chip")) return; selectNode(n.id, 0); },
+      onkeydown:function(e){ if ((e.key === "Enter" || e.key === " ") && !e.target.closest(".chip")){ e.preventDefault(); selectNode(n.id, 0); } }});
+    var title = el("div", {class:"n-title", text:n.title});
+    if (n.later) title.appendChild(el("span", {class:"tag-later", text:n.later + "에서 자세히"}));
+    node.appendChild(title);
+    if (n.kind !== "later" && n.plain) node.appendChild(el("div", {class:"n-plain", text:n.plain}));
+    if (n.reject) node.appendChild(el("div", {class:"n-reject", text:n.reject}));
+    var items = el("div", {class:"n-items"});
+    // 같은 파일에 있는 함수는 파일 칩 하나 아래에 함수 칩을 나란히 놓는다
+    var groups = [];
+    n.items.forEach(function(it, i){
+      var b = D.blocks[it.block], g = groups[groups.length - 1];
+      if (g && g.path === b.path) g.list.push({it: it, i: i}); else groups.push({path: b.path, list: [{it: it, i: i}]});
+    });
+    groups.forEach(function(g){
+      var row = el("div", {class:"n-item"});
+      if (g.list.length === 1 && g.list[0].it.call) row.appendChild(el("div", {class:"n-call", text:brk(g.list[0].it.call)}));
+      var chips = el("div", {class:"chips"}, [
+        el("button", {class:"chip file", text:brk(g.path), title:"파일 설명 보기", onclick:function(){ selectFile(g.path); }})
+      ]);
+      g.list.forEach(function(x){
+        chips.appendChild(el("button", {class:"chip " + (x.it.snippet ? "snip" : "fn"), text:x.it.label, title:(x.it.call ? x.it.call + " — " : "") + "코드 보기",
+          onclick:function(){ selectNode(n.id, x.i); }}));
+      });
+      row.appendChild(chips);
+      items.appendChild(row);
+    });
+    node.appendChild(items);
+    return node;
+  }
+
+  function rectIn(elm, host){
+    var a = elm.getBoundingClientRect(), h = host.getBoundingClientRect();
+    return {l:a.left-h.left, r:a.right-h.left, t:a.top-h.top, b:a.bottom-h.top, cx:(a.left+a.right)/2-h.left, cy:(a.top+a.bottom)/2-h.top};
+  }
+  var raf = 0;
+  function scheduleEdges(){ cancelAnimationFrame(raf); raf = requestAnimationFrame(drawEdges); }
+  function drawEdges(){
+    var stage = $("stage"), svg = $("edges"), sc = scen();
+    Array.prototype.slice.call(svg.querySelectorAll("path.e")).forEach(function(p){ p.remove(); });
+    Array.prototype.slice.call(stage.querySelectorAll(".elabel")).forEach(function(p){ p.remove(); });
+    var svgNS = "http://www.w3.org/2000/svg";
+    sc.edges.forEach(function(e){
+      var a = nodeById(e.from), b = nodeById(e.to);
+      var ea = nodeEls[e.from], eb = nodeEls[e.to]; if (!ea || !eb) return;
+      var ra = rectIn(ea, stage), rb = rectIn(eb, stage), d, lx, ly;
+      if (a.col === b.col){
+        if (b.row - a.row <= 1){
+          d = "M" + ra.cx + " " + ra.b + " V" + rb.t; lx = ra.cx; ly = (ra.b + rb.t) / 2;
+        } else {
+          var x = Math.min(ra.l, rb.l) - 30;
+          d = "M" + ra.l + " " + ra.cy + " H" + x + " V" + rb.cy + " H" + rb.l; lx = x; ly = (ra.cy + rb.cy) / 2;
+        }
+      } else {
+        var dir = b.col > a.col ? 1 : -1;
+        var x1 = dir > 0 ? ra.r : ra.l, x2 = dir > 0 ? rb.l : rb.r;
+        var xm = x2 - dir * 30;
+        d = "M" + x1 + " " + ra.cy + " H" + xm + " V" + rb.cy + " H" + x2;
+        lx = (x1 + x2) / 2; ly = ra.cy;
+      }
+      var kind = e.kind === "call" ? "call" : "flow";
+      var p = document.createElementNS(svgNS, "path");
+      p.setAttribute("d", d); p.setAttribute("class", "e " + kind);
+      p.setAttribute("marker-end", "url(#" + (kind === "call" ? "ahc" : "ah") + ")");
+      p.setAttribute("data-from", e.from); p.setAttribute("data-to", e.to);
+      svg.appendChild(p);
+      if (e.label && kind === "flow"){
+        var lab = el("span", {class:"elabel", text:e.label});
+        lab.style.left = lx + "px"; lab.style.top = ly + "px";
+        stage.appendChild(lab);
+      }
+    });
+    svg.setAttribute("width", stage.scrollWidth); svg.setAttribute("height", stage.scrollHeight);
+    refreshSelection();
+  }
+
+  function refreshSelection(){
+    Object.keys(nodeEls).forEach(function(id){ nodeEls[id].setAttribute("aria-pressed", String(id === state.node)); });
+    var svg = $("edges"); if (!svg) return;
+    Array.prototype.slice.call(svg.querySelectorAll("path.e")).forEach(function(p){
+      var on = state.node && (p.getAttribute("data-from") === state.node || p.getAttribute("data-to") === state.node);
+      p.classList.toggle("active", !!on);
+    });
+  }
+  function scrollToNode(id){
+    var n = nodeEls[id]; if (n && n.scrollIntoView) n.scrollIntoView({block:"center", inline:"center", behavior:"smooth"});
+  }
+
+  /* ---------- 단계 이동 / 탭 ---------- */
+  function stepIndex(){ return scen().steps.indexOf(state.node); }
+  function updateStepper(){
+    var steps = scen().steps, i = stepIndex();
+    $("stepNo").textContent = i < 0 ? "– / " + steps.length : (i + 1) + " / " + steps.length;
+    $("prev").disabled = i <= 0 && state.node !== null ? true : false;
+    $("next").disabled = i >= steps.length - 1;
+    if (state.node === null){ $("prev").disabled = true; $("next").disabled = false; }
+  }
+  function go(delta){
+    var steps = scen().steps, i = stepIndex();
+    var j = i < 0 ? 0 : Math.max(0, Math.min(steps.length - 1, i + delta));
+    selectNode(steps[j], 0); scrollToNode(steps[j]);
+  }
+  function renderTabs(){
+    var t = $("tabs"); t.textContent = "";
+    D.scenarios.forEach(function(sc, i){
+      t.appendChild(el("button", {class:"tab", role:"tab", "aria-selected":String(i === state.sc), text:sc.name, onclick:function(){ switchScenario(i); }}));
+    });
+  }
+  function switchScenario(i){
+    state.sc = i; state.node = null; state.file = null;
+    renderTabs(); renderStage(); showHint(); updateStepper();
+    try { history.replaceState(null, "", "#" + D.scenarios[i].id); } catch(e){}
+  }
+
+  /* ---------- 시작 ---------- */
+  document.title = D.title + " — 코드 흐름도";
+  $("title").textContent = D.title + " · 코드 흐름도";
+  $("subtitle").textContent = D.subtitle;
+  $("mdlink").setAttribute("href", D.mdFile);
+  $("prev").addEventListener("click", function(){ go(-1); });
+  $("next").addEventListener("click", function(){ go(1); });
+  $("pClose").addEventListener("click", closePanel);
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape") closePanel(); });
+  $("theme").addEventListener("click", function(){
+    var r = document.documentElement, cur = r.getAttribute("data-theme");
+    var dark = cur ? cur === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    r.setAttribute("data-theme", dark ? "light" : "dark");
+  });
+  window.addEventListener("resize", scheduleEdges);
+  if (window.ResizeObserver) new ResizeObserver(scheduleEdges).observe($("stage"));
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleEdges);
+
+  var startId = (location.hash || "").replace("#", "");
+  var startIdx = 0; D.scenarios.forEach(function(s, i){ if (s.id === startId) startIdx = i; });
+  switchScenario(startIdx);
+  // 화면 확인/테스트용 지름길: window.__flow.select("s7")
+  window.__flow = { select: function(id, i){ selectNode(id, i || 0); }, file: selectFile, state: state };
+})();
+</script>
+</body>
+</html>

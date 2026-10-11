@@ -44,12 +44,20 @@ def _kind_for(item: dict) -> str:
     return "helper"
 
 
+def _snip(t) -> dict:
+    """snippet 튜플 (파일, 시작 문구, 끝 문구[, n]) → 항목. n 은 시작 문구가 n 번째로 나오는 곳을 쓰겠다는 뜻."""
+    it = {"snippet": t[0], "from": t[1], "to": t[2]}
+    if len(t) > 3:
+        it["nth"] = t[3]
+    return it
+
+
 def call(ref=None, title="", plain="", *, refs=None, snippet=None, hl=None, label=None,
          later="", kind=None, then=None, reject="") -> dict:
     """호출되는 함수(또는 파일 일부) 하나. ref 대신 refs=[...] 로 같은 카드에 여러 함수를 묶을 수 있다."""
     items = []
     if snippet is not None:
-        it = {"snippet": snippet[0], "from": snippet[1], "to": snippet[2]}
+        it = _snip(snippet)
         if label:
             it["label"] = label
         if hl is not None:
@@ -98,7 +106,7 @@ class Scenario:
         """흐름의 시작(보통 화면에서 폼 제출). 코드는 snippet(파일 일부) 또는 fn(함수)."""
         item = {}
         if snippet:
-            item = {"snippet": snippet[0], "from": snippet[1], "to": snippet[2]}
+            item = _snip(snippet)
             if label:
                 item["label"] = label
         else:
@@ -120,7 +128,7 @@ class Scenario:
         its = items
         if its is None:
             if snippet:
-                it = {"snippet": snippet[0], "from": snippet[1], "to": snippet[2]}
+                it = _snip(snippet)
                 if label:
                     it["label"] = label
             else:

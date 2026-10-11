@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>31. 시뮬레이션 일괄 점검 — 코드 흐름도</title>
+<style>
+  :root{
+    --bg:#f4f6f3; --surface:#ffffff; --surface-2:#eaefe9; --ink:#12201c; --ink-muted:#5a6b63;
+    --border:#d9e0da; --accent:#0f6f66; --accent-soft:#e2ede9; --danger:#bf3b2b; --danger-soft:#f8e6e2;
+    --edge:#7b8a82; --edge-call:#8a97a0;
+    --k-screen:#767f78; --k-screen-soft:#eef0ee;
+    --k-route:#2f5fd6;  --k-route-soft:#e7edfb;
+    --k-helper:#b56b0c; --k-helper-soft:#f7ecd9;
+    --k-db:#7a4fce;     --k-db-soft:#efe8fa;
+    --k-config:#0f6f66; --k-config-soft:#e2ede9;
+    --k-later:#9aa39d;  --k-later-soft:#f4f6f3;
+    --code-bg:#fbfcfb; --code-hl:#fff3c4; --code-hl-bar:#e0a800; --code-gutter:#8a978f;
+    --c-comment:#6b7d73; --c-str:#a1470f; --c-kw:#7a3fc0; --c-fn:#1f5fd0; --c-num:#0b7a6c; --c-deco:#b0306e;
+    --shadow:0 1px 2px rgba(18,32,28,.06), 0 6px 20px rgba(18,32,28,.07);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0d1512; --surface:#141e1a; --surface-2:#1b2620; --ink:#e7efe9; --ink-muted:#93a49c;
+      --border:#28352e; --accent:#4fc9b8; --accent-soft:#17332d; --danger:#ec7a6a; --danger-soft:#3a1d19;
+      --edge:#6f8178; --edge-call:#5d6f67;
+      --k-screen:#9aa39d; --k-screen-soft:#1a221e;
+      --k-route:#7fa2f2;  --k-route-soft:#182236;
+      --k-helper:#e8a94c; --k-helper-soft:#31260f;
+      --k-db:#b49bee;     --k-db-soft:#241c34;
+      --k-config:#4fc9b8; --k-config-soft:#17332d;
+      --k-later:#6b7a72;  --k-later-soft:#111a16;
+      --code-bg:#0f1713; --code-hl:#3a3210; --code-hl-bar:#e8a94c; --code-gutter:#5f7068;
+      --c-comment:#7f9388; --c-str:#e9a27a; --c-kw:#c3a1f5; --c-fn:#8db3ff; --c-num:#6fd6c6; --c-deco:#f08ab8;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d1512; --surface:#141e1a; --surface-2:#1b2620; --ink:#e7efe9; --ink-muted:#93a49c;
+    --border:#28352e; --accent:#4fc9b8; --accent-soft:#17332d; --danger:#ec7a6a; --danger-soft:#3a1d19;
+    --edge:#6f8178; --edge-call:#5d6f67;
+    --k-screen:#9aa39d; --k-screen-soft:#1a221e;
+    --k-route:#7fa2f2;  --k-route-soft:#182236;
+    --k-helper:#e8a94c; --k-helper-soft:#31260f;
+    --k-db:#b49bee;     --k-db-soft:#241c34;
+    --k-config:#4fc9b8; --k-config-soft:#17332d;
+    --k-later:#6b7a72;  --k-later-soft:#111a16;
+    --code-bg:#0f1713; --code-hl:#3a3210; --code-hl-bar:#e8a94c; --code-gutter:#5f7068;
+    --c-comment:#7f9388; --c-str:#e9a27a; --c-kw:#c3a1f5; --c-fn:#8db3ff; --c-num:#6fd6c6; --c-deco:#f08ab8;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.55}
+  button{font:inherit;color:inherit;cursor:pointer}
+  code,.mono{font-family:var(--mono)}
+
+  .app{display:flex;height:100vh;min-height:0}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .top{padding:14px 20px 10px;border-bottom:1px solid var(--border);background:var(--surface)}
+  .top h1{margin:0;font-size:19px;letter-spacing:-.01em}
+  .top .sub{margin:2px 0 0;color:var(--ink-muted);font-size:13px}
+  .top-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+  .tabs{display:flex;gap:6px}
+  .tab{border:1px solid var(--border);background:var(--surface-2);border-radius:999px;padding:5px 14px;font-weight:600}
+  .tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+  :root[data-theme="dark"] .tab[aria-selected="true"]{color:#06201b}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tab[aria-selected="true"]{color:#06201b}}
+  .spacer{flex:1}
+  .btn{border:1px solid var(--border);background:var(--surface);border-radius:8px;padding:5px 11px;font-size:13px}
+  .btn:hover{border-color:var(--accent)}
+  .btn:disabled{opacity:.4;cursor:default}
+  .stepper{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-muted)}
+  .stepper b{color:var(--ink);min-width:42px;text-align:center}
+  a.link{color:var(--accent);text-decoration:none;font-size:13px}
+  a.link:hover{text-decoration:underline}
+
+  .intro{margin:0;padding:10px 20px;color:var(--ink-muted);font-size:13px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px 20px;font-size:12px;color:var(--ink-muted);border-bottom:1px solid var(--border)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+  .stage-wrap{flex:1;min-height:0;overflow:auto}
+  .stage{position:relative;display:grid;gap:26px 46px;padding:22px 22px 60px;width:max-content;min-width:100%}
+  .edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+  .edges path{fill:none;stroke:var(--edge);stroke-width:1.6}
+  .edges path.call{stroke:var(--edge-call);stroke-dasharray:5 4}
+  .edges path.active{stroke:var(--accent);stroke-width:2.4;stroke-dasharray:none}
+  .edges .head{fill:var(--edge)}
+  .edges .head-call{fill:var(--edge-call)}
+  .elabel{position:absolute;transform:translate(-50%,-50%);font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;
+    background:var(--surface);border:1px solid var(--border);color:var(--ink-muted);white-space:nowrap;pointer-events:none}
+
+  .colhead{font-size:12px;font-weight:700;color:var(--ink-muted);text-transform:none;border-bottom:2px solid var(--border);padding-bottom:6px;align-self:end}
+  .cell{display:flex;flex-direction:column;gap:12px;align-self:center;justify-content:center;position:relative;z-index:1}
+
+  .node{--k:var(--k-route);--ks:var(--k-route-soft);position:relative;background:var(--surface);border:1px solid var(--border);
+    border-left:5px solid var(--k);border-radius:10px;padding:10px 12px;box-shadow:var(--shadow);cursor:pointer;
+    transition:transform .08s, border-color .12s}
+  .node:hover{transform:translateY(-1px);border-color:var(--k)}
+  .node:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .node[aria-pressed="true"]{outline:3px solid var(--accent);outline-offset:1px}
+  .node.screen{--k:var(--k-screen);--ks:var(--k-screen-soft)}
+  .node.route{--k:var(--k-route);--ks:var(--k-route-soft)}
+  .node.helper{--k:var(--k-helper);--ks:var(--k-helper-soft)}
+  .node.db{--k:var(--k-db);--ks:var(--k-db-soft)}
+  .node.config{--k:var(--k-config);--ks:var(--k-config-soft)}
+  .node.later{--k:var(--k-later);--ks:var(--k-later-soft);background:var(--k-later-soft);box-shadow:none;border-style:dashed;border-left-style:solid;padding:8px 10px}
+  .n-title{font-weight:700;font-size:13.5px;letter-spacing:-.01em}
+  .n-plain{margin-top:3px;color:var(--ink-muted);font-size:12.5px}
+  .n-reject{margin-top:6px;font-size:12px;color:var(--danger);background:var(--danger-soft);border-radius:6px;padding:3px 8px}
+  .n-reject::before{content:"막히면 → ";font-weight:700}
+  .n-items{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+  .n-item{display:flex;flex-direction:column;gap:3px}
+  .n-call{overflow-wrap:anywhere;font-family:var(--mono);font-size:11.5px;color:var(--k);font-weight:600}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{max-width:100%;text-align:left;overflow-wrap:anywhere;border:1px solid var(--border);background:var(--ks);color:var(--ink);border-radius:6px;padding:1px 7px;font-family:var(--mono);font-size:11px}
+  .chip:hover{border-color:var(--k);color:var(--k)}
+  .chip.file::before{content:"📄 "}
+  .chip.fn::before{content:"ƒ ";color:var(--k);font-weight:700}
+  .chip.snip::before{content:"▤ ";color:var(--k);font-weight:700}
+  .tag-later{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:700;color:var(--ink-muted);border:1px solid var(--border);border-radius:999px;padding:0 7px;background:var(--surface)}
+
+  /* 코드 패널 */
+  .panel{width:440px;flex:none;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;min-height:0}
+  .p-head{padding:14px 16px 10px;border-bottom:1px solid var(--border)}
+  .p-head h2{margin:0;font-size:15.5px;letter-spacing:-.01em}
+  .p-head p{margin:4px 0 0;color:var(--ink-muted);font-size:13px}
+  .p-close{display:none}
+  .p-body{flex:1;min-height:0;overflow:auto;padding:12px 16px 24px}
+  .hint{color:var(--ink-muted);font-size:13px}
+  .hint li{margin:4px 0}
+  .itabs{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+  .itab{border:1px solid var(--border);background:var(--surface-2);border-radius:6px;padding:2px 9px;font-family:var(--mono);font-size:12px}
+  .itab[aria-selected="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700}
+  .fileline{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}
+  .fileline .path{font-family:var(--mono);font-size:12.5px;font-weight:700}
+  .fileline .lines{font-family:var(--mono);font-size:12px;color:var(--ink-muted)}
+  .alias{border:1px solid var(--border);background:var(--k-db-soft);border-radius:8px;padding:8px 10px;margin:0 0 10px;font-size:12.5px}
+  .alias .route{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:5px;font-family:var(--mono);font-size:12px}
+  .alias .route span.step{padding:1px 7px;border-radius:6px;border:1px solid var(--border);background:var(--surface)}
+  .alias .route span.real{border-color:var(--k-db);color:var(--k-db);font-weight:700}
+  .alias .arrow{color:var(--ink-muted)}
+  .codebox{border:1px solid var(--border);border-radius:8px;background:var(--code-bg);overflow:auto;max-height:62vh}
+  table.code{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12.2px;line-height:1.6}
+  table.code td{padding:0 10px;vertical-align:top;white-space:pre}
+  table.code td.ln{position:sticky;left:0;text-align:right;color:var(--code-gutter);user-select:none;background:var(--code-bg);border-right:1px solid var(--border);min-width:44px;padding-right:8px}
+  table.code tr.hl td{background:var(--code-hl)}
+  table.code tr.hl td.ln{background:var(--code-hl);color:var(--ink);font-weight:700;box-shadow:inset 3px 0 0 var(--code-hl-bar)}
+  .t-c{color:var(--c-comment);font-style:italic}.t-d{color:var(--c-comment)}.t-s{color:var(--c-str)}.t-k{color:var(--c-kw);font-weight:600}
+  .t-f{color:var(--c-fn)}.t-n{color:var(--c-num)}.t-a{color:var(--c-deco)}
+  .legend-hl{margin:8px 0 0;font-size:12px;color:var(--ink-muted)}
+  .legend-hl b{background:var(--code-hl);color:var(--ink);padding:0 6px;border-radius:4px}
+  .flist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:6px}
+  .flist button{width:100%;text-align:left;border:1px solid var(--border);background:var(--surface-2);border-radius:8px;padding:6px 10px}
+  .flist button:hover{border-color:var(--accent)}
+  .flist small{display:block;color:var(--ink-muted)}
+  details.hdr{margin-top:12px;font-size:13px}
+  details.hdr pre{white-space:pre-wrap;background:var(--surface-2);border-radius:8px;padding:10px;font-family:var(--sans);font-size:12.5px;color:var(--ink-muted)}
+
+  @media (max-width:900px){
+    .app{display:block;height:auto}
+    .stage-wrap{max-height:none;overflow-x:auto}
+    .panel{position:fixed;left:0;right:0;bottom:0;width:auto;height:62vh;border-left:0;border-top:2px solid var(--accent);
+      box-shadow:0 -10px 30px rgba(0,0,0,.25);z-index:20;transform:translateY(105%);transition:transform .18s}
+    body.open .panel{transform:none}
+    .p-close{display:inline-block;position:absolute;right:12px;top:10px}
+    .p-head{position:relative;padding-right:70px}
+    .top{padding:12px 16px 8px}
+    .stage{padding:16px 16px 70vh}
+  }
+  @media (prefers-reduced-motion: reduce){.node,.panel{transition:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="main">
+    <header class="top">
+      <h1 id="title"></h1>
+      <p class="sub" id="subtitle"></p>
+      <div class="top-row">
+        <div class="tabs" role="tablist" id="tabs"></div>
+        <div class="stepper"><button class="btn" id="prev">◀ 이전</button><b id="stepNo">–</b><button class="btn" id="next">다음 ▶</button></div>
+        <span class="spacer"></span>
+        <a class="link" id="mdlink" href="#">📝 설명 문서 보기</a>
+        <button class="btn" id="theme" title="라이트/다크 전환">🌓</button>
+      </div>
+    </header>
+    <p class="intro" id="intro"></p>
+    <div class="legend" aria-label="범례">
+      <span><i style="background:var(--k-screen)"></i>화면 · 도착지</span>
+      <span><i style="background:var(--k-route)"></i>routes (입구)</span>
+      <span><i style="background:var(--k-helper)"></i>판단 (security · helpers)</span>
+      <span><i style="background:var(--k-db)"></i>db (저장소)</span>
+      <span><i style="background:var(--k-config)"></i>설정값</span>
+      <span><i style="background:var(--k-later);opacity:.6"></i>다른 단원에서 자세히</span>
+      <span>━ 다음 단계 &nbsp; ┅ 함수 호출</span>
+    </div>
+    <div class="stage-wrap" id="stageWrap"><div class="stage" id="stage"></div></div>
+  </div>
+
+  <aside class="panel" id="panel" aria-live="polite">
+    <div class="p-head">
+      <h2 id="pTitle"></h2><p id="pSub"></p>
+      <button class="btn p-close" id="pClose">닫기</button>
+    </div>
+    <div class="p-body" id="pBody"></div>
+  </aside>
+</div>
+
+<script type="application/json" id="data">{"title": "31. 시뮬레이션 일괄 점검", "subtitle": "공격 시뮬레이터 21종을 한 번에 돌려 '기대한 이벤트가 기록되는지' 확인하는 점검기와 샘플 로그 도구의 코드 흐름도", "mdFile": "31-simulation-check.md", "github": "https://github.com/dyj02056/login-watchdog/blob/main/", "columns": ["화면 · 도착지", "routes/ (입구)", "판단 (security · helpers)", "db/ · config.py (저장소 · 설정값)"], "scenarios": [{"id": "check", "name": "시뮬레이터 일괄 점검 (check_simulations.py)", "intro": "탐지 기능을 고칠 때마다 '다른 공격은 아직 잡히는가'를 시뮬레이터 20여 개로 손수 확인하기는 어렵습니다. 한 번에 돌려서 결과를 대조합니다.", "nodes": [{"id": "check_n1", "col": 0, "row": 0, "kind": "screen", "title": "python scripts/demo/check_simulations.py", "plain": "이름 일부를 인자로 주면(예: honeypot) 그것만 실행합니다. 5000번 포트를 쓰므로 python app.py 로 띄운 개발 서버는 먼저 꺼야 합니다.", "reject": "", "later": "", "items": [{"block": "scripts/demo/check_simulations.py:main", "hl": [120, 126], "label": "main()", "call": null, "snippet": false}]}, {"id": "check_n2", "col": 0, "row": 1, "kind": "screen", "title": "① 환경을 고정한다 (.env 값 무시)", "plain": "진짜 DB·Slack·메일·Groq 에 접속하지 않도록 값을 모두 덮어씁니다. 임시 잠금은 3초, 복구 대기는 0초로 줄여 시뮬레이션이 5분씩 기다리지 않게 합니다.", "reject": "", "later": "", "items": [{"block": "scripts/demo/check_simulations.py:31-41", "hl": null, "label": "환경 고정", "call": null, "snippet": true}]}, {"id": "check_n3", "col": 0, "row": 2, "kind": "screen", "title": "② 진짜 DB 대신 메모리 DB 를 끼운다", "plain": "db 패키지가 쓰는 연결을 메모리 가짜 클라이언트로 바꿔치기해서, 앱 코드는 하나도 안 바꾸고 점검합니다.", "reject": "", "later": "", "items": [{"block": "scripts/demo/check_simulations.py:47-49", "hl": null, "label": "메모리 DB 주입", "call": null, "snippet": true}]}, {"id": "check_n4", "col": 2, "row": 2, "kind": "helper", "title": "메모리에 사는 가짜 Supabase", "plain": "insert 한 행을 실제로 기억하고 where 조건으로 걸러 셉니다. 그래야 '5번 틀리면 잠금' 같은 탐지가 진짜처럼 동작합니다.", "reject": "", "later": "", "items": [{"block": "scripts/demo/memory_supabase.py:291-296", "hl": null, "label": "MemoryClient", "call": null, "snippet": true}]}, {"id": "check_n5", "col": 0, "row": 3, "kind": "screen", "title": "③ 시뮬레이션을 하나씩 실행", "plain": "사례마다 기록·잠금을 비우고 요청 한도 카운터를 초기화한 뒤, 시뮬레이터를 별도 프로세스로 실행합니다. 로컬 서버(127.0.0.1:5000)를 공격 대상으로 씁니다.", "reject": "", "later": "", "items": [{"block": "scripts/demo/check_simulations.py:118-155", "hl": [135, 140], "label": "main()", "call": null, "snippet": true}]}, {"id": "check_n6", "col": 2, "row": 3, "kind": "helper", "title": "점검 사례 목록", "plain": "(등급, 시뮬레이터, 인자, 기대 이벤트) 21건. 예: bruteforce_sim → (BRUTE_FORCE, CRITICAL).", "reject": "", "later": "", "items": [{"block": "scripts/demo/check_simulations.py:72-74", "hl": null, "label": "CASES", "call": null, "snippet": true}]}, {"id": "check_n7", "col": 2, "row": 3, "kind": "helper", "title": "시뮬레이터 예: 브루트포스", "plain": "로컬 서버에만 실행되도록 안전장치가 걸려 있습니다.", "reject": "", "later": "", "items": [{"block": "scripts/simulation/critical/bruteforce_sim.py:run", "hl": null, "label": "run()", "call": null, "snippet": false}]}, {"id": "check_n8", "col": 0, "row": 4, "kind": "screen", "title": "④ 기대한 이벤트가 기록됐는지 대조", "plain": "두 가지를 봅니다: ① 시뮬레이션이 성공(종료 코드 0)했는가 ② 서버가 기대한 (event_type, severity) 를 security_events 에 실제로 기록했는가. 둘 다 맞아야 PASS 입니다.", "reject": "", "later": "", "items": [{"block": "scripts/demo/check_simulations.py:118-155", "hl": [143, 145], "label": "main()", "call": null, "snippet": true}]}, {"id": "check_n9", "col": 2, "row": 4, "kind": "helper", "title": "기록된 (유형, 등급) 목록", "plain": "메모리 DB 의 security_events 에서 읽습니다.", "reject": "", "later": "", "items": [{"block": "scripts/demo/check_simulations.py:events", "hl": null, "label": "events()", "call": null, "snippet": false}]}, {"id": "check_n10", "col": 0, "row": 5, "kind": "screen", "title": "⑤ PASS / FAIL 출력", "plain": "실패하면 누락된 이벤트와 시뮬레이션 출력의 끝 15줄을 함께 보여줘서 원인을 바로 찾을 수 있습니다. 마지막에 '합계: N PASS / M FAIL / 총 K건' 을 출력합니다.", "reject": "", "later": "", "items": [{"block": "scripts/demo/check_simulations.py:118-155", "hl": [148, 154], "label": "main()", "call": null, "snippet": true}]}], "edges": [{"from": "check_n1", "to": "check_n2", "label": "", "kind": "flow"}, {"from": "check_n2", "to": "check_n3", "label": "", "kind": "flow"}, {"from": "check_n3", "to": "check_n4", "label": "", "kind": "call"}, {"from": "check_n3", "to": "check_n5", "label": "", "kind": "flow"}, {"from": "check_n5", "to": "check_n6", "label": "", "kind": "call"}, {"from": "check_n5", "to": "check_n7", "label": "", "kind": "call"}, {"from": "check_n5", "to": "check_n8", "label": "", "kind": "flow"}, {"from": "check_n8", "to": "check_n9", "label": "", "kind": "call"}, {"from": "check_n8", "to": "check_n10", "label": "", "kind": "flow"}], "steps": ["check_n1", "check_n2", "check_n3", "check_n5", "check_n8", "check_n10"]}, {"id": "demo", "name": "7일치 샘플 로그 만들기 (generate_demo_logs.py)", "intro": "시연·스크린샷용 기록을 서버가 직접 만들게 하는 도구입니다. 메모리 DB 서버를 켜고 가짜 회원을 실제 /signup 으로 가입시킨 뒤, 정상 접속과 공격 시뮬레이션 21종을 시각 순서대로 실행합니다. 진짜 Supabase·Slack·메일에는 접속하지 않습니다.", "nodes": [{"id": "demo_n1", "col": 0, "row": 0, "kind": "screen", "title": "python scripts/demo/generate_demo_logs.py", "plain": "같은 --seed 면 같은 결과가 나옵니다.", "reject": "", "later": "", "items": [{"block": "scripts/demo/generate_demo_logs.py:main", "hl": [705, 711], "label": "main()", "call": null, "snippet": false}]}, {"id": "demo_n2", "col": 0, "row": 1, "kind": "screen", "title": "① 실행 계획을 세운다 (묶음 목록)", "plain": "가짜 회원 가입·정상 접속·공격 시뮬레이션을 지난 7일 안의 시각에 배정하고, 마지막에 '방금 일어난 공격'(진행 중 사건·활성 잠금·승인 대기)을 둡니다.", "reject": "", "later": "", "items": [{"block": "scripts/demo/generate_demo_logs.py:build_plan", "hl": [458, 458], "label": "build_plan()", "call": null, "snippet": false}]}, {"id": "demo_n3", "col": 0, "row": 2, "kind": "screen", "title": "② 가짜 회원을 실제 /signup 으로 가입", "plain": "화면과 같은 경로로 가입시켜서 가입 도배 방어·허니팟 등 실제 코드를 그대로 통과합니다.", "reject": "", "later": "", "items": [{"block": "scripts/demo/generate_demo_logs.py:signup", "hl": [314, 314], "label": "signup()", "call": null, "snippet": false}]}, {"id": "demo_n4", "col": 0, "row": 3, "kind": "screen", "title": "③ 공격 시뮬레이션 실행", "plain": "묶음마다 시뮬레이터를 하위 프로세스로 실행합니다. X-Forwarded-For 로 가짜 공격자 IP 를 흉내 냅니다(TRUST_FORWARDED_FOR=true 일 때만 반영).", "reject": "", "later": "", "items": [{"block": "scripts/demo/generate_demo_logs.py:run_attack", "hl": [511, 520], "label": "run_attack()", "call": null, "snippet": false}]}, {"id": "demo_n5", "col": 0, "row": 4, "kind": "screen", "title": "④ 기록 시각을 계획한 시각으로 옮기고 IP 를 바꾼다", "plain": "묶음이 끝날 때마다 그 묶음이 만든 행의 시각을 배정한 시각으로 옮기고, 시뮬레이션이 쓴 IP 를 17개국의 실제 할당 대역 IP 로 바꿉니다. 3초짜리 임시 잠금은 실제 설정(5분)처럼 고칩니다.", "reject": "", "later": "", "items": [{"block": "scripts/demo/generate_demo_logs.py:finish_batch", "hl": [279, 283], "label": "finish_batch()", "call": null, "snippet": false}]}, {"id": "demo_n6", "col": 2, "row": 4, "kind": "helper", "title": "IP 를 나라별 대역으로", "plain": "외부 접속 없이 직접 고른 대역에서 뽑습니다.", "reject": "", "later": "", "items": [{"block": "scripts/demo/generate_demo_logs.py:remap_foreign_ips", "hl": null, "label": "remap_foreign_ips()", "call": null, "snippet": false}]}, {"id": "demo_n7", "col": 2, "row": 4, "kind": "helper", "title": "묶음 전체의 시각 이동", "plain": "앞뒤 순서는 그대로 두고 같은 만큼 옮깁니다.", "reject": "", "later": "", "items": [{"block": "scripts/demo/generate_demo_logs.py:move_to", "hl": null, "label": "move_to()", "call": null, "snippet": false}]}, {"id": "demo_n8", "col": 0, "row": 5, "kind": "screen", "title": "⑤ 일별 요약표 · 관리자 처리 이력 · 복구 기록을 채운다", "plain": "26단원과 같은 모양의 요약표를 만들고, 관리자가 승인·해결한 이력과 이메일 복구 요청·IP 예외 같은 일부 기록은 직접 만든 행으로 채웁니다.", "reject": "", "later": "", "items": [{"block": "scripts/demo/generate_demo_logs.py:777-795", "hl": null, "label": "마무리", "call": null, "snippet": true}]}, {"id": "demo_n9", "col": 2, "row": 5, "kind": "helper", "title": "일별 요약표", "plain": "log_daily_summary / log_daily_breakdown 를 만듭니다.", "reject": "", "later": "", "items": [{"block": "scripts/demo/generate_demo_logs.py:build_daily_summary", "hl": null, "label": "build_daily_summary()", "call": null, "snippet": false}]}, {"id": "demo_n10", "col": 2, "row": 5, "kind": "helper", "title": "관리자 처리 이력", "plain": "승인·반려·해결 이력을 만듭니다.", "reject": "", "later": "", "items": [{"block": "scripts/demo/generate_demo_logs.py:admin_decisions", "hl": null, "label": "admin_decisions()", "call": null, "snippet": false}]}, {"id": "demo_n11", "col": 0, "row": 6, "kind": "screen", "title": "⑥ JSON 으로 저장", "plain": "scripts/demo/output/demo_logs.json 에 저장합니다. 이 파일을 demo_server.py 가 읽어 관제 화면을 띄웁니다(열 때마다 시각을 '지금' 기준으로 옮김).", "reject": "", "later": "", "items": [{"block": "scripts/demo/generate_demo_logs.py:798-800", "hl": null, "label": "JSON 저장", "call": null, "snippet": true}]}, {"id": "demo_n12", "col": 2, "row": 6, "kind": "helper", "title": "열 때마다 시각을 지금 기준으로", "plain": "며칠 전에 만든 파일도 항상 최근 7일처럼 보이게 합니다.", "reject": "", "later": "", "items": [{"block": "scripts/demo/demo_data.py:shift_dump_to_now", "hl": null, "label": "shift_dump_to_now()", "call": null, "snippet": false}]}, {"id": "demo_n13", "col": 2, "row": 6, "kind": "helper", "title": "(선택) 실제 Supabase 에 적재", "plain": "기본은 미리보기, --apply 로 적재, --purge 로 넣은 행만 삭제합니다.", "reject": "", "later": "", "items": [{"block": "scripts/demo/load_demo_to_supabase.py:main", "hl": null, "label": "main()", "call": null, "snippet": false}]}], "edges": [{"from": "demo_n1", "to": "demo_n2", "label": "", "kind": "flow"}, {"from": "demo_n2", "to": "demo_n3", "label": "", "kind": "flow"}, {"from": "demo_n3", "to": "demo_n4", "label": "", "kind": "flow"}, {"from": "demo_n4", "to": "demo_n5", "label": "", "kind": "flow"}, {"from": "demo_n5", "to": "demo_n6", "label": "", "kind": "call"}, {"from": "demo_n5", "to": "demo_n7", "label": "", "kind": "call"}, {"from": "demo_n5", "to": "demo_n8", "label": "", "kind": "flow"}, {"from": "demo_n8", "to": "demo_n9", "label": "", "kind": "call"}, {"from": "demo_n8", "to": "demo_n10", "label": "", "kind": "call"}, {"from": "demo_n8", "to": "demo_n11", "label": "", "kind": "flow"}, {"from": "demo_n11", "to": "demo_n12", "label": "", "kind": "call"}, {"from": "demo_n11", "to": "demo_n13", "label": "", "kind": "call"}], "steps": ["demo_n1", "demo_n2", "demo_n3", "demo_n4", "demo_n5", "demo_n8", "demo_n11"]}], "blocks": {"scripts/demo/check_simulations.py:main": {"path": "scripts/demo/check_simulations.py", "start": 118, "end": 155, "lang": "python", "code": "def main():\n    import logging\n    keyword = sys.argv[1] if len(sys.argv) > 1 else \"\"\n    # 서버 스레드가 찍는 요청 로그·Slack 대체 출력은 버리고, 점검 결과만 보여준다.\n    sys.stdout.reconfigure(encoding=\"utf-8\")\n    report = sys.stdout\n    rp = lambda *a, **k: print(*a, file=report, flush=True)\n    logging.getLogger(\"werkzeug\").setLevel(logging.ERROR)\n    seed()\n    server = serve()\n    sys.stdout = open(os.devnull, \"w\", encoding=\"utf-8\")\n    time.sleep(0.3)\n    rows, failures = [], 0\n    for level, path, args, expected in CASES:\n        label = f\"{path} {' '.join(a for a in args if not a.startswith('--') or a == '--target')}\".strip()\n        if keyword and keyword not in label:\n            continue\n        reset_between_runs()\n        started = time.monotonic()\n        try:\n            done = subprocess.run(command_for(path, args), capture_output=True, text=True, encoding=\"utf-8\",\n                                  errors=\"replace\", timeout=180, cwd=str(ROOT), env={**os.environ, \"PYTHONIOENCODING\": \"utf-8\"})\n            code, output = done.returncode, done.stdout + done.stderr\n        except subprocess.TimeoutExpired as error:\n            code, output = -1, f\"시간 초과\\n{error.stdout or ''}\"\n        recorded = events()\n        missing = [e for e in expected if e not in recorded]\n        ok = code == 0 and not missing\n        failures += not ok\n        rows.append((ok, level, label, code, time.monotonic() - started, missing, sorted(set(recorded))))\n        rp(f\"[{'PASS' if ok else 'FAIL'}] {level:<8} {label:<68} 종료코드={code} {time.monotonic() - started:5.1f}s\")\n        if not ok:\n            rp(f\"        누락된 이벤트: {missing}\\n        기록된 이벤트: {sorted(set(recorded))}\")\n            rp(\"        --- 시뮬레이션 출력(끝 15줄) ---\")\n            rp(\"\\n\".join(\"        \" + line for line in output.strip().splitlines()[-15:]))\n    server.shutdown()\n    rp(f\"\\n합계:{len(rows) - failures} PASS / {failures} FAIL / 총 {len(rows)}건\")\n    return 1 if failures else 0", "alias": null}, "scripts/demo/check_simulations.py:31-41": {"path": "scripts/demo/check_simulations.py", "start": 31, "end": 41, "lang": "python", "code": "os.environ.update({\n    \"SECRET_KEY\": \"sim-check-only-secret-key-0123456789\",\n    \"ADMIN_USERNAME\": \"sim-admin\", \"ADMIN_PASSWORD\": \"sim-admin-password-1234\",\n    \"SUPABASE_URL\": \"http://supabase.invalid\", \"SUPABASE_KEY\": \"sim-check\",\n    \"SLACK_WEBHOOK_URL\": \"\", \"GROQ_API_KEY\": \"\", \"MAIL_BACKEND\": \"console\",\n    \"TRUST_FORWARDED_FOR\": os.environ.get(\"TRUST_FORWARDED_FOR\", \"true\"),  # 가짜 공격자 IP(X-Forwarded-For)를 믿는다\n    \"PERMANENT_LOCK_IP_ALLOWLIST\": \"127.0.0.1,::1\",\n    \"LOCKOUT_DURATION_SECONDS\": \"3\",        # permanent_lock_sim이 5분을 기다리지 않게 임시 잠금을 짧게\n    \"RECOVERY_MIN_RESPONSE_SECONDS\": \"0\",   # 복구 요청의 고정 대기(5초)를 없앤다\n    \"SPA_ENABLED\": \"false\",\n})", "alias": null}, "scripts/demo/check_simulations.py:47-49": {"path": "scripts/demo/check_simulations.py", "start": 47, "end": 49, "lang": "python", "code": "client = MemoryClient()\ndb._client = client\ndb.get_client = lambda: client", "alias": null}, "scripts/demo/memory_supabase.py:291-296": {"path": "scripts/demo/memory_supabase.py", "start": 291, "end": 296, "lang": "python", "code": "class MemoryClient:\n    def __init__(self):\n        self.store = _Store()\n\n    def table(self, name):\n        return Query(self.store, name)", "alias": null}, "scripts/demo/check_simulations.py:118-155": {"path": "scripts/demo/check_simulations.py", "start": 118, "end": 155, "lang": "python", "code": "def main():\n    import logging\n    keyword = sys.argv[1] if len(sys.argv) > 1 else \"\"\n    # 서버 스레드가 찍는 요청 로그·Slack 대체 출력은 버리고, 점검 결과만 보여준다.\n    sys.stdout.reconfigure(encoding=\"utf-8\")\n    report = sys.stdout\n    rp = lambda *a, **k: print(*a, file=report, flush=True)\n    logging.getLogger(\"werkzeug\").setLevel(logging.ERROR)\n    seed()\n    server = serve()\n    sys.stdout = open(os.devnull, \"w\", encoding=\"utf-8\")\n    time.sleep(0.3)\n    rows, failures = [], 0\n    for level, path, args, expected in CASES:\n        label = f\"{path} {' '.join(a for a in args if not a.startswith('--') or a == '--target')}\".strip()\n        if keyword and keyword not in label:\n            continue\n        reset_between_runs()\n        started = time.monotonic()\n        try:\n            done = subprocess.run(command_for(path, args), capture_output=True, text=True, encoding=\"utf-8\",\n                                  errors=\"replace\", timeout=180, cwd=str(ROOT), env={**os.environ, \"PYTHONIOENCODING\": \"utf-8\"})\n            code, output = done.returncode, done.stdout + done.stderr\n        except subprocess.TimeoutExpired as error:\n            code, output = -1, f\"시간 초과\\n{error.stdout or ''}\"\n        recorded = events()\n        missing = [e for e in expected if e not in recorded]\n        ok = code == 0 and not missing\n        failures += not ok\n        rows.append((ok, level, label, code, time.monotonic() - started, missing, sorted(set(recorded))))\n        rp(f\"[{'PASS' if ok else 'FAIL'}] {level:<8} {label:<68} 종료코드={code} {time.monotonic() - started:5.1f}s\")\n        if not ok:\n            rp(f\"        누락된 이벤트: {missing}\\n        기록된 이벤트: {sorted(set(recorded))}\")\n            rp(\"        --- 시뮬레이션 출력(끝 15줄) ---\")\n            rp(\"\\n\".join(\"        \" + line for line in output.strip().splitlines()[-15:]))\n    server.shutdown()\n    rp(f\"\\n합계:{len(rows) - failures} PASS / {failures} FAIL / 총 {len(rows)}건\")\n    return 1 if failures else 0", "alias": null}, "scripts/demo/check_simulations.py:72-74": {"path": "scripts/demo/check_simulations.py", "start": 72, "end": 74, "lang": "python", "code": "CASES = [\n    (\"critical\", \"critical/bruteforce_sim.py\", [], [(\"BRUTE_FORCE\", \"CRITICAL\")]),\n    (\"critical\", \"critical/password_spraying_sim.py\", [\"--interval\", \"0.3\"], [(\"PASSWORD_SPRAYING\", \"CRITICAL\")]),", "alias": null}, "scripts/simulation/critical/bruteforce_sim.py:run": {"path": "scripts/simulation/critical/bruteforce_sim.py", "start": 82, "end": 142, "lang": "python", "code": "def run(\n    base_url: str, username: str, attempts: int, ip: str | None = None,\n    bypass_secret: str | None = None, login_path: str = \"/login\",\n) -> bool:\n    \"\"\"실패 요청을 `attempts`번 순차로 보낸 뒤, 마지막(6번째) 요청의 응답에\n    잠금 문구가 포함돼 있는지 확인한다.\n\n    ip가 주어지면, 이후 이 세션이 보내는 모든 요청(CSRF 토큰을 받아오는\n    GET 포함)에 X-Forwarded-For 헤더로 그 값을 실어 보낸다. session.headers에\n    한 번만 넣어두면 requests.Session이 그 뒤 모든 요청에 자동으로 붙여준다.\n    다만 이 헤더는 대상 서버의 config.TRUST_FORWARDED_FOR가 true일 때만\n    실제로 반영된다 — false(운영 환경 기본값)라면 서버가 이 헤더를 무시하고\n    진짜 접속 IP를 그대로 쓰므로, 그 경우엔 이 옵션이 아무 효과가 없다.\n\n    bypass_secret이 주어지면, Vercel Authentication(프리뷰 배포 잠금)을\n    우회하는 x-vercel-protection-bypass 헤더를 같은 방식으로 세션에 실어\n    보낸다. --host가 Vercel 프리뷰 주소일 때만 의미가 있고, 로컬 서버\n    대상으로는 아무 효과가 없다.\n\n    login_path를 \"/admin/login\"으로 주면(--admin) 관리자 로그인을 대상으로 한다(guide38).\n    --ip를 바꿔가며 IP당 4회씩 여러 번 실행하면, IP 잠금(5회 초과)은 걸리지 않고 관리자 계정\n    단위 잠금(15분 안에 8회 초과)만 걸리는 분산 브루트포스를 재현할 수 있다.\n\n    반환값: 검증 통과 여부(True/False). main()에서 이 값을 프로세스 종료\n    코드로 변환해서, CI 등 다른 도구가 성공/실패를 스크립트 실행만으로\n    판단할 수 있게 한다.\n    \"\"\"\n    print(f\"[*] {base_url}{login_path} 에 틀린 비밀번호로 {attempts}회 연속 로그인 시도\")\n\n    session = requests.Session()\n    # Flask-WTF는 HTTPS 요청에 대해 Referer 헤더가 있는지 검사한다\n    # (WTF_CSRF_SSL_STRICT 기본값 True). 로컬(HTTP)에서는 이 검사가 적용되지\n    # 않아 지금까지 드러나지 않았지만, HTTPS로 배포된 사이트(Vercel 등)를\n    # 대상으로 하면 이 헤더 없이는 CSRF 토큰이 맞아도 매번 400으로 거부된다.\n    session.headers[\"Referer\"] = f\"{base_url}{login_path}\"\n    if ip:\n        session.headers[\"X-Forwarded-For\"] = ip\n        print(f\"[*] X-Forwarded-For: {ip} 헤더를 함께 보냅니다 \"\n              f\"(대상 서버의 TRUST_FORWARDED_FOR=true일 때만 실제로 반영됨)\")\n    if bypass_secret:\n        session.headers[\"x-vercel-protection-bypass\"] = bypass_secret\n        session.headers[\"x-vercel-set-bypass-cookie\"] = \"true\"\n        print(\"[*] x-vercel-protection-bypass 헤더를 함께 보냅니다 \"\n              \"(Vercel Authentication이 걸린 프리뷰 주소일 때만 의미가 있음)\")\n    csrf_token = fetch_csrf_token(session, base_url, login_path)\n\n    response = None\n    for i in range(1, attempts + 1):\n        response = attempt_login(\n            session, base_url, username, \"wrong-password-on-purpose\", csrf_token, login_path\n        )\n        locked = LOCKED_MESSAGE in response.text\n        print(f\"    시도 {i}/{attempts} - 상태 코드 {response.status_code}\"\n              f\"{' - 이미 잠김' if locked else ''}\")\n\n    if response is not None and LOCKED_MESSAGE in response.text:\n        print(f\"[OK] {attempts}번째 시도에서 '{LOCKED_MESSAGE}' 문구를 확인했습니다. 잠금 정상 동작.\")\n        return True\n\n    print(f\"[FAIL] {attempts}번을 시도했지만 '{LOCKED_MESSAGE}' 문구를 찾지 못했습니다. 잠금이 걸리지 않았습니다.\")\n    return False", "alias": null}, "scripts/demo/check_simulations.py:events": {"path": "scripts/demo/check_simulations.py", "start": 67, "end": 68, "lang": "python", "code": "def events():\n    return [(row.get(\"event_type\"), row.get(\"severity\")) for row in client.store.rows(\"security_events\")]", "alias": null}, "scripts/demo/generate_demo_logs.py:main": {"path": "scripts/demo/generate_demo_logs.py", "start": 703, "end": 815, "lang": "python", "code": "def main() -> int:\n    parser = argparse.ArgumentParser(description=\"7일치 샘플 로그 생성기 (내 컴퓨터에서만 실행)\")\n    parser.add_argument(\"--seed\", type=int, default=20261009, help=\"같은 숫자면 같은 결과 (기본 20261009)\")\n    parser.add_argument(\"--days\", type=int, default=7, help=\"기록할 기간(일), 기본 7\")\n    parser.add_argument(\"--members\", type=int, default=12, help=\"가입시킬 가짜 회원 수 (최대 12)\")\n    parser.add_argument(\"--out\", default=str(OUTPUT), help=\"저장할 JSON 파일\")\n    parser.add_argument(\"--use-groq\", action=\"store_true\",\n                        help=\"AI 조기경보를 진짜 Groq API로 판정한다(.env의 GROQ_API_KEY 필요, 샘플 데이터가 Groq로 전송되고 호출 수만큼 시간이 걸린다)\")\n    args = parser.parse_args()\n\n    sys.stdout.reconfigure(encoding=\"utf-8\")\n    out = sys.stdout\n    say = lambda *a: print(*a, file=out, flush=True)\n    random.seed(args.seed)\n    rng = random.Random(args.seed)\n    now = datetime.now(timezone.utc)\n    pool = dd.IpPool(rng)\n    ctx = Context(rng=rng, pool=pool, now=now)\n\n    for username, role in dd.ADMIN_ACCOUNTS[1:]:\n        db.create_admin_user(username, dd.ADMIN_PASSWORD, role)\n    names = dd.MEMBER_NAMES[: max(1, min(args.members, len(dd.MEMBER_NAMES)))]\n    for index, username in enumerate(names):\n        recent = index < 3  # 세 명은 이번 주에 가입한 신규 회원\n        created = now - (timedelta(days=rng.uniform(1.2, args.days - 0.5)) if recent else timedelta(days=rng.uniform(args.days + 1, 25)))\n        ctx.members.append({\n            \"username\": username, \"email\": f\"{username}@example.com\", \"password\": dd.MEMBER_PASSWORD,\n            \"ip\": pool.pick(dd.MEMBER_COUNTRIES[index % len(dd.MEMBER_COUNTRIES)]), \"created_at\": created,\n        })\n\n    plan = build_plan(ctx, args.days)\n    if USE_GROQ:\n        say(\"AI 조기경보: 진짜 Groq API로 판정합니다 (샘플 IP·아이디·횟수가 Groq로 전송됩니다. 그 밖의 외부 접속은 없습니다)\")\n    say(f\"계획: 묶음 {len(plan)}개 (회원 가입 {len(ctx.members)}, 공격 {sum(1 for b in plan if b.kind in ATTACKS or b.kind in EARLY_WARNING)}) — 서버를 켭니다\")\n    server = serve()\n    time.sleep(0.5)\n    real_stdout, devnull = sys.stdout, open(os.devnull, \"w\", encoding=\"utf-8\")\n    logging = __import__(\"logging\")\n    logging.getLogger(\"werkzeug\").setLevel(logging.ERROR)\n    failures, started, done_kinds = [], time.monotonic(), Counter()\n\n    for number, batch in enumerate(plan, 1):\n        for attempt in range(3):   # 윈도우 소켓 고갈 같은 일시 오류가 나면 이 묶음이 만든 행을 되돌리고 다시 시도한다\n            app_module.limiter.reset()\n            before = snapshot()\n            sys.stdout = devnull   # 서버 스레드가 찍는 알림 출력은 버린다\n            try:\n                if batch.kind == \"signup\":\n                    ok, note = signup(ctx, batch.payload[\"member\"]), \"\"\n                elif batch.kind == \"member\":\n                    ok, note = member_session(ctx, batch.payload[\"member\"])[\"login\"], \"\"\n                elif batch.kind == \"admin\":\n                    ok, note = admin_session(ctx, batch.payload[\"username\"], batch.ip, batch.payload[\"fail\"]), \"\"\n                else:\n                    ok, note = run_attack(ctx, batch)\n            except requests.RequestException as error:\n                ok, note = False, str(error)\n            finally:\n                sys.stdout = real_stdout\n            if ok or batch.kind in EARLY_WARNING or attempt == 2:\n                break\n            with client.store.lock:\n                client.store.tables.clear()\n                client.store.tables.update(before)\n            time.sleep(3)\n        if ok:\n            done_kinds[batch.kind] += 1\n        info = finish_batch(ctx, before, batch.when, batch.live)\n        if not ok and batch.kind not in EARLY_WARNING:   # 조기경보용 변형은 일부러 잠금 직전까지만 두드려서 시뮬레이션 자체는 '실패'로 끝난다\n            failures.append((batch.kind, note))\n        say(f\"[{number:>3}/{len(plan)}] {'OK  ' if ok else 'FAIL'} {batch.when.astimezone(dd.KST):%m-%d %H:%M} {batch.kind:<30} {batch.ip:<16} 행 {info['rows']}\")\n    server.shutdown()\n\n    now = datetime.now(timezone.utc)\n    settle_locks(now)\n    admin_decisions(ctx, now)\n    release_one_permanent(ctx, now)\n    add_recovery_records(ctx, now)\n    fill_blanks(ctx)\n    summary, breakdown = build_daily_summary(now, pool.country_of)\n    with client.store.lock:\n        for member in ctx.members:   # 가입 시각을 계획한 시각으로 맞춘다\n            for user in client.store.tables.get(\"users\", []):\n                if user[\"username\"] == member[\"username\"]:\n                    user[\"created_at\"] = member[\"created_at\"].isoformat()\n        for admin in client.store.tables.get(\"admin_users\", []):   # 서버가 자동으로 만든 첫 관리자는 최고 관리자다\n            if admin[\"username\"] == dd.ADMIN_ACCOUNTS[0][0]:\n                admin[\"role\"] = dd.ADMIN_ACCOUNTS[0][1]\n        client.store.tables[\"log_daily_summary\"] = summary\n        client.store.tables[\"log_daily_breakdown\"] = breakdown\n        client.store.tables[\"ip_locations\"] = pool.location_rows(now.isoformat())\n        used = {r.get(\"ip_address\") for rows in client.store.tables.values() for r in rows if isinstance(r, dict)}\n        client.store.tables[\"ip_locations\"] = [r for r in client.store.tables[\"ip_locations\"] if r[\"ip_address\"] in used]\n        dump = {\"generated_at\": now.isoformat(), \"seed\": args.seed, \"tables\": {n: r for n, r in client.store.tables.items() if r}}\n\n    path = Path(args.out)\n    path.parent.mkdir(parents=True, exist_ok=True)\n    path.write_text(json.dumps(dump, ensure_ascii=False, indent=1), encoding=\"utf-8\")\n    events = Counter(e[\"event_type\"] for e in dump[\"tables\"].get(\"security_events\", []))\n    say(f\"\\n완료: {time.monotonic() - started:.0f}초 · 저장 {path}\")\n    say(\"표별 행 수: \" + \", \".join(f\"{n} {len(r)}\" for n, r in sorted(dump[\"tables\"].items())))\n    say(\"이벤트 유형: \" + \", \".join(f\"{k} {v}\" for k, v in events.most_common()))\n    say(f\"IP {len(dump['tables'].get('ip_locations', []))}개 · 나라 {len({r['country'] for r in dump['tables'].get('ip_locations', [])})}곳\")\n    if USE_GROQ:\n        say(f\"Groq 판정: 호출 {GROQ_STATS['calls']}회 · 위험 {GROQ_STATS['risky']} · 정상 {GROQ_STATS['safe']} · 실패 {GROQ_STATS['failed']}\"\n            + (\" (실패한 건은 조기경보가 만들어지지 않았습니다 — 한도·네트워크를 확인하세요)\" if GROQ_STATS[\"failed\"] else \"\"))\n    ran = [k for k in ATTACKS if done_kinds[k]]\n    say(f\"공격 시뮬레이션 {len(ran)}/{len(ATTACKS)}종 실행 성공\" + (f\" (실패: {', '.join(k for k in ATTACKS if k not in ran)})\" if len(ran) < len(ATTACKS) else \"\"))\n    if failures:\n        say(f\"실패한 묶음 {len(failures)}개:\")\n        for kind, note in failures[:10]:\n            say(f\"  - {kind}: {note[-200:]}\")\n    return 0", "alias": null}, "scripts/demo/generate_demo_logs.py:build_plan": {"path": "scripts/demo/generate_demo_logs.py", "start": 458, "end": 506, "lang": "python", "code": "def build_plan(ctx: Context, days: int) -> list[Batch]:\n    rng, pool, now = ctx.rng, ctx.pool, ctx.now\n    plan: list[Batch] = []\n    day_order = itertools.cycle(rng.sample(range(days), days))   # 공격이 7일에 고르게 퍼지도록 날짜를 돌아가며 배정한다\n    spread = lambda: attack_time(rng, now, days, day=next(day_order))\n\n    # 정상 회원: 가입 → 하루 한두 번 접속\n    for member in ctx.members:\n        plan.append(Batch(member[\"created_at\"], \"signup\", member[\"ip\"], payload={\"member\": member}))\n        for day in range(days):\n            if rng.random() < 0.7:\n                base = now.astimezone(dd.KST).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=day)\n                when = (base + timedelta(hours=rng.randint(8, 22), minutes=rng.randint(0, 59))).astimezone(timezone.utc)\n                if member[\"created_at\"] + timedelta(hours=2) < when < now - timedelta(minutes=30):\n                    plan.append(Batch(when, \"member\", member[\"ip\"], payload={\"member\": member}))\n    # 관리자: 하루 한두 번 대시보드 확인\n    for day in range(days):\n        for username in rng.sample([a[0] for a in dd.ADMIN_ACCOUNTS], rng.randint(1, 2)):\n            base = now.astimezone(dd.KST).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=day)\n            when = (base + timedelta(hours=rng.randint(9, 18), minutes=rng.randint(0, 59))).astimezone(timezone.utc)\n            if when < now - timedelta(minutes=30):\n                plan.append(Batch(when, \"admin\", pool.pick(\"South Korea\"), payload={\"username\": username, \"fail\": rng.random() < 0.2}))\n\n    # 공격 21종: 한 번씩은 반드시, 시각은 지난 7일 안에서 무작위(새벽에 많이 몰림)\n    for key in ATTACKS:\n        plan.append(Batch(spread(), key, pool.pick()))\n    # 같은 IP가 여러 날 돌아오는 반복 공격자 3명 (반복 위반 → 영구 잠금까지 이어지는 흐름)\n    repeatable = [k for k, v in ATTACKS.items() if not v[2] and k not in (\"permanent_lock\", \"incident_correlation\", \"honeypot_bot\", \"http_flood\")]\n    for _ in range(3):\n        ip = pool.pick()\n        for when, key in zip(sorted(attack_time(rng, now, days, day=d) for d in rng.sample(range(days), 4)),\n                             rng.sample([\"web_scanning\", \"unauthorized_access\", \"bruteforce\", \"repeated_access\", \"bruteforce\"], 4)):\n            plan.append(Batch(when, key, ip))\n    # 같은 계정을 두 번 노리는 분산 공격 (계정 영구 잠금)\n    target = any_member(ctx)[\"username\"]\n    for when in sorted(attack_time(rng, now, days) for _ in range(2)):\n        plan.append(Batch(when, \"distributed_bruteforce\", pool.pick(), payload={\"username\": target}))\n    # 무작위 추가 공격과 조기경보용 변형\n    for _ in range(14):\n        plan.append(Batch(spread(), rng.choice(repeatable + [\"distributed_bruteforce\"]), pool.pick()))\n    for key in EARLY_WARNING:\n        for _ in range(2):\n            plan.append(Batch(spread(), key, pool.pick()))\n    # 방금 일어난 공격(진행 중 사건·활성 잠금·승인 대기가 보이도록)\n    for key in (\"incident_correlation\", \"bruteforce\", \"web_scanning\", \"ew_bruteforce\", \"ew_signup\"):\n        plan.append(Batch(attack_time(rng, now, days, live=True), key, pool.pick(), live=True))\n\n    plan.sort()\n    return plan", "alias": null}, "scripts/demo/generate_demo_logs.py:signup": {"path": "scripts/demo/generate_demo_logs.py", "start": 314, "end": 320, "lang": "python", "code": "def signup(ctx: Context, member: dict) -> bool:\n    session = web_session(ctx, member[\"ip\"])\n    response = post_form(session, \"/signup\", {\n        \"username\": member[\"username\"], \"email\": member[\"email\"],\n        \"password\": member[\"password\"], \"password_confirm\": member[\"password\"],\n    }, csrf_for(session, \"/signup\"))\n    return response.status_code in (301, 302, 303) and \"/login\" in response.headers.get(\"Location\", \"\")", "alias": null}, "scripts/demo/generate_demo_logs.py:run_attack": {"path": "scripts/demo/generate_demo_logs.py", "start": 509, "end": 522, "lang": "python", "code": "def run_attack(ctx: Context, batch: Batch) -> tuple[bool, str]:\n    builder = EARLY_WARNING.get(batch.kind) or ATTACKS[batch.kind][1]\n    command = builder(ctx, batch.ip)\n    if command[0] != sys.executable:\n        command = [sys.executable, *command]\n    if batch.payload.get(\"username\") and \"--username\" in command:\n        command[command.index(\"--username\") + 1] = batch.payload[\"username\"]\n    _InjectIp.current_ip = batch.ip\n    try:\n        done = subprocess.run(command, capture_output=True, text=True, encoding=\"utf-8\", errors=\"replace\", timeout=RUN_TIMEOUT,\n                              cwd=str(ROOT), env={**os.environ, \"PYTHONIOENCODING\": \"utf-8\"})\n        return done.returncode == 0, (done.stdout + done.stderr).strip()[-600:]\n    except subprocess.TimeoutExpired:\n        return False, \"시간 초과\"", "alias": null}, "scripts/demo/generate_demo_logs.py:finish_batch": {"path": "scripts/demo/generate_demo_logs.py", "start": 278, "end": 284, "lang": "python", "code": "def finish_batch(ctx: Context, before: dict, when: datetime, live: bool) -> dict:\n    rows = list(changed_rows(before))\n    mapping = remap_foreign_ips(ctx, rows)\n    move_to(rows, when)\n    normalize_locks(rows, live, ctx.rng)\n    settle_locks(datetime.now(timezone.utc))\n    return {\"rows\": len(rows), \"remapped\": len(mapping)}", "alias": null}, "scripts/demo/generate_demo_logs.py:remap_foreign_ips": {"path": "scripts/demo/generate_demo_logs.py", "start": 204, "end": 227, "lang": "python", "code": "def remap_foreign_ips(ctx: Context, rows) -> dict:\n    \"\"\"시뮬레이션이 스스로 만든 IP(문서용 대역 등)를 여러 나라의 IP로 바꾼다.\"\"\"\n    foreign = []\n    for _name, row, keys in rows:\n        for column in IP_COLUMNS:\n            value = row.get(column)\n            if isinstance(value, str) and dd.IPV4.fullmatch(value) and value not in ctx.pool.country_of and value not in foreign:\n                if keys is None or column in keys:\n                    foreign.append(value)\n        if row.get(\"target_kind\") == \"ip\" and dd.IPV4.fullmatch(str(row.get(\"target_value\", \"\"))):\n            value = row[\"target_value\"]\n            if value not in ctx.pool.country_of and value not in foreign:\n                foreign.append(value)\n    mapping = {}\n    for ip, new_ip in zip(foreign, ctx.pool.pick_mixed(len(foreign)) if foreign else []):\n        mapping[ip] = new_ip\n    if mapping:\n        for _name, row, keys in rows:\n            for key, value in list(row.items()):\n                if isinstance(value, str) and (keys is None or key in keys):\n                    for old, new in mapping.items():\n                        if old in value:\n                            row[key] = value = value.replace(old, new)\n    return mapping", "alias": null}, "scripts/demo/generate_demo_logs.py:move_to": {"path": "scripts/demo/generate_demo_logs.py", "start": 230, "end": 241, "lang": "python", "code": "def move_to(rows, when: datetime) -> None:\n    \"\"\"묶음 안에서 가장 이른 시각이 when이 되도록, 묶음 전체의 시각을 같은 만큼 옮긴다(앞뒤 순서는 그대로).\"\"\"\n    times = []\n    for _name, row, keys in rows:\n        for key in keys if keys is not None else row:\n            if dd.is_time_string(row.get(key)):\n                times.append(dd.parse_iso(row[key]))\n    if not times:\n        return\n    delta = when - min(times)\n    for _name, row, keys in rows:\n        dd.shift_row_times(row, delta, keys)", "alias": null}, "scripts/demo/generate_demo_logs.py:777-795": {"path": "scripts/demo/generate_demo_logs.py", "start": 777, "end": 795, "lang": "python", "code": "    settle_locks(now)\n    admin_decisions(ctx, now)\n    release_one_permanent(ctx, now)\n    add_recovery_records(ctx, now)\n    fill_blanks(ctx)\n    summary, breakdown = build_daily_summary(now, pool.country_of)\n    with client.store.lock:\n        for member in ctx.members:   # 가입 시각을 계획한 시각으로 맞춘다\n            for user in client.store.tables.get(\"users\", []):\n                if user[\"username\"] == member[\"username\"]:\n                    user[\"created_at\"] = member[\"created_at\"].isoformat()\n        for admin in client.store.tables.get(\"admin_users\", []):   # 서버가 자동으로 만든 첫 관리자는 최고 관리자다\n            if admin[\"username\"] == dd.ADMIN_ACCOUNTS[0][0]:\n                admin[\"role\"] = dd.ADMIN_ACCOUNTS[0][1]\n        client.store.tables[\"log_daily_summary\"] = summary\n        client.store.tables[\"log_daily_breakdown\"] = breakdown\n        client.store.tables[\"ip_locations\"] = pool.location_rows(now.isoformat())\n        used = {r.get(\"ip_address\") for rows in client.store.tables.values() for r in rows if isinstance(r, dict)}\n        client.store.tables[\"ip_locations\"] = [r for r in client.store.tables[\"ip_locations\"] if r[\"ip_address\"] in used]", "alias": null}, "scripts/demo/generate_demo_logs.py:build_daily_summary": {"path": "scripts/demo/generate_demo_logs.py", "start": 529, "end": 571, "lang": "python", "code": "def build_daily_summary(now: datetime, country_of: dict) -> tuple[list, list]:\n    \"\"\"log_daily_summary / log_daily_breakdown — 어제까지의 날을 로그 표에서 요약한다(guide47과 같은 모양).\"\"\"\n    today = now.astimezone(dd.KST).date()\n    sources = {\"login_attempts\": \"attempted_at\", \"signup_attempts\": \"attempted_at\", \"not_found_attempts\": \"attempted_at\",\n               \"unauthorized_attempts\": \"attempted_at\", \"page_access_attempts\": \"attempted_at\", \"api_access_log\": \"requested_at\"}\n    summary, breakdown = Counter(), Counter()\n    ips, usernames, paths, countries = defaultdict(set), defaultdict(set), defaultdict(Counter), defaultdict(Counter)\n    with client.store.lock:\n        for source, column in sources.items():\n            for row in client.store.tables.get(source, []):\n                moment = dd.parse_iso(row[column]).astimezone(dd.KST)\n                if moment.date() >= today:\n                    continue\n                day = moment.date().isoformat()\n                category = (\"success\" if row.get(\"success\") else \"failure\") if source == \"login_attempts\" else (row.get(\"method\") or \"request\")\n                summary[(day, moment.hour, source, str(category))] += 1\n                key = (day, source)\n                if row.get(\"ip_address\"):\n                    ips[key].add(row[\"ip_address\"])\n                if row.get(\"path\"):\n                    paths[key][row[\"path\"]] += 1\n                if source == \"login_attempts\":\n                    if not row.get(\"success\"):\n                        usernames[key].add(row[\"username\"])\n                    countries[key][country_of.get(row[\"ip_address\"], \"알 수 없음\")] += 1\n    for key, values in ips.items():\n        breakdown[(key[0], key[1], \"distinct_ips\", \"\")] = len(values)\n    for key, values in usernames.items():\n        breakdown[(key[0], key[1], \"failed_usernames\", \"\")] = len(values)\n    for key, counter in paths.items():\n        top = counter.most_common(5)\n        for path, count in top:\n            breakdown[(key[0], key[1], \"top_path\", path)] = count\n        rest = sum(counter.values()) - sum(c for _p, c in top)\n        if rest:\n            breakdown[(key[0], key[1], \"top_path\", \"(그 외)\")] = rest\n    for key, counter in countries.items():\n        for country, count in counter.items():\n            breakdown[(key[0], key[1], \"country\", country)] = count\n    return (\n        [{\"day\": d, \"hour\": h, \"source\": s, \"category\": c, \"count\": n} for (d, h, s, c), n in sorted(summary.items())],\n        [{\"day\": d, \"source\": s, \"dimension\": dim, \"value\": v, \"count\": n} for (d, s, dim, v), n in sorted(breakdown.items())],\n    )", "alias": null}, "scripts/demo/generate_demo_logs.py:admin_decisions": {"path": "scripts/demo/generate_demo_logs.py", "start": 574, "end": 619, "lang": "python", "code": "def admin_decisions(ctx: Context, now: datetime) -> None:\n    \"\"\"오래된 사건·이벤트·AI 조기경보 중 일부를 관리자가 처리한 것으로 만든다(최근 것은 처리 대기로 남긴다).\"\"\"\n    rng = ctx.rng\n    admins = [a[0] for a in dd.ADMIN_ACCOUNTS if a[1] != \"security_viewer\"]\n    with client.store.lock:\n        t = client.store.tables\n        # 같은 IP에는 열린(OPEN) 사건이 하나만 — 오래된 것은 IDLE, 사람이 확인한 것은 CLOSED\n        by_ip = defaultdict(list)\n        for incident in t.get(\"security_incidents\", []):\n            by_ip[incident[\"ip_address\"]].append(incident)\n        for incident in t.get(\"security_incidents\", []):\n            last = dd.parse_iso(incident[\"last_event_at\"])\n            age = now - last\n            if incident[\"status\"] == \"OPEN\" and age > timedelta(hours=3):\n                incident[\"status\"] = \"IDLE\"\n            if incident[\"status\"] in (\"OPEN\", \"IDLE\") and age > timedelta(hours=18) and rng.random() < 0.7:\n                incident[\"status\"] = \"CLOSED\"\n                incident[\"resolved_by\"] = rng.choice(admins)\n                incident[\"resolved_at\"] = (last + timedelta(minutes=rng.randint(20, 600))).isoformat()\n            if incident[\"status\"] == \"CLOSED\" and not incident.get(\"resolved_by\"):\n                incident[\"resolved_by\"] = rng.choice(admins)\n                incident[\"resolved_at\"] = incident.get(\"resolved_at\") or (last + timedelta(minutes=rng.randint(5, 120))).isoformat()\n        for ips in by_ip.values():\n            opened = sorted((i for i in ips if i[\"status\"] == \"OPEN\"), key=lambda i: i[\"last_event_at\"])\n            for incident in opened[:-1]:\n                incident[\"status\"] = \"IDLE\"\n        # 보안 이벤트: 하루 지난 것의 일부를 관리자가 처리 완료\n        for event in t.get(\"security_events\", []):\n            detected = dd.parse_iso(event[\"detected_at\"])\n            if event.get(\"resolved_at\") is None and now - detected > timedelta(hours=20) and event[\"severity\"] != \"CRITICAL\" and rng.random() < 0.6:\n                event[\"resolved_at\"] = (detected + timedelta(minutes=rng.randint(10, 900))).isoformat()\n        # 같은 IP·유형의 미해결 HIGH는 하나만 (DB의 부분 유니크 인덱스 조건)\n        seen = set()\n        for event in sorted(t.get(\"security_events\", []), key=lambda e: e[\"detected_at\"], reverse=True):\n            if event[\"severity\"] == \"HIGH\" and event.get(\"resolved_at\") is None:\n                key = (event[\"ip_address\"], event[\"event_type\"])\n                if key in seen:\n                    event[\"resolved_at\"] = (dd.parse_iso(event[\"detected_at\"]) + timedelta(minutes=30)).isoformat()\n                seen.add(key)\n        # AI 조기경보: 하루 넘게 지난 대기 요청은 승인/반려로 처리\n        for request in t.get(\"access_requests\", []):\n            requested = dd.parse_iso(request[\"requested_at\"])\n            if request[\"status\"] == \"PENDING\" and now - requested > timedelta(hours=14):\n                request[\"status\"] = \"APPROVED\" if rng.random() < 0.6 else \"REJECTED\"\n                request[\"decided_by_admin_id\"] = 1\n                request[\"decided_at\"] = (requested + timedelta(minutes=rng.randint(5, 240))).isoformat()", "alias": null}, "scripts/demo/generate_demo_logs.py:798-800": {"path": "scripts/demo/generate_demo_logs.py", "start": 798, "end": 800, "lang": "python", "code": "    path = Path(args.out)\n    path.parent.mkdir(parents=True, exist_ok=True)\n    path.write_text(json.dumps(dump, ensure_ascii=False, indent=1), encoding=\"utf-8\")", "alias": null}, "scripts/demo/demo_data.py:shift_dump_to_now": {"path": "scripts/demo/demo_data.py", "start": 110, "end": 120, "lang": "python", "code": "def shift_dump_to_now(dump: dict, now: datetime | None = None) -> None:\n    \"\"\"저장해 둔 기록 전체를 \"만든 시각 → 지금\"만큼 옮겨서 항상 최근 7일처럼 보이게 한다.\"\"\"\n    now = now or datetime.now(timezone.utc)\n    delta = now - parse_iso(dump[\"generated_at\"])\n    for rows in dump[\"tables\"].values():\n        for row in rows:\n            shift_row_times(row, delta)\n            if \"day\" in row and isinstance(row[\"day\"], str):  # 일별 요약표는 날짜만 있어서 따로 옮긴다\n                moved = datetime.fromisoformat(row[\"day\"]).replace(tzinfo=KST) + delta\n                row[\"day\"] = moved.astimezone(KST).date().isoformat()\n    dump[\"generated_at\"] = now.isoformat()", "alias": null}, "scripts/demo/load_demo_to_supabase.py:main": {"path": "scripts/demo/load_demo_to_supabase.py", "start": 194, "end": 240, "lang": "python", "code": "def main() -> int:\n    parser = argparse.ArgumentParser(description=\"샘플 로그를 실제 Supabase에 넣거나 지운다\")\n    parser.add_argument(\"--logs\", default=str(DEFAULT_LOGS), help=\"generate_demo_logs.py가 만든 JSON\")\n    parser.add_argument(\"--apply\", action=\"store_true\", help=\"실제로 넣는다(없으면 미리보기)\")\n    parser.add_argument(\"--purge\", action=\"store_true\", help=\"이 스크립트가 넣은 행만 지운다\")\n    parser.add_argument(\"--yes\", action=\"store_true\", help=\"주소 입력 확인을 건너뛴다(자동화용)\")\n    args = parser.parse_args()\n    sys.stdout.reconfigure(encoding=\"utf-8\")\n\n    import os\n\n    if not os.environ.get(\"SUPABASE_URL\") or not os.environ.get(\"SUPABASE_KEY\"):\n        raise SystemExit(\".env에 SUPABASE_URL / SUPABASE_KEY가 없습니다.\")\n    client = connect()\n    print(f\"대상 DB: {host_of()}\")\n\n    if args.purge:\n        if not args.yes and input(f\"{host_of()} 에서 샘플 기록을 삭제합니다. 계속하려면 주소를 입력하세요: \").strip() != host_of():\n            raise SystemExit(\"취소했습니다.\")\n        purge(client)\n        return 0\n\n    path = Path(args.logs)\n    if not path.exists():\n        raise SystemExit(f\"샘플 로그 파일이 없습니다: {path}\\n먼저 실행하세요:  python scripts/demo/generate_demo_logs.py\")\n    if args.apply and MANIFEST.exists():\n        raise SystemExit(\"이미 적재한 기록이 있습니다. 중복을 막으려면 먼저 --purge 로 지우세요.\")\n    dump = json.loads(path.read_text(encoding=\"utf-8\"))\n    dd.shift_dump_to_now(dump)\n    tables = [t for t in ORDER if t not in SKIP_TABLES]\n    prepared, notes = prepare(dump, client, tables)\n\n    print(\"\\n들어갈 행:\")\n    for table in ORDER:\n        if table in prepared:\n            print(f\"  {table:<26}{len(prepared[table]):>6}건\")\n    for note in notes:\n        print(f\"  ※ {note}\")\n    if not args.apply:\n        print(\"\\n미리보기입니다 — 아무것도 쓰지 않았습니다. 실제로 넣으려면 --apply 를 붙이세요.\")\n        return 0\n\n    if not args.yes and input(f\"\\n{host_of()} 에 위 행을 실제로 기록합니다. 계속하려면 주소를 입력하세요: \").strip() != host_of():\n        raise SystemExit(\"취소했습니다. 아무것도 쓰지 않았습니다.\")\n    apply_load(client, dump, prepared)\n    print(\"\\n완료. 지우려면: python scripts/demo/load_demo_to_supabase.py --purge\")\n    return 0", "alias": null}}, "files": {"scripts/demo/check_simulations.py": {"role": "메모리 DB 를 붙인 서버를 띄우고 시뮬레이터를 하나씩 실행해 PASS/FAIL 을 보여주는 점검기. 진짜 Supabase·Slack·메일에는 접속하지 않는다.", "header": "", "github": "https://github.com/dyj02056/login-watchdog/blob/main/scripts/demo/check_simulations.py"}, "scripts/demo/memory_supabase.py": {"role": "db 패키지가 쓰는 PostgREST 쿼리 체인을 흉내 내는 메모리 가짜 Supabase.", "header": "", "github": "https://github.com/dyj02056/login-watchdog/blob/main/scripts/demo/memory_supabase.py"}, "scripts/simulation/critical/bruteforce_sim.py": {"role": "브루트포스 공격을 흉내 내는 시뮬레이터(CRITICAL 대표 예).", "header": "bruteforce_sim.py — /login에 대한 브루트포스 공격을 흉내내서, IP 잠금이\n정말로 6번째 시도에서 걸리는지 자동으로 확인하는 검증 스크립트\nresearch.md(공격 시뮬레이션 절)와 plan.md(검증 절차)에 적힌 스펙:\n1) 일부러 틀린 비밀번호로 /login에 POST 요청을 5회 순차 전송한다\n(config.FAILURE_THRESHOLD 기본값 5회 = \"60초 안에 5번 틀리면 잠금\").\n2) 6번째 요청을 한 번 더 보내서, 응답 본문에 \"잠긴 계정\" 문구가\n포함되는지 확인한다 — 포함되면 잠금이 정상 동작한 것이다.\n안전 원칙(research.md에 명시): 이 스크립트는 팀이 소유한 로컬 서버(기본값\nhttp://127.0.0.1:5000)만 대상으로 한다. 실제 서비스나 타인의 서버에 이\n스크립트를 실행하는 것은 절대 금지된다 — 그래서 --host로 localhost/127.0.0.1이\n아닌 주소를 지정하면 --i-know-what-im-doing 플래그 없이는 실행을 거부한다.\n--ip 옵션(선택): 로컬 환경에서는 팀원 전원이 똑같이 127.0.0.1로 접속하게\n되어 \"서로 다른 공격자 IP에서 왔다\"는 상황을 재현할 수 없다. helpers/request_utils.py의\nget_request_ip()는 config.TRUST_FORWARDED_FOR가 true일 때만(데모 전용 설정)\nX-Forwarded-For 헤더 값을 진짜 접속 IP처럼 믿어주므로, 이 옵션을 쓰면 그\n헤더에 원하는 IP를 실어 보내 \"가짜 공격자 IP\"를 흉내낼 수 있다. 단, 대상\n서버의 TRUST_FORWARDED_FOR가 false(운영 환경의 기본값이자 권장값)라면 서버가\n이 헤더를 무시하고 진짜 접속 IP를 그대로 쓰므로 이 옵션은 아무 효과가 없다.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/scripts/simulation/critical/bruteforce_sim.py"}, "scripts/demo/generate_demo_logs.py": {"role": "7일치 샘플 로그 생성기. 가짜 회원 가입 + 공격 시뮬레이션을 시각 순서대로 실행해 JSON 으로 저장한다.", "header": "", "github": "https://github.com/dyj02056/login-watchdog/blob/main/scripts/demo/generate_demo_logs.py"}, "scripts/demo/demo_data.py": {"role": "나라별 IP 대역·가짜 회원 이름·시각 이동 규칙.", "header": "", "github": "https://github.com/dyj02056/login-watchdog/blob/main/scripts/demo/demo_data.py"}, "scripts/demo/load_demo_to_supabase.py": {"role": "(선택) 샘플 로그를 실제 Supabase 에 넣거나(--apply) 넣은 행만 지우는(--purge) 도구.", "header": "", "github": "https://github.com/dyj02056/login-watchdog/blob/main/scripts/demo/load_demo_to_supabase.py"}}}</script>
+<script>
+(function(){
+  "use strict";
+  var D = JSON.parse(document.getElementById("data").textContent);
+  var $ = function(id){ return document.getElementById(id); };
+  var KIND_LABEL = {screen:"화면 · 도착지", route:"routes", helper:"판단", db:"db", config:"설정값", later:"다른 단원"};
+
+  var state = { sc: 0, node: null, item: 0, file: null };
+
+  function el(tag, attrs, kids){
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function(k){
+      if (k === "class") e.className = attrs[k];
+      else if (k === "text") e.textContent = attrs[k];
+      else if (k.slice(0,2) === "on") e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    });
+    (kids || []).forEach(function(c){ if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function brk(t){ return t.replace(/([\/._])/g, "$1\u200b"); }
+  function scen(){ return D.scenarios[state.sc]; }
+  function nodeById(id){ return scen().nodes.filter(function(n){ return n.id === id; })[0]; }
+  function fnName(label){ return label; }
+
+  /* ---------- 간단 문법 강조 ---------- */
+  var PY = /(#[^\n]*)|("""[\s\S]*?"""|'''[\s\S]*?''')|([rbfRBF]{0,2}"(?:\\.|[^"\\\n])*"|[rbfRBF]{0,2}'(?:\\.|[^'\\\n])*')|\b(def|class|return|if|elif|else|for|while|import|from|as|try|except|finally|with|in|not|and|or|is|None|True|False|raise|pass|lambda|yield|global|nonlocal|assert|del|continue|break)\b|(@[A-Za-z_][\w.]*)|\b(\d+(?:\.\d+)?)\b|\b([A-Za-z_]\w*)(?=\()/g;
+  var PYC = [null,"t-c","t-d","t-s","t-k","t-a","t-n","t-f"];
+  var HT = /(<!--[\s\S]*?-->)|(\{[{%#][\s\S]*?[}%#]\})|(<\/?[A-Za-z][\w-]*)|("[^"\n]*")|(\/?>)/g;
+  var HTC = [null,"t-c","t-a","t-k","t-s","t-k"];
+  var JS = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(`(?:\\.|[^`\\])*`)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|\b(const|let|var|function|return|if|else|for|while|import|from|export|default|async|await|try|catch|finally|new|class|extends|typeof|interface|type|null|undefined|true|false|throw|switch|case|break|continue|of|in|as)\b|(@[A-Za-z_]\w*)|\b(\d+(?:\.\d+)?)\b|\b([A-Za-z_$][\w$]*)(?=\()/g;
+  var JSC = [null,"t-c","t-s","t-s","t-k","t-a","t-n","t-f"];
+  var SQ = /(--[^\n]*|\/\*[\s\S]*?\*\/)|((?!))|('(?:''|[^'])*')|\b(select|from|where|insert|into|values|update|set|delete|create|table|index|alter|add|drop|on|conflict|do|nothing|and|or|not|null|default|primary|key|references|cascade|if|exists|as|order|by|group|limit|desc|asc|join|left|inner|count|returns|function|language|begin|end|return|with|union|all|distinct|in|is|true|false|unique|check|constraint|timestamptz|text|integer|bigint|boolean|interval|now|replace|trigger|view|policy|enable|row|level|security|using)\b|((?!))|\b(\d+(?:\.\d+)?)\b|\b([a-z_]\w*)(?=\()/gi;
+  var SQC = [null,"t-c",null,"t-s","t-k",null,"t-n","t-f"];
+  var SH = /(#[^\n]*)|((?!))|("(?:\\.|[^"\\\n])*"|'[^'\n]*')|\b(if|then|else|fi|for|do|done|while|case|esac|function|echo|export|python|pip|git|cd|run|name|on|jobs|steps|uses|with|env)\b|((?!))|\b(\d+)\b/g;
+  var SHC = [null,"t-c",null,"t-s","t-k",null,"t-n"];
+  function tokenize(code, lang){
+    var re = PY, cls = PYC;
+    if (lang === "html"){ re = HT; cls = HTC; }
+    else if (lang === "js"){ re = JS; cls = JSC; }
+    else if (lang === "sql"){ re = SQ; cls = SQC; }
+    else if (lang === "sh"){ re = SH; cls = SHC; }
+    var lines = [[]];
+    function push(text, c){
+      var parts = text.split("\n");
+      parts.forEach(function(p, i){
+        if (i > 0) lines.push([]);
+        if (p) lines[lines.length-1].push([p, c]);
+      });
+    }
+    var last = 0, m;
+    re.lastIndex = 0;
+    while ((m = re.exec(code)) !== null){
+      if (m.index > last) push(code.slice(last, m.index), null);
+      var idx = 1; while (idx < m.length && m[idx] === undefined) idx++;
+      push(m[0], cls[idx] || null);
+      last = m.index + m[0].length;
+      if (m[0].length === 0) re.lastIndex++;
+    }
+    if (last < code.length) push(code.slice(last), null);
+    return lines;
+  }
+
+  function codeTable(block, hl){
+    var lines = tokenize(block.code, block.lang);
+    var tbody = el("tbody");
+    var hlFirst = null;
+    lines.forEach(function(segs, i){
+      var no = block.start + i;
+      var on = hl && no >= hl[0] && no <= hl[1];
+      var td = el("td", {class:"tx"});
+      segs.forEach(function(s){ td.appendChild(s[1] ? el("span", {class:s[1], text:s[0]}) : document.createTextNode(s[0])); });
+      if (!segs.length) td.appendChild(document.createTextNode(" "));
+      var tr = el("tr", on ? {class:"hl"} : null, [el("td", {class:"ln", text:String(no)}), td]);
+      if (on && !hlFirst) hlFirst = tr;
+      tbody.appendChild(tr);
+    });
+    var box = el("div", {class:"codebox"}, [el("table", {class:"code"}, [tbody])]);
+    box._hlFirst = hlFirst;
+    return box;
+  }
+
+  function copyText(text, btn){
+    var done = function(){ var o = btn.textContent; btn.textContent = "복사됨 ✓"; setTimeout(function(){ btn.textContent = o; }, 1200); };
+    try { navigator.clipboard.writeText(text).then(done, fallback); } catch(e){ fallback(); }
+    function fallback(){
+      var ta = el("textarea", {style:"position:fixed;opacity:0"}); ta.value = text; document.body.appendChild(ta);
+      ta.select(); try { document.execCommand("copy"); done(); } catch(e){} document.body.removeChild(ta);
+    }
+  }
+
+  /* ---------- 패널 ---------- */
+  function openPanel(){ document.body.classList.add("open"); }
+  function closePanel(){ document.body.classList.remove("open"); }
+
+  function showHint(){
+    $("pTitle").textContent = "코드 보는 법";
+    $("pSub").textContent = "카드나 파일 이름을 누르면 실제 코드가 여기에 열립니다.";
+    var ul = el("ul", {class:"hint"}, [
+      el("li", {text:"카드(상자)를 누르면 그 단계에서 실행되는 실제 함수 코드가 열려요."}),
+      el("li", {text:"카드 안의 📄 파일 이름을 누르면 그 파일이 어떤 역할인지, 이 단원에서 쓰이는 함수가 무엇인지 보여줘요."}),
+      el("li", {text:"ƒ 함수 이름을 누르면 해당 함수 코드로 바로 이동해요."}),
+      el("li", {text:"노란색 줄이 지금 단계가 담당하는 부분이에요."}),
+      el("li", {text:"db.함수() 처럼 적혀 있어도 실제 코드는 db/users.py 같은 다른 파일에 있어요. 카드에 그 '진짜 파일'을 표시하고, 코드 위에 찾아가는 길도 그려줘요."}),
+      el("li", {text:"위쪽 ◀ ▶ 버튼으로 실행 순서대로 한 단계씩 따라갈 수 있어요."})
+    ]);
+    var b = $("pBody"); b.textContent = ""; b.appendChild(ul);
+  }
+
+  function renderAlias(a){
+    if (!a) return null;
+    return el("div", {class:"alias"}, [
+      el("div", {text:"코드에는 이렇게 적혀 있지만, 실제 함수는 다른 파일에 있어요."}),
+      el("div", {class:"route"}, [
+        el("span", {class:"step", text:a.call}), el("span", {class:"arrow", text:"→"}),
+        el("span", {class:"step", text:a.via + " (창구)"}), el("span", {class:"arrow", text:"→"}),
+        el("span", {class:"step real", text:a.real})
+      ])
+    ]);
+  }
+
+  function selectNode(id, itemIdx){
+    var n = nodeById(id); if (!n) return;
+    state.node = id; state.item = itemIdx || 0; state.file = null;
+    $("pTitle").textContent = n.title;
+    $("pSub").textContent = n.plain;
+    var body = $("pBody"); body.textContent = "";
+    if (n.reject) body.appendChild(el("div", {class:"n-reject", text:n.reject, style:"margin:0 0 10px"}));
+    if (n.items.length > 1){
+      var tabs = el("div", {class:"itabs", role:"tablist"});
+      n.items.forEach(function(it, i){
+        tabs.appendChild(el("button", {class:"itab", role:"tab", "aria-selected":String(i === state.item), text:it.label,
+          onclick:function(){ selectNode(id, i); }}));
+      });
+      body.appendChild(tabs);
+    }
+    var it = n.items[state.item];
+    var block = D.blocks[it.block];
+    var linesTxt = it.hl ? (it.hl[0] === it.hl[1] ? it.hl[0] + "줄" : it.hl[0] + "–" + it.hl[1] + "줄") : "";
+    var fl = el("div", {class:"fileline"}, [
+      el("button", {class:"chip file", onclick:function(){ selectFile(block.path); }, text:block.path}),
+      el("span", {class:"lines", text: block.start + "–" + block.end + "줄 표시" + (linesTxt ? " · 노란색 " + linesTxt : "")}),
+      el("span", {class:"spacer"}),
+      el("button", {class:"btn", text:"복사", onclick:function(e){ copyText(block.code, e.currentTarget); }}),
+      el("a", {class:"btn link", href:D.files[block.path].github + "#L" + block.start + "-L" + block.end, target:"_blank", rel:"noopener", text:"GitHub ↗"})
+    ]);
+    body.appendChild(fl);
+    var al = renderAlias(block.alias); if (al) body.appendChild(al);
+    var box = codeTable(block, it.hl);
+    body.appendChild(box);
+    if (it.hl) body.appendChild(el("p", {class:"legend-hl"}, [el("b", {text:"노란색"}), " = 이 카드가 담당하는 줄"]));
+    refreshSelection();
+    openPanel();
+    if (box._hlFirst){
+      var off = box._hlFirst.offsetTop - 60;
+      box.scrollTop = Math.max(0, off);
+    }
+    updateStepper();
+  }
+
+  function selectFile(path){
+    state.file = path; state.node = null;
+    var f = D.files[path];
+    $("pTitle").textContent = "📄 " + path;
+    $("pSub").textContent = f.role;
+    var body = $("pBody"); body.textContent = "";
+    body.appendChild(el("div", {class:"fileline"}, [
+      el("a", {class:"btn link", href:f.github, target:"_blank", rel:"noopener", text:"GitHub에서 파일 열기 ↗"})
+    ]));
+    body.appendChild(el("h3", {text:"이 단원에서 쓰이는 함수", style:"font-size:13.5px;margin:12px 0 0"}));
+    var ul = el("ul", {class:"flist"}), seen = {};
+    D.scenarios.forEach(function(sc, si){
+      sc.nodes.forEach(function(n){
+        n.items.forEach(function(it, ii){
+          var b = D.blocks[it.block]; if (b.path !== path) return;
+          var key = si + n.id + ii; if (seen[key]) return; seen[key] = 1;
+          var li = el("li");
+          li.appendChild(el("button", {onclick:function(){
+            if (state.sc !== si) switchScenario(si);
+            selectNode(n.id, ii); scrollToNode(n.id);
+          }}, [
+            el("span", {class:"mono", text:it.label}), el("small", {text:sc.name + " · " + n.title})
+          ]));
+          ul.appendChild(li);
+        });
+      });
+    });
+    body.appendChild(ul);
+    if (f.header){
+      var d = el("details", {class:"hdr"}, [el("summary", {text:"파일 맨 위 설명 주석 보기"}), el("pre", {text:f.header})]);
+      body.appendChild(d);
+    }
+    refreshSelection();
+    openPanel();
+  }
+
+  /* ---------- 흐름도 ---------- */
+  var cols, colIndex, nodeEls = {};
+  function renderStage(){
+    var sc = scen();
+    var used = {}; sc.nodes.forEach(function(n){ used[n.col] = 1; });
+    cols = Object.keys(used).map(Number).sort(function(a,b){ return a-b; });
+    colIndex = {}; cols.forEach(function(c, i){ colIndex[c] = i + 1; });
+    var stage = $("stage");
+    stage.textContent = "";
+    stage.style.gridTemplateColumns = "repeat(" + cols.length + ", 196px)";
+    nodeEls = {};
+
+    var svgNS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("class", "edges"); svg.id = "edges";
+    svg.innerHTML = '<defs>' +
+      '<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head" d="M0 0L10 5L0 10z" style="stroke:none"/></marker>' +
+      '<marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head-call" d="M0 0L10 5L0 10z" style="stroke:none"/></marker>' +
+      '</defs>';
+    stage.appendChild(svg);
+
+    cols.forEach(function(c){
+      stage.appendChild(el("div", {class:"colhead", style:"grid-column:" + colIndex[c] + ";grid-row:1", text:D.columns[c]}));
+    });
+    var cells = {};
+    sc.nodes.forEach(function(n){
+      var k = n.row + ":" + n.col;
+      if (!cells[k]){
+        cells[k] = el("div", {class:"cell", style:"grid-column:" + colIndex[n.col] + ";grid-row:" + (n.row + 2)});
+        stage.appendChild(cells[k]);
+      }
+      var node = buildNode(n);
+      nodeEls[n.id] = node;
+      cells[k].appendChild(node);
+    });
+    $("intro").textContent = sc.intro;
+    scheduleEdges();
+  }
+
+  function buildNode(n){
+    var node = el("div", {class:"node " + n.kind, role:"button", tabindex:"0", "aria-pressed":"false", "data-id":n.id,
+      onclick:function(e){ if (e.target.closest(".chip")) return; selectNode(n.id, 0); },
+      onkeydown:function(e){ if ((e.key === "Enter" || e.key === " ") && !e.target.closest(".chip")){ e.preventDefault(); selectNode(n.id, 0); } }});
+    var title = el("div", {class:"n-title", text:n.title});
+    if (n.later) title.appendChild(el("span", {class:"tag-later", text:n.later + "에서 자세히"}));
+    node.appendChild(title);
+    if (n.kind !== "later" && n.plain) node.appendChild(el("div", {class:"n-plain", text:n.plain}));
+    if (n.reject) node.appendChild(el("div", {class:"n-reject", text:n.reject}));
+    var items = el("div", {class:"n-items"});
+    // 같은 파일에 있는 함수는 파일 칩 하나 아래에 함수 칩을 나란히 놓는다
+    var groups = [];
+    n.items.forEach(function(it, i){
+      var b = D.blocks[it.block], g = groups[groups.length - 1];
+      if (g && g.path === b.path) g.list.push({it: it, i: i}); else groups.push({path: b.path, list: [{it: it, i: i}]});
+    });
+    groups.forEach(function(g){
+      var row = el("div", {class:"n-item"});
+      if (g.list.length === 1 && g.list[0].it.call) row.appendChild(el("div", {class:"n-call", text:brk(g.list[0].it.call)}));
+      var chips = el("div", {class:"chips"}, [
+        el("button", {class:"chip file", text:brk(g.path), title:"파일 설명 보기", onclick:function(){ selectFile(g.path); }})
+      ]);
+      g.list.forEach(function(x){
+        chips.appendChild(el("button", {class:"chip " + (x.it.snippet ? "snip" : "fn"), text:x.it.label, title:(x.it.call ? x.it.call + " — " : "") + "코드 보기",
+          onclick:function(){ selectNode(n.id, x.i); }}));
+      });
+      row.appendChild(chips);
+      items.appendChild(row);
+    });
+    node.appendChild(items);
+    return node;
+  }
+
+  function rectIn(elm, host){
+    var a = elm.getBoundingClientRect(), h = host.getBoundingClientRect();
+    return {l:a.left-h.left, r:a.right-h.left, t:a.top-h.top, b:a.bottom-h.top, cx:(a.left+a.right)/2-h.left, cy:(a.top+a.bottom)/2-h.top};
+  }
+  var raf = 0;
+  function scheduleEdges(){ cancelAnimationFrame(raf); raf = requestAnimationFrame(drawEdges); }
+  function drawEdges(){
+    var stage = $("stage"), svg = $("edges"), sc = scen();
+    Array.prototype.slice.call(svg.querySelectorAll("path.e")).forEach(function(p){ p.remove(); });
+    Array.prototype.slice.call(stage.querySelectorAll(".elabel")).forEach(function(p){ p.remove(); });
+    var svgNS = "http://www.w3.org/2000/svg";
+    sc.edges.forEach(function(e){
+      var a = nodeById(e.from), b = nodeById(e.to);
+      var ea = nodeEls[e.from], eb = nodeEls[e.to]; if (!ea || !eb) return;
+      var ra = rectIn(ea, stage), rb = rectIn(eb, stage), d, lx, ly;
+      if (a.col === b.col){
+        if (b.row - a.row <= 1){
+          d = "M" + ra.cx + " " + ra.b + " V" + rb.t; lx = ra.cx; ly = (ra.b + rb.t) / 2;
+        } else {
+          var x = Math.min(ra.l, rb.l) - 30;
+          d = "M" + ra.l + " " + ra.cy + " H" + x + " V" + rb.cy + " H" + rb.l; lx = x; ly = (ra.cy + rb.cy) / 2;
+        }
+      } else {
+        var dir = b.col > a.col ? 1 : -1;
+        var x1 = dir > 0 ? ra.r : ra.l, x2 = dir > 0 ? rb.l : rb.r;
+        var xm = x2 - dir * 30;
+        d = "M" + x1 + " " + ra.cy + " H" + xm + " V" + rb.cy + " H" + x2;
+        lx = (x1 + x2) / 2; ly = ra.cy;
+      }
+      var kind = e.kind === "call" ? "call" : "flow";
+      var p = document.createElementNS(svgNS, "path");
+      p.setAttribute("d", d); p.setAttribute("class", "e " + kind);
+      p.setAttribute("marker-end", "url(#" + (kind === "call" ? "ahc" : "ah") + ")");
+      p.setAttribute("data-from", e.from); p.setAttribute("data-to", e.to);
+      svg.appendChild(p);
+      if (e.label && kind === "flow"){
+        var lab = el("span", {class:"elabel", text:e.label});
+        lab.style.left = lx + "px"; lab.style.top = ly + "px";
+        stage.appendChild(lab);
+      }
+    });
+    svg.setAttribute("width", stage.scrollWidth); svg.setAttribute("height", stage.scrollHeight);
+    refreshSelection();
+  }
+
+  function refreshSelection(){
+    Object.keys(nodeEls).forEach(function(id){ nodeEls[id].setAttribute("aria-pressed", String(id === state.node)); });
+    var svg = $("edges"); if (!svg) return;
+    Array.prototype.slice.call(svg.querySelectorAll("path.e")).forEach(function(p){
+      var on = state.node && (p.getAttribute("data-from") === state.node || p.getAttribute("data-to") === state.node);
+      p.classList.toggle("active", !!on);
+    });
+  }
+  function scrollToNode(id){
+    var n = nodeEls[id]; if (n && n.scrollIntoView) n.scrollIntoView({block:"center", inline:"center", behavior:"smooth"});
+  }
+
+  /* ---------- 단계 이동 / 탭 ---------- */
+  function stepIndex(){ return scen().steps.indexOf(state.node); }
+  function updateStepper(){
+    var steps = scen().steps, i = stepIndex();
+    $("stepNo").textContent = i < 0 ? "– / " + steps.length : (i + 1) + " / " + steps.length;
+    $("prev").disabled = i <= 0 && state.node !== null ? true : false;
+    $("next").disabled = i >= steps.length - 1;
+    if (state.node === null){ $("prev").disabled = true; $("next").disabled = false; }
+  }
+  function go(delta){
+    var steps = scen().steps, i = stepIndex();
+    var j = i < 0 ? 0 : Math.max(0, Math.min(steps.length - 1, i + delta));
+    selectNode(steps[j], 0); scrollToNode(steps[j]);
+  }
+  function renderTabs(){
+    var t = $("tabs"); t.textContent = "";
+    D.scenarios.forEach(function(sc, i){
+      t.appendChild(el("button", {class:"tab", role:"tab", "aria-selected":String(i === state.sc), text:sc.name, onclick:function(){ switchScenario(i); }}));
+    });
+  }
+  function switchScenario(i){
+    state.sc = i; state.node = null; state.file = null;
+    renderTabs(); renderStage(); showHint(); updateStepper();
+    try { history.replaceState(null, "", "#" + D.scenarios[i].id); } catch(e){}
+  }
+
+  /* ---------- 시작 ---------- */
+  document.title = D.title + " — 코드 흐름도";
+  $("title").textContent = D.title + " · 코드 흐름도";
+  $("subtitle").textContent = D.subtitle;
+  $("mdlink").setAttribute("href", D.mdFile);
+  $("prev").addEventListener("click", function(){ go(-1); });
+  $("next").addEventListener("click", function(){ go(1); });
+  $("pClose").addEventListener("click", closePanel);
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape") closePanel(); });
+  $("theme").addEventListener("click", function(){
+    var r = document.documentElement, cur = r.getAttribute("data-theme");
+    var dark = cur ? cur === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    r.setAttribute("data-theme", dark ? "light" : "dark");
+  });
+  window.addEventListener("resize", scheduleEdges);
+  if (window.ResizeObserver) new ResizeObserver(scheduleEdges).observe($("stage"));
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleEdges);
+
+  var startId = (location.hash || "").replace("#", "");
+  var startIdx = 0; D.scenarios.forEach(function(s, i){ if (s.id === startId) startIdx = i; });
+  switchScenario(startIdx);
+  // 화면 확인/테스트용 지름길: window.__flow.select("s7")
+  window.__flow = { select: function(id, i){ selectNode(id, i || 0); }, file: selectFile, state: state };
+})();
+</script>
+</body>
+</html>

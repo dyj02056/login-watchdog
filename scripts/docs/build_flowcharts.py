@@ -53,6 +53,13 @@ DEFAULT_ROLES = {
 }
 
 
+# 경로 접두사로 정하는 기본 설명(파일 하나하나 적기 번거로운 묶음용)
+PREFIX_ROLES = (
+    ("tests/", "자동 테스트 파일. 해당 기능이 의도대로 동작하는지 pytest 로 검증한다."),
+    ("scripts/simulation/", "공격 시뮬레이터. 로컬 서버에 가짜 공격을 보내 탐지가 일어나는지 확인한다(내 컴퓨터 서버에만 실행되는 안전장치 포함)."),
+)
+
+
 class SpecError(Exception):
     pass
 
@@ -187,6 +194,8 @@ class Builder:
             path = spec["snippet"]
             lines = read_lines(path)
             start = find_line(lines, spec["from"], 1, len(lines), f"{path} 시작")
+            for _ in range(spec.get("nth", 1) - 1):  # n 번째로 나오는 곳을 쓰고 싶을 때
+                start = find_line(lines, spec["from"], start + 1, len(lines), f"{path} 시작({spec['nth']}번째)")
             end = find_line(lines, spec["to"], start, len(lines), f"{path} 끝")
             key = f"{path}:{start}-{end}"
             lang = lang_of(path)
@@ -263,6 +272,11 @@ def build_chapter(spec) -> tuple[dict, str]:
             "header": header_comment(path),
             "github": GITHUB_BLOB + path,
         }
+        if not files[path]["role"]:
+            for prefix, text in PREFIX_ROLES:
+                if path.startswith(prefix):
+                    files[path]["role"] = text
+                    break
         if not files[path]["role"]:
             first = files[path]["header"].split("\n\n")[0].replace("\n", " ").strip()
             if not first:
