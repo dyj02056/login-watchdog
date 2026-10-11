@@ -1,0 +1,57 @@
+# ============================================================================
+# pages.yml — 코드 흐름도(.html)를 GitHub Pages 로 배포해 누구나 링크로 볼 수 있게 한다
+#
+# 올리는 것: docs/feature-reference/02-layer-order/ 안의 .html 파일(목차 index.html + 32개 단원 흐름도)
+# 올리지 않는 것: 같은 폴더의 설명 문서(.md) — 흐름도 위쪽의 "설명 문서 보기" 링크만
+#                GitHub 저장소의 해당 .md 주소로 바꿔서 연결한다(저장소의 원본 파일은 건드리지 않는다).
+#
+# 주소: https://dyj02056.github.io/login-watchdog/
+# 처음 한 번 저장소 Settings → Pages → Build and deployment → Source 를 "GitHub Actions" 로 바꿔야 한다.
+# ============================================================================
+
+name: pages
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "docs/feature-reference/02-layer-order/*.html"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 배포가 겹치면 최신 하나만 남긴다
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 배포 폴더 만들기 (.html 만 복사 + 설명 문서 링크를 GitHub 주소로 교체)
+        run: |
+          mkdir _site
+          cp docs/feature-reference/02-layer-order/*.html _site/
+          touch _site/.nojekyll
+          BLOB="https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/feature-reference/02-layer-order"
+          sed -i -E "s#\"mdFile\": \"([^\"]+\.md)\"#\"mdFile\": \"${BLOB}/\1\"#" _site/[0-9][0-9]-*.html
+          test -f _site/index.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
