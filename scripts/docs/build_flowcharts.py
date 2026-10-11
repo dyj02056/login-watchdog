@@ -23,6 +23,7 @@ import argparse
 import ast
 import importlib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -32,6 +33,8 @@ TEMPLATE = Path(__file__).resolve().parent / "templates" / "flowchart.html"
 GITHUB_BLOB = "https://github.com/dyj02056/login-watchdog/blob/main/"
 
 # 코드에서 쓰는 짧은 이름(alias) → (파일, 패키지 재내보내기 파일인가?)
+DEFAULT_COLUMNS = ["화면 · 도착지", "routes/ (입구)", "판단 (security · helpers)", "db/ · config.py (저장소 · 설정값)"]
+
 ALIASES: dict[str, tuple[str, bool]] = {
     "db": ("db/__init__.py", True),
     "soar": ("security/soar/__init__.py", True),
@@ -45,6 +48,19 @@ ALIASES: dict[str, tuple[str, bool]] = {
 
 class SpecError(Exception):
     pass
+
+
+def lang_of(path: str) -> str:
+    ext = Path(path).suffix.lower()
+    if ext in (".html", ".htm"):
+        return "html"
+    if ext in (".ts", ".tsx", ".js", ".jsx", ".mjs"):
+        return "js"
+    if ext == ".sql":
+        return "sql"
+    if ext in (".sh", ".yml", ".yaml", ".toml", ".env", ".txt", ".example"):
+        return "sh"
+    return "python"
 
 
 # ----------------------------------------------------------------------------
@@ -89,8 +105,17 @@ def reexport_table(init_path: str) -> dict[str, str]:
 def find_function(path: str, name: str) -> tuple[int, int]:
     """파일 맨 위 단계(top-level)의 함수 name 의 (시작줄, 끝줄). 데코레이터 포함, 1-based."""
     tree = ast.parse("\n".join(read_lines(path)))
-    for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
+    scope = tree.body
+    parts = name.split(".")  # "Class.method" 도 허용
+    for cls in parts[:-1]:
+        for node in scope:
+            if isinstance(node, ast.ClassDef) and node.name == cls:
+                scope = node.body
+                break
+        else:
+            raise SpecError(f"{path} 안에서 클래스 {cls} 를 찾지 못했습니다")
+    for node in scope:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == parts[-1]:
             start = min([node.lineno] + [d.lineno for d in node.decorator_list])
             return start, node.end_lineno
     raise SpecError(f"{path} 안에서 함수 {name}() 를 찾지 못했습니다")
@@ -98,8 +123,9 @@ def find_function(path: str, name: str) -> tuple[int, int]:
 
 def find_line(lines: list[str], anchor: str, start: int, end: int, what: str) -> int:
     """lines[start-1:end] 구간(1-based, 양끝 포함)에서 anchor 가 들어있는 첫 줄 번호(1-based)."""
+    rx = re.compile(anchor[3:]) if anchor.startswith("re:") else None  # "re:^}" 처럼 정규식 앵커 허용
     for i in range(start - 1, end):
-        if anchor in lines[i]:
+        if (rx.search(lines[i]) if rx else anchor in lines[i]):
             return i + 1
     raise SpecError(f"문구를 찾지 못했습니다 ({what}): {anchor!r}")
 
@@ -156,7 +182,7 @@ class Builder:
             start = find_line(lines, spec["from"], 1, len(lines), f"{path} 시작")
             end = find_line(lines, spec["to"], start, len(lines), f"{path} 끝")
             key = f"{path}:{start}-{end}"
-            lang = "html" if path.endswith((".html", ".htm")) else "python"
+            lang = lang_of(path)
             self._add_block(key, path, start, end, lang, None)
             label = spec.get("label", Path(path).name)
         block = self.blocks[key]
@@ -226,19 +252,22 @@ def build_chapter(spec) -> tuple[dict, str]:
     files = {}
     for path in b.used_files:
         files[path] = {
-            "role": spec.FILE_ROLES.get(path, ""),
+            "role": getattr(spec, "FILE_ROLES", {}).get(path, ""),
             "header": header_comment(path),
             "github": GITHUB_BLOB + path,
         }
         if not files[path]["role"]:
-            raise SpecError(f"FILE_ROLES 에 {path} 설명이 없습니다")
+            first = files[path]["header"].split("\n\n")[0].replace("\n", " ").strip()
+            if not first:
+                raise SpecError(f"FILE_ROLES 에 {path} 설명이 없고, 파일 맨 위 주석도 없습니다")
+            files[path]["role"] = first[:160]
 
     data = {
         "title": spec.TITLE,
         "subtitle": spec.SUBTITLE,
         "mdFile": spec.SLUG + ".md",
         "github": GITHUB_BLOB,
-        "columns": spec.COLUMNS,
+        "columns": getattr(spec, "COLUMNS", DEFAULT_COLUMNS),
         "scenarios": scenarios,
         "blocks": b.blocks,
         "files": files,

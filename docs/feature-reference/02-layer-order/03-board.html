@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3. 게시판 · 댓글 — 코드 흐름도</title>
+<style>
+  :root{
+    --bg:#f4f6f3; --surface:#ffffff; --surface-2:#eaefe9; --ink:#12201c; --ink-muted:#5a6b63;
+    --border:#d9e0da; --accent:#0f6f66; --accent-soft:#e2ede9; --danger:#bf3b2b; --danger-soft:#f8e6e2;
+    --edge:#7b8a82; --edge-call:#8a97a0;
+    --k-screen:#767f78; --k-screen-soft:#eef0ee;
+    --k-route:#2f5fd6;  --k-route-soft:#e7edfb;
+    --k-helper:#b56b0c; --k-helper-soft:#f7ecd9;
+    --k-db:#7a4fce;     --k-db-soft:#efe8fa;
+    --k-config:#0f6f66; --k-config-soft:#e2ede9;
+    --k-later:#9aa39d;  --k-later-soft:#f4f6f3;
+    --code-bg:#fbfcfb; --code-hl:#fff3c4; --code-hl-bar:#e0a800; --code-gutter:#8a978f;
+    --c-comment:#6b7d73; --c-str:#a1470f; --c-kw:#7a3fc0; --c-fn:#1f5fd0; --c-num:#0b7a6c; --c-deco:#b0306e;
+    --shadow:0 1px 2px rgba(18,32,28,.06), 0 6px 20px rgba(18,32,28,.07);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0d1512; --surface:#141e1a; --surface-2:#1b2620; --ink:#e7efe9; --ink-muted:#93a49c;
+      --border:#28352e; --accent:#4fc9b8; --accent-soft:#17332d; --danger:#ec7a6a; --danger-soft:#3a1d19;
+      --edge:#6f8178; --edge-call:#5d6f67;
+      --k-screen:#9aa39d; --k-screen-soft:#1a221e;
+      --k-route:#7fa2f2;  --k-route-soft:#182236;
+      --k-helper:#e8a94c; --k-helper-soft:#31260f;
+      --k-db:#b49bee;     --k-db-soft:#241c34;
+      --k-config:#4fc9b8; --k-config-soft:#17332d;
+      --k-later:#6b7a72;  --k-later-soft:#111a16;
+      --code-bg:#0f1713; --code-hl:#3a3210; --code-hl-bar:#e8a94c; --code-gutter:#5f7068;
+      --c-comment:#7f9388; --c-str:#e9a27a; --c-kw:#c3a1f5; --c-fn:#8db3ff; --c-num:#6fd6c6; --c-deco:#f08ab8;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d1512; --surface:#141e1a; --surface-2:#1b2620; --ink:#e7efe9; --ink-muted:#93a49c;
+    --border:#28352e; --accent:#4fc9b8; --accent-soft:#17332d; --danger:#ec7a6a; --danger-soft:#3a1d19;
+    --edge:#6f8178; --edge-call:#5d6f67;
+    --k-screen:#9aa39d; --k-screen-soft:#1a221e;
+    --k-route:#7fa2f2;  --k-route-soft:#182236;
+    --k-helper:#e8a94c; --k-helper-soft:#31260f;
+    --k-db:#b49bee;     --k-db-soft:#241c34;
+    --k-config:#4fc9b8; --k-config-soft:#17332d;
+    --k-later:#6b7a72;  --k-later-soft:#111a16;
+    --code-bg:#0f1713; --code-hl:#3a3210; --code-hl-bar:#e8a94c; --code-gutter:#5f7068;
+    --c-comment:#7f9388; --c-str:#e9a27a; --c-kw:#c3a1f5; --c-fn:#8db3ff; --c-num:#6fd6c6; --c-deco:#f08ab8;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.55}
+  button{font:inherit;color:inherit;cursor:pointer}
+  code,.mono{font-family:var(--mono)}
+
+  .app{display:flex;height:100vh;min-height:0}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .top{padding:14px 20px 10px;border-bottom:1px solid var(--border);background:var(--surface)}
+  .top h1{margin:0;font-size:19px;letter-spacing:-.01em}
+  .top .sub{margin:2px 0 0;color:var(--ink-muted);font-size:13px}
+  .top-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+  .tabs{display:flex;gap:6px}
+  .tab{border:1px solid var(--border);background:var(--surface-2);border-radius:999px;padding:5px 14px;font-weight:600}
+  .tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+  :root[data-theme="dark"] .tab[aria-selected="true"]{color:#06201b}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tab[aria-selected="true"]{color:#06201b}}
+  .spacer{flex:1}
+  .btn{border:1px solid var(--border);background:var(--surface);border-radius:8px;padding:5px 11px;font-size:13px}
+  .btn:hover{border-color:var(--accent)}
+  .btn:disabled{opacity:.4;cursor:default}
+  .stepper{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-muted)}
+  .stepper b{color:var(--ink);min-width:42px;text-align:center}
+  a.link{color:var(--accent);text-decoration:none;font-size:13px}
+  a.link:hover{text-decoration:underline}
+
+  .intro{margin:0;padding:10px 20px;color:var(--ink-muted);font-size:13px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px 20px;font-size:12px;color:var(--ink-muted);border-bottom:1px solid var(--border)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+  .stage-wrap{flex:1;min-height:0;overflow:auto}
+  .stage{position:relative;display:grid;gap:26px 46px;padding:22px 22px 60px;width:max-content;min-width:100%}
+  .edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+  .edges path{fill:none;stroke:var(--edge);stroke-width:1.6}
+  .edges path.call{stroke:var(--edge-call);stroke-dasharray:5 4}
+  .edges path.active{stroke:var(--accent);stroke-width:2.4;stroke-dasharray:none}
+  .edges .head{fill:var(--edge)}
+  .edges .head-call{fill:var(--edge-call)}
+  .elabel{position:absolute;transform:translate(-50%,-50%);font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;
+    background:var(--surface);border:1px solid var(--border);color:var(--ink-muted);white-space:nowrap;pointer-events:none}
+
+  .colhead{font-size:12px;font-weight:700;color:var(--ink-muted);text-transform:none;border-bottom:2px solid var(--border);padding-bottom:6px;align-self:end}
+  .cell{display:flex;flex-direction:column;gap:12px;align-self:center;justify-content:center;position:relative;z-index:1}
+
+  .node{--k:var(--k-route);--ks:var(--k-route-soft);position:relative;background:var(--surface);border:1px solid var(--border);
+    border-left:5px solid var(--k);border-radius:10px;padding:10px 12px;box-shadow:var(--shadow);cursor:pointer;
+    transition:transform .08s, border-color .12s}
+  .node:hover{transform:translateY(-1px);border-color:var(--k)}
+  .node:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .node[aria-pressed="true"]{outline:3px solid var(--accent);outline-offset:1px}
+  .node.screen{--k:var(--k-screen);--ks:var(--k-screen-soft)}
+  .node.route{--k:var(--k-route);--ks:var(--k-route-soft)}
+  .node.helper{--k:var(--k-helper);--ks:var(--k-helper-soft)}
+  .node.db{--k:var(--k-db);--ks:var(--k-db-soft)}
+  .node.config{--k:var(--k-config);--ks:var(--k-config-soft)}
+  .node.later{--k:var(--k-later);--ks:var(--k-later-soft);background:var(--k-later-soft);box-shadow:none;border-style:dashed;border-left-style:solid;padding:8px 10px}
+  .n-title{font-weight:700;font-size:13.5px;letter-spacing:-.01em}
+  .n-plain{margin-top:3px;color:var(--ink-muted);font-size:12.5px}
+  .n-reject{margin-top:6px;font-size:12px;color:var(--danger);background:var(--danger-soft);border-radius:6px;padding:3px 8px}
+  .n-reject::before{content:"막히면 → ";font-weight:700}
+  .n-items{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+  .n-item{display:flex;flex-direction:column;gap:3px}
+  .n-call{overflow-wrap:anywhere;font-family:var(--mono);font-size:11.5px;color:var(--k);font-weight:600}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{max-width:100%;text-align:left;overflow-wrap:anywhere;border:1px solid var(--border);background:var(--ks);color:var(--ink);border-radius:6px;padding:1px 7px;font-family:var(--mono);font-size:11px}
+  .chip:hover{border-color:var(--k);color:var(--k)}
+  .chip.file::before{content:"📄 "}
+  .chip.fn::before{content:"ƒ ";color:var(--k);font-weight:700}
+  .chip.snip::before{content:"▤ ";color:var(--k);font-weight:700}
+  .tag-later{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:700;color:var(--ink-muted);border:1px solid var(--border);border-radius:999px;padding:0 7px;background:var(--surface)}
+
+  /* 코드 패널 */
+  .panel{width:440px;flex:none;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;min-height:0}
+  .p-head{padding:14px 16px 10px;border-bottom:1px solid var(--border)}
+  .p-head h2{margin:0;font-size:15.5px;letter-spacing:-.01em}
+  .p-head p{margin:4px 0 0;color:var(--ink-muted);font-size:13px}
+  .p-close{display:none}
+  .p-body{flex:1;min-height:0;overflow:auto;padding:12px 16px 24px}
+  .hint{color:var(--ink-muted);font-size:13px}
+  .hint li{margin:4px 0}
+  .itabs{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+  .itab{border:1px solid var(--border);background:var(--surface-2);border-radius:6px;padding:2px 9px;font-family:var(--mono);font-size:12px}
+  .itab[aria-selected="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700}
+  .fileline{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}
+  .fileline .path{font-family:var(--mono);font-size:12.5px;font-weight:700}
+  .fileline .lines{font-family:var(--mono);font-size:12px;color:var(--ink-muted)}
+  .alias{border:1px solid var(--border);background:var(--k-db-soft);border-radius:8px;padding:8px 10px;margin:0 0 10px;font-size:12.5px}
+  .alias .route{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:5px;font-family:var(--mono);font-size:12px}
+  .alias .route span.step{padding:1px 7px;border-radius:6px;border:1px solid var(--border);background:var(--surface)}
+  .alias .route span.real{border-color:var(--k-db);color:var(--k-db);font-weight:700}
+  .alias .arrow{color:var(--ink-muted)}
+  .codebox{border:1px solid var(--border);border-radius:8px;background:var(--code-bg);overflow:auto;max-height:62vh}
+  table.code{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12.2px;line-height:1.6}
+  table.code td{padding:0 10px;vertical-align:top;white-space:pre}
+  table.code td.ln{position:sticky;left:0;text-align:right;color:var(--code-gutter);user-select:none;background:var(--code-bg);border-right:1px solid var(--border);min-width:44px;padding-right:8px}
+  table.code tr.hl td{background:var(--code-hl)}
+  table.code tr.hl td.ln{background:var(--code-hl);color:var(--ink);font-weight:700;box-shadow:inset 3px 0 0 var(--code-hl-bar)}
+  .t-c{color:var(--c-comment);font-style:italic}.t-d{color:var(--c-comment)}.t-s{color:var(--c-str)}.t-k{color:var(--c-kw);font-weight:600}
+  .t-f{color:var(--c-fn)}.t-n{color:var(--c-num)}.t-a{color:var(--c-deco)}
+  .legend-hl{margin:8px 0 0;font-size:12px;color:var(--ink-muted)}
+  .legend-hl b{background:var(--code-hl);color:var(--ink);padding:0 6px;border-radius:4px}
+  .flist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:6px}
+  .flist button{width:100%;text-align:left;border:1px solid var(--border);background:var(--surface-2);border-radius:8px;padding:6px 10px}
+  .flist button:hover{border-color:var(--accent)}
+  .flist small{display:block;color:var(--ink-muted)}
+  details.hdr{margin-top:12px;font-size:13px}
+  details.hdr pre{white-space:pre-wrap;background:var(--surface-2);border-radius:8px;padding:10px;font-family:var(--sans);font-size:12.5px;color:var(--ink-muted)}
+
+  @media (max-width:900px){
+    .app{display:block;height:auto}
+    .stage-wrap{max-height:none;overflow-x:auto}
+    .panel{position:fixed;left:0;right:0;bottom:0;width:auto;height:62vh;border-left:0;border-top:2px solid var(--accent);
+      box-shadow:0 -10px 30px rgba(0,0,0,.25);z-index:20;transform:translateY(105%);transition:transform .18s}
+    body.open .panel{transform:none}
+    .p-close{display:inline-block;position:absolute;right:12px;top:10px}
+    .p-head{position:relative;padding-right:70px}
+    .top{padding:12px 16px 8px}
+    .stage{padding:16px 16px 70vh}
+  }
+  @media (prefers-reduced-motion: reduce){.node,.panel{transition:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="main">
+    <header class="top">
+      <h1 id="title"></h1>
+      <p class="sub" id="subtitle"></p>
+      <div class="top-row">
+        <div class="tabs" role="tablist" id="tabs"></div>
+        <div class="stepper"><button class="btn" id="prev">◀ 이전</button><b id="stepNo">–</b><button class="btn" id="next">다음 ▶</button></div>
+        <span class="spacer"></span>
+        <a class="link" id="mdlink" href="#">📝 설명 문서 보기</a>
+        <button class="btn" id="theme" title="라이트/다크 전환">🌓</button>
+      </div>
+    </header>
+    <p class="intro" id="intro"></p>
+    <div class="legend" aria-label="범례">
+      <span><i style="background:var(--k-screen)"></i>화면 · 도착지</span>
+      <span><i style="background:var(--k-route)"></i>routes (입구)</span>
+      <span><i style="background:var(--k-helper)"></i>판단 (security · helpers)</span>
+      <span><i style="background:var(--k-db)"></i>db (저장소)</span>
+      <span><i style="background:var(--k-config)"></i>설정값</span>
+      <span><i style="background:var(--k-later);opacity:.6"></i>다른 단원에서 자세히</span>
+      <span>━ 다음 단계 &nbsp; ┅ 함수 호출</span>
+    </div>
+    <div class="stage-wrap" id="stageWrap"><div class="stage" id="stage"></div></div>
+  </div>
+
+  <aside class="panel" id="panel" aria-live="polite">
+    <div class="p-head">
+      <h2 id="pTitle"></h2><p id="pSub"></p>
+      <button class="btn p-close" id="pClose">닫기</button>
+    </div>
+    <div class="p-body" id="pBody"></div>
+  </aside>
+</div>
+
+<script type="application/json" id="data">{"title": "3. 게시판 · 댓글", "subtitle": "글쓰기·수정·삭제·댓글·새 댓글 알림이 어떤 파일의 어떤 함수를 거치는지 보는 코드 흐름도", "mdFile": "03-board.md", "github": "https://github.com/dyj02056/login-watchdog/blob/main/", "columns": ["화면 · 도착지", "routes/ (입구)", "판단 (security · helpers)", "db/ · config.py (저장소 · 설정값)"], "scenarios": [{"id": "write", "name": "글쓰기", "intro": "글을 쓰는 것도 '회원가입'처럼 검문이 먼저입니다. 봇인지, 너무 자주 쓰는지를 보고, 시도 자체를 기록한 뒤에야 내용을 검사해 저장합니다.", "nodes": [{"id": "write_n1", "col": 0, "row": 0, "kind": "screen", "title": "글쓰기 폼 제출 (POST /board/new)", "plain": "로그인한 회원이 제목·내용을 적고 '등록'을 누릅니다. 문지기(@member_login_required)를 통과해야 들어옵니다.", "reject": "", "later": "", "items": [{"block": "routes/board.py:board_new_submit", "hl": [64, 65], "label": "board_new_submit()", "call": null, "snippet": false}]}, {"id": "write_n2", "col": 1, "row": 1, "kind": "route", "title": "① 사람이 맞나? (허니팟)", "plain": "숨은 입력칸이 채워져 있으면 자동 프로그램으로 보고 시도 기록도 남기지 않고 거부합니다.", "reject": "일시적인 오류가 발생했습니다.", "later": "", "items": [{"block": "routes/board.py:board_new_submit", "hl": [72, 75], "label": "board_new_submit()", "call": null, "snippet": false}]}, {"id": "write_n3", "col": 2, "row": 1, "kind": "helper", "title": "봇 여부 확인", "plain": "숨은 입력칸(website)에 값이 있는지 봅니다.", "reject": "", "later": "", "items": [{"block": "helpers/request_utils.py:is_bot_submission", "hl": null, "label": "is_bot_submission()", "call": "helpers.is_bot_submission()", "snippet": false}]}, {"id": "write_n4", "col": 2, "row": 1, "kind": "later", "title": "봇 감지 알림", "plain": "알림과 기록만 남깁니다.", "reject": "", "later": "10단원", "items": [{"block": "security/soar/observe.py:notify_bot_detected", "hl": null, "label": "notify_bot_detected()", "call": "soar.notify_bot_detected()", "snippet": false}]}, {"id": "write_n5", "col": 1, "row": 2, "kind": "route", "title": "② 너무 자주 쓰나? (도배 방지)", "plain": "같은 IP가 1분 안에 5번 이상 글쓰기를 시도하면 막고, 거부 사실을 기록합니다.", "reject": "너무 많은 게시글 작성 시도가 감지되었습니다.", "later": "", "items": [{"block": "routes/board.py:board_new_submit", "hl": [79, 82], "label": "board_new_submit()", "call": null, "snippet": false}]}, {"id": "write_n6", "col": 2, "row": 2, "kind": "helper", "title": "글쓰기 도배 판정", "plain": "최근 시도 횟수가 기준치 이상인지 True/False.", "reject": "", "later": "", "items": [{"block": "security/detector.py:is_post_rate_limited", "hl": null, "label": "is_post_rate_limited()", "call": null, "snippet": false}]}, {"id": "write_n7", "col": 3, "row": 2, "kind": "db", "title": "최근 글쓰기 시도 세기", "plain": "post_attempts 표에서 이 IP의 최근 60초 시도 수를 셉니다.", "reject": "", "later": "", "items": [{"block": "db/board.py:count_recent_post_attempts", "hl": null, "label": "count_recent_post_attempts()", "call": "db.count_recent_post_attempts()", "snippet": false}]}, {"id": "write_n8", "col": 2, "row": 2, "kind": "later", "title": "거부 사실 기록", "plain": "HIGH 위험등급 이벤트로 남깁니다.", "reject": "", "later": "6단원", "items": [{"block": "security/soar/observe.py:record_rejection", "hl": null, "label": "record_rejection()", "call": "soar.record_rejection()", "snippet": false}]}, {"id": "write_n9", "col": 1, "row": 3, "kind": "route", "title": "③ 이번 시도 기록", "plain": "성공이든 실패든 '글쓰기를 시도했다'는 사실을 항상 한 줄 남깁니다. ②의 횟수가 여기서 쌓입니다.", "reject": "", "later": "", "items": [{"block": "routes/board.py:board_new_submit", "hl": [83, 83], "label": "board_new_submit()", "call": null, "snippet": false}]}, {"id": "write_n10", "col": 3, "row": 3, "kind": "db", "title": "글쓰기 시도 한 줄 저장", "plain": "post_attempts 표에 IP를 추가합니다.", "reject": "", "later": "", "items": [{"block": "db/board.py:log_post_attempt", "hl": null, "label": "log_post_attempt()", "call": "db.log_post_attempt()", "snippet": false}]}, {"id": "write_n11", "col": 1, "row": 4, "kind": "route", "title": "④ 제목·내용 검사", "plain": "빈칸이 없는지, 제목 100자·내용 5000자를 넘지 않는지 확인합니다. 내용 모양은 제한하지 않고 길이만 봅니다.", "reject": "제목과 내용을 모두 입력해주세요. / 길이 초과 안내", "later": "", "items": [{"block": "routes/board.py:board_new_submit", "hl": [85, 95], "label": "board_new_submit()", "call": null, "snippet": false}]}, {"id": "write_n12", "col": 2, "row": 4, "kind": "helper", "title": "길이 제한값", "plain": "제목 100자, 내용 5000자, 댓글 1000자.", "reject": "", "later": "", "items": [{"block": "routes/board.py:28-30", "hl": [28, 30], "label": "길이 제한값", "call": null, "snippet": true}]}, {"id": "write_n13", "col": 1, "row": 5, "kind": "route", "title": "⑤ 저장하고 상세 화면으로", "plain": "글을 저장하고 방금 쓴 글의 상세 화면으로 '다시 방문(redirect)'시킵니다.", "reject": "", "later": "", "items": [{"block": "routes/board.py:board_new_submit", "hl": [99, 101], "label": "board_new_submit()", "call": null, "snippet": false}]}, {"id": "write_n14", "col": 3, "row": 5, "kind": "db", "title": "게시글 저장", "plain": "posts 표에 새 글을 추가하고 저장된 행을 돌려줍니다.", "reject": "", "later": "", "items": [{"block": "db/board.py:create_post", "hl": null, "label": "create_post()", "call": "db.create_post()", "snippet": false}]}], "edges": [{"from": "write_n1", "to": "write_n2", "label": "", "kind": "flow"}, {"from": "write_n2", "to": "write_n3", "label": "", "kind": "call"}, {"from": "write_n2", "to": "write_n4", "label": "", "kind": "call"}, {"from": "write_n2", "to": "write_n5", "label": "", "kind": "flow"}, {"from": "write_n5", "to": "write_n6", "label": "", "kind": "call"}, {"from": "write_n6", "to": "write_n7", "label": "", "kind": "call"}, {"from": "write_n5", "to": "write_n8", "label": "", "kind": "call"}, {"from": "write_n5", "to": "write_n9", "label": "", "kind": "flow"}, {"from": "write_n9", "to": "write_n10", "label": "", "kind": "call"}, {"from": "write_n9", "to": "write_n11", "label": "", "kind": "flow"}, {"from": "write_n11", "to": "write_n12", "label": "", "kind": "call"}, {"from": "write_n11", "to": "write_n13", "label": "", "kind": "flow"}, {"from": "write_n13", "to": "write_n14", "label": "", "kind": "call"}], "steps": ["write_n1", "write_n2", "write_n5", "write_n9", "write_n11", "write_n13"]}, {"id": "edit", "name": "수정 · 삭제 (본인 글만)", "intro": "수정·삭제 버튼은 본인 글에만 보이지만, 서버도 제출 때 소유권을 다시 확인합니다. 개발자 도구로 요청을 직접 만들어 보내도 막기 위해서입니다.", "nodes": [{"id": "edit_n1", "col": 0, "row": 0, "kind": "screen", "title": "수정 폼 제출 (POST /board/<id>/edit)", "plain": "수정 화면에서 '저장'을 누릅니다.", "reject": "", "later": "", "items": [{"block": "routes/board.py:board_edit_submit", "hl": [142, 143], "label": "board_edit_submit()", "call": null, "snippet": false}]}, {"id": "edit_n2", "col": 1, "row": 1, "kind": "route", "title": "① 글 찾기 + 본인 글인지 확인", "plain": "글이 없으면 목록으로, 내가 쓴 글이 아니면 상세 화면으로 돌려보냅니다.", "reject": "본인이 작성한 글만 수정할 수 있습니다.", "later": "", "items": [{"block": "routes/board.py:board_edit_submit", "hl": [150, 156], "label": "board_edit_submit()", "call": null, "snippet": false}]}, {"id": "edit_n3", "col": 3, "row": 1, "kind": "db", "title": "글 한 건 읽기", "plain": "posts 표에서 번호로 글을 찾습니다.", "reject": "", "later": "", "items": [{"block": "db/board.py:get_post", "hl": null, "label": "get_post()", "call": "db.get_post()", "snippet": false}]}, {"id": "edit_n4", "col": 2, "row": 1, "kind": "helper", "title": "작성자 확인", "plain": "글의 작성자 아이디가 지금 로그인한 아이디와 같은지 비교합니다.", "reject": "", "later": "", "items": [{"block": "routes/board.py:_is_post_owner", "hl": null, "label": "_is_post_owner()", "call": null, "snippet": false}]}, {"id": "edit_n5", "col": 1, "row": 2, "kind": "route", "title": "② 봇 · 도배 검사 (글쓰기와 횟수 공유)", "plain": "수정도 도배 대상이 될 수 있어서 새 글 작성과 같은 시도 기록(post_attempts)을 함께 씁니다.", "reject": "일시적인 오류 / 너무 많은 게시글 작성 시도", "later": "", "items": [{"block": "routes/board.py:board_edit_submit", "hl": [158, 175], "label": "board_edit_submit()", "call": null, "snippet": false}]}, {"id": "edit_n6", "col": 2, "row": 2, "kind": "helper", "title": "글쓰기 도배 판정", "plain": "새 글 작성과 같은 기준으로 판정합니다.", "reject": "", "later": "", "items": [{"block": "security/detector.py:is_post_rate_limited", "hl": null, "label": "is_post_rate_limited()", "call": null, "snippet": false}]}, {"id": "edit_n7", "col": 3, "row": 2, "kind": "db", "title": "시도 기록", "plain": "post_attempts 표에 한 줄 추가합니다.", "reject": "", "later": "", "items": [{"block": "db/board.py:log_post_attempt", "hl": null, "label": "log_post_attempt()", "call": "db.log_post_attempt()", "snippet": false}]}, {"id": "edit_n8", "col": 1, "row": 3, "kind": "route", "title": "③ 입력 검사 후 수정 저장", "plain": "길이를 확인하고 제목·내용을 덮어씁니다. 끝나면 상세 화면으로 이동합니다.", "reject": "", "later": "", "items": [{"block": "routes/board.py:board_edit_submit", "hl": [177, 193], "label": "board_edit_submit()", "call": null, "snippet": false}]}, {"id": "edit_n9", "col": 3, "row": 3, "kind": "db", "title": "글 수정 저장", "plain": "posts 표의 제목·내용을 고칩니다.", "reject": "", "later": "", "items": [{"block": "db/board.py:update_post", "hl": null, "label": "update_post()", "call": "db.update_post()", "snippet": false}]}, {"id": "edit_n10", "col": 1, "row": 4, "kind": "route", "title": "④ 삭제 (POST /board/<id>/delete)", "plain": "본인 글만 삭제됩니다. 글이 지워지면 딸린 댓글도 DB 규칙(on delete cascade)에 따라 함께 지워집니다.", "reject": "본인이 작성한 글만 삭제할 수 있습니다.", "later": "", "items": [{"block": "routes/board.py:board_delete", "hl": [204, 208], "label": "board_delete()", "call": null, "snippet": false}]}, {"id": "edit_n11", "col": 3, "row": 4, "kind": "db", "title": "글 삭제", "plain": "posts 표에서 글을 지웁니다. 댓글은 자동으로 함께 지워집니다.", "reject": "", "later": "", "items": [{"block": "db/board.py:delete_post", "hl": null, "label": "delete_post()", "call": "db.delete_post()", "snippet": false}]}], "edges": [{"from": "edit_n1", "to": "edit_n2", "label": "", "kind": "flow"}, {"from": "edit_n2", "to": "edit_n3", "label": "", "kind": "call"}, {"from": "edit_n2", "to": "edit_n4", "label": "", "kind": "call"}, {"from": "edit_n2", "to": "edit_n5", "label": "", "kind": "flow"}, {"from": "edit_n5", "to": "edit_n6", "label": "", "kind": "call"}, {"from": "edit_n5", "to": "edit_n7", "label": "", "kind": "call"}, {"from": "edit_n5", "to": "edit_n8", "label": "", "kind": "flow"}, {"from": "edit_n8", "to": "edit_n9", "label": "", "kind": "call"}, {"from": "edit_n8", "to": "edit_n10", "label": "", "kind": "flow"}, {"from": "edit_n10", "to": "edit_n11", "label": "", "kind": "call"}], "steps": ["edit_n1", "edit_n2", "edit_n5", "edit_n8", "edit_n10"]}, {"id": "comment", "name": "댓글 작성 · 삭제", "intro": "댓글도 글쓰기와 같은 순서(봇 확인 → 도배 판정 → 시도 기록 → 입력 검사 → 저장)를 따릅니다. 다만 정상적인 대화에서는 댓글이 더 자주 달려서 기준치가 더 넉넉합니다(10회).", "nodes": [{"id": "comment_n1", "col": 0, "row": 0, "kind": "screen", "title": "댓글 폼 제출 (POST /board/<id>/comments)", "plain": "상세 화면 아래 입력칸에서 '댓글 등록'을 누릅니다.", "reject": "", "later": "", "items": [{"block": "routes/board.py:board_comment_submit", "hl": [213, 214], "label": "board_comment_submit()", "call": null, "snippet": false}]}, {"id": "comment_n2", "col": 1, "row": 1, "kind": "route", "title": "① 글이 있나?", "plain": "삭제된 글에는 댓글을 달 수 없습니다.", "reject": "존재하지 않는 게시글입니다.", "later": "", "items": [{"block": "routes/board.py:board_comment_submit", "hl": [217, 220], "label": "board_comment_submit()", "call": null, "snippet": false}]}, {"id": "comment_n3", "col": 3, "row": 1, "kind": "db", "title": "글 한 건 읽기", "plain": "posts 표에서 번호로 글을 찾습니다.", "reject": "", "later": "", "items": [{"block": "db/board.py:get_post", "hl": null, "label": "get_post()", "call": "db.get_post()", "snippet": false}]}, {"id": "comment_n4", "col": 1, "row": 2, "kind": "route", "title": "② 사람이 맞나? (허니팟)", "plain": "걸리면 안내 문구 없이 상세 화면으로 돌려보냅니다.", "reject": "", "later": "", "items": [{"block": "routes/board.py:board_comment_submit", "hl": [226, 228], "label": "board_comment_submit()", "call": null, "snippet": false}]}, {"id": "comment_n5", "col": 2, "row": 2, "kind": "helper", "title": "봇 여부 확인", "plain": "숨은 입력칸(website)에 값이 있는지 봅니다.", "reject": "", "later": "", "items": [{"block": "helpers/request_utils.py:is_bot_submission", "hl": null, "label": "is_bot_submission()", "call": "helpers.is_bot_submission()", "snippet": false}]}, {"id": "comment_n6", "col": 2, "row": 2, "kind": "later", "title": "봇 감지 알림", "plain": "알림과 기록만 남깁니다.", "reject": "", "later": "10단원", "items": [{"block": "security/soar/observe.py:notify_bot_detected", "hl": null, "label": "notify_bot_detected()", "call": "soar.notify_bot_detected()", "snippet": false}]}, {"id": "comment_n7", "col": 1, "row": 3, "kind": "route", "title": "③ 너무 자주 다나? + 시도 기록", "plain": "1분 안에 10번 이상이면 막고, 아니면 시도를 기록합니다.", "reject": "너무 많은 댓글 작성 시도가 감지되었습니다.", "later": "", "items": [{"block": "routes/board.py:board_comment_submit", "hl": [230, 234], "label": "board_comment_submit()", "call": null, "snippet": false}]}, {"id": "comment_n8", "col": 2, "row": 3, "kind": "helper", "title": "댓글 도배 판정", "plain": "최근 댓글 시도 횟수가 기준치 이상인지 판정.", "reject": "", "later": "", "items": [{"block": "security/detector.py:is_comment_rate_limited", "hl": null, "label": "is_comment_rate_limited()", "call": null, "snippet": false}]}, {"id": "comment_n9", "col": 3, "row": 3, "kind": "db", "title": "최근 댓글 시도 세기", "plain": "comment_attempts 표에서 최근 60초 시도 수를 셉니다.", "reject": "", "later": "", "items": [{"block": "db/board.py:count_recent_comment_attempts", "hl": null, "label": "count_recent_comment_attempts()", "call": "db.count_recent_comment_attempts()", "snippet": false}]}, {"id": "comment_n10", "col": 3, "row": 3, "kind": "db", "title": "댓글 시도 한 줄 저장", "plain": "comment_attempts 표에 IP를 추가합니다.", "reject": "", "later": "", "items": [{"block": "db/board.py:log_comment_attempt", "hl": null, "label": "log_comment_attempt()", "call": "db.log_comment_attempt()", "snippet": false}]}, {"id": "comment_n11", "col": 2, "row": 3, "kind": "later", "title": "거부 사실 기록", "plain": "HIGH 위험등급 이벤트로 남깁니다.", "reject": "", "later": "6단원", "items": [{"block": "security/soar/observe.py:record_rejection", "hl": null, "label": "record_rejection()", "call": "soar.record_rejection()", "snippet": false}]}, {"id": "comment_n12", "col": 1, "row": 4, "kind": "route", "title": "④ 길이 검사 후 저장", "plain": "빈 댓글과 1000자 초과를 막고 저장합니다. 끝나면 상세 화면으로 돌아갑니다(다시 방문).", "reject": "댓글 내용을 입력해주세요. / 길이 초과", "later": "", "items": [{"block": "routes/board.py:board_comment_submit", "hl": [236, 244], "label": "board_comment_submit()", "call": null, "snippet": false}]}, {"id": "comment_n13", "col": 3, "row": 4, "kind": "db", "title": "댓글 저장", "plain": "comments 표에 댓글을 추가합니다.", "reject": "", "later": "", "items": [{"block": "db/board.py:create_comment", "hl": null, "label": "create_comment()", "call": "db.create_comment()", "snippet": false}]}, {"id": "comment_n14", "col": 1, "row": 5, "kind": "route", "title": "⑤ 댓글 삭제 (본인 댓글만)", "plain": "댓글 작성자 아이디가 지금 로그인한 아이디와 같을 때만 지웁니다.", "reject": "본인이 작성한 댓글만 삭제할 수 있습니다.", "later": "", "items": [{"block": "routes/board.py:board_comment_delete", "hl": [252, 260], "label": "board_comment_delete()", "call": null, "snippet": false}]}, {"id": "comment_n15", "col": 3, "row": 5, "kind": "db", "title": "댓글 한 건 읽기", "plain": "작성자를 확인하려고 댓글 행을 가져옵니다.", "reject": "", "later": "", "items": [{"block": "db/board.py:get_comment", "hl": null, "label": "get_comment()", "call": "db.get_comment()", "snippet": false}]}, {"id": "comment_n16", "col": 3, "row": 5, "kind": "db", "title": "댓글 삭제", "plain": "comments 표에서 지웁니다.", "reject": "", "later": "", "items": [{"block": "db/board.py:delete_comment", "hl": null, "label": "delete_comment()", "call": "db.delete_comment()", "snippet": false}]}], "edges": [{"from": "comment_n1", "to": "comment_n2", "label": "", "kind": "flow"}, {"from": "comment_n2", "to": "comment_n3", "label": "", "kind": "call"}, {"from": "comment_n2", "to": "comment_n4", "label": "", "kind": "flow"}, {"from": "comment_n4", "to": "comment_n5", "label": "", "kind": "call"}, {"from": "comment_n4", "to": "comment_n6", "label": "", "kind": "call"}, {"from": "comment_n4", "to": "comment_n7", "label": "", "kind": "flow"}, {"from": "comment_n7", "to": "comment_n8", "label": "", "kind": "call"}, {"from": "comment_n8", "to": "comment_n9", "label": "", "kind": "call"}, {"from": "comment_n7", "to": "comment_n10", "label": "", "kind": "call"}, {"from": "comment_n7", "to": "comment_n11", "label": "", "kind": "call"}, {"from": "comment_n7", "to": "comment_n12", "label": "", "kind": "flow"}, {"from": "comment_n12", "to": "comment_n13", "label": "", "kind": "call"}, {"from": "comment_n12", "to": "comment_n14", "label": "", "kind": "flow"}, {"from": "comment_n14", "to": "comment_n15", "label": "", "kind": "call"}, {"from": "comment_n14", "to": "comment_n16", "label": "", "kind": "call"}], "steps": ["comment_n1", "comment_n2", "comment_n4", "comment_n7", "comment_n12", "comment_n14"]}, {"id": "poll", "name": "새 댓글 알림 배너", "intro": "글을 보고 있는 동안 다른 사람이 댓글을 달면 '새로운 댓글이 추가되었습니다' 배너가 뜹니다. 5초마다 '개수와 최신 시각'만 가볍게 물어보고, 달라졌을 때만 배너를 띄웁니다.", "nodes": [{"id": "poll_n1", "col": 0, "row": 0, "kind": "screen", "title": "브라우저가 5초마다 확인 (board.js)", "plain": "화면이 처음 그려진 시점의 댓글 개수·최신 시각을 기준값으로 기억해 두고, 폴링 결과와 비교해 달라졌을 때만 배너를 보여줍니다.", "reject": "", "later": "", "items": [{"block": "public/js/board.js:39-53", "hl": [40, 51], "label": "board.js 폴링 함수", "call": null, "snippet": true}]}, {"id": "poll_n2", "col": 2, "row": 0, "kind": "later", "title": "공용 폴링 부품 (탭이 보일 때만)", "plain": "일정 주기로 함수를 호출하되 탭이 안 보이면 쉬고, 다시 보이면 즉시 한 번 확인합니다.", "reject": "", "later": "27단원", "items": [{"block": "public/js/polling.js:26-75", "hl": null, "label": "startPolling", "call": null, "snippet": true}]}, {"id": "poll_n3", "col": 1, "row": 1, "kind": "route", "title": "① 가벼운 확인 API (GET /api/board/<id>/comments/latest)", "plain": "댓글 전체가 아니라 '개수 + 최신 시각' 두 값만 JSON으로 돌려줍니다. 표 전체를 다시 그리지 않아 트래픽이 가볍습니다.", "reject": "", "later": "", "items": [{"block": "routes/board.py:api_board_comments_latest", "hl": [272, 272], "label": "api_board_comments_latest()", "call": null, "snippet": false}]}, {"id": "poll_n4", "col": 3, "row": 1, "kind": "db", "title": "댓글 개수·최신 시각", "plain": "comments 표에서 개수와 가장 최근 댓글 시각만 가져옵니다.", "reject": "", "later": "", "items": [{"block": "db/board.py:get_latest_comment_info", "hl": null, "label": "get_latest_comment_info()", "call": "db.get_latest_comment_info()", "snippet": false}]}], "edges": [{"from": "poll_n1", "to": "poll_n2", "label": "", "kind": "call"}, {"from": "poll_n1", "to": "poll_n3", "label": "", "kind": "flow"}, {"from": "poll_n3", "to": "poll_n4", "label": "", "kind": "call"}], "steps": ["poll_n1", "poll_n3"]}], "blocks": {"routes/board.py:board_new_submit": {"path": "routes/board.py", "start": 64, "end": 101, "lang": "python", "code": "@board_bp.route(\"/board/new\", methods=[\"POST\"])\n@member_login_required\ndef board_new_submit():\n    \"\"\"글쓰기 폼 제출을 처리한다.\"\"\"\n    ip = get_request_ip()\n\n    # 허니팟 필드가 채워져 있으면 사람이 아니라 자동화 스크립트라고 보고,\n    # 시도 기록조차 남기지 않고 즉시 거부한다 (L7 공격 보강 계획 Tier 3).\n    if is_bot_submission():\n        soar.notify_bot_detected(ip, request.path)\n        flash(\"일시적인 오류가 발생했습니다. 다시 시도해주세요.\")\n        return render_template(\"board_form.html\", form_action=url_for(\"board.board_new_submit\"), post=None)\n\n    # 같은 IP가 짧은 시간에 너무 많이 글을 올리면 거부한다 (signup_submit()과 동일한\n    # \"먼저 판정 → 성공/실패 무관하게 시도 자체를 기록\" 순서, 결정 #7).\n    if detector.is_post_rate_limited(ip):\n        soar.record_rejection(\"POST_RATE_LIMIT\", ip, request.path, config.POST_RATE_LIMIT)\n        flash(\"너무 많은 게시글 작성 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.\")\n        return render_template(\"board_form.html\", form_action=url_for(\"board.board_new_submit\"), post=None)\n    db.log_post_attempt(ip)\n\n    title = request.form.get(\"title\", \"\").strip()\n    body = request.form.get(\"body\", \"\").strip()\n\n    if not title or not body:\n        flash(\"제목과 내용을 모두 입력해주세요.\")\n        return render_template(\"board_form.html\", form_action=url_for(\"board.board_new_submit\"), post=None)\n\n    if len(title) > POST_TITLE_MAX_LENGTH or len(body) > POST_BODY_MAX_LENGTH:\n        flash(\n            f\"제목은 최대 {POST_TITLE_MAX_LENGTH}자, 내용은 최대 {POST_BODY_MAX_LENGTH}자까지 \"\n            \"입력할 수 있습니다.\"\n        )\n        return render_template(\"board_form.html\", form_action=url_for(\"board.board_new_submit\"), post=None)\n\n    post = db.create_post(session[\"username\"], title, body)\n    flash(\"게시글이 등록되었습니다.\")\n    return redirect(url_for(\"board.board_detail\", post_id=post[\"id\"]))", "alias": null}, "helpers/request_utils.py:is_bot_submission": {"path": "helpers/request_utils.py", "start": 43, "end": 45, "lang": "python", "code": "def is_bot_submission() -> bool:\n    \"\"\"이번 폼 제출에 허니팟 필드가 채워져 있으면 True(봇 의심)를 돌려준다.\"\"\"\n    return bool(request.form.get(HONEYPOT_FIELD_NAME, \"\").strip())", "alias": {"call": "helpers.is_bot_submission()", "via": "helpers/__init__.py", "real": "helpers/request_utils.py"}}, "security/soar/observe.py:notify_bot_detected": {"path": "security/soar/observe.py", "start": 15, "end": 23, "lang": "python", "code": "def notify_bot_detected(ip: str, path: str) -> None:\n    \"\"\"허니팟 필드가 채워진 요청(자동화 스크립트/봇 의심)을 MEDIUM 이벤트로 기록한다.\n\n    Slack 알림은 보내지 않는다 — 로그인 실패 반복이나 게시글 도배처럼 그 자체로\n    실제 피해로 이어지는 사건이 아니라 \"이 트래픽에 자동화 스크립트가 섞여\n    있다\"는 관찰 정보이므로, notify_web_scanning() 등과 같은 급의 MEDIUM으로\n    로그에만 남긴다 (L7 공격 보강 계획 Tier 3).\n    \"\"\"\n    _record_event(\"BOT_DETECTED\", \"MEDIUM\", ip, path, 1, \"REJECTED\")", "alias": {"call": "soar.notify_bot_detected()", "via": "security/soar/__init__.py", "real": "security/soar/observe.py"}}, "security/detector.py:is_post_rate_limited": {"path": "security/detector.py", "start": 128, "end": 135, "lang": "python", "code": "def is_post_rate_limited(ip: str) -> bool:\n    \"\"\"이 IP가 최근 게시글을 너무 자주 작성해서 더 막아야 하는 상태인지 판단한다.\n\n    is_signup_rate_limited()와 동일하게 \"초과\"가 아니라 \"이상\"을 기준으로\n    삼는다 — 게시글 작성 자체가 정상 사용자가 짧은 시간에 여러 번 반복할\n    이유가 거의 없으므로, 기준치에 도달하면 즉시 차단한다.\n    \"\"\"\n    return db.count_recent_post_attempts(ip) >= POST_RATE_LIMIT", "alias": null}, "db/board.py:count_recent_post_attempts": {"path": "db/board.py", "start": 162, "end": 173, "lang": "python", "code": "def count_recent_post_attempts(ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS) -> int:\n    \"\"\"이 IP가 최근 몇 초(기본 60초) 안에 게시글을 몇 번이나 작성 시도했는지 센다.\"\"\"\n    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()\n    res = (\n        db.get_client()\n        .table(\"post_attempts\")\n        .select(\"id\", count=\"exact\")\n        .eq(\"ip_address\", ip)\n        .gte(\"attempted_at\", cutoff)\n        .execute()\n    )\n    return res.count or 0", "alias": {"call": "db.count_recent_post_attempts()", "via": "db/__init__.py", "real": "db/board.py"}}, "security/soar/observe.py:record_rejection": {"path": "security/soar/observe.py", "start": 77, "end": 107, "lang": "python", "code": "def record_rejection(event_type: str, ip: str, path: str, count: int) -> None:\n    \"\"\"가입·게시글·댓글 요청 거부와 요청 한도 초과(HTTP_FLOOD, app.py)를 HIGH로\n    security_events에 기록한다. Slack 알림은 보내지\n    않는다 — CRITICAL/MEDIUM과 달리 이 등급은 \"관리자가 나중에 대시보드에서 확인\"하는\n    선까지만 자동화하기로 했다(security-risk-response-summary.md 5절).\n\n    is_signup_rate_limited() 등은 차단되는 동안 시도 자체를 로그에 남기지 않아 count가\n    차단 기간 내내 고정된다 — MEDIUM의 is_first_over_threshold처럼 \"지금이 막 넘긴\n    순간\"이라는 신호가 없다는 뜻이다. 그래서 매 거부마다 새 행을 만드는 대신,\n    is_locked()와 같은 방식으로 \"이 IP·유형에 이미 미해결 이벤트가 있으면 새로 만들지\n    않는다\"는 상태 기반 중복 방지를 쓴다 — 없으면 봇 한 대가 60초 창 안에 거부당할\n    때마다 새 행이 쌓여 security_events가 HIGH로 도배되고 CRITICAL/MEDIUM이 묻힌다.\n\n    다만 \"새로 안 만든다\"고 끝내면 이미 열린 사건이 실제로 몇 번이나 반복됐는지\n    알 수 없다(count가 처음 거부됐을 때 값에 영원히 고정됨) — 그래서 미해결\n    이벤트가 있으면 무시하는 대신, 그 행의 count를 1 올린다. 관리자가 \"처리\n    완료\"를 누르면 다음 거부부터 다시 새 이벤트가 생긴다.\n\n    db.insert_security_event_or_bump()를 쓰는 이유: 여기서 \"미해결 이벤트가\n    있는지\" 확인한 바로 그 순간과 실제로 새로 삽입하는 순간 사이에 아주 잠깐의\n    틈이 있어서, 동시에 두 요청이 이 함수를 거의 같은 순간에 통과하면 둘 다\n    \"없음\"을 보고 각자 삽입해버릴 수 있다(경쟁 조건). insert_security_event_or_bump는\n    그 드문 경우에도 DB의 유니크 인덱스가 두 번째 삽입을 막아주면 count 증가로\n    자동 대체한다.\n    \"\"\"\n    existing = db.get_unresolved_security_event(ip, event_type)\n    if existing:\n        db.update_security_event_count(existing[\"id\"], existing[\"count\"] + 1)\n    else:\n        db.insert_security_event_or_bump(event_type, \"HIGH\", ip, path, count, \"REJECTED\")\n    correlate.check_and_correlate(ip, event_type, \"HIGH\")", "alias": {"call": "soar.record_rejection()", "via": "security/soar/__init__.py", "real": "security/soar/observe.py"}}, "db/board.py:log_post_attempt": {"path": "db/board.py", "start": 157, "end": 159, "lang": "python", "code": "def log_post_attempt(ip: str) -> None:\n    \"\"\"게시글 작성 POST 요청 한 건을 post_attempts 표에 기록한다 (성공/실패 무관).\"\"\"\n    db.get_client().table(\"post_attempts\").insert({\"ip_address\": ip}).execute()", "alias": {"call": "db.log_post_attempt()", "via": "db/__init__.py", "real": "db/board.py"}}, "routes/board.py:28-30": {"path": "routes/board.py", "start": 28, "end": 30, "lang": "python", "code": "POST_TITLE_MAX_LENGTH = 100\nPOST_BODY_MAX_LENGTH = 5000\nCOMMENT_BODY_MAX_LENGTH = 1000", "alias": null}, "db/board.py:create_post": {"path": "db/board.py", "start": 17, "end": 29, "lang": "python", "code": "def create_post(author_username: str, title: str, body: str) -> dict:\n    \"\"\"새 게시글을 만든다. 생성된 행(id 포함)을 그대로 돌려준다.\n\n    상세 화면으로 바로 이동시키려면(routes/board.py의 board_new_submit) 새로 생긴 글의\n    id가 필요하므로, insert 결과를 그대로 반환한다.\n    \"\"\"\n    res = (\n        db.get_client()\n        .table(\"posts\")\n        .insert({\"author_username\": author_username, \"title\": title, \"body\": body})\n        .execute()\n    )\n    return res.data[0]", "alias": {"call": "db.create_post()", "via": "db/__init__.py", "real": "db/board.py"}}, "routes/board.py:board_edit_submit": {"path": "routes/board.py", "start": 142, "end": 193, "lang": "python", "code": "@board_bp.route(\"/board/<int:post_id>/edit\", methods=[\"POST\"])\n@member_login_required\ndef board_edit_submit(post_id):\n    \"\"\"게시글 수정 폼 제출을 처리한다.\n\n    화면에서 수정 버튼을 감췄더라도, 여기서도 다시 한번 소유권을 확인한다\n    (signup_submit()의 이중 검증 원칙과 동일 — 개발자 도구로 우회한 요청까지 방어).\n    \"\"\"\n    post = db.get_post(post_id)\n    if post is None:\n        flash(\"존재하지 않는 게시글입니다.\")\n        return redirect(url_for(\"board.board_list\"))\n    if not _is_post_owner(post):\n        flash(\"본인이 작성한 글만 수정할 수 있습니다.\")\n        return redirect(url_for(\"board.board_detail\", post_id=post_id))\n\n    form_action = url_for(\"board.board_edit_submit\", post_id=post_id)\n    ip = get_request_ip()\n\n    # 허니팟 필드가 채워져 있으면 사람이 아니라 자동화 스크립트라고 보고 즉시 거부한다\n    # (L7 공격 보강 계획 Tier 3).\n    if is_bot_submission():\n        soar.notify_bot_detected(ip, request.path)\n        flash(\"일시적인 오류가 발생했습니다. 다시 시도해주세요.\")\n        return render_template(\"board_form.html\", form_action=form_action, post=post)\n\n    # board_new_submit()과 동일한 빈도 제한 — 글 수정도 도배 대상이 될 수 있으므로\n    # 새 글 작성과 같은 post_attempts 카운트를 공유한다 (원래 이 검사가 빠져있던\n    # 공백을 보완, attack_response_state.md 구현 대상 #3).\n    if detector.is_post_rate_limited(ip):\n        soar.record_rejection(\"POST_RATE_LIMIT\", ip, request.path, config.POST_RATE_LIMIT)\n        flash(\"너무 많은 게시글 작성 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.\")\n        return render_template(\"board_form.html\", form_action=form_action, post=post)\n    db.log_post_attempt(ip)\n\n    title = request.form.get(\"title\", \"\").strip()\n    body = request.form.get(\"body\", \"\").strip()\n\n    if not title or not body:\n        flash(\"제목과 내용을 모두 입력해주세요.\")\n        return render_template(\"board_form.html\", form_action=form_action, post=post)\n\n    if len(title) > POST_TITLE_MAX_LENGTH or len(body) > POST_BODY_MAX_LENGTH:\n        flash(\n            f\"제목은 최대 {POST_TITLE_MAX_LENGTH}자, 내용은 최대 {POST_BODY_MAX_LENGTH}자까지 \"\n            \"입력할 수 있습니다.\"\n        )\n        return render_template(\"board_form.html\", form_action=form_action, post=post)\n\n    db.update_post(post_id, title, body)\n    flash(\"게시글이 수정되었습니다.\")\n    return redirect(url_for(\"board.board_detail\", post_id=post_id))", "alias": null}, "db/board.py:get_post": {"path": "db/board.py", "start": 32, "end": 35, "lang": "python", "code": "def get_post(post_id: int) -> dict | None:\n    \"\"\"글 번호(id)로 게시글 한 건을 찾는다. 없으면 None을 돌려준다.\"\"\"\n    res = db.get_client().table(\"posts\").select(\"*\").eq(\"id\", post_id).limit(1).execute()\n    return res.data[0] if res.data else None", "alias": {"call": "db.get_post()", "via": "db/__init__.py", "real": "db/board.py"}}, "routes/board.py:_is_post_owner": {"path": "routes/board.py", "start": 33, "end": 35, "lang": "python", "code": "def _is_post_owner(post: dict) -> bool:\n    \"\"\"지금 로그인한 회원이 이 글의 작성자인지 확인한다.\"\"\"\n    return post[\"author_username\"] == session.get(\"username\")", "alias": null}, "db/board.py:update_post": {"path": "db/board.py", "start": 61, "end": 65, "lang": "python", "code": "def update_post(post_id: int, title: str, body: str) -> None:\n    \"\"\"게시글의 제목/본문을 수정한다. updated_at도 지금 시각으로 함께 갱신한다.\"\"\"\n    db.get_client().table(\"posts\").update(\n        {\"title\": title, \"body\": body, \"updated_at\": db._now_iso()}\n    ).eq(\"id\", post_id).execute()", "alias": {"call": "db.update_post()", "via": "db/__init__.py", "real": "db/board.py"}}, "routes/board.py:board_delete": {"path": "routes/board.py", "start": 196, "end": 210, "lang": "python", "code": "@board_bp.route(\"/board/<int:post_id>/delete\", methods=[\"POST\"])\n@member_login_required\ndef board_delete(post_id):\n    \"\"\"본인 글 삭제 (결정 #2 — 삭제 권한: 본인 + 관리자. 관리자는 /api/board/posts/delete 사용).\"\"\"\n    post = db.get_post(post_id)\n    if post is None:\n        flash(\"존재하지 않는 게시글입니다.\")\n        return redirect(url_for(\"board.board_list\"))\n    if not _is_post_owner(post):\n        flash(\"본인이 작성한 글만 삭제할 수 있습니다.\")\n        return redirect(url_for(\"board.board_detail\", post_id=post_id))\n\n    db.delete_post(post_id)\n    flash(\"게시글이 삭제되었습니다.\")\n    return redirect(url_for(\"board.board_list\"))", "alias": null}, "db/board.py:delete_post": {"path": "db/board.py", "start": 68, "end": 75, "lang": "python", "code": "def delete_post(post_id: int) -> bool:\n    \"\"\"게시글을 삭제한다. comments 표가 on delete cascade로 걸려있으므로,\n    이 글에 달린 댓글도 Supabase가 알아서 함께 지운다 (docs/schema.sql 참고).\n\n    반환값: 실제로 삭제된 행이 있었으면 True, 애초에 그런 id가 없었으면 False.\n    \"\"\"\n    res = db.get_client().table(\"posts\").delete().eq(\"id\", post_id).execute()\n    return len(res.data) > 0", "alias": {"call": "db.delete_post()", "via": "db/__init__.py", "real": "db/board.py"}}, "routes/board.py:board_comment_submit": {"path": "routes/board.py", "start": 213, "end": 245, "lang": "python", "code": "@board_bp.route(\"/board/<int:post_id>/comments\", methods=[\"POST\"])\n@member_login_required\ndef board_comment_submit(post_id):\n    \"\"\"댓글 작성. Post-Redirect-Get 패턴으로 처리 후 항상 상세 화면으로 돌아간다.\"\"\"\n    post = db.get_post(post_id)\n    if post is None:\n        flash(\"존재하지 않는 게시글입니다.\")\n        return redirect(url_for(\"board.board_list\"))\n\n    ip = get_request_ip()\n\n    # 허니팟 필드가 채워져 있으면 사람이 아니라 자동화 스크립트라고 보고 즉시 거부한다\n    # (L7 공격 보강 계획 Tier 3).\n    if is_bot_submission():\n        soar.notify_bot_detected(ip, request.path)\n        return redirect(url_for(\"board.board_detail\", post_id=post_id))\n\n    if detector.is_comment_rate_limited(ip):\n        soar.record_rejection(\"COMMENT_RATE_LIMIT\", ip, request.path, config.COMMENT_RATE_LIMIT)\n        flash(\"너무 많은 댓글 작성 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.\")\n        return redirect(url_for(\"board.board_detail\", post_id=post_id))\n    db.log_comment_attempt(ip)\n\n    body = request.form.get(\"body\", \"\").strip()\n    if not body:\n        flash(\"댓글 내용을 입력해주세요.\")\n        return redirect(url_for(\"board.board_detail\", post_id=post_id))\n    if len(body) > COMMENT_BODY_MAX_LENGTH:\n        flash(f\"댓글은 최대 {COMMENT_BODY_MAX_LENGTH}자까지 입력할 수 있습니다.\")\n        return redirect(url_for(\"board.board_detail\", post_id=post_id))\n\n    db.create_comment(post_id, session[\"username\"], body)\n    return redirect(url_for(\"board.board_detail\", post_id=post_id))", "alias": null}, "security/detector.py:is_comment_rate_limited": {"path": "security/detector.py", "start": 138, "end": 144, "lang": "python", "code": "def is_comment_rate_limited(ip: str) -> bool:\n    \"\"\"이 IP가 최근 댓글을 너무 자주 작성해서 더 막아야 하는 상태인지 판단한다.\n\n    is_post_rate_limited()와 판단 방식은 같지만, 댓글은 정상적인 대화에서도\n    글보다 자주 달릴 수 있어 config.COMMENT_RATE_LIMIT 기본값을 더 넉넉하게 뒀다.\n    \"\"\"\n    return db.count_recent_comment_attempts(ip) >= COMMENT_RATE_LIMIT", "alias": null}, "db/board.py:count_recent_comment_attempts": {"path": "db/board.py", "start": 181, "end": 192, "lang": "python", "code": "def count_recent_comment_attempts(ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS) -> int:\n    \"\"\"이 IP가 최근 몇 초(기본 60초) 안에 댓글을 몇 번이나 작성 시도했는지 센다.\"\"\"\n    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()\n    res = (\n        db.get_client()\n        .table(\"comment_attempts\")\n        .select(\"id\", count=\"exact\")\n        .eq(\"ip_address\", ip)\n        .gte(\"attempted_at\", cutoff)\n        .execute()\n    )\n    return res.count or 0", "alias": {"call": "db.count_recent_comment_attempts()", "via": "db/__init__.py", "real": "db/board.py"}}, "db/board.py:log_comment_attempt": {"path": "db/board.py", "start": 176, "end": 178, "lang": "python", "code": "def log_comment_attempt(ip: str) -> None:\n    \"\"\"댓글 작성 POST 요청 한 건을 comment_attempts 표에 기록한다 (성공/실패 무관).\"\"\"\n    db.get_client().table(\"comment_attempts\").insert({\"ip_address\": ip}).execute()", "alias": {"call": "db.log_comment_attempt()", "via": "db/__init__.py", "real": "db/board.py"}}, "db/board.py:create_comment": {"path": "db/board.py", "start": 78, "end": 82, "lang": "python", "code": "def create_comment(post_id: int, author_username: str, body: str) -> None:\n    \"\"\"게시글 하나에 댓글 한 건을 새로 단다.\"\"\"\n    db.get_client().table(\"comments\").insert(\n        {\"post_id\": post_id, \"author_username\": author_username, \"body\": body}\n    ).execute()", "alias": {"call": "db.create_comment()", "via": "db/__init__.py", "real": "db/board.py"}}, "routes/board.py:board_comment_delete": {"path": "routes/board.py", "start": 248, "end": 261, "lang": "python", "code": "@board_bp.route(\"/board/<int:post_id>/comments/<int:comment_id>/delete\", methods=[\"POST\"])\n@member_login_required\ndef board_comment_delete(post_id, comment_id):\n    \"\"\"본인 댓글 삭제.\"\"\"\n    comment = db.get_comment(comment_id)\n    if comment is None:\n        flash(\"존재하지 않는 댓글입니다.\")\n        return redirect(url_for(\"board.board_detail\", post_id=post_id))\n    if comment[\"author_username\"] != session.get(\"username\"):\n        flash(\"본인이 작성한 댓글만 삭제할 수 있습니다.\")\n        return redirect(url_for(\"board.board_detail\", post_id=post_id))\n\n    db.delete_comment(comment_id)\n    return redirect(url_for(\"board.board_detail\", post_id=post_id))", "alias": null}, "db/board.py:get_comment": {"path": "db/board.py", "start": 85, "end": 92, "lang": "python", "code": "def get_comment(comment_id: int) -> dict | None:\n    \"\"\"댓글 번호(id)로 댓글 한 건을 찾는다. 없으면 None을 돌려준다.\n\n    댓글 삭제 라우트(routes/board.py의 board_comment_delete)가 \"이 댓글이 정말 본인\n    것인지\" 확인할 때 쓴다 — get_post()와 대칭되는 함수.\n    \"\"\"\n    res = db.get_client().table(\"comments\").select(\"*\").eq(\"id\", comment_id).limit(1).execute()\n    return res.data[0] if res.data else None", "alias": {"call": "db.get_comment()", "via": "db/__init__.py", "real": "db/board.py"}}, "db/board.py:delete_comment": {"path": "db/board.py", "start": 108, "end": 114, "lang": "python", "code": "def delete_comment(comment_id: int) -> bool:\n    \"\"\"댓글을 하나 삭제한다.\n\n    반환값: 실제로 삭제된 행이 있었으면 True, 애초에 그런 id가 없었으면 False.\n    \"\"\"\n    res = db.get_client().table(\"comments\").delete().eq(\"id\", comment_id).execute()\n    return len(res.data) > 0", "alias": {"call": "db.delete_comment()", "via": "db/__init__.py", "real": "db/board.py"}}, "public/js/board.js:39-53": {"path": "public/js/board.js", "start": 39, "end": 53, "lang": "js", "code": "async function checkForNewComments() {\n    const response = await fetch(`/api/board/${boardPostId}/comments/latest`);\n    if (!response.ok) {\n        // 401(세션 만료) 등은 조용히 무시한다 — 이 배너는 부가 기능이라\n        // 실패했다고 화면 전체가 멈추면 안 된다(notify/alert.py의 \"부가 기능 실패가\n        // 핵심 기능을 막으면 안 된다\" 원칙과 동일).\n        return;\n    }\n    const data = await response.json();\n    const latestAt = data.latest_at || \"\";\n\n    if (data.count !== knownCommentCount || latestAt !== knownLatestAt) {\n        document.getElementById(\"new-comment-banner\").hidden = false;\n    }\n}", "alias": null}, "public/js/polling.js:26-75": {"path": "public/js/polling.js", "start": 26, "end": 75, "lang": "js", "code": "export function startPolling(task, intervalMs, { immediate = true } = {}) {\n    let timer = null;\n    let running = false;\n\n    function schedule() {\n        if (timer === null && !running && !document.hidden) {\n            timer = setTimeout(run, intervalMs);\n        }\n    }\n\n    function cancel() {\n        if (timer !== null) {\n            clearTimeout(timer);\n            timer = null;\n        }\n    }\n\n    async function run() {\n        timer = null;\n        if (running || document.hidden) {\n            return;\n        }\n        running = true;\n        try {\n            await task();\n        } catch (error) {\n            console.error(\"[polling] 갱신 실패:\", error);\n        } finally {\n            running = false;\n        }\n        schedule(); // 끝난 시점에 탭이 숨겨져 있으면 예약하지 않는다(돌아올 때 다시 시작)\n    }\n\n    document.addEventListener(\"visibilitychange\", () => {\n        if (document.hidden) {\n            cancel();\n        } else {\n            // 돌아오면 다음 주기를 기다리지 않고 바로 갱신한다. 요청이 진행 중이면 그게\n            // 끝난 뒤 schedule()이 이어서 예약한다.\n            cancel();\n            run();\n        }\n    });\n\n    if (immediate) {\n        run();\n    } else {\n        schedule();\n    }\n}", "alias": null}, "routes/board.py:api_board_comments_latest": {"path": "routes/board.py", "start": 264, "end": 272, "lang": "python", "code": "@board_bp.route(\"/api/board/<int:post_id>/comments/latest\", methods=[\"GET\"])\n@member_login_required\ndef api_board_comments_latest(post_id):\n    \"\"\"board.js가 짧은 주기(config.BOARD_COMMENT_POLL_MS, 기본 5초 — 탭이 보일 때만, guide45)로\n    폴링하는 API. 댓글 개수/최신 시각만 가볍게\n    돌려준다 — 표 전체를 다시 그리는 관리자 대시보드(/api/status)와 달리,\n    \"값이 바뀌었으니 배너를 띄워라\"는 신호로만 쓰인다(결정 #6).\n    \"\"\"\n    return jsonify(db.get_latest_comment_info(post_id))", "alias": null}, "db/board.py:get_latest_comment_info": {"path": "db/board.py", "start": 117, "end": 135, "lang": "python", "code": "def get_latest_comment_info(post_id: int) -> dict:\n    \"\"\"이 글에 지금까지 달린 댓글 개수와, 가장 최근 댓글이 달린 시각을 돌려준다.\n\n    board.js의 \"새로운 댓글이 추가되었습니다\" 배너가 정해진 주기(config.BOARD_COMMENT_POLL_MS,\n    기본 5초)마다 이 함수를 통해\n    받은 값을 페이지 로드 시점 값과 비교한다 — 값이 달라졌을 때만 배너를\n    띄우면 되므로, 댓글 내용 전체가 아니라 이 두 값만 가볍게 돌려준다.\n    \"\"\"\n    res = (\n        db.get_client()\n        .table(\"comments\")\n        .select(\"id, created_at\", count=\"exact\")\n        .eq(\"post_id\", post_id)\n        .order(\"created_at\", desc=True)\n        .limit(1)\n        .execute()\n    )\n    latest_at = res.data[0][\"created_at\"] if res.data else None\n    return {\"count\": res.count or 0, \"latest_at\": latest_at}", "alias": {"call": "db.get_latest_comment_info()", "via": "db/__init__.py", "real": "db/board.py"}}}, "files": {"routes/board.py": {"role": "게시판(/board …) 화면과 글·댓글 처리의 입구 파일. 모든 화면이 회원 문지기로 보호된다.", "header": "routes/board.py — 게시판 (/board) — 전부 member_login_required로 보호됨 (회원 전용, 결정 #1)\nlogin_required/member_login_required는 \"로그인 여부\"만 확인하고 \"이 글/댓글이\n내 것인지\"는 확인하지 않으므로, 수정/삭제 라우트마다 _is_post_owner() 등으로\n직접 소유권을 검사한다 — 관리자는 routes/admin/manage.py의 /api/board/*/delete를 통해\n별도로 전체 글/댓글을 삭제할 수 있다(docs/board-comment/plan_board.md 5-3절 참고).\n원래 app.py의 \"게시판\" 섹션을 그대로 옮겨왔다. 배경은\ndocs/refactor/2026-09-15-file-split.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/routes/board.py"}, "helpers/request_utils.py": {"role": "요청에서 IP를 알아내고 봇 함정(허니팟)을 확인하는 공용 도구.", "header": "helpers/request_utils.py — 요청 정보(IP, 허니팟) 읽기와 화면용 작은 변환 함수\n예전 helpers.py(314줄)를 기능 묶음별로 나눈 조각 중 하나다. 다른 파일은 이 파일을 직접\n가리키지 않고 예전처럼 `from helpers import ...`로 가져다 쓴다(helpers/__init__.py가\n재내보내기). 배경은 docs/refactor/2026-10-09-module-plan.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/helpers/request_utils.py"}, "security/soar/observe.py": {"role": "security/soar/observe.py — 잠그지 않고 관찰만 하는 조치(알림 + 이벤트 기록)와 요청 거부 기록 예전 soar.py(497줄)를 기능 묶음별로 나눈 조각 중 하나다. 다른 파일은 이 파일을 직접 가리키지 않고 예전처럼 `from security import soa", "header": "security/soar/observe.py — 잠그지 않고 관찰만 하는 조치(알림 + 이벤트 기록)와 요청 거부 기록\n예전 soar.py(497줄)를 기능 묶음별로 나눈 조각 중 하나다. 다른 파일은 이 파일을 직접\n가리키지 않고 예전처럼 `from security import soar` 후 `soar.enforce_lockout(...)`으로\n쓴다(security/soar/__init__.py가 재내보내기). 배경은 docs/refactor/2026-10-09-module-plan.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/security/soar/observe.py"}, "security/detector.py": {"role": "'수상한가?'를 판정만 하는 판사 역할 파일. (5·6단원)", "header": "security/detector.py — \"판사\" 역할: 지금 이 IP가 수상한지, 지금 잠겨있는지만 판단한다\n이 파일은 데이터베이스의 상태를 절대 바꾸지 않는다(아무것도 저장/수정/삭제하지 않음).\n오직 db에게 \"지금 상태가 어때?\"라고 물어보고, 그 답을 바탕으로\nTrue/False 같은 \"판정 결과\"만 돌려준다.\n실제로 잠그거나 알림을 보내는 \"실행\"은 이 파일이 아니라 security/soar/가 담당한다\n(판단과 실행을 분리해두면, \"판단 기준만 바꾸고 싶다\" 같은 수정이 훨씬 쉬워진다).", "github": "https://github.com/dyj02056/login-watchdog/blob/main/security/detector.py"}, "db/board.py": {"role": "게시글·댓글을 저장·조회하고, 글쓰기 도배 방지용 시도 기록을 다루는 저장소 파일.", "header": "db/board.py — posts / comments / post_attempts / comment_attempts 표 관련 함수\n— 게시판 글·댓글과, 그 도배(스팸) 방지용 요청 빈도 제한 로그\n(docs/board-comment/plan_board.md 참고)\n— login_attempts와 동일한 관례로 users와 FK를 걸지 않고 author_username을\n텍스트로만 저장한다 (회원 탈퇴 후에도 글은 흔적만 남기고 유지, 결정 #4).\ndb.get_client() 호출 이유는 db/attempts.py 상단 설명 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/db/board.py"}, "public/js/board.js": {"role": "게시글 상세 화면의 '새 댓글' 알림 배너와 삭제 확인창을 담당하는 브라우저 쪽 코드.", "header": "", "github": "https://github.com/dyj02056/login-watchdog/blob/main/public/js/board.js"}, "public/js/polling.js": {"role": "탭이 보일 때만 일정 주기로 확인을 반복하는 공용 폴링 부품. (27단원)", "header": "", "github": "https://github.com/dyj02056/login-watchdog/blob/main/public/js/polling.js"}}}</script>
+<script>
+(function(){
+  "use strict";
+  var D = JSON.parse(document.getElementById("data").textContent);
+  var $ = function(id){ return document.getElementById(id); };
+  var KIND_LABEL = {screen:"화면 · 도착지", route:"routes", helper:"판단", db:"db", config:"설정값", later:"다른 단원"};
+
+  var state = { sc: 0, node: null, item: 0, file: null };
+
+  function el(tag, attrs, kids){
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function(k){
+      if (k === "class") e.className = attrs[k];
+      else if (k === "text") e.textContent = attrs[k];
+      else if (k.slice(0,2) === "on") e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    });
+    (kids || []).forEach(function(c){ if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function brk(t){ return t.replace(/([\/._])/g, "$1\u200b"); }
+  function scen(){ return D.scenarios[state.sc]; }
+  function nodeById(id){ return scen().nodes.filter(function(n){ return n.id === id; })[0]; }
+  function fnName(label){ return label; }
+
+  /* ---------- 간단 문법 강조 ---------- */
+  var PY = /(#[^\n]*)|("""[\s\S]*?"""|'''[\s\S]*?''')|([rbfRBF]{0,2}"(?:\\.|[^"\\\n])*"|[rbfRBF]{0,2}'(?:\\.|[^'\\\n])*')|\b(def|class|return|if|elif|else|for|while|import|from|as|try|except|finally|with|in|not|and|or|is|None|True|False|raise|pass|lambda|yield|global|nonlocal|assert|del|continue|break)\b|(@[A-Za-z_][\w.]*)|\b(\d+(?:\.\d+)?)\b|\b([A-Za-z_]\w*)(?=\()/g;
+  var PYC = [null,"t-c","t-d","t-s","t-k","t-a","t-n","t-f"];
+  var HT = /(<!--[\s\S]*?-->)|(\{[{%#][\s\S]*?[}%#]\})|(<\/?[A-Za-z][\w-]*)|("[^"\n]*")|(\/?>)/g;
+  var HTC = [null,"t-c","t-a","t-k","t-s","t-k"];
+  var JS = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(`(?:\\.|[^`\\])*`)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|\b(const|let|var|function|return|if|else|for|while|import|from|export|default|async|await|try|catch|finally|new|class|extends|typeof|interface|type|null|undefined|true|false|throw|switch|case|break|continue|of|in|as)\b|(@[A-Za-z_]\w*)|\b(\d+(?:\.\d+)?)\b|\b([A-Za-z_$][\w$]*)(?=\()/g;
+  var JSC = [null,"t-c","t-s","t-s","t-k","t-a","t-n","t-f"];
+  var SQ = /(--[^\n]*|\/\*[\s\S]*?\*\/)|((?!))|('(?:''|[^'])*')|\b(select|from|where|insert|into|values|update|set|delete|create|table|index|alter|add|drop|on|conflict|do|nothing|and|or|not|null|default|primary|key|references|cascade|if|exists|as|order|by|group|limit|desc|asc|join|left|inner|count|returns|function|language|begin|end|return|with|union|all|distinct|in|is|true|false|unique|check|constraint|timestamptz|text|integer|bigint|boolean|interval|now|replace|trigger|view|policy|enable|row|level|security|using)\b|((?!))|\b(\d+(?:\.\d+)?)\b|\b([a-z_]\w*)(?=\()/gi;
+  var SQC = [null,"t-c",null,"t-s","t-k",null,"t-n","t-f"];
+  var SH = /(#[^\n]*)|((?!))|("(?:\\.|[^"\\\n])*"|'[^'\n]*')|\b(if|then|else|fi|for|do|done|while|case|esac|function|echo|export|python|pip|git|cd|run|name|on|jobs|steps|uses|with|env)\b|((?!))|\b(\d+)\b/g;
+  var SHC = [null,"t-c",null,"t-s","t-k",null,"t-n"];
+  function tokenize(code, lang){
+    var re = PY, cls = PYC;
+    if (lang === "html"){ re = HT; cls = HTC; }
+    else if (lang === "js"){ re = JS; cls = JSC; }
+    else if (lang === "sql"){ re = SQ; cls = SQC; }
+    else if (lang === "sh"){ re = SH; cls = SHC; }
+    var lines = [[]];
+    function push(text, c){
+      var parts = text.split("\n");
+      parts.forEach(function(p, i){
+        if (i > 0) lines.push([]);
+        if (p) lines[lines.length-1].push([p, c]);
+      });
+    }
+    var last = 0, m;
+    re.lastIndex = 0;
+    while ((m = re.exec(code)) !== null){
+      if (m.index > last) push(code.slice(last, m.index), null);
+      var idx = 1; while (idx < m.length && m[idx] === undefined) idx++;
+      push(m[0], cls[idx] || null);
+      last = m.index + m[0].length;
+      if (m[0].length === 0) re.lastIndex++;
+    }
+    if (last < code.length) push(code.slice(last), null);
+    return lines;
+  }
+
+  function codeTable(block, hl){
+    var lines = tokenize(block.code, block.lang);
+    var tbody = el("tbody");
+    var hlFirst = null;
+    lines.forEach(function(segs, i){
+      var no = block.start + i;
+      var on = hl && no >= hl[0] && no <= hl[1];
+      var td = el("td", {class:"tx"});
+      segs.forEach(function(s){ td.appendChild(s[1] ? el("span", {class:s[1], text:s[0]}) : document.createTextNode(s[0])); });
+      if (!segs.length) td.appendChild(document.createTextNode(" "));
+      var tr = el("tr", on ? {class:"hl"} : null, [el("td", {class:"ln", text:String(no)}), td]);
+      if (on && !hlFirst) hlFirst = tr;
+      tbody.appendChild(tr);
+    });
+    var box = el("div", {class:"codebox"}, [el("table", {class:"code"}, [tbody])]);
+    box._hlFirst = hlFirst;
+    return box;
+  }
+
+  function copyText(text, btn){
+    var done = function(){ var o = btn.textContent; btn.textContent = "복사됨 ✓"; setTimeout(function(){ btn.textContent = o; }, 1200); };
+    try { navigator.clipboard.writeText(text).then(done, fallback); } catch(e){ fallback(); }
+    function fallback(){
+      var ta = el("textarea", {style:"position:fixed;opacity:0"}); ta.value = text; document.body.appendChild(ta);
+      ta.select(); try { document.execCommand("copy"); done(); } catch(e){} document.body.removeChild(ta);
+    }
+  }
+
+  /* ---------- 패널 ---------- */
+  function openPanel(){ document.body.classList.add("open"); }
+  function closePanel(){ document.body.classList.remove("open"); }
+
+  function showHint(){
+    $("pTitle").textContent = "코드 보는 법";
+    $("pSub").textContent = "카드나 파일 이름을 누르면 실제 코드가 여기에 열립니다.";
+    var ul = el("ul", {class:"hint"}, [
+      el("li", {text:"카드(상자)를 누르면 그 단계에서 실행되는 실제 함수 코드가 열려요."}),
+      el("li", {text:"카드 안의 📄 파일 이름을 누르면 그 파일이 어떤 역할인지, 이 단원에서 쓰이는 함수가 무엇인지 보여줘요."}),
+      el("li", {text:"ƒ 함수 이름을 누르면 해당 함수 코드로 바로 이동해요."}),
+      el("li", {text:"노란색 줄이 지금 단계가 담당하는 부분이에요."}),
+      el("li", {text:"db.함수() 처럼 적혀 있어도 실제 코드는 db/users.py 같은 다른 파일에 있어요. 카드에 그 '진짜 파일'을 표시하고, 코드 위에 찾아가는 길도 그려줘요."}),
+      el("li", {text:"위쪽 ◀ ▶ 버튼으로 실행 순서대로 한 단계씩 따라갈 수 있어요."})
+    ]);
+    var b = $("pBody"); b.textContent = ""; b.appendChild(ul);
+  }
+
+  function renderAlias(a){
+    if (!a) return null;
+    return el("div", {class:"alias"}, [
+      el("div", {text:"코드에는 이렇게 적혀 있지만, 실제 함수는 다른 파일에 있어요."}),
+      el("div", {class:"route"}, [
+        el("span", {class:"step", text:a.call}), el("span", {class:"arrow", text:"→"}),
+        el("span", {class:"step", text:a.via + " (창구)"}), el("span", {class:"arrow", text:"→"}),
+        el("span", {class:"step real", text:a.real})
+      ])
+    ]);
+  }
+
+  function selectNode(id, itemIdx){
+    var n = nodeById(id); if (!n) return;
+    state.node = id; state.item = itemIdx || 0; state.file = null;
+    $("pTitle").textContent = n.title;
+    $("pSub").textContent = n.plain;
+    var body = $("pBody"); body.textContent = "";
+    if (n.reject) body.appendChild(el("div", {class:"n-reject", text:n.reject, style:"margin:0 0 10px"}));
+    if (n.items.length > 1){
+      var tabs = el("div", {class:"itabs", role:"tablist"});
+      n.items.forEach(function(it, i){
+        tabs.appendChild(el("button", {class:"itab", role:"tab", "aria-selected":String(i === state.item), text:it.label,
+          onclick:function(){ selectNode(id, i); }}));
+      });
+      body.appendChild(tabs);
+    }
+    var it = n.items[state.item];
+    var block = D.blocks[it.block];
+    var linesTxt = it.hl ? (it.hl[0] === it.hl[1] ? it.hl[0] + "줄" : it.hl[0] + "–" + it.hl[1] + "줄") : "";
+    var fl = el("div", {class:"fileline"}, [
+      el("button", {class:"chip file", onclick:function(){ selectFile(block.path); }, text:block.path}),
+      el("span", {class:"lines", text: block.start + "–" + block.end + "줄 표시" + (linesTxt ? " · 노란색 " + linesTxt : "")}),
+      el("span", {class:"spacer"}),
+      el("button", {class:"btn", text:"복사", onclick:function(e){ copyText(block.code, e.currentTarget); }}),
+      el("a", {class:"btn link", href:D.files[block.path].github + "#L" + block.start + "-L" + block.end, target:"_blank", rel:"noopener", text:"GitHub ↗"})
+    ]);
+    body.appendChild(fl);
+    var al = renderAlias(block.alias); if (al) body.appendChild(al);
+    var box = codeTable(block, it.hl);
+    body.appendChild(box);
+    if (it.hl) body.appendChild(el("p", {class:"legend-hl"}, [el("b", {text:"노란색"}), " = 이 카드가 담당하는 줄"]));
+    refreshSelection();
+    openPanel();
+    if (box._hlFirst){
+      var off = box._hlFirst.offsetTop - 60;
+      box.scrollTop = Math.max(0, off);
+    }
+    updateStepper();
+  }
+
+  function selectFile(path){
+    state.file = path; state.node = null;
+    var f = D.files[path];
+    $("pTitle").textContent = "📄 " + path;
+    $("pSub").textContent = f.role;
+    var body = $("pBody"); body.textContent = "";
+    body.appendChild(el("div", {class:"fileline"}, [
+      el("a", {class:"btn link", href:f.github, target:"_blank", rel:"noopener", text:"GitHub에서 파일 열기 ↗"})
+    ]));
+    body.appendChild(el("h3", {text:"이 단원에서 쓰이는 함수", style:"font-size:13.5px;margin:12px 0 0"}));
+    var ul = el("ul", {class:"flist"}), seen = {};
+    D.scenarios.forEach(function(sc, si){
+      sc.nodes.forEach(function(n){
+        n.items.forEach(function(it, ii){
+          var b = D.blocks[it.block]; if (b.path !== path) return;
+          var key = si + n.id + ii; if (seen[key]) return; seen[key] = 1;
+          var li = el("li");
+          li.appendChild(el("button", {onclick:function(){
+            if (state.sc !== si) switchScenario(si);
+            selectNode(n.id, ii); scrollToNode(n.id);
+          }}, [
+            el("span", {class:"mono", text:it.label}), el("small", {text:sc.name + " · " + n.title})
+          ]));
+          ul.appendChild(li);
+        });
+      });
+    });
+    body.appendChild(ul);
+    if (f.header){
+      var d = el("details", {class:"hdr"}, [el("summary", {text:"파일 맨 위 설명 주석 보기"}), el("pre", {text:f.header})]);
+      body.appendChild(d);
+    }
+    refreshSelection();
+    openPanel();
+  }
+
+  /* ---------- 흐름도 ---------- */
+  var cols, colIndex, nodeEls = {};
+  function renderStage(){
+    var sc = scen();
+    var used = {}; sc.nodes.forEach(function(n){ used[n.col] = 1; });
+    cols = Object.keys(used).map(Number).sort(function(a,b){ return a-b; });
+    colIndex = {}; cols.forEach(function(c, i){ colIndex[c] = i + 1; });
+    var stage = $("stage");
+    stage.textContent = "";
+    stage.style.gridTemplateColumns = "repeat(" + cols.length + ", 196px)";
+    nodeEls = {};
+
+    var svgNS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("class", "edges"); svg.id = "edges";
+    svg.innerHTML = '<defs>' +
+      '<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head" d="M0 0L10 5L0 10z" style="stroke:none"/></marker>' +
+      '<marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head-call" d="M0 0L10 5L0 10z" style="stroke:none"/></marker>' +
+      '</defs>';
+    stage.appendChild(svg);
+
+    cols.forEach(function(c){
+      stage.appendChild(el("div", {class:"colhead", style:"grid-column:" + colIndex[c] + ";grid-row:1", text:D.columns[c]}));
+    });
+    var cells = {};
+    sc.nodes.forEach(function(n){
+      var k = n.row + ":" + n.col;
+      if (!cells[k]){
+        cells[k] = el("div", {class:"cell", style:"grid-column:" + colIndex[n.col] + ";grid-row:" + (n.row + 2)});
+        stage.appendChild(cells[k]);
+      }
+      var node = buildNode(n);
+      nodeEls[n.id] = node;
+      cells[k].appendChild(node);
+    });
+    $("intro").textContent = sc.intro;
+    scheduleEdges();
+  }
+
+  function buildNode(n){
+    var node = el("div", {class:"node " + n.kind, role:"button", tabindex:"0", "aria-pressed":"false", "data-id":n.id,
+      onclick:function(e){ if (e.target.closest(".chip")) return; selectNode(n.id, 0); },
+      onkeydown:function(e){ if ((e.key === "Enter" || e.key === " ") && !e.target.closest(".chip")){ e.preventDefault(); selectNode(n.id, 0); } }});
+    var title = el("div", {class:"n-title", text:n.title});
+    if (n.later) title.appendChild(el("span", {class:"tag-later", text:n.later + "에서 자세히"}));
+    node.appendChild(title);
+    if (n.kind !== "later" && n.plain) node.appendChild(el("div", {class:"n-plain", text:n.plain}));
+    if (n.reject) node.appendChild(el("div", {class:"n-reject", text:n.reject}));
+    var items = el("div", {class:"n-items"});
+    n.items.forEach(function(it, i){
+      var b = D.blocks[it.block];
+      var row = el("div", {class:"n-item"});
+      if (it.call) row.appendChild(el("div", {class:"n-call", text:brk(it.call)}));
+      var chips = el("div", {class:"chips"}, [
+        el("button", {class:"chip file", text:brk(b.path), title:"파일 설명 보기", onclick:function(){ selectFile(b.path); }}),
+        el("button", {class:"chip " + (it.snippet ? "snip" : "fn"), text:it.label, title:"코드 보기", onclick:function(){ selectNode(n.id, i); }})
+      ]);
+      row.appendChild(chips);
+      items.appendChild(row);
+    });
+    node.appendChild(items);
+    return node;
+  }
+
+  function rectIn(elm, host){
+    var a = elm.getBoundingClientRect(), h = host.getBoundingClientRect();
+    return {l:a.left-h.left, r:a.right-h.left, t:a.top-h.top, b:a.bottom-h.top, cx:(a.left+a.right)/2-h.left, cy:(a.top+a.bottom)/2-h.top};
+  }
+  var raf = 0;
+  function scheduleEdges(){ cancelAnimationFrame(raf); raf = requestAnimationFrame(drawEdges); }
+  function drawEdges(){
+    var stage = $("stage"), svg = $("edges"), sc = scen();
+    Array.prototype.slice.call(svg.querySelectorAll("path.e")).forEach(function(p){ p.remove(); });
+    Array.prototype.slice.call(stage.querySelectorAll(".elabel")).forEach(function(p){ p.remove(); });
+    var svgNS = "http://www.w3.org/2000/svg";
+    sc.edges.forEach(function(e){
+      var a = nodeById(e.from), b = nodeById(e.to);
+      var ea = nodeEls[e.from], eb = nodeEls[e.to]; if (!ea || !eb) return;
+      var ra = rectIn(ea, stage), rb = rectIn(eb, stage), d, lx, ly;
+      if (a.col === b.col){
+        if (b.row - a.row <= 1){
+          d = "M" + ra.cx + " " + ra.b + " V" + rb.t; lx = ra.cx; ly = (ra.b + rb.t) / 2;
+        } else {
+          var x = Math.min(ra.l, rb.l) - 30;
+          d = "M" + ra.l + " " + ra.cy + " H" + x + " V" + rb.cy + " H" + rb.l; lx = x; ly = (ra.cy + rb.cy) / 2;
+        }
+      } else {
+        var dir = b.col > a.col ? 1 : -1;
+        var x1 = dir > 0 ? ra.r : ra.l, x2 = dir > 0 ? rb.l : rb.r;
+        var xm = x2 - dir * 30;
+        d = "M" + x1 + " " + ra.cy + " H" + xm + " V" + rb.cy + " H" + x2;
+        lx = (x1 + x2) / 2; ly = ra.cy;
+      }
+      var kind = e.kind === "call" ? "call" : "flow";
+      var p = document.createElementNS(svgNS, "path");
+      p.setAttribute("d", d); p.setAttribute("class", "e " + kind);
+      p.setAttribute("marker-end", "url(#" + (kind === "call" ? "ahc" : "ah") + ")");
+      p.setAttribute("data-from", e.from); p.setAttribute("data-to", e.to);
+      svg.appendChild(p);
+      if (e.label && kind === "flow"){
+        var lab = el("span", {class:"elabel", text:e.label});
+        lab.style.left = lx + "px"; lab.style.top = ly + "px";
+        stage.appendChild(lab);
+      }
+    });
+    svg.setAttribute("width", stage.scrollWidth); svg.setAttribute("height", stage.scrollHeight);
+    refreshSelection();
+  }
+
+  function refreshSelection(){
+    Object.keys(nodeEls).forEach(function(id){ nodeEls[id].setAttribute("aria-pressed", String(id === state.node)); });
+    var svg = $("edges"); if (!svg) return;
+    Array.prototype.slice.call(svg.querySelectorAll("path.e")).forEach(function(p){
+      var on = state.node && (p.getAttribute("data-from") === state.node || p.getAttribute("data-to") === state.node);
+      p.classList.toggle("active", !!on);
+    });
+  }
+  function scrollToNode(id){
+    var n = nodeEls[id]; if (n && n.scrollIntoView) n.scrollIntoView({block:"center", inline:"center", behavior:"smooth"});
+  }
+
+  /* ---------- 단계 이동 / 탭 ---------- */
+  function stepIndex(){ return scen().steps.indexOf(state.node); }
+  function updateStepper(){
+    var steps = scen().steps, i = stepIndex();
+    $("stepNo").textContent = i < 0 ? "– / " + steps.length : (i + 1) + " / " + steps.length;
+    $("prev").disabled = i <= 0 && state.node !== null ? true : false;
+    $("next").disabled = i >= steps.length - 1;
+    if (state.node === null){ $("prev").disabled = true; $("next").disabled = false; }
+  }
+  function go(delta){
+    var steps = scen().steps, i = stepIndex();
+    var j = i < 0 ? 0 : Math.max(0, Math.min(steps.length - 1, i + delta));
+    selectNode(steps[j], 0); scrollToNode(steps[j]);
+  }
+  function renderTabs(){
+    var t = $("tabs"); t.textContent = "";
+    D.scenarios.forEach(function(sc, i){
+      t.appendChild(el("button", {class:"tab", role:"tab", "aria-selected":String(i === state.sc), text:sc.name, onclick:function(){ switchScenario(i); }}));
+    });
+  }
+  function switchScenario(i){
+    state.sc = i; state.node = null; state.file = null;
+    renderTabs(); renderStage(); showHint(); updateStepper();
+    try { history.replaceState(null, "", "#" + D.scenarios[i].id); } catch(e){}
+  }
+
+  /* ---------- 시작 ---------- */
+  document.title = D.title + " — 코드 흐름도";
+  $("title").textContent = D.title + " · 코드 흐름도";
+  $("subtitle").textContent = D.subtitle;
+  $("mdlink").setAttribute("href", D.mdFile);
+  $("prev").addEventListener("click", function(){ go(-1); });
+  $("next").addEventListener("click", function(){ go(1); });
+  $("pClose").addEventListener("click", closePanel);
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape") closePanel(); });
+  $("theme").addEventListener("click", function(){
+    var r = document.documentElement, cur = r.getAttribute("data-theme");
+    var dark = cur ? cur === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    r.setAttribute("data-theme", dark ? "light" : "dark");
+  });
+  window.addEventListener("resize", scheduleEdges);
+  if (window.ResizeObserver) new ResizeObserver(scheduleEdges).observe($("stage"));
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleEdges);
+
+  var startId = (location.hash || "").replace("#", "");
+  var startIdx = 0; D.scenarios.forEach(function(s, i){ if (s.id === startId) startIdx = i; });
+  switchScenario(startIdx);
+  // 화면 확인/테스트용 지름길: window.__flow.select("s7")
+  window.__flow = { select: function(id, i){ selectNode(id, i || 0); }, file: selectFile, state: state };
+})();
+</script>
+</body>
+</html>
