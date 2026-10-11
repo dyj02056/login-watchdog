@@ -76,6 +76,9 @@
   .btn:disabled{opacity:.4;cursor:default}
   .stepper{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-muted)}
   .stepper b{color:var(--ink);min-width:42px;text-align:center}
+  a.back{display:inline-block;margin-bottom:6px;border:1px solid var(--border);background:var(--surface);border-radius:8px;
+    padding:4px 11px;font-size:13px;font-weight:600;color:var(--accent);text-decoration:none}
+  a.back:hover,a.back:focus-visible{border-color:var(--accent);background:var(--accent-soft);outline:none}
   a.link{color:var(--accent);text-decoration:none;font-size:13px}
   a.link:hover{text-decoration:underline}
 
@@ -189,6 +192,7 @@
 <div class="app">
   <div class="main">
     <header class="top">
+      <a class="back" href="index.html" title="32개 단원 목차로 돌아가기">← 목차로</a>
       <h1 id="title"></h1>
       <p class="sub" id="subtitle"></p>
       <div class="top-row">
