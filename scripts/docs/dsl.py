@@ -74,8 +74,9 @@ def later(ref=None, title="", plain="", chapter="", **kw) -> dict:
 
 
 class Scenario:
-    def __init__(self, sid: str, name: str, intro: str):
-        self.sid, self.name, self.intro = sid, name, intro
+    def __init__(self, sid: str, name: str, intro: str, chain: bool = True):
+        """chain=False 면 단계 카드 사이에 순서 화살표를 그리지 않는다(순서가 아닌 '지도'형 화면용)."""
+        self.sid, self.name, self.intro, self.chain = sid, name, intro, chain
         self.nodes: list[dict] = []
         self.edges: list[tuple] = []
         self.steps: list[str] = []
@@ -130,7 +131,7 @@ class Scenario:
         row = self.row
         nid = self._add(kind, title, plain, its, row, reject=reject, col=col if col is not None else (1 if kind in ("route", "helper", "later") else None))
         self.steps.append(nid)
-        if self.prev:
+        if self.prev and self.chain:
             self.edges.append((self.prev, nid, edge_label or getattr(self, "_pending_label", "")))
         self._pending_label = ""
         self.prev = nid

@@ -46,6 +46,13 @@ ALIASES: dict[str, tuple[str, bool]] = {
 }
 
 
+# 여러 단원에서 반복해 등장하는 파일의 기본 설명 — 단원 명세의 FILE_ROLES 가 있으면 그쪽이 우선한다.
+DEFAULT_ROLES = {
+    "config.py": "임계값·시간 창·잠금 시간·규칙값 등 프로젝트 공용 설정값을 한 곳에 모은 파일.",
+    "app.py": "Flask 앱을 만들고 화면(Blueprint)·훅·보안 설정을 조립하는 시작 파일.",
+}
+
+
 class SpecError(Exception):
     pass
 
@@ -252,7 +259,7 @@ def build_chapter(spec) -> tuple[dict, str]:
     files = {}
     for path in b.used_files:
         files[path] = {
-            "role": getattr(spec, "FILE_ROLES", {}).get(path, ""),
+            "role": {**DEFAULT_ROLES, **getattr(spec, "FILE_ROLES", {})}.get(path, ""),
             "header": header_comment(path),
             "github": GITHUB_BLOB + path,
         }

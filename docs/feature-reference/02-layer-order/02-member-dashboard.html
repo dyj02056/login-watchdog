@@ -456,14 +456,22 @@
     if (n.kind !== "later" && n.plain) node.appendChild(el("div", {class:"n-plain", text:n.plain}));
     if (n.reject) node.appendChild(el("div", {class:"n-reject", text:n.reject}));
     var items = el("div", {class:"n-items"});
+    // 같은 파일에 있는 함수는 파일 칩 하나 아래에 함수 칩을 나란히 놓는다
+    var groups = [];
     n.items.forEach(function(it, i){
-      var b = D.blocks[it.block];
+      var b = D.blocks[it.block], g = groups[groups.length - 1];
+      if (g && g.path === b.path) g.list.push({it: it, i: i}); else groups.push({path: b.path, list: [{it: it, i: i}]});
+    });
+    groups.forEach(function(g){
       var row = el("div", {class:"n-item"});
-      if (it.call) row.appendChild(el("div", {class:"n-call", text:brk(it.call)}));
+      if (g.list.length === 1 && g.list[0].it.call) row.appendChild(el("div", {class:"n-call", text:brk(g.list[0].it.call)}));
       var chips = el("div", {class:"chips"}, [
-        el("button", {class:"chip file", text:brk(b.path), title:"파일 설명 보기", onclick:function(){ selectFile(b.path); }}),
-        el("button", {class:"chip " + (it.snippet ? "snip" : "fn"), text:it.label, title:"코드 보기", onclick:function(){ selectNode(n.id, i); }})
+        el("button", {class:"chip file", text:brk(g.path), title:"파일 설명 보기", onclick:function(){ selectFile(g.path); }})
       ]);
+      g.list.forEach(function(x){
+        chips.appendChild(el("button", {class:"chip " + (x.it.snippet ? "snip" : "fn"), text:x.it.label, title:(x.it.call ? x.it.call + " — " : "") + "코드 보기",
+          onclick:function(){ selectNode(n.id, x.i); }}));
+      });
       row.appendChild(chips);
       items.appendChild(row);
     });
