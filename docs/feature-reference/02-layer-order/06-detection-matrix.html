@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>6. 공격 유형별 탐지 매트릭스 — 코드 흐름도</title>
+<style>
+  :root{
+    --bg:#f4f6f3; --surface:#ffffff; --surface-2:#eaefe9; --ink:#12201c; --ink-muted:#5a6b63;
+    --border:#d9e0da; --accent:#0f6f66; --accent-soft:#e2ede9; --danger:#bf3b2b; --danger-soft:#f8e6e2;
+    --edge:#7b8a82; --edge-call:#8a97a0;
+    --k-screen:#767f78; --k-screen-soft:#eef0ee;
+    --k-route:#2f5fd6;  --k-route-soft:#e7edfb;
+    --k-helper:#b56b0c; --k-helper-soft:#f7ecd9;
+    --k-db:#7a4fce;     --k-db-soft:#efe8fa;
+    --k-config:#0f6f66; --k-config-soft:#e2ede9;
+    --k-later:#9aa39d;  --k-later-soft:#f4f6f3;
+    --code-bg:#fbfcfb; --code-hl:#fff3c4; --code-hl-bar:#e0a800; --code-gutter:#8a978f;
+    --c-comment:#6b7d73; --c-str:#a1470f; --c-kw:#7a3fc0; --c-fn:#1f5fd0; --c-num:#0b7a6c; --c-deco:#b0306e;
+    --shadow:0 1px 2px rgba(18,32,28,.06), 0 6px 20px rgba(18,32,28,.07);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0d1512; --surface:#141e1a; --surface-2:#1b2620; --ink:#e7efe9; --ink-muted:#93a49c;
+      --border:#28352e; --accent:#4fc9b8; --accent-soft:#17332d; --danger:#ec7a6a; --danger-soft:#3a1d19;
+      --edge:#6f8178; --edge-call:#5d6f67;
+      --k-screen:#9aa39d; --k-screen-soft:#1a221e;
+      --k-route:#7fa2f2;  --k-route-soft:#182236;
+      --k-helper:#e8a94c; --k-helper-soft:#31260f;
+      --k-db:#b49bee;     --k-db-soft:#241c34;
+      --k-config:#4fc9b8; --k-config-soft:#17332d;
+      --k-later:#6b7a72;  --k-later-soft:#111a16;
+      --code-bg:#0f1713; --code-hl:#3a3210; --code-hl-bar:#e8a94c; --code-gutter:#5f7068;
+      --c-comment:#7f9388; --c-str:#e9a27a; --c-kw:#c3a1f5; --c-fn:#8db3ff; --c-num:#6fd6c6; --c-deco:#f08ab8;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d1512; --surface:#141e1a; --surface-2:#1b2620; --ink:#e7efe9; --ink-muted:#93a49c;
+    --border:#28352e; --accent:#4fc9b8; --accent-soft:#17332d; --danger:#ec7a6a; --danger-soft:#3a1d19;
+    --edge:#6f8178; --edge-call:#5d6f67;
+    --k-screen:#9aa39d; --k-screen-soft:#1a221e;
+    --k-route:#7fa2f2;  --k-route-soft:#182236;
+    --k-helper:#e8a94c; --k-helper-soft:#31260f;
+    --k-db:#b49bee;     --k-db-soft:#241c34;
+    --k-config:#4fc9b8; --k-config-soft:#17332d;
+    --k-later:#6b7a72;  --k-later-soft:#111a16;
+    --code-bg:#0f1713; --code-hl:#3a3210; --code-hl-bar:#e8a94c; --code-gutter:#5f7068;
+    --c-comment:#7f9388; --c-str:#e9a27a; --c-kw:#c3a1f5; --c-fn:#8db3ff; --c-num:#6fd6c6; --c-deco:#f08ab8;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.55}
+  button{font:inherit;color:inherit;cursor:pointer}
+  code,.mono{font-family:var(--mono)}
+
+  .app{display:flex;height:100vh;min-height:0}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .top{padding:14px 20px 10px;border-bottom:1px solid var(--border);background:var(--surface)}
+  .top h1{margin:0;font-size:19px;letter-spacing:-.01em}
+  .top .sub{margin:2px 0 0;color:var(--ink-muted);font-size:13px}
+  .top-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+  .tabs{display:flex;gap:6px}
+  .tab{border:1px solid var(--border);background:var(--surface-2);border-radius:999px;padding:5px 14px;font-weight:600}
+  .tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+  :root[data-theme="dark"] .tab[aria-selected="true"]{color:#06201b}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tab[aria-selected="true"]{color:#06201b}}
+  .spacer{flex:1}
+  .btn{border:1px solid var(--border);background:var(--surface);border-radius:8px;padding:5px 11px;font-size:13px}
+  .btn:hover{border-color:var(--accent)}
+  .btn:disabled{opacity:.4;cursor:default}
+  .stepper{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-muted)}
+  .stepper b{color:var(--ink);min-width:42px;text-align:center}
+  a.link{color:var(--accent);text-decoration:none;font-size:13px}
+  a.link:hover{text-decoration:underline}
+
+  .intro{margin:0;padding:10px 20px;color:var(--ink-muted);font-size:13px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px 20px;font-size:12px;color:var(--ink-muted);border-bottom:1px solid var(--border)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+  .stage-wrap{flex:1;min-height:0;overflow:auto}
+  .stage{position:relative;display:grid;gap:26px 46px;padding:22px 22px 60px;width:max-content;min-width:100%}
+  .edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+  .edges path{fill:none;stroke:var(--edge);stroke-width:1.6}
+  .edges path.call{stroke:var(--edge-call);stroke-dasharray:5 4}
+  .edges path.active{stroke:var(--accent);stroke-width:2.4;stroke-dasharray:none}
+  .edges .head{fill:var(--edge)}
+  .edges .head-call{fill:var(--edge-call)}
+  .elabel{position:absolute;transform:translate(-50%,-50%);font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;
+    background:var(--surface);border:1px solid var(--border);color:var(--ink-muted);white-space:nowrap;pointer-events:none}
+
+  .colhead{font-size:12px;font-weight:700;color:var(--ink-muted);text-transform:none;border-bottom:2px solid var(--border);padding-bottom:6px;align-self:end}
+  .cell{display:flex;flex-direction:column;gap:12px;align-self:center;justify-content:center;position:relative;z-index:1}
+
+  .node{--k:var(--k-route);--ks:var(--k-route-soft);position:relative;background:var(--surface);border:1px solid var(--border);
+    border-left:5px solid var(--k);border-radius:10px;padding:10px 12px;box-shadow:var(--shadow);cursor:pointer;
+    transition:transform .08s, border-color .12s}
+  .node:hover{transform:translateY(-1px);border-color:var(--k)}
+  .node:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .node[aria-pressed="true"]{outline:3px solid var(--accent);outline-offset:1px}
+  .node.screen{--k:var(--k-screen);--ks:var(--k-screen-soft)}
+  .node.route{--k:var(--k-route);--ks:var(--k-route-soft)}
+  .node.helper{--k:var(--k-helper);--ks:var(--k-helper-soft)}
+  .node.db{--k:var(--k-db);--ks:var(--k-db-soft)}
+  .node.config{--k:var(--k-config);--ks:var(--k-config-soft)}
+  .node.later{--k:var(--k-later);--ks:var(--k-later-soft);background:var(--k-later-soft);box-shadow:none;border-style:dashed;border-left-style:solid;padding:8px 10px}
+  .n-title{font-weight:700;font-size:13.5px;letter-spacing:-.01em}
+  .n-plain{margin-top:3px;color:var(--ink-muted);font-size:12.5px}
+  .n-reject{margin-top:6px;font-size:12px;color:var(--danger);background:var(--danger-soft);border-radius:6px;padding:3px 8px}
+  .n-reject::before{content:"막히면 → ";font-weight:700}
+  .n-items{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+  .n-item{display:flex;flex-direction:column;gap:3px}
+  .n-call{overflow-wrap:anywhere;font-family:var(--mono);font-size:11.5px;color:var(--k);font-weight:600}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{max-width:100%;text-align:left;overflow-wrap:anywhere;border:1px solid var(--border);background:var(--ks);color:var(--ink);border-radius:6px;padding:1px 7px;font-family:var(--mono);font-size:11px}
+  .chip:hover{border-color:var(--k);color:var(--k)}
+  .chip.file::before{content:"📄 "}
+  .chip.fn::before{content:"ƒ ";color:var(--k);font-weight:700}
+  .chip.snip::before{content:"▤ ";color:var(--k);font-weight:700}
+  .tag-later{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:700;color:var(--ink-muted);border:1px solid var(--border);border-radius:999px;padding:0 7px;background:var(--surface)}
+
+  /* 코드 패널 */
+  .panel{width:440px;flex:none;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;min-height:0}
+  .p-head{padding:14px 16px 10px;border-bottom:1px solid var(--border)}
+  .p-head h2{margin:0;font-size:15.5px;letter-spacing:-.01em}
+  .p-head p{margin:4px 0 0;color:var(--ink-muted);font-size:13px}
+  .p-close{display:none}
+  .p-body{flex:1;min-height:0;overflow:auto;padding:12px 16px 24px}
+  .hint{color:var(--ink-muted);font-size:13px}
+  .hint li{margin:4px 0}
+  .itabs{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+  .itab{border:1px solid var(--border);background:var(--surface-2);border-radius:6px;padding:2px 9px;font-family:var(--mono);font-size:12px}
+  .itab[aria-selected="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700}
+  .fileline{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}
+  .fileline .path{font-family:var(--mono);font-size:12.5px;font-weight:700}
+  .fileline .lines{font-family:var(--mono);font-size:12px;color:var(--ink-muted)}
+  .alias{border:1px solid var(--border);background:var(--k-db-soft);border-radius:8px;padding:8px 10px;margin:0 0 10px;font-size:12.5px}
+  .alias .route{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:5px;font-family:var(--mono);font-size:12px}
+  .alias .route span.step{padding:1px 7px;border-radius:6px;border:1px solid var(--border);background:var(--surface)}
+  .alias .route span.real{border-color:var(--k-db);color:var(--k-db);font-weight:700}
+  .alias .arrow{color:var(--ink-muted)}
+  .codebox{border:1px solid var(--border);border-radius:8px;background:var(--code-bg);overflow:auto;max-height:62vh}
+  table.code{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12.2px;line-height:1.6}
+  table.code td{padding:0 10px;vertical-align:top;white-space:pre}
+  table.code td.ln{position:sticky;left:0;text-align:right;color:var(--code-gutter);user-select:none;background:var(--code-bg);border-right:1px solid var(--border);min-width:44px;padding-right:8px}
+  table.code tr.hl td{background:var(--code-hl)}
+  table.code tr.hl td.ln{background:var(--code-hl);color:var(--ink);font-weight:700;box-shadow:inset 3px 0 0 var(--code-hl-bar)}
+  .t-c{color:var(--c-comment);font-style:italic}.t-d{color:var(--c-comment)}.t-s{color:var(--c-str)}.t-k{color:var(--c-kw);font-weight:600}
+  .t-f{color:var(--c-fn)}.t-n{color:var(--c-num)}.t-a{color:var(--c-deco)}
+  .legend-hl{margin:8px 0 0;font-size:12px;color:var(--ink-muted)}
+  .legend-hl b{background:var(--code-hl);color:var(--ink);padding:0 6px;border-radius:4px}
+  .flist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:6px}
+  .flist button{width:100%;text-align:left;border:1px solid var(--border);background:var(--surface-2);border-radius:8px;padding:6px 10px}
+  .flist button:hover{border-color:var(--accent)}
+  .flist small{display:block;color:var(--ink-muted)}
+  details.hdr{margin-top:12px;font-size:13px}
+  details.hdr pre{white-space:pre-wrap;background:var(--surface-2);border-radius:8px;padding:10px;font-family:var(--sans);font-size:12.5px;color:var(--ink-muted)}
+
+  @media (max-width:900px){
+    .app{display:block;height:auto}
+    .stage-wrap{max-height:none;overflow-x:auto}
+    .panel{position:fixed;left:0;right:0;bottom:0;width:auto;height:62vh;border-left:0;border-top:2px solid var(--accent);
+      box-shadow:0 -10px 30px rgba(0,0,0,.25);z-index:20;transform:translateY(105%);transition:transform .18s}
+    body.open .panel{transform:none}
+    .p-close{display:inline-block;position:absolute;right:12px;top:10px}
+    .p-head{position:relative;padding-right:70px}
+    .top{padding:12px 16px 8px}
+    .stage{padding:16px 16px 70vh}
+  }
+  @media (prefers-reduced-motion: reduce){.node,.panel{transition:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="main">
+    <header class="top">
+      <h1 id="title"></h1>
+      <p class="sub" id="subtitle"></p>
+      <div class="top-row">
+        <div class="tabs" role="tablist" id="tabs"></div>
+        <div class="stepper"><button class="btn" id="prev">◀ 이전</button><b id="stepNo">–</b><button class="btn" id="next">다음 ▶</button></div>
+        <span class="spacer"></span>
+        <a class="link" id="mdlink" href="#">📝 설명 문서 보기</a>
+        <button class="btn" id="theme" title="라이트/다크 전환">🌓</button>
+      </div>
+    </header>
+    <p class="intro" id="intro"></p>
+    <div class="legend" aria-label="범례">
+      <span><i style="background:var(--k-screen)"></i>화면 · 도착지</span>
+      <span><i style="background:var(--k-route)"></i>routes (입구)</span>
+      <span><i style="background:var(--k-helper)"></i>판단 (security · helpers)</span>
+      <span><i style="background:var(--k-db)"></i>db (저장소)</span>
+      <span><i style="background:var(--k-config)"></i>설정값</span>
+      <span><i style="background:var(--k-later);opacity:.6"></i>다른 단원에서 자세히</span>
+      <span>━ 다음 단계 &nbsp; ┅ 함수 호출</span>
+    </div>
+    <div class="stage-wrap" id="stageWrap"><div class="stage" id="stage"></div></div>
+  </div>
+
+  <aside class="panel" id="panel" aria-live="polite">
+    <div class="p-head">
+      <h2 id="pTitle"></h2><p id="pSub"></p>
+      <button class="btn p-close" id="pClose">닫기</button>
+    </div>
+    <div class="p-body" id="pBody"></div>
+  </aside>
+</div>
+
+<script type="application/json" id="data">{"title": "6. 공격 유형별 탐지 매트릭스", "subtitle": "404 반복·미인증 API·반복 접근·도배 같은 '관찰형' 탐지가 어디서 호출되고 무엇을 하는지 보는 코드 흐름도", "mdFile": "06-detection-matrix.md", "github": "https://github.com/dyj02056/login-watchdog/blob/main/", "columns": ["화면 · 도착지", "routes/ (입구)", "판단 (security · helpers)", "db/ · config.py (저장소 · 설정값)"], "scenarios": [{"id": "scan", "name": "Web Scanning (404 반복)", "intro": "없는 주소를 계속 두드리는 것은 '숨은 페이지를 찾는 스캐닝'일 수 있습니다. 잠글 대상이 없어서 '기록 + 알림'만 하고, 임계값을 막 넘긴 순간에 딱 한 번만 알립니다.", "nodes": [{"id": "scan_n1", "col": 0, "row": 0, "kind": "screen", "title": "존재하지 않는 주소 요청 (404)", "plain": "Flask가 404를 만들면 등록된 404 처리기가 실행됩니다. 화면과 상관없이 기록·탐지가 항상 먼저 돌아갑니다.", "reject": "", "later": "", "items": [{"block": "helpers/hooks.py:handle_not_found", "hl": [72, 72], "label": "handle_not_found()", "call": null, "snippet": false}]}, {"id": "scan_n2", "col": 1, "row": 1, "kind": "route", "title": "① 404 요청을 기록", "plain": "누가(IP) 어떤 경로를 두드렸는지 한 줄 남깁니다.", "reject": "", "later": "", "items": [{"block": "helpers/hooks.py:handle_not_found", "hl": [87, 88], "label": "handle_not_found()", "call": null, "snippet": false}]}, {"id": "scan_n3", "col": 3, "row": 1, "kind": "db", "title": "404 한 줄 저장", "plain": "not_found_attempts 표에 IP·경로를 추가합니다.", "reject": "", "later": "", "items": [{"block": "db/access_logs.py:log_not_found_attempt", "hl": null, "label": "log_not_found_attempt()", "call": "db.log_not_found_attempt()", "snippet": false}]}, {"id": "scan_n4", "col": 1, "row": 2, "kind": "route", "title": "② 임계값을 '막 넘긴 순간'인가?", "plain": "최근 60초 404가 10회 초과이고 정확히 11번째일 때만 True. 그 뒤 요청에는 알림을 반복하지 않습니다(알림 피로 방지).", "reject": "", "later": "", "items": [{"block": "helpers/hooks.py:handle_not_found", "hl": [90, 91], "label": "handle_not_found()", "call": null, "snippet": false}]}, {"id": "scan_n5", "col": 2, "row": 2, "kind": "helper", "title": "스캐닝 판정", "plain": "(수상한가, 횟수, 지금 막 넘겼나) 세 값을 돌려줍니다.", "reject": "", "later": "", "items": [{"block": "security/detector.py:is_web_scanning", "hl": null, "label": "is_web_scanning()", "call": null, "snippet": false}]}, {"id": "scan_n6", "col": 3, "row": 2, "kind": "db", "title": "최근 404 횟수 세기", "plain": "이 IP의 최근 60초 404를 셉니다.", "reject": "", "later": "", "items": [{"block": "db/access_logs.py:count_recent_not_found_attempts", "hl": null, "label": "count_recent_not_found_attempts()", "call": "db.count_recent_not_found_attempts()", "snippet": false}]}, {"id": "scan_n7", "col": 1, "row": 3, "kind": "route", "title": "③ 알림 + MEDIUM 기록 (잠그지 않음)", "plain": "존재하지 않는 경로를 두드린 것이라 잠글 대상이 없고, IP를 잠그면 정상 이용까지 막기 때문에 관찰만 합니다.", "reject": "", "later": "", "items": [{"block": "helpers/hooks.py:handle_not_found", "hl": [92, 92], "label": "handle_not_found()", "call": null, "snippet": false}]}, {"id": "scan_n8", "col": 2, "row": 3, "kind": "helper", "title": "스캐닝 알림 + 기록", "plain": "Slack 알림을 보내고 MEDIUM 이벤트로 기록합니다.", "reject": "", "later": "", "items": [{"block": "security/soar/observe.py:notify_web_scanning", "hl": null, "label": "notify_web_scanning()", "call": "soar.notify_web_scanning()", "snippet": false}]}, {"id": "scan_n9", "col": 2, "row": 3, "kind": "helper", "title": "Slack 알림", "plain": "횟수와 경로를 담아 보냅니다.", "reject": "", "later": "", "items": [{"block": "notify/alert.py:send_web_scanning_alert", "hl": null, "label": "send_web_scanning_alert()", "call": null, "snippet": false}]}, {"id": "scan_n10", "col": 1, "row": 4, "kind": "route", "title": "④ 기준치 코앞이면 AI 조기 경보 검토", "plain": "아직 안 넘었지만 8~10회처럼 코앞이면 LLM에게 조기 경보 여부를 묻습니다.", "reject": "", "later": "", "items": [{"block": "helpers/hooks.py:handle_not_found", "hl": [93, 98], "label": "handle_not_found()", "call": null, "snippet": false}]}, {"id": "scan_n11", "col": 2, "row": 4, "kind": "later", "title": "조기 경보 판단", "plain": "LLM이 사전 조치를 제안합니다.", "reject": "", "later": "11단원", "items": [{"block": "security/soar/early_warning.py:consider_early_warning", "hl": null, "label": "consider_early_warning()", "call": "soar.consider_early_warning()", "snippet": false}]}, {"id": "scan_n12", "col": 1, "row": 5, "kind": "route", "title": "⑤ 404 화면 응답", "plain": "일반 페이지 요청이면 Next.js 404 화면, 그 외에는 기본 404 응답을 돌려줍니다.", "reject": "", "later": "", "items": [{"block": "helpers/hooks.py:handle_not_found", "hl": [101, 101], "label": "handle_not_found()", "call": null, "snippet": false}]}], "edges": [{"from": "scan_n1", "to": "scan_n2", "label": "", "kind": "flow"}, {"from": "scan_n2", "to": "scan_n3", "label": "", "kind": "call"}, {"from": "scan_n2", "to": "scan_n4", "label": "", "kind": "flow"}, {"from": "scan_n4", "to": "scan_n5", "label": "", "kind": "call"}, {"from": "scan_n5", "to": "scan_n6", "label": "", "kind": "call"}, {"from": "scan_n4", "to": "scan_n7", "label": "", "kind": "flow"}, {"from": "scan_n7", "to": "scan_n8", "label": "", "kind": "call"}, {"from": "scan_n8", "to": "scan_n9", "label": "", "kind": "call"}, {"from": "scan_n7", "to": "scan_n10", "label": "", "kind": "flow"}, {"from": "scan_n10", "to": "scan_n11", "label": "", "kind": "call"}, {"from": "scan_n10", "to": "scan_n12", "label": "", "kind": "flow"}], "steps": ["scan_n1", "scan_n2", "scan_n4", "scan_n7", "scan_n10", "scan_n12"]}, {"id": "unauth", "name": "Unauthorized Access (세션 없이 관리자 API)", "intro": "로그인 없이 관리자 API(/api/*)를 반복 호출하는 시도를 잡습니다. 다만 '세션은 있는데 만료된' 관리자는 공격이 아니므로 기록하지 않습니다.", "nodes": [{"id": "unauth_n1", "col": 0, "row": 0, "kind": "screen", "title": "관리자 API 호출 → 문지기", "plain": "관리자 전용 API는 @login_required 문지기가 지킵니다. 문지기를 통과 못 하면 이 흐름이 시작됩니다.", "reject": "", "later": "", "items": [{"block": "helpers/auth.py:login_required", "hl": [120, 121], "label": "login_required()", "call": null, "snippet": false}]}, {"id": "unauth_n2", "col": 1, "row": 1, "kind": "route", "title": "① 세션은 있는데 무효 → 기록 안 함", "plain": "삭제·만료된 관리자 세션은 '다시 로그인해야 하는 사람'입니다. 기록하면 그 관리자의 대시보드 자동 폴링이 공격으로 오탐됩니다.", "reject": "세션이 만료되었습니다. 다시 로그인해주세요. (401)", "later": "", "items": [{"block": "helpers/auth.py:_reject_admin_request", "hl": [79, 84], "label": "_reject_admin_request()", "call": null, "snippet": false}]}, {"id": "unauth_n3", "col": 1, "row": 2, "kind": "route", "title": "② 세션이 아예 없음 → 기록 + 판정", "plain": "로그인 없이 /api/ 를 두드린 시도를 기록하고, 반복되면 알림 대상으로 봅니다.", "reject": "", "later": "", "items": [{"block": "helpers/auth.py:_reject_admin_request", "hl": [88, 90], "label": "_reject_admin_request()", "call": null, "snippet": false}]}, {"id": "unauth_n4", "col": 3, "row": 2, "kind": "db", "title": "미인증 시도 한 줄 저장", "plain": "unauthorized_attempts 표에 추가합니다.", "reject": "", "later": "", "items": [{"block": "db/access_logs.py:log_unauthorized_attempt", "hl": null, "label": "log_unauthorized_attempt()", "call": "db.log_unauthorized_attempt()", "snippet": false}]}, {"id": "unauth_n5", "col": 2, "row": 2, "kind": "helper", "title": "미인증 접근 판정", "plain": "임계값 초과 + 지금 막 넘겼나를 돌려줍니다.", "reject": "", "later": "", "items": [{"block": "security/detector.py:is_unauthorized_access_suspicious", "hl": null, "label": "is_unauthorized_access_suspicious()", "call": null, "snippet": false}]}, {"id": "unauth_n6", "col": 3, "row": 2, "kind": "db", "title": "최근 미인증 시도 세기", "plain": "이 IP의 최근 60초 시도를 셉니다.", "reject": "", "later": "", "items": [{"block": "db/access_logs.py:count_recent_unauthorized_attempts", "hl": null, "label": "count_recent_unauthorized_attempts()", "call": "db.count_recent_unauthorized_attempts()", "snippet": false}]}, {"id": "unauth_n7", "col": 1, "row": 3, "kind": "route", "title": "③ 알림 + 기록만 (잠그지 않는 이유)", "plain": "관리자 대시보드가 세션 만료 직후에도 자동 폴링을 보내서, 잠가버리면 관리자 본인이 재로그인도 못 하는 자충수가 됩니다.", "reject": "", "later": "", "items": [{"block": "helpers/auth.py:_reject_admin_request", "hl": [91, 91], "label": "_reject_admin_request()", "call": null, "snippet": false}]}, {"id": "unauth_n8", "col": 2, "row": 3, "kind": "helper", "title": "미인증 접근 알림 + 기록", "plain": "Slack 알림 후 MEDIUM 이벤트로 기록합니다.", "reject": "", "later": "", "items": [{"block": "security/soar/observe.py:notify_unauthorized_access", "hl": null, "label": "notify_unauthorized_access()", "call": "soar.notify_unauthorized_access()", "snippet": false}]}, {"id": "unauth_n9", "col": 1, "row": 4, "kind": "route", "title": "④ 401 응답", "plain": "API 요청에는 화면 이동 대신 JSON 401을 돌려줍니다.", "reject": "", "later": "", "items": [{"block": "helpers/auth.py:_reject_admin_request", "hl": [99, 99], "label": "_reject_admin_request()", "call": null, "snippet": false}]}], "edges": [{"from": "unauth_n1", "to": "unauth_n2", "label": "", "kind": "flow"}, {"from": "unauth_n2", "to": "unauth_n3", "label": "", "kind": "flow"}, {"from": "unauth_n3", "to": "unauth_n4", "label": "", "kind": "call"}, {"from": "unauth_n3", "to": "unauth_n5", "label": "", "kind": "call"}, {"from": "unauth_n5", "to": "unauth_n6", "label": "", "kind": "call"}, {"from": "unauth_n3", "to": "unauth_n7", "label": "", "kind": "flow"}, {"from": "unauth_n7", "to": "unauth_n8", "label": "", "kind": "call"}, {"from": "unauth_n7", "to": "unauth_n9", "label": "", "kind": "flow"}], "steps": ["unauth_n1", "unauth_n2", "unauth_n3", "unauth_n7", "unauth_n9"]}, {"id": "page", "name": "반복 페이지 접근", "intro": "같은 페이지 하나를 스크립트로 계속 요청하는 패턴(같은 경로 20회 초과)을 잡습니다. 여러 페이지를 둘러보는 정상 사용과 구분하기 위해 '이 경로를 몇 번 요청했나'를 셉니다.", "nodes": [{"id": "page_n1", "col": 0, "row": 0, "kind": "screen", "title": "모든 GET 요청 직전에 실행되는 훅", "plain": "라우팅이 끝난 뒤, 실제 화면 함수가 실행되기 직전에 매번 호출됩니다.", "reject": "", "later": "", "items": [{"block": "helpers/hooks.py:register_request_hooks", "hl": [175, 175], "label": "register_request_hooks()", "call": null, "snippet": false}]}, {"id": "page_n2", "col": 1, "row": 1, "kind": "route", "title": "① 관찰 대상 좁히기", "plain": "존재하지 않는 경로(404)·GET이 아닌 요청·정적 파일·자동 폴링 API는 제외합니다. 안 빼면 정상 사용자가 항상 '수상'으로 잡힙니다.", "reject": "", "later": "", "items": [{"block": "helpers/hooks.py:track_page_access", "hl": [120, 122], "label": "track_page_access()", "call": null, "snippet": false}]}, {"id": "page_n3", "col": 1, "row": 2, "kind": "route", "title": "② 접근 기록", "plain": "IP와 경로를 한 줄 남깁니다.", "reject": "", "later": "", "items": [{"block": "helpers/hooks.py:track_page_access", "hl": [125, 126], "label": "track_page_access()", "call": null, "snippet": false}]}, {"id": "page_n4", "col": 3, "row": 2, "kind": "db", "title": "페이지 접근 한 줄 저장", "plain": "page_access_attempts 표에 추가합니다.", "reject": "", "later": "", "items": [{"block": "db/access_logs.py:log_page_access_attempt", "hl": null, "label": "log_page_access_attempt()", "call": "db.log_page_access_attempt()", "snippet": false}]}, {"id": "page_n5", "col": 1, "row": 3, "kind": "route", "title": "③ 같은 경로 반복 판정 → 알림", "plain": "이 IP가 이 경로를 20회 초과 요청한 순간에 한 번 알립니다. 잠그지 않는 이유는 새로고침하며 기다리던 정상 사용자를 막을 수 있어서입니다.", "reject": "", "later": "", "items": [{"block": "helpers/hooks.py:track_page_access", "hl": [128, 130], "label": "track_page_access()", "call": null, "snippet": false}]}, {"id": "page_n6", "col": 2, "row": 3, "kind": "helper", "title": "반복 접근 판정", "plain": "이 경로의 최근 요청 횟수로 판정합니다.", "reject": "", "later": "", "items": [{"block": "security/detector.py:is_page_access_suspicious", "hl": null, "label": "is_page_access_suspicious()", "call": null, "snippet": false}]}, {"id": "page_n7", "col": 3, "row": 3, "kind": "db", "title": "이 경로 최근 요청 세기", "plain": "IP + 경로로 셉니다.", "reject": "", "later": "", "items": [{"block": "db/access_logs.py:count_recent_page_access_attempts", "hl": null, "label": "count_recent_page_access_attempts()", "call": "db.count_recent_page_access_attempts()", "snippet": false}]}, {"id": "page_n8", "col": 2, "row": 3, "kind": "helper", "title": "반복 접근 알림 + 기록", "plain": "Slack 알림 후 MEDIUM 이벤트로 기록합니다.", "reject": "", "later": "", "items": [{"block": "security/soar/observe.py:notify_page_access", "hl": null, "label": "notify_page_access()", "call": "soar.notify_page_access()", "snippet": false}]}], "edges": [{"from": "page_n1", "to": "page_n2", "label": "", "kind": "flow"}, {"from": "page_n2", "to": "page_n3", "label": "", "kind": "flow"}, {"from": "page_n3", "to": "page_n4", "label": "", "kind": "call"}, {"from": "page_n3", "to": "page_n5", "label": "", "kind": "flow"}, {"from": "page_n5", "to": "page_n6", "label": "", "kind": "call"}, {"from": "page_n6", "to": "page_n7", "label": "", "kind": "call"}, {"from": "page_n5", "to": "page_n8", "label": "", "kind": "call"}], "steps": ["page_n1", "page_n2", "page_n3", "page_n5"]}, {"id": "spam", "name": "도배 (가입 · 글 · 댓글)", "intro": "가입·글쓰기·댓글은 정상 사용자가 짧은 시간에 여러 번 반복할 이유가 거의 없어서, 기준치에 '도달'하면 곧바로 요청을 거부하고 HIGH 등급으로 기록합니다.", "nodes": [{"id": "spam_n1", "col": 0, "row": 0, "kind": "screen", "title": "가입 · 글쓰기 · 댓글 요청", "plain": "세 요청 모두 같은 패턴(먼저 판정 → 시도 기록)을 씁니다.", "reject": "", "later": "", "items": [{"block": "routes/auth.py:signup_submit", "hl": [98, 99], "label": "signup_submit()", "call": null, "snippet": false}]}, {"id": "spam_n2", "col": 2, "row": 0, "kind": "helper", "title": "가입 도배 판정 (60초 5회)", "plain": "횟수가 기준치 '이상'이면 True.", "reject": "", "later": "", "items": [{"block": "security/detector.py:is_signup_rate_limited", "hl": null, "label": "is_signup_rate_limited()", "call": null, "snippet": false}]}, {"id": "spam_n3", "col": 1, "row": 1, "kind": "route", "title": "① 글쓰기 도배 (60초 5회)", "plain": "글쓰기·글 수정이 같은 시도 기록을 공유합니다.", "reject": "너무 많은 게시글 작성 시도가 감지되었습니다.", "later": "", "items": [{"block": "routes/board.py:board_new_submit", "hl": [79, 82], "label": "board_new_submit()", "call": null, "snippet": false}]}, {"id": "spam_n4", "col": 2, "row": 1, "kind": "helper", "title": "글쓰기 도배 판정", "plain": "최근 시도 횟수가 기준치 이상인지.", "reject": "", "later": "", "items": [{"block": "security/detector.py:is_post_rate_limited", "hl": null, "label": "is_post_rate_limited()", "call": null, "snippet": false}]}, {"id": "spam_n5", "col": 1, "row": 2, "kind": "route", "title": "② 댓글 도배 (60초 10회)", "plain": "정상 대화에서는 댓글이 더 자주 달리므로 기준치가 더 넉넉합니다.", "reject": "너무 많은 댓글 작성 시도가 감지되었습니다.", "later": "", "items": [{"block": "routes/board.py:board_comment_submit", "hl": [230, 233], "label": "board_comment_submit()", "call": null, "snippet": false}]}, {"id": "spam_n6", "col": 2, "row": 2, "kind": "helper", "title": "댓글 도배 판정", "plain": "최근 시도 횟수가 기준치 이상인지.", "reject": "", "later": "", "items": [{"block": "security/detector.py:is_comment_rate_limited", "hl": null, "label": "is_comment_rate_limited()", "call": null, "snippet": false}]}, {"id": "spam_n7", "col": 1, "row": 3, "kind": "route", "title": "③ 거부 사실을 HIGH로 기록 (중복 방지)", "plain": "이미 열린 미해결 이벤트가 있으면 새 행을 만들지 않고 횟수만 1 올립니다. 봇 한 대가 이벤트 표를 도배하지 못하게 하기 위해서입니다.", "reject": "", "later": "", "items": [{"block": "security/soar/observe.py:record_rejection", "hl": [102, 106], "label": "record_rejection()", "call": "soar.record_rejection()", "snippet": false}]}, {"id": "spam_n8", "col": 3, "row": 3, "kind": "db", "title": "미해결 이벤트 찾기", "plain": "같은 IP·유형의 열린 이벤트가 있는지 봅니다.", "reject": "", "later": "", "items": [{"block": "db/security_events.py:get_unresolved_security_event", "hl": null, "label": "get_unresolved_security_event()", "call": "db.get_unresolved_security_event()", "snippet": false}]}, {"id": "spam_n9", "col": 3, "row": 3, "kind": "db", "title": "새로 기록하거나 횟수 증가", "plain": "동시 요청이 겹쳐도 유니크 인덱스가 중복 삽입을 막아줍니다.", "reject": "", "later": "", "items": [{"block": "db/security_events.py:insert_security_event_or_bump", "hl": null, "label": "insert_security_event_or_bump()", "call": "db.insert_security_event_or_bump()", "snippet": false}]}, {"id": "spam_n10", "col": 1, "row": 4, "kind": "route", "title": "④ 상관분석 훅", "plain": "거부 이벤트도 여러 신호를 묶어 보는 상관분석(9단원)으로 넘깁니다.", "reject": "", "later": "", "items": [{"block": "security/soar/observe.py:record_rejection", "hl": [107, 107], "label": "record_rejection()", "call": "soar.record_rejection()", "snippet": false}]}, {"id": "spam_n11", "col": 2, "row": 4, "kind": "later", "title": "상관분석", "plain": "짧은 시간에 여러 유형이 겹치면 사건(incident)으로 묶습니다.", "reject": "", "later": "9단원", "items": [{"block": "security/correlate.py:check_and_correlate", "hl": null, "label": "check_and_correlate()", "call": null, "snippet": false}]}], "edges": [{"from": "spam_n1", "to": "spam_n2", "label": "", "kind": "call"}, {"from": "spam_n1", "to": "spam_n3", "label": "", "kind": "flow"}, {"from": "spam_n3", "to": "spam_n4", "label": "", "kind": "call"}, {"from": "spam_n3", "to": "spam_n5", "label": "", "kind": "flow"}, {"from": "spam_n5", "to": "spam_n6", "label": "", "kind": "call"}, {"from": "spam_n5", "to": "spam_n7", "label": "", "kind": "flow"}, {"from": "spam_n7", "to": "spam_n8", "label": "", "kind": "call"}, {"from": "spam_n7", "to": "spam_n9", "label": "", "kind": "call"}, {"from": "spam_n7", "to": "spam_n10", "label": "", "kind": "flow"}, {"from": "spam_n10", "to": "spam_n11", "label": "", "kind": "call"}], "steps": ["spam_n1", "spam_n3", "spam_n5", "spam_n7", "spam_n10"]}], "blocks": {"helpers/hooks.py:handle_not_found": {"path": "helpers/hooks.py", "start": 72, "end": 101, "lang": "python", "code": "def handle_not_found(error):\n    \"\"\"존재하지 않는 경로 요청(404)을 기록하고, 반복되면 Web Scanning 의심 알림을 보낸다.\n\n    이 핸들러의 목적은 그동안 아무 기록도 남기지 않던 404 요청을 관찰 가능하게 만드는\n    것이다 (21단계, attack_response_state.md 구현 대상 #1). 기록·탐지는 화면과 무관하게\n    항상 먼저 실행한다.\n\n    화면은 브라우저가 연 일반 페이지 요청이면 Next.js 404 화면(spa/404.html, 404 상태 그대로)을,\n    그 외(어댑터·/api/·HTML을 받지 않는 요청, 빌드가 없을 때)는 Flask/Werkzeug 기본 404 응답을\n    그대로 쓴다(error.get_response()).\n\n    알림은 \"임계값을 막 넘긴 바로 그 요청\"에서 딱 한 번만 보낸다(count가 정확히\n    threshold+1일 때). enforce_lockout처럼 \"잠긴 상태\"라는 별도 표시가 없는 대신,\n    이 방식으로 매 요청마다 알림이 반복되는 걸(알림 피로) 막는다.\n    \"\"\"\n    ip = get_request_ip()\n    db.log_not_found_attempt(ip, request.path)\n\n    suspicious, count, is_first_over_threshold = detector.is_web_scanning(ip)\n    if suspicious and is_first_over_threshold:\n        soar.notify_web_scanning(ip, count, request.path)\n    elif not suspicious and count >= config.WEB_SCANNING_ALERT_THRESHOLD - config.EARLY_WARNING_BAND:\n        # 아직 기준치는 안 넘었지만 코앞이면 LLM에게 조기 경보 여부를 물어본다\n        # (Track A, guide31).\n        soar.consider_early_warning(\n            \"WEB_SCANNING\", \"ALERT_ONLY\", \"ip\", ip, count, config.WEB_SCANNING_ALERT_THRESHOLD,\n            path=request.path,\n        )\n\n    return spa.not_found_page() or error.get_response()", "alias": null}, "db/access_logs.py:log_not_found_attempt": {"path": "db/access_logs.py", "start": 20, "end": 22, "lang": "python", "code": "def log_not_found_attempt(ip: str, path: str) -> None:\n    \"\"\"404가 발생한 요청 한 건을 not_found_attempts 표에 기록한다.\"\"\"\n    db.get_client().table(\"not_found_attempts\").insert({\"ip_address\": ip, \"path\": path}).execute()", "alias": {"call": "db.log_not_found_attempt()", "via": "db/__init__.py", "real": "db/access_logs.py"}}, "security/detector.py:is_web_scanning": {"path": "security/detector.py", "start": 147, "end": 165, "lang": "python", "code": "def is_web_scanning(ip: str) -> tuple[bool, int, bool]:\n    \"\"\"이 IP가 \"Web Scanning 의심 상태\"인지 판단한다.\n\n    is_suspicious()와 판단 방식(초과 여부)은 동일하지만, 세는 대상이\n    login_attempts가 아니라 not_found_attempts다 — 정상 사용자도 깨진 링크\n    몇 개는 우연히 밟을 수 있으므로, 로그인 실패와 마찬가지로 \"초과\"부터\n    의심한다 (21단계, attack_response_state.md 구현 대상 #1).\n\n    세 번째 반환값(is_first_over_threshold)은 \"지금 이 카운트가 임계값을 막\n    넘긴 바로 그 순간인가\"를 뜻한다 — count가 임계값+1일 때만 True다. 호출하는\n    쪽(helpers/hooks.py의 handle_not_found)이 이 값으로 \"새로 감지된 시점에만 대응 실행\"을 판단해서, 임계값을\n    넘긴 뒤에도 계속되는 요청마다 Slack 알림이 중복 발송되는 걸 막는다(알림\n    피로 방지 — 원래 app.py가 count == threshold + 1로 직접 계산하던 걸 판정\n    로직 쪽으로 옮겨왔다).\n    \"\"\"\n    count = db.count_recent_not_found_attempts(ip)\n    suspicious = count > WEB_SCANNING_ALERT_THRESHOLD\n    is_first_over_threshold = count == WEB_SCANNING_ALERT_THRESHOLD + 1\n    return suspicious, count, is_first_over_threshold", "alias": null}, "db/access_logs.py:count_recent_not_found_attempts": {"path": "db/access_logs.py", "start": 25, "end": 38, "lang": "python", "code": "def count_recent_not_found_attempts(\n    ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS\n) -> int:\n    \"\"\"이 IP가 최근 몇 초(기본 60초) 안에 몇 번이나 404를 유발했는지 센다.\"\"\"\n    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()\n    res = (\n        db.get_client()\n        .table(\"not_found_attempts\")\n        .select(\"id\", count=\"exact\")\n        .eq(\"ip_address\", ip)\n        .gte(\"attempted_at\", cutoff)\n        .execute()\n    )\n    return res.count or 0", "alias": {"call": "db.count_recent_not_found_attempts()", "via": "db/__init__.py", "real": "db/access_logs.py"}}, "security/soar/observe.py:notify_web_scanning": {"path": "security/soar/observe.py", "start": 38, "end": 47, "lang": "python", "code": "def notify_web_scanning(ip: str, count: int, path: str) -> None:\n    \"\"\"Web Scanning 의심 알림을 Slack으로 보내고, MEDIUM 이벤트로 기록한다.\n\n    enforce_lockout()과 달리 db.create_lockout()을 호출하지 않는다 — 404를\n    유발한 요청은 애초에 존재하지 않는 경로를 두드린 것이라 \"잠글\" 대상이\n    없고, 이 IP를 실제로 잠그면 정상적인 다른 페이지 이용까지 막아버려 오히려\n    과한 조치가 된다. 그래서 여기서는 관찰(알림 + 이벤트 기록)만 한다.\n    \"\"\"\n    alert.send_web_scanning_alert(ip, count, path)\n    _record_event(\"WEB_SCANNING\", \"MEDIUM\", ip, path, count, \"ALERTED\")", "alias": {"call": "soar.notify_web_scanning()", "via": "security/soar/__init__.py", "real": "security/soar/observe.py"}}, "notify/alert.py:send_web_scanning_alert": {"path": "notify/alert.py", "start": 133, "end": 149, "lang": "python", "code": "def send_web_scanning_alert(ip: str, count: int, path: str) -> None:\n    \"\"\"Web Scanning(존재하지 않는 경로 반복 요청)이 의심된다는 사실을 Slack에 알린다.\n\n    send_lockout_alert()와 메시지 조립 구조는 같지만, IP를 잠그는 \"조치\"가 없다\n    — 이미 존재하지 않는 경로 요청이라 막을 대상 자체가 없고, 관리자에게\n    \"이런 패턴이 관찰되고 있다\"는 사실만 알리면 충분하기 때문이다\n    (21단계, attack_response_state.md 구현 대상 #1).\n    \"\"\"\n    message = (\n        \":mag: [MEDIUM] 로그인 워치독 알림\\n\"\n        \"공격 유형: Web Scanning 의심 (존재하지 않는 경로 반복 요청)\\n\"\n        f\"시도 IP: {ip}\\n\"\n        f\"최근 {config.DETECTION_WINDOW_SECONDS}초간 요청 횟수: {count}회\\n\"\n        f\"최근 요청 경로: {path}\\n\"\n        \"조치: 별도 잠금 없음 (관찰 목적)\"\n    )\n    _send_slack_message(message)", "alias": null}, "security/soar/early_warning.py:consider_early_warning": {"path": "security/soar/early_warning.py", "start": 41, "end": 104, "lang": "python", "code": "def consider_early_warning(\n    event_type: str,\n    pending_action: str,\n    target_kind: str,\n    target_value: str,\n    count: int,\n    threshold: int,\n    path: str | None = None,\n    context_count: int | None = None,\n    context_ip: str | None = None,\n) -> None:\n    \"\"\"임계값 코앞 구간에 진입한 대상 하나를 LLM에게 보여주고, 위험하다고\n    판단되면 access_requests에 PENDING 요청을 등록한다.\n\n    호출부(routes/auth.py, helpers/auth.py, helpers/hooks.py)는 전부 \"아직 suspicious가\n    False인\" 분기에서만 이 함수를 부른다 — 이미 규칙이 조치를 실행하는\n    경우와 절대 겹치지 않는다.\n\n    LLM 쪽이 실패해도 예외를 밖으로 던지지 않는다: LLM 호출이 실패하거나\n    GROQ_API_KEY가 없으면(llm_client.judge_early_warning이 None을 돌려줌)\n    그냥 조용히 넘어간다. 이 구간은 원래 Track A 이전에는 아무 조치도 없던\n    사각지대였으므로, \"덤으로 추가한 조기 경보 기능\"이 실패한다고 해서\n    로그인 흐름 자체가 막히거나 원래 있던 임계값 기반 방어가 약해지면\n    안 되기 때문이다.\n\n    같은 (event_type, target_kind, target_value)에 이미 PENDING 요청이 있으면\n    새로 LLM을 호출하지 않는다 — 관리자가 하나를 처리하기 전까지 매 요청마다\n    Groq를 부르고 Slack을 또 보내는 건 낭비이자 알림 피로다.\n\n    path/context_count/context_ip는 유형마다 의미가 다르다 — LOCK_IP(로그인\n    브루트포스)는 context_count에 distinct_usernames를, LOCK_ACCOUNT(분산\n    브루트포스)는 context_count에 distinct_ips·context_ip에 이번 시도의 IP를,\n    ALERT_ONLY 유형들은 path에 관련 경로를 담아 나중에 execute_approved_request()가\n    승인 시 실행할 조치에 그대로 넘겨준다. path/context_count는 access_requests에\n    저장하는 용도와 별개로, llm_client.judge_early_warning()에게 판단 근거로도\n    그대로 전달한다 — 처음 버전은 이 값들을 계산해두고도 LLM에게는 안 보여주고\n    있었다(login_watchdog_expansion_plan.md 논의).\n    \"\"\"\n    if db.get_pending_request(event_type, target_kind, target_value) is not None:\n        return\n\n    label = _EARLY_WARNING_LABELS.get(event_type, event_type)\n    prior_occurrences = db.count_recent_requests_for_target(event_type, target_kind, target_value)\n    judgment = llm_client.judge_early_warning(\n        label, target_kind, target_value, count, threshold,\n        path=path, context_count=context_count, prior_occurrences=prior_occurrences,\n    )\n    if judgment is None or not judgment.get(\"risky\"):\n        return\n\n    reason = judgment.get(\"reason\", \"\")\n    db.insert_pending_request(\n        event_type,\n        pending_action,\n        target_kind,\n        target_value,\n        count,\n        threshold,\n        reason,\n        path=path,\n        context_count=context_count,\n        context_ip=context_ip,\n    )\n    alert.send_pending_approval_alert(label, target_kind, target_value, count, threshold, reason)", "alias": {"call": "soar.consider_early_warning()", "via": "security/soar/__init__.py", "real": "security/soar/early_warning.py"}}, "helpers/auth.py:login_required": {"path": "helpers/auth.py", "start": 103, "end": 123, "lang": "python", "code": "def login_required(view):\n    \"\"\"\"관리자 로그인이 되어 있어야만 들어올 수 있는 방\"을 만들어주는 장치(데코레이터).\n\n    데코레이터란? 함수(방) 앞에 \"문지기\"를 하나 세워두는 것과 같다.\n    `@login_required`를 어떤 라우트 함수 위에 붙이면, 그 라우트가 실제로\n    실행되기 전에 이 문지기 코드가 먼저 실행되어 \"세션이 지금도 유효한 관리자\n    계정을 가리키는지\"부터 확인한다(_load_current_admin, guide37).\n\n    - 유효하지 않으면 _reject_admin_request()가 응답한다:\n        - 주소가 /api/로 시작하는 경우(JS가 fetch로 부르는 API) → 401(인증 필요) JSON 응답\n          (세션이 아예 없을 때만 unauthorized_attempts에 기록하고, 반복되면 Unauthorized\n          Access 의심 알림을 보낸다 — 21단계, attack_response_state.md 구현 대상 #2)\n        - 그 외(사람이 브라우저로 직접 들어온 화면) → 관리자 로그인 페이지로 강제 이동\n    - 유효하면: g.admin에 계정 정보를 담고 원래 요청했던 라우트 함수를 그대로 실행\n    \"\"\"\n    @wraps(view)  # 문지기를 씌워도 원래 함수의 이름 등 정보가 유지되게 해주는 파이썬 관례\n    def wrapped_view(*args, **kwargs):\n        if _load_current_admin() is None:\n            return _reject_admin_request()\n        return view(*args, **kwargs)\n    return wrapped_view", "alias": null}, "helpers/auth.py:_reject_admin_request": {"path": "helpers/auth.py", "start": 69, "end": 100, "lang": "python", "code": "def _reject_admin_request():\n    \"\"\"관리자 확인에 실패한 요청에 응답한다. 두 경우를 구분한다.\n\n    - 세션이 아예 없음: 지금까지처럼 미인증 접근으로 기록하고(21단계), 반복되면 알리거나\n      LLM 조기 경보를 판단한다(Track A, guide31).\n    - 세션은 있는데 무효(삭제·만료·옛 형식): 공격이 아니라 \"다시 로그인해야 하는 관리자\"다.\n      기록하지 않는다 — 기록하면 삭제된 관리자의 대시보드가 5초마다 폴링하면서 그 관리자의\n      IP가 미인증 접근 공격으로 잡혀 알림이 울린다. 관리자 세션 값만 지우고 돌려보낸다.\n    \"\"\"\n    is_api = request.path.startswith(\"/api/\")\n    if \"admin_username\" in session:\n        clear_admin_session()\n        if is_api:\n            return jsonify({\"error\": \"세션이 만료되었습니다. 다시 로그인해주세요.\"}), 401\n        flash(\"세션이 만료되었거나 계정 정보가 바뀌었습니다. 다시 로그인해주세요.\")\n        return redirect(url_for(\"admin.admin_login\"))\n\n    if is_api:\n        ip = get_request_ip()\n        db.log_unauthorized_attempt(ip, request.path)\n        suspicious, count, is_first_over_threshold = detector.is_unauthorized_access_suspicious(ip)\n        if suspicious and is_first_over_threshold:\n            soar.notify_unauthorized_access(ip, count, request.path)\n        elif not suspicious and count >= config.UNAUTHORIZED_ACCESS_ALERT_THRESHOLD - config.EARLY_WARNING_BAND:\n            # 아직 기준치는 안 넘었지만 코앞이면 LLM에게 조기 경보 여부를 물어본다\n            # (Track A, guide31).\n            soar.consider_early_warning(\n                \"UNAUTHORIZED_ACCESS\", \"ALERT_ONLY\", \"ip\", ip, count,\n                config.UNAUTHORIZED_ACCESS_ALERT_THRESHOLD, path=request.path,\n            )\n        return jsonify({\"error\": \"로그인이 필요합니다.\"}), 401\n    return redirect(url_for(\"admin.admin_login\"))", "alias": null}, "db/access_logs.py:log_unauthorized_attempt": {"path": "db/access_logs.py", "start": 41, "end": 43, "lang": "python", "code": "def log_unauthorized_attempt(ip: str, path: str) -> None:\n    \"\"\"세션 없이 관리자 API에 접근한 요청 한 건을 unauthorized_attempts 표에 기록한다.\"\"\"\n    db.get_client().table(\"unauthorized_attempts\").insert({\"ip_address\": ip, \"path\": path}).execute()", "alias": {"call": "db.log_unauthorized_attempt()", "via": "db/__init__.py", "real": "db/access_logs.py"}}, "security/detector.py:is_unauthorized_access_suspicious": {"path": "security/detector.py", "start": 168, "end": 179, "lang": "python", "code": "def is_unauthorized_access_suspicious(ip: str) -> tuple[bool, int, bool]:\n    \"\"\"이 IP가 \"Unauthorized Access 의심 상태\"인지 판단한다.\n\n    is_web_scanning()과 판단 방식(초과 여부, is_first_over_threshold의 의미)은\n    동일하지만, unauthorized_attempts 표를 본다 — 로그인 세션 없이 관리자\n    API(/api/*)를 반복 호출하는 패턴을 탐지한다 (attack_response_state.md\n    구현 대상 #2).\n    \"\"\"\n    count = db.count_recent_unauthorized_attempts(ip)\n    suspicious = count > UNAUTHORIZED_ACCESS_ALERT_THRESHOLD\n    is_first_over_threshold = count == UNAUTHORIZED_ACCESS_ALERT_THRESHOLD + 1\n    return suspicious, count, is_first_over_threshold", "alias": null}, "db/access_logs.py:count_recent_unauthorized_attempts": {"path": "db/access_logs.py", "start": 46, "end": 59, "lang": "python", "code": "def count_recent_unauthorized_attempts(\n    ip: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS\n) -> int:\n    \"\"\"이 IP가 최근 몇 초(기본 60초) 안에 몇 번이나 세션 없이 관리자 API를 두드렸는지 센다.\"\"\"\n    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()\n    res = (\n        db.get_client()\n        .table(\"unauthorized_attempts\")\n        .select(\"id\", count=\"exact\")\n        .eq(\"ip_address\", ip)\n        .gte(\"attempted_at\", cutoff)\n        .execute()\n    )\n    return res.count or 0", "alias": {"call": "db.count_recent_unauthorized_attempts()", "via": "db/__init__.py", "real": "db/access_logs.py"}}, "security/soar/observe.py:notify_unauthorized_access": {"path": "security/soar/observe.py", "start": 50, "end": 62, "lang": "python", "code": "def notify_unauthorized_access(ip: str, count: int, path: str) -> None:\n    \"\"\"Unauthorized Access 의심 알림을 Slack으로 보내고, MEDIUM 이벤트로 기록한다.\n\n    notify_web_scanning()과 마찬가지로 db.create_lockout()을 호출하지 않는다.\n    이번엔 이유가 조금 다르다 — 대상 경로 자체가 없는 404와 달리 여기 대상은\n    \"존재하는 관리자 API\"이므로 원칙적으로는 잠글 수도 있지만, 그렇게 하면\n    관리자 대시보드가 세션 만료 직후 자동 폴링으로 이 상태에 걸렸을 때 관리자\n    본인의 IP까지 잠가버려 재로그인조차 막아버리는 자충수가 될 수 있다.\n    그래서 이 항목도 관찰(알림 + 이벤트 기록)까지만 자동화하고, 잠글지 여부는\n    알림을 받은 관리자가 직접 판단하게 남겨둔다.\n    \"\"\"\n    alert.send_unauthorized_access_alert(ip, count, path)\n    _record_event(\"UNAUTHORIZED_ACCESS\", \"MEDIUM\", ip, path, count, \"ALERTED\")", "alias": {"call": "soar.notify_unauthorized_access()", "via": "security/soar/__init__.py", "real": "security/soar/observe.py"}}, "helpers/hooks.py:register_request_hooks": {"path": "helpers/hooks.py", "start": 169, "end": 176, "lang": "python", "code": "def register_request_hooks(app) -> None:\n    \"\"\"위 함수들을 Flask 앱에 훅으로 등록한다. app.py가 Limiter를 만든 \"뒤\"에 불러야 한다 —\n    before_request는 등록한 순서대로 실행되므로, CSRF 검사·전역 요청 한도가 먼저 돌고\n    그다음에 관찰 훅이 돈다(app.py에 데코레이터로 직접 달려 있던 때와 같은 순서).\"\"\"\n    app.after_request(set_security_headers)\n    app.register_error_handler(404, handle_not_found)\n    app.before_request(track_page_access)\n    app.before_request(track_api_access)", "alias": null}, "helpers/hooks.py:track_page_access": {"path": "helpers/hooks.py", "start": 104, "end": 135, "lang": "python", "code": "def track_page_access():\n    \"\"\"같은 IP가 같은 GET 페이지를 반복 요청하는지 관찰하고, 반복되면 알린다.\n\n    이 함수는 handle_not_found()와 달리 특정 경로가 아니라 \"매 요청\"마다 실행된다\n    (Flask가 라우팅을 마친 뒤, 실제 뷰 함수를 부르기 직전에 호출해준다). 그래서\n    대상을 신중하게 좁혀야 한다:\n    - request.url_rule이 None이면 애초에 존재하지 않는 경로(404)라는 뜻이므로\n      제외한다 — 그 경우는 not_found_attempts가 이미 별도로 기록한다.\n    - GET이 아닌 요청(폼 제출 등)은 \"페이지 접근\"이 아니므로 제외한다.\n    - PAGE_ACCESS_EXCLUDED_ENDPOINTS에 있는 엔드포인트(정적 파일, 자동 폴링 API)도\n      제외한다 — 이것들을 빼두지 않으면 정상 사용자가 항상 \"수상함\"으로\n      잘못 판정된다.\n\n    알림은 handle_not_found()와 동일하게 \"임계값을 막 넘긴 바로 그 요청\"에서\n    딱 한 번만 보낸다 (attack_response_state.md 구현 대상 #4).\n    \"\"\"\n    if request.method != \"GET\" or request.url_rule is None:\n        return\n    if request.endpoint in PAGE_ACCESS_EXCLUDED_ENDPOINTS:\n        return\n\n    ip = get_request_ip()\n    db.log_page_access_attempt(ip, request.path)\n\n    suspicious, count, is_first_over_threshold = detector.is_page_access_suspicious(ip, request.path)\n    if suspicious and is_first_over_threshold:\n        soar.notify_page_access(ip, count, request.path)\n    elif not suspicious and count >= config.PAGE_ACCESS_ALERT_THRESHOLD - config.EARLY_WARNING_BAND:\n        soar.consider_early_warning(\n            \"PAGE_ACCESS\", \"ALERT_ONLY\", \"ip\", ip, count, config.PAGE_ACCESS_ALERT_THRESHOLD,\n            path=request.path,\n        )", "alias": null}, "db/access_logs.py:log_page_access_attempt": {"path": "db/access_logs.py", "start": 62, "end": 64, "lang": "python", "code": "def log_page_access_attempt(ip: str, path: str) -> None:\n    \"\"\"GET 페이지 요청 한 건을 page_access_attempts 표에 기록한다.\"\"\"\n    db.get_client().table(\"page_access_attempts\").insert({\"ip_address\": ip, \"path\": path}).execute()", "alias": {"call": "db.log_page_access_attempt()", "via": "db/__init__.py", "real": "db/access_logs.py"}}, "security/detector.py:is_page_access_suspicious": {"path": "security/detector.py", "start": 182, "end": 194, "lang": "python", "code": "def is_page_access_suspicious(ip: str, path: str) -> tuple[bool, int, bool]:\n    \"\"\"이 IP가 이 특정 경로를 \"반복 접근 의심 상태\"로 요청하고 있는지 판단한다.\n\n    is_web_scanning()/is_unauthorized_access_suspicious()와 판단 방식(초과 여부,\n    is_first_over_threshold의 의미)은 같지만, 세는 대상이 \"이 IP의 전체 요청\"이\n    아니라 \"이 IP가 이 경로를 요청한 횟수\"다 — 여러 페이지를 정상적으로 둘러보는\n    사람과, 같은 페이지 하나를 스크립트로 반복 요청하는 패턴을 구분하기 위해서다\n    (attack_response_state.md 구현 대상 #4).\n    \"\"\"\n    count = db.count_recent_page_access_attempts(ip, path)\n    suspicious = count > PAGE_ACCESS_ALERT_THRESHOLD\n    is_first_over_threshold = count == PAGE_ACCESS_ALERT_THRESHOLD + 1\n    return suspicious, count, is_first_over_threshold", "alias": null}, "db/access_logs.py:count_recent_page_access_attempts": {"path": "db/access_logs.py", "start": 67, "end": 81, "lang": "python", "code": "def count_recent_page_access_attempts(\n    ip: str, path: str, window_seconds: int = config.DETECTION_WINDOW_SECONDS\n) -> int:\n    \"\"\"이 IP가 최근 몇 초(기본 60초) 안에 이 경로를 몇 번이나 요청했는지 센다.\"\"\"\n    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()\n    res = (\n        db.get_client()\n        .table(\"page_access_attempts\")\n        .select(\"id\", count=\"exact\")\n        .eq(\"ip_address\", ip)\n        .eq(\"path\", path)\n        .gte(\"attempted_at\", cutoff)\n        .execute()\n    )\n    return res.count or 0", "alias": {"call": "db.count_recent_page_access_attempts()", "via": "db/__init__.py", "real": "db/access_logs.py"}}, "security/soar/observe.py:notify_page_access": {"path": "security/soar/observe.py", "start": 65, "end": 74, "lang": "python", "code": "def notify_page_access(ip: str, count: int, path: str) -> None:\n    \"\"\"반복 페이지 접근 의심 알림을 Slack으로 보내고, MEDIUM 이벤트로 기록한다.\n\n    notify_web_scanning()/notify_unauthorized_access()와 마찬가지로 db.create_lockout()을\n    호출하지 않는다 — 같은 페이지를 자주 보는 것만으로 IP를 잠그면, 단순히 그 페이지를\n    새로고침하며 기다리던 정상 사용자까지 막아버릴 위험이 있다. 그래서 관찰(알림 + 이벤트\n    기록)까지만 자동화하고, 잠글지 여부는 알림을 받은 관리자가 직접 판단하게 남겨둔다.\n    \"\"\"\n    alert.send_page_access_alert(ip, count, path)\n    _record_event(\"PAGE_ACCESS\", \"MEDIUM\", ip, path, count, \"ALERTED\")", "alias": {"call": "soar.notify_page_access()", "via": "security/soar/__init__.py", "real": "security/soar/observe.py"}}, "routes/auth.py:signup_submit": {"path": "routes/auth.py", "start": 64, "end": 153, "lang": "python", "code": "@auth_bp.route(\"/signup\", methods=[\"POST\"])\ndef signup_submit():\n    \"\"\"회원가입 폼에서 \"가입하기\" 버튼을 눌렀을 때 실제로 처리하는 부분.\n\n    GET(화면 보여주기)과 POST(데이터 제출 처리)를 같은 주소(/signup)에 대해\n    따로 등록해두는 것이 Flask에서 아주 흔한 패턴이다 — \"이 주소를 그냥 방문하면\n    빈 폼을 보여주고, 이 주소로 폼 데이터를 제출하면 그때는 처리 로직을 실행해라\"\n    는 뜻이다.\n    \"\"\"\n    # 화면에서 폼 자체를 숨겨뒀더라도, 누군가 개발자 도구 등으로 이 주소에 직접\n    # 요청을 보낼 수 있으므로 서버 쪽에서도 다시 한번 막아준다(이중 안전장치).\n    if not db.get_signup_enabled():\n        flash(\"현재 회원가입이 잠시 중단되어 있습니다.\")\n        return render_template(\"signup.html\", signup_enabled=False)\n\n    ip = get_request_ip()\n\n    # 허니팟 필드가 채워져 있으면 사람이 아니라 자동화 스크립트라고 보고,\n    # 시도 기록조차 남기지 않고 즉시 거부한다 (L7 공격 보강 계획 Tier 3).\n    if is_bot_submission():\n        soar.notify_bot_detected(ip, request.path)\n        flash(\"일시적인 오류가 발생했습니다. 다시 시도해주세요.\")\n        return render_template(\"signup.html\", signup_enabled=True)\n\n    # 영구 잠금된 IP는 가입도 막는다 — 공격자가 새 계정을 만들어 자기 IP의 예외를\n    # 받아내는 경로를 차단한다(guide33). 일반 임시 잠금(5분)은 가입을 막지 않는다.\n    if detector.get_ip_lock_state(ip) == detector.LOCK_STATE_PERMANENT:\n        flash(\"현재 이 네트워크에서는 회원가입을 할 수 없습니다. 관리자에게 문의해주세요.\")\n        return render_template(\"signup.html\", signup_enabled=True)\n\n    # 같은 IP가 짧은 시간에 너무 많이 가입을 시도하면 거부한다 — 이전에는 이 주소에\n    # 요청 빈도 제한이 전혀 없어서, 스크립트로 계정을 무제한 찍어낼 수 있었다\n    # (18단계 보안 점검에서 발견 및 보완). 성공/실패와 무관하게 시도 자체를 세므로,\n    # 검증에서 계속 걸러지는 값을 반복 제출하는 남용도 함께 막는다.\n    rate_limited, signup_count = detector.is_signup_rate_limited(ip)\n    if rate_limited:\n        soar.record_rejection(\"SIGNUP_RATE_LIMIT\", ip, request.path, config.SIGNUP_RATE_LIMIT)\n        flash(\"너무 많은 가입 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.\")\n        return render_template(\"signup.html\", signup_enabled=True)\n    # 아직 기준치(SIGNUP_RATE_LIMIT)는 안 넘었지만 코앞이면, LLM에게 조기 경보\n    # 여부를 물어본다 (Track A, guide31 — config.EARLY_WARNING_BAND 설명 참고).\n    if signup_count >= config.SIGNUP_RATE_LIMIT - config.EARLY_WARNING_BAND:\n        soar.consider_early_warning(\n            \"SIGNUP_RATE_LIMIT\", \"ALERT_ONLY\", \"ip\", ip, signup_count, config.SIGNUP_RATE_LIMIT,\n            path=request.path,\n        )\n    db.log_signup_attempt(ip)\n\n    username = request.form.get(\"username\", \"\").strip()\n    email = request.form.get(\"email\", \"\").strip()\n    password = request.form.get(\"password\", \"\")\n    password_confirm = request.form.get(\"password_confirm\", \"\")\n\n    if not username or not email or not password:\n        flash(\"아이디, 이메일, 비밀번호를 모두 입력해주세요.\")\n        return render_template(\"signup.html\", signup_enabled=True)\n\n    if not config.USERNAME_PATTERN.match(username):\n        flash(\"아이디는 영문자, 숫자, 밑줄(_)만 사용해 3~20자로 입력해주세요.\")\n        return render_template(\"signup.html\", signup_enabled=True)\n\n    if not config.EMAIL_PATTERN.match(email):\n        flash(\"올바른 이메일 형식이 아닙니다.\")\n        return render_template(\"signup.html\", signup_enabled=True)\n\n    if len(password) < config.MIN_PASSWORD_LENGTH:\n        flash(f\"비밀번호는 최소 {config.MIN_PASSWORD_LENGTH}자 이상이어야 합니다.\")\n        return render_template(\"signup.html\", signup_enabled=True)\n\n    if password != password_confirm:\n        flash(\"비밀번호와 비밀번호 확인이 일치하지 않습니다.\")\n        return render_template(\"signup.html\", signup_enabled=True)\n\n    created = db.create_user(username, email, password)\n    if not created:\n        flash(\"이미 사용 중인 아이디 또는 이메일입니다.\")\n        return render_template(\"signup.html\", signup_enabled=True)\n\n    # 가입 이메일로 인증 링크를 보낸다(guide40). 메일이 실패해도 가입은 그대로 유지한다 —\n    # 로그인한 뒤 대시보드에서 다시 보낼 수 있다.\n    try:\n        verification = email_verification.send_verification(created, ip)\n    except Exception as e:  # noqa: BLE001\n        mailer.report_failure(mailer.FAIL_INTERNAL, f\"가입 인증 메일 처리 중 오류: {type(e).__name__}\")\n        verification = email_verification.UNAVAILABLE\n    if verification == email_verification.SENT:\n        flash(\"회원가입이 완료되었습니다. 가입 이메일로 인증 메일을 보냈습니다. 로그인해주세요.\")\n    else:\n        flash(\"회원가입이 완료되었습니다. 로그인해주세요. 이메일 인증은 로그인 후 대시보드에서 할 수 있습니다.\")\n    return redirect(url_for(\"auth.login\"))", "alias": null}, "security/detector.py:is_signup_rate_limited": {"path": "security/detector.py", "start": 111, "end": 125, "lang": "python", "code": "def is_signup_rate_limited(ip: str) -> tuple[bool, int]:\n    \"\"\"이 IP가 최근 회원가입을 너무 자주 시도해서 더 막아야 하는 상태인지 판단한다.\n\n    is_suspicious()와 달리 \"초과\"가 아니라 \"이상\"을 기준으로 삼는다 — 로그인\n    실패는 정상 사용자도 몇 번은 겪을 수 있는 일이라 여유(초과)를 주지만,\n    회원가입 요청 자체는 정상 사용자가 짧은 시간에 여러 번 반복할 이유가\n    거의 없으므로 더 엄격하게(기준치에 도달하면 즉시) 차단한다.\n\n    원래는 bool 하나만 돌려줬지만, is_suspicious()처럼 (판단, 실제 시도 횟수)\n    튜플로 바꿨다 — routes/auth.py가 \"아직 기준치는 안 넘었지만 코앞인지\"\n    (Track A 조기 경보, config.EARLY_WARNING_BAND)도 판단해야 해서 실제\n    횟수가 필요해졌다.\n    \"\"\"\n    count = db.count_recent_signup_attempts(ip)\n    return count >= SIGNUP_RATE_LIMIT, count", "alias": null}, "routes/board.py:board_new_submit": {"path": "routes/board.py", "start": 64, "end": 101, "lang": "python", "code": "@board_bp.route(\"/board/new\", methods=[\"POST\"])\n@member_login_required\ndef board_new_submit():\n    \"\"\"글쓰기 폼 제출을 처리한다.\"\"\"\n    ip = get_request_ip()\n\n    # 허니팟 필드가 채워져 있으면 사람이 아니라 자동화 스크립트라고 보고,\n    # 시도 기록조차 남기지 않고 즉시 거부한다 (L7 공격 보강 계획 Tier 3).\n    if is_bot_submission():\n        soar.notify_bot_detected(ip, request.path)\n        flash(\"일시적인 오류가 발생했습니다. 다시 시도해주세요.\")\n        return render_template(\"board_form.html\", form_action=url_for(\"board.board_new_submit\"), post=None)\n\n    # 같은 IP가 짧은 시간에 너무 많이 글을 올리면 거부한다 (signup_submit()과 동일한\n    # \"먼저 판정 → 성공/실패 무관하게 시도 자체를 기록\" 순서, 결정 #7).\n    if detector.is_post_rate_limited(ip):\n        soar.record_rejection(\"POST_RATE_LIMIT\", ip, request.path, config.POST_RATE_LIMIT)\n        flash(\"너무 많은 게시글 작성 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.\")\n        return render_template(\"board_form.html\", form_action=url_for(\"board.board_new_submit\"), post=None)\n    db.log_post_attempt(ip)\n\n    title = request.form.get(\"title\", \"\").strip()\n    body = request.form.get(\"body\", \"\").strip()\n\n    if not title or not body:\n        flash(\"제목과 내용을 모두 입력해주세요.\")\n        return render_template(\"board_form.html\", form_action=url_for(\"board.board_new_submit\"), post=None)\n\n    if len(title) > POST_TITLE_MAX_LENGTH or len(body) > POST_BODY_MAX_LENGTH:\n        flash(\n            f\"제목은 최대 {POST_TITLE_MAX_LENGTH}자, 내용은 최대 {POST_BODY_MAX_LENGTH}자까지 \"\n            \"입력할 수 있습니다.\"\n        )\n        return render_template(\"board_form.html\", form_action=url_for(\"board.board_new_submit\"), post=None)\n\n    post = db.create_post(session[\"username\"], title, body)\n    flash(\"게시글이 등록되었습니다.\")\n    return redirect(url_for(\"board.board_detail\", post_id=post[\"id\"]))", "alias": null}, "security/detector.py:is_post_rate_limited": {"path": "security/detector.py", "start": 128, "end": 135, "lang": "python", "code": "def is_post_rate_limited(ip: str) -> bool:\n    \"\"\"이 IP가 최근 게시글을 너무 자주 작성해서 더 막아야 하는 상태인지 판단한다.\n\n    is_signup_rate_limited()와 동일하게 \"초과\"가 아니라 \"이상\"을 기준으로\n    삼는다 — 게시글 작성 자체가 정상 사용자가 짧은 시간에 여러 번 반복할\n    이유가 거의 없으므로, 기준치에 도달하면 즉시 차단한다.\n    \"\"\"\n    return db.count_recent_post_attempts(ip) >= POST_RATE_LIMIT", "alias": null}, "routes/board.py:board_comment_submit": {"path": "routes/board.py", "start": 213, "end": 245, "lang": "python", "code": "@board_bp.route(\"/board/<int:post_id>/comments\", methods=[\"POST\"])\n@member_login_required\ndef board_comment_submit(post_id):\n    \"\"\"댓글 작성. Post-Redirect-Get 패턴으로 처리 후 항상 상세 화면으로 돌아간다.\"\"\"\n    post = db.get_post(post_id)\n    if post is None:\n        flash(\"존재하지 않는 게시글입니다.\")\n        return redirect(url_for(\"board.board_list\"))\n\n    ip = get_request_ip()\n\n    # 허니팟 필드가 채워져 있으면 사람이 아니라 자동화 스크립트라고 보고 즉시 거부한다\n    # (L7 공격 보강 계획 Tier 3).\n    if is_bot_submission():\n        soar.notify_bot_detected(ip, request.path)\n        return redirect(url_for(\"board.board_detail\", post_id=post_id))\n\n    if detector.is_comment_rate_limited(ip):\n        soar.record_rejection(\"COMMENT_RATE_LIMIT\", ip, request.path, config.COMMENT_RATE_LIMIT)\n        flash(\"너무 많은 댓글 작성 시도가 감지되었습니다. 잠시 후 다시 시도해주세요.\")\n        return redirect(url_for(\"board.board_detail\", post_id=post_id))\n    db.log_comment_attempt(ip)\n\n    body = request.form.get(\"body\", \"\").strip()\n    if not body:\n        flash(\"댓글 내용을 입력해주세요.\")\n        return redirect(url_for(\"board.board_detail\", post_id=post_id))\n    if len(body) > COMMENT_BODY_MAX_LENGTH:\n        flash(f\"댓글은 최대 {COMMENT_BODY_MAX_LENGTH}자까지 입력할 수 있습니다.\")\n        return redirect(url_for(\"board.board_detail\", post_id=post_id))\n\n    db.create_comment(post_id, session[\"username\"], body)\n    return redirect(url_for(\"board.board_detail\", post_id=post_id))", "alias": null}, "security/detector.py:is_comment_rate_limited": {"path": "security/detector.py", "start": 138, "end": 144, "lang": "python", "code": "def is_comment_rate_limited(ip: str) -> bool:\n    \"\"\"이 IP가 최근 댓글을 너무 자주 작성해서 더 막아야 하는 상태인지 판단한다.\n\n    is_post_rate_limited()와 판단 방식은 같지만, 댓글은 정상적인 대화에서도\n    글보다 자주 달릴 수 있어 config.COMMENT_RATE_LIMIT 기본값을 더 넉넉하게 뒀다.\n    \"\"\"\n    return db.count_recent_comment_attempts(ip) >= COMMENT_RATE_LIMIT", "alias": null}, "security/soar/observe.py:record_rejection": {"path": "security/soar/observe.py", "start": 77, "end": 107, "lang": "python", "code": "def record_rejection(event_type: str, ip: str, path: str, count: int) -> None:\n    \"\"\"가입·게시글·댓글 요청 거부와 요청 한도 초과(HTTP_FLOOD, app.py)를 HIGH로\n    security_events에 기록한다. Slack 알림은 보내지\n    않는다 — CRITICAL/MEDIUM과 달리 이 등급은 \"관리자가 나중에 대시보드에서 확인\"하는\n    선까지만 자동화하기로 했다(security-risk-response-summary.md 5절).\n\n    is_signup_rate_limited() 등은 차단되는 동안 시도 자체를 로그에 남기지 않아 count가\n    차단 기간 내내 고정된다 — MEDIUM의 is_first_over_threshold처럼 \"지금이 막 넘긴\n    순간\"이라는 신호가 없다는 뜻이다. 그래서 매 거부마다 새 행을 만드는 대신,\n    is_locked()와 같은 방식으로 \"이 IP·유형에 이미 미해결 이벤트가 있으면 새로 만들지\n    않는다\"는 상태 기반 중복 방지를 쓴다 — 없으면 봇 한 대가 60초 창 안에 거부당할\n    때마다 새 행이 쌓여 security_events가 HIGH로 도배되고 CRITICAL/MEDIUM이 묻힌다.\n\n    다만 \"새로 안 만든다\"고 끝내면 이미 열린 사건이 실제로 몇 번이나 반복됐는지\n    알 수 없다(count가 처음 거부됐을 때 값에 영원히 고정됨) — 그래서 미해결\n    이벤트가 있으면 무시하는 대신, 그 행의 count를 1 올린다. 관리자가 \"처리\n    완료\"를 누르면 다음 거부부터 다시 새 이벤트가 생긴다.\n\n    db.insert_security_event_or_bump()를 쓰는 이유: 여기서 \"미해결 이벤트가\n    있는지\" 확인한 바로 그 순간과 실제로 새로 삽입하는 순간 사이에 아주 잠깐의\n    틈이 있어서, 동시에 두 요청이 이 함수를 거의 같은 순간에 통과하면 둘 다\n    \"없음\"을 보고 각자 삽입해버릴 수 있다(경쟁 조건). insert_security_event_or_bump는\n    그 드문 경우에도 DB의 유니크 인덱스가 두 번째 삽입을 막아주면 count 증가로\n    자동 대체한다.\n    \"\"\"\n    existing = db.get_unresolved_security_event(ip, event_type)\n    if existing:\n        db.update_security_event_count(existing[\"id\"], existing[\"count\"] + 1)\n    else:\n        db.insert_security_event_or_bump(event_type, \"HIGH\", ip, path, count, \"REJECTED\")\n    correlate.check_and_correlate(ip, event_type, \"HIGH\")", "alias": {"call": "soar.record_rejection()", "via": "security/soar/__init__.py", "real": "security/soar/observe.py"}}, "db/security_events.py:get_unresolved_security_event": {"path": "db/security_events.py", "start": 159, "end": 181, "lang": "python", "code": "def get_unresolved_security_event(ip: str, event_type: str) -> dict | None:\n    \"\"\"이 IP·이벤트 유형에 대해 아직 처리되지 않은 이벤트가 있으면 그 행을 돌려준다.\n\n    HIGH(요청 거부) 탐지 함수들은 차단되는 동안 시도 자체를 로그에 남기지 않아\n    count가 차단 기간 내내 고정된다 — MEDIUM처럼 \"정확히 임계값+1일 때만\"이라는\n    신호가 없다. 그래서 매 거부마다 새 행을 만드는 대신, is_locked()와 같은\n    방식으로 \"이미 열린 사건이 있으면 그 사건의 count만 올린다\"는 상태 기반\n    중복 방지를 쓴다(soar.record_rejection 참고). id·count를 함께 돌려주는\n    이유는 호출한 쪽이 바로 update_security_event_count()를 부를 수 있게 하기\n    위해서다 — 있는지 확인하는 쿼리와 실제 값을 가져오는 쿼리를 따로 두 번\n    보내지 않는다.\n    \"\"\"\n    res = (\n        db.get_client()\n        .table(\"security_events\")\n        .select(\"id, count\")\n        .eq(\"ip_address\", ip)\n        .eq(\"event_type\", event_type)\n        .is_(\"resolved_at\", \"null\")\n        .limit(1)\n        .execute()\n    )\n    return res.data[0] if res.data else None", "alias": {"call": "db.get_unresolved_security_event()", "via": "db/__init__.py", "real": "db/security_events.py"}}, "db/security_events.py:insert_security_event_or_bump": {"path": "db/security_events.py", "start": 253, "end": 273, "lang": "python", "code": "def insert_security_event_or_bump(\n    event_type: str, severity: str, ip: str, path: str | None, count: int, action: str\n) -> None:\n    \"\"\"HIGH 이벤트를 새로 기록하되, 아주 드물게 동시 요청 두 개가 거의 같은\n    순간에 \"미해결 이벤트 없음\"을 확인하고 둘 다 새로 삽입을 시도하는 경쟁\n    조건이 발생하면 — docs/schema.sql의 idx_security_events_high_open_incident\n    (같은 IP·유형·HIGH·미해결은 최대 1건) 부분 유니크 인덱스가 두 번째 삽입을\n    막아준다. 그 충돌(Postgres 오류 코드 23505 unique_violation)을 여기서\n    붙잡아서, 새로 만드는 대신 먼저 삽입된 행의 count를 올리는 것으로 대체한다\n    — soar.record_rejection()이 미리 하는 확인(get_unresolved_security_event)이\n    \"보통 경우\"를 처리하고, 이 함수는 그 확인과 삽입 사이의 아주 짧은 틈에\n    실제로 겹친 \"드문 경우\"만 뒤에서 조용히 정리하는 안전망이다.\n    \"\"\"\n    try:\n        insert_security_event(event_type, severity, ip, path, count, action)\n    except APIError as e:\n        if e.code != \"23505\":\n            raise\n        existing = get_unresolved_security_event(ip, event_type)\n        if existing:\n            update_security_event_count(existing[\"id\"], existing[\"count\"] + 1)", "alias": {"call": "db.insert_security_event_or_bump()", "via": "db/__init__.py", "real": "db/security_events.py"}}, "security/correlate.py:check_and_correlate": {"path": "security/correlate.py", "start": 39, "end": 63, "lang": "python", "code": "def check_and_correlate(ip: str, event_type: str, severity: str) -> None:\n    \"\"\"방금 security_events에 기록된 이벤트를 계기로, 이 IP가 최근\n    config.INCIDENT_CORRELATION_WINDOW_MINUTES분 안에 서로 다른 event_type을\n    2개 이상 남겼는지 확인한다.\n\n    2개 미만(=이 이벤트 하나뿐)이면 아무 것도 하지 않는다 — 단발성 이벤트까지\n    전부 \"사건\"으로 묶으면 security_incidents가 security_events와 다를 바\n    없어진다. 2개 이상이면 db.record_incident()로 사건을 열거나 갱신하고,\n    그 결과가 에스컬레이션 조건을 넘는지 이어서 확인한다.\n    \"\"\"\n    distinct_types = db.get_recent_distinct_event_types(\n        ip, config.INCIDENT_CORRELATION_WINDOW_MINUTES\n    )\n    if len(distinct_types) < 2:\n        return\n    incident = db.record_incident(ip, distinct_types, severity)\n    _maybe_escalate(ip, incident)\n\n    # 영구 잠금(guide33). 영구 잠금 이벤트 자체는 사건의 \"결과\"이므로 다시 승격을 시도하지\n    # 않는다(승격이 승격을 부르는 재귀 방지) — 대신 설정이 켜져 있으면 사건을 자동으로 닫는다.\n    # 그 외 이벤트는 사건 위험등급(T3 CRITICAL / T4 HIGH)에 따라 승격을 판단한다.\n    if event_type == lockdown.PERMANENT_LOCK_EVENT_TYPE:\n        lockdown.close_incident_if_configured(incident)\n    else:\n        lockdown.consider_incident_promotion(ip, incident)", "alias": null}}, "files": {"helpers/hooks.py": {"role": "요청마다 자동으로 끼어드는 훅(404 처리, 반복 접근 관찰, 보안 헤더)을 모아둔 파일.", "header": "helpers/hooks.py — 모든 요청에 걸리는 공용 훅: 보안 헤더, 404 기록(Web Scanning),\n반복 페이지 접근·매크로 API 패턴 관찰\n원래 app.py에 @app.after_request / @app.errorhandler(404) / @app.before_request\n데코레이터로 직접 달려 있었다. app.py가 앱 \"조립\"(설정·Blueprint 등록·요청 한도)에만\n집중하도록 이 파일로 옮겼고, app.py는 register_request_hooks(app) 한 줄로 등록한다.\n배경은 docs/refactor/2026-10-09-module-plan.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/helpers/hooks.py"}, "db/access_logs.py": {"role": "404·미인증·페이지 접근 요청을 기록하고 최근 횟수를 세는 저장소 파일.", "header": "db/access_logs.py — not_found_attempts / unauthorized_attempts /\npage_access_attempts 표 관련 함수 (요청 로그)\n세 표는 각각 Web Scanning(21단계), Unauthorized Access, 반복 페이지 접근을\n탐지하기 위한 요청 로그다(attack_response_state.md 구현 대상 #1/#2/#4).\n그 중 임계값을 넘은 이상행위만 security_events(db/security_events.py)에\n위험등급과 함께 따로 기록된다. 원래 db/security_events.py에 같이 있었는데\n2026-10-09에 나눴다(docs/refactor/2026-10-09-module-plan.md).\ndb.get_client() 호출 이유는 db/attempts.py 상단 설명 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/db/access_logs.py"}, "security/detector.py": {"role": "판사 역할. 각 공격 유형이 '수상한가?'를 True/False로 판정만 한다.", "header": "security/detector.py — \"판사\" 역할: 지금 이 IP가 수상한지, 지금 잠겨있는지만 판단한다\n이 파일은 데이터베이스의 상태를 절대 바꾸지 않는다(아무것도 저장/수정/삭제하지 않음).\n오직 db에게 \"지금 상태가 어때?\"라고 물어보고, 그 답을 바탕으로\nTrue/False 같은 \"판정 결과\"만 돌려준다.\n실제로 잠그거나 알림을 보내는 \"실행\"은 이 파일이 아니라 security/soar/가 담당한다\n(판단과 실행을 분리해두면, \"판단 기준만 바꾸고 싶다\" 같은 수정이 훨씬 쉬워진다).", "github": "https://github.com/dyj02056/login-watchdog/blob/main/security/detector.py"}, "security/soar/observe.py": {"role": "잠그지 않고 '알림 + 기록'만 하는 관찰형 조치와, 도배 요청 거부 기록을 담당한다.", "header": "security/soar/observe.py — 잠그지 않고 관찰만 하는 조치(알림 + 이벤트 기록)와 요청 거부 기록\n예전 soar.py(497줄)를 기능 묶음별로 나눈 조각 중 하나다. 다른 파일은 이 파일을 직접\n가리키지 않고 예전처럼 `from security import soar` 후 `soar.enforce_lockout(...)`으로\n쓴다(security/soar/__init__.py가 재내보내기). 배경은 docs/refactor/2026-10-09-module-plan.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/security/soar/observe.py"}, "notify/alert.py": {"role": "Slack 알림 전송 전담 파일.", "header": "notify/alert.py — \"전화 교환원\" 역할: Slack에 실제로 메시지를 전송한다\n이 파일이 하는 일은 딱 하나, \"메시지를 조립해서 Slack 웹훅 주소로 던지는 것\"뿐이다.\n\"언제 알림을 보낼지\"를 결정하는 판단은 이 파일의 몫이 아니고 security/soar/(대부분),\nsecurity/correlate.py·lockdown.py, notify/mailer.py(메일 발송 실패)가 결정해서\n이 파일의 함수를 호출해줄 때만 동작한다.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/notify/alert.py"}, "security/soar/early_warning.py": {"role": "security/soar/early_warning.py — LLM 조기 경보와 관리자 승인/반려 (Track A, guide31) 예전 soar.py(497줄)를 기능 묶음별로 나눈 조각 중 하나다. 다른 파일은 이 파일을 직접 가리키지 않고 예전처럼 `from security impo", "header": "security/soar/early_warning.py — LLM 조기 경보와 관리자 승인/반려 (Track A, guide31)\n예전 soar.py(497줄)를 기능 묶음별로 나눈 조각 중 하나다. 다른 파일은 이 파일을 직접\n가리키지 않고 예전처럼 `from security import soar` 후 `soar.enforce_lockout(...)`으로\n쓴다(security/soar/__init__.py가 재내보내기). 배경은 docs/refactor/2026-10-09-module-plan.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/security/soar/early_warning.py"}, "helpers/auth.py": {"role": "관리자·회원 문지기와 '미인증 접근' 기록을 담당하는 파일.", "header": "helpers/auth.py — 관리자/회원 세션과 로그인·권한 문지기(데코레이터)\n예전 helpers.py(314줄)를 기능 묶음별로 나눈 조각 중 하나다. 다른 파일은 이 파일을 직접\n가리키지 않고 예전처럼 `from helpers import ...`로 가져다 쓴다(helpers/__init__.py가\n재내보내기). 배경은 docs/refactor/2026-10-09-module-plan.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/helpers/auth.py"}, "routes/auth.py": {"role": "회원가입·로그인 입구 파일. 가입 도배 판정이 여기서 호출된다.", "header": "routes/auth.py — 회원가입(/signup) + 감시 대상 로그인(/login)\n원래 app.py의 \"회원가입 입력 검증 규칙\" / \"회원가입\" / \"감시 대상 로그인\"\n세 섹션을 그대로 옮겨왔다. 배경은 docs/refactor/2026-09-15-file-split.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/routes/auth.py"}, "routes/board.py": {"role": "게시판 입구 파일. 글·댓글 도배 판정이 여기서 호출된다.", "header": "routes/board.py — 게시판 (/board) — 전부 member_login_required로 보호됨 (회원 전용, 결정 #1)\nlogin_required/member_login_required는 \"로그인 여부\"만 확인하고 \"이 글/댓글이\n내 것인지\"는 확인하지 않으므로, 수정/삭제 라우트마다 _is_post_owner() 등으로\n직접 소유권을 검사한다 — 관리자는 routes/admin/manage.py의 /api/board/*/delete를 통해\n별도로 전체 글/댓글을 삭제할 수 있다(docs/board-comment/plan_board.md 5-3절 참고).\n원래 app.py의 \"게시판\" 섹션을 그대로 옮겨왔다. 배경은\ndocs/refactor/2026-09-15-file-split.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/routes/board.py"}, "db/security_events.py": {"role": "db/security_events.py — security_events 표 관련 함수 security_events는 MEDIUM/HIGH/CRITICAL 이상행위를 위험등급과 함께 기록하는 공통 표다(security-risk-response-summary.md 5절 참고). LOW는 여", "header": "db/security_events.py — security_events 표 관련 함수\nsecurity_events는 MEDIUM/HIGH/CRITICAL 이상행위를 위험등급과 함께 기록하는\n공통 표다(security-risk-response-summary.md 5절 참고). LOW는 여기 저장하지 않고\n요청 로그 표(not_found/unauthorized/page_access_attempts — db/access_logs.py)\n조회로만 추세를 본다. 그 세 표의 함수는 원래 이 파일에 있었는데 2026-10-09에\ndb/access_logs.py로 나눴다.\ndb.get_client() 호출 이유는 db/attempts.py 상단 설명 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/db/security_events.py"}, "security/correlate.py": {"role": "security/correlate.py — \"형사\" 역할: 흩어진 개별 신고(security_events)들을 보고 \"이거 같은 출처가 벌인 하나의 사건 아니야?\"를 판단한다 (Track C guide27, SIEM 상관분석) security/soar/가 security_events에 ", "header": "security/correlate.py — \"형사\" 역할: 흩어진 개별 신고(security_events)들을 보고\n\"이거 같은 출처가 벌인 하나의 사건 아니야?\"를 판단한다 (Track C guide27, SIEM 상관분석)\nsecurity/soar/가 security_events에 새 이벤트를 기록할 때마다 이 모듈의\ncheck_and_correlate()를 호출한다. security/detector.py와 동일한 원칙으로, 이 파일도\n\"판단\"만 하고(사건으로 묶어야 하는가?) 실제 저장/병합은 db 패키지(db/incidents.py)에\n맡긴다 — security/soar/가 db에게 조치를 맡기는 것과 같은 구조다.\nPLAYBOOKS(Track C guide28, SOAR 플레이북)도 이 파일에 둔다. security/soar/가 이미\nsecurity/correlate.py를 import하고 있어서, 플레이북 실행을 security/soar/ 쪽에 두고\nsecurity/correlate.py가 그걸 호출하게 하면 반대 방향 import가 생겨 순환 참조가 된다.\nsecurity/correlate.py는 사건이 얼마나 심각해졌는지 이미 알고 있는 유일한 곳이므로,\n여기서 곧바로 notify/alert.py를 불러 실행하는 것이 security/soar/가 notify/alert.py를 직접\n부르는 것과 같은 자연스러운 구조다.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/security/correlate.py"}}}</script>
+<script>
+(function(){
+  "use strict";
+  var D = JSON.parse(document.getElementById("data").textContent);
+  var $ = function(id){ return document.getElementById(id); };
+  var KIND_LABEL = {screen:"화면 · 도착지", route:"routes", helper:"판단", db:"db", config:"설정값", later:"다른 단원"};
+
+  var state = { sc: 0, node: null, item: 0, file: null };
+
+  function el(tag, attrs, kids){
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function(k){
+      if (k === "class") e.className = attrs[k];
+      else if (k === "text") e.textContent = attrs[k];
+      else if (k.slice(0,2) === "on") e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    });
+    (kids || []).forEach(function(c){ if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function brk(t){ return t.replace(/([\/._])/g, "$1\u200b"); }
+  function scen(){ return D.scenarios[state.sc]; }
+  function nodeById(id){ return scen().nodes.filter(function(n){ return n.id === id; })[0]; }
+  function fnName(label){ return label; }
+
+  /* ---------- 간단 문법 강조 ---------- */
+  var PY = /(#[^\n]*)|("""[\s\S]*?"""|'''[\s\S]*?''')|([rbfRBF]{0,2}"(?:\\.|[^"\\\n])*"|[rbfRBF]{0,2}'(?:\\.|[^'\\\n])*')|\b(def|class|return|if|elif|else|for|while|import|from|as|try|except|finally|with|in|not|and|or|is|None|True|False|raise|pass|lambda|yield|global|nonlocal|assert|del|continue|break)\b|(@[A-Za-z_][\w.]*)|\b(\d+(?:\.\d+)?)\b|\b([A-Za-z_]\w*)(?=\()/g;
+  var PYC = [null,"t-c","t-d","t-s","t-k","t-a","t-n","t-f"];
+  var HT = /(<!--[\s\S]*?-->)|(\{[{%#][\s\S]*?[}%#]\})|(<\/?[A-Za-z][\w-]*)|("[^"\n]*")|(\/?>)/g;
+  var HTC = [null,"t-c","t-a","t-k","t-s","t-k"];
+  var JS = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(`(?:\\.|[^`\\])*`)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|\b(const|let|var|function|return|if|else|for|while|import|from|export|default|async|await|try|catch|finally|new|class|extends|typeof|interface|type|null|undefined|true|false|throw|switch|case|break|continue|of|in|as)\b|(@[A-Za-z_]\w*)|\b(\d+(?:\.\d+)?)\b|\b([A-Za-z_$][\w$]*)(?=\()/g;
+  var JSC = [null,"t-c","t-s","t-s","t-k","t-a","t-n","t-f"];
+  var SQ = /(--[^\n]*|\/\*[\s\S]*?\*\/)|((?!))|('(?:''|[^'])*')|\b(select|from|where|insert|into|values|update|set|delete|create|table|index|alter|add|drop|on|conflict|do|nothing|and|or|not|null|default|primary|key|references|cascade|if|exists|as|order|by|group|limit|desc|asc|join|left|inner|count|returns|function|language|begin|end|return|with|union|all|distinct|in|is|true|false|unique|check|constraint|timestamptz|text|integer|bigint|boolean|interval|now|replace|trigger|view|policy|enable|row|level|security|using)\b|((?!))|\b(\d+(?:\.\d+)?)\b|\b([a-z_]\w*)(?=\()/gi;
+  var SQC = [null,"t-c",null,"t-s","t-k",null,"t-n","t-f"];
+  var SH = /(#[^\n]*)|((?!))|("(?:\\.|[^"\\\n])*"|'[^'\n]*')|\b(if|then|else|fi|for|do|done|while|case|esac|function|echo|export|python|pip|git|cd|run|name|on|jobs|steps|uses|with|env)\b|((?!))|\b(\d+)\b/g;
+  var SHC = [null,"t-c",null,"t-s","t-k",null,"t-n"];
+  function tokenize(code, lang){
+    var re = PY, cls = PYC;
+    if (lang === "html"){ re = HT; cls = HTC; }
+    else if (lang === "js"){ re = JS; cls = JSC; }
+    else if (lang === "sql"){ re = SQ; cls = SQC; }
+    else if (lang === "sh"){ re = SH; cls = SHC; }
+    var lines = [[]];
+    function push(text, c){
+      var parts = text.split("\n");
+      parts.forEach(function(p, i){
+        if (i > 0) lines.push([]);
+        if (p) lines[lines.length-1].push([p, c]);
+      });
+    }
+    var last = 0, m;
+    re.lastIndex = 0;
+    while ((m = re.exec(code)) !== null){
+      if (m.index > last) push(code.slice(last, m.index), null);
+      var idx = 1; while (idx < m.length && m[idx] === undefined) idx++;
+      push(m[0], cls[idx] || null);
+      last = m.index + m[0].length;
+      if (m[0].length === 0) re.lastIndex++;
+    }
+    if (last < code.length) push(code.slice(last), null);
+    return lines;
+  }
+
+  function codeTable(block, hl){
+    var lines = tokenize(block.code, block.lang);
+    var tbody = el("tbody");
+    var hlFirst = null;
+    lines.forEach(function(segs, i){
+      var no = block.start + i;
+      var on = hl && no >= hl[0] && no <= hl[1];
+      var td = el("td", {class:"tx"});
+      segs.forEach(function(s){ td.appendChild(s[1] ? el("span", {class:s[1], text:s[0]}) : document.createTextNode(s[0])); });
+      if (!segs.length) td.appendChild(document.createTextNode(" "));
+      var tr = el("tr", on ? {class:"hl"} : null, [el("td", {class:"ln", text:String(no)}), td]);
+      if (on && !hlFirst) hlFirst = tr;
+      tbody.appendChild(tr);
+    });
+    var box = el("div", {class:"codebox"}, [el("table", {class:"code"}, [tbody])]);
+    box._hlFirst = hlFirst;
+    return box;
+  }
+
+  function copyText(text, btn){
+    var done = function(){ var o = btn.textContent; btn.textContent = "복사됨 ✓"; setTimeout(function(){ btn.textContent = o; }, 1200); };
+    try { navigator.clipboard.writeText(text).then(done, fallback); } catch(e){ fallback(); }
+    function fallback(){
+      var ta = el("textarea", {style:"position:fixed;opacity:0"}); ta.value = text; document.body.appendChild(ta);
+      ta.select(); try { document.execCommand("copy"); done(); } catch(e){} document.body.removeChild(ta);
+    }
+  }
+
+  /* ---------- 패널 ---------- */
+  function openPanel(){ document.body.classList.add("open"); }
+  function closePanel(){ document.body.classList.remove("open"); }
+
+  function showHint(){
+    $("pTitle").textContent = "코드 보는 법";
+    $("pSub").textContent = "카드나 파일 이름을 누르면 실제 코드가 여기에 열립니다.";
+    var ul = el("ul", {class:"hint"}, [
+      el("li", {text:"카드(상자)를 누르면 그 단계에서 실행되는 실제 함수 코드가 열려요."}),
+      el("li", {text:"카드 안의 📄 파일 이름을 누르면 그 파일이 어떤 역할인지, 이 단원에서 쓰이는 함수가 무엇인지 보여줘요."}),
+      el("li", {text:"ƒ 함수 이름을 누르면 해당 함수 코드로 바로 이동해요."}),
+      el("li", {text:"노란색 줄이 지금 단계가 담당하는 부분이에요."}),
+      el("li", {text:"db.함수() 처럼 적혀 있어도 실제 코드는 db/users.py 같은 다른 파일에 있어요. 카드에 그 '진짜 파일'을 표시하고, 코드 위에 찾아가는 길도 그려줘요."}),
+      el("li", {text:"위쪽 ◀ ▶ 버튼으로 실행 순서대로 한 단계씩 따라갈 수 있어요."})
+    ]);
+    var b = $("pBody"); b.textContent = ""; b.appendChild(ul);
+  }
+
+  function renderAlias(a){
+    if (!a) return null;
+    return el("div", {class:"alias"}, [
+      el("div", {text:"코드에는 이렇게 적혀 있지만, 실제 함수는 다른 파일에 있어요."}),
+      el("div", {class:"route"}, [
+        el("span", {class:"step", text:a.call}), el("span", {class:"arrow", text:"→"}),
+        el("span", {class:"step", text:a.via + " (창구)"}), el("span", {class:"arrow", text:"→"}),
+        el("span", {class:"step real", text:a.real})
+      ])
+    ]);
+  }
+
+  function selectNode(id, itemIdx){
+    var n = nodeById(id); if (!n) return;
+    state.node = id; state.item = itemIdx || 0; state.file = null;
+    $("pTitle").textContent = n.title;
+    $("pSub").textContent = n.plain;
+    var body = $("pBody"); body.textContent = "";
+    if (n.reject) body.appendChild(el("div", {class:"n-reject", text:n.reject, style:"margin:0 0 10px"}));
+    if (n.items.length > 1){
+      var tabs = el("div", {class:"itabs", role:"tablist"});
+      n.items.forEach(function(it, i){
+        tabs.appendChild(el("button", {class:"itab", role:"tab", "aria-selected":String(i === state.item), text:it.label,
+          onclick:function(){ selectNode(id, i); }}));
+      });
+      body.appendChild(tabs);
+    }
+    var it = n.items[state.item];
+    var block = D.blocks[it.block];
+    var linesTxt = it.hl ? (it.hl[0] === it.hl[1] ? it.hl[0] + "줄" : it.hl[0] + "–" + it.hl[1] + "줄") : "";
+    var fl = el("div", {class:"fileline"}, [
+      el("button", {class:"chip file", onclick:function(){ selectFile(block.path); }, text:block.path}),
+      el("span", {class:"lines", text: block.start + "–" + block.end + "줄 표시" + (linesTxt ? " · 노란색 " + linesTxt : "")}),
+      el("span", {class:"spacer"}),
+      el("button", {class:"btn", text:"복사", onclick:function(e){ copyText(block.code, e.currentTarget); }}),
+      el("a", {class:"btn link", href:D.files[block.path].github + "#L" + block.start + "-L" + block.end, target:"_blank", rel:"noopener", text:"GitHub ↗"})
+    ]);
+    body.appendChild(fl);
+    var al = renderAlias(block.alias); if (al) body.appendChild(al);
+    var box = codeTable(block, it.hl);
+    body.appendChild(box);
+    if (it.hl) body.appendChild(el("p", {class:"legend-hl"}, [el("b", {text:"노란색"}), " = 이 카드가 담당하는 줄"]));
+    refreshSelection();
+    openPanel();
+    if (box._hlFirst){
+      var off = box._hlFirst.offsetTop - 60;
+      box.scrollTop = Math.max(0, off);
+    }
+    updateStepper();
+  }
+
+  function selectFile(path){
+    state.file = path; state.node = null;
+    var f = D.files[path];
+    $("pTitle").textContent = "📄 " + path;
+    $("pSub").textContent = f.role;
+    var body = $("pBody"); body.textContent = "";
+    body.appendChild(el("div", {class:"fileline"}, [
+      el("a", {class:"btn link", href:f.github, target:"_blank", rel:"noopener", text:"GitHub에서 파일 열기 ↗"})
+    ]));
+    body.appendChild(el("h3", {text:"이 단원에서 쓰이는 함수", style:"font-size:13.5px;margin:12px 0 0"}));
+    var ul = el("ul", {class:"flist"}), seen = {};
+    D.scenarios.forEach(function(sc, si){
+      sc.nodes.forEach(function(n){
+        n.items.forEach(function(it, ii){
+          var b = D.blocks[it.block]; if (b.path !== path) return;
+          var key = si + n.id + ii; if (seen[key]) return; seen[key] = 1;
+          var li = el("li");
+          li.appendChild(el("button", {onclick:function(){
+            if (state.sc !== si) switchScenario(si);
+            selectNode(n.id, ii); scrollToNode(n.id);
+          }}, [
+            el("span", {class:"mono", text:it.label}), el("small", {text:sc.name + " · " + n.title})
+          ]));
+          ul.appendChild(li);
+        });
+      });
+    });
+    body.appendChild(ul);
+    if (f.header){
+      var d = el("details", {class:"hdr"}, [el("summary", {text:"파일 맨 위 설명 주석 보기"}), el("pre", {text:f.header})]);
+      body.appendChild(d);
+    }
+    refreshSelection();
+    openPanel();
+  }
+
+  /* ---------- 흐름도 ---------- */
+  var cols, colIndex, nodeEls = {};
+  function renderStage(){
+    var sc = scen();
+    var used = {}; sc.nodes.forEach(function(n){ used[n.col] = 1; });
+    cols = Object.keys(used).map(Number).sort(function(a,b){ return a-b; });
+    colIndex = {}; cols.forEach(function(c, i){ colIndex[c] = i + 1; });
+    var stage = $("stage");
+    stage.textContent = "";
+    stage.style.gridTemplateColumns = "repeat(" + cols.length + ", 196px)";
+    nodeEls = {};
+
+    var svgNS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("class", "edges"); svg.id = "edges";
+    svg.innerHTML = '<defs>' +
+      '<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head" d="M0 0L10 5L0 10z" style="stroke:none"/></marker>' +
+      '<marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head-call" d="M0 0L10 5L0 10z" style="stroke:none"/></marker>' +
+      '</defs>';
+    stage.appendChild(svg);
+
+    cols.forEach(function(c){
+      stage.appendChild(el("div", {class:"colhead", style:"grid-column:" + colIndex[c] + ";grid-row:1", text:D.columns[c]}));
+    });
+    var cells = {};
+    sc.nodes.forEach(function(n){
+      var k = n.row + ":" + n.col;
+      if (!cells[k]){
+        cells[k] = el("div", {class:"cell", style:"grid-column:" + colIndex[n.col] + ";grid-row:" + (n.row + 2)});
+        stage.appendChild(cells[k]);
+      }
+      var node = buildNode(n);
+      nodeEls[n.id] = node;
+      cells[k].appendChild(node);
+    });
+    $("intro").textContent = sc.intro;
+    scheduleEdges();
+  }
+
+  function buildNode(n){
+    var node = el("div", {class:"node " + n.kind, role:"button", tabindex:"0", "aria-pressed":"false", "data-id":n.id,
+      onclick:function(e){ if (e.target.closest(".chip")) return; selectNode(n.id, 0); },
+      onkeydown:function(e){ if ((e.key === "Enter" || e.key === " ") && !e.target.closest(".chip")){ e.preventDefault(); selectNode(n.id, 0); } }});
+    var title = el("div", {class:"n-title", text:n.title});
+    if (n.later) title.appendChild(el("span", {class:"tag-later", text:n.later + "에서 자세히"}));
+    node.appendChild(title);
+    if (n.kind !== "later" && n.plain) node.appendChild(el("div", {class:"n-plain", text:n.plain}));
+    if (n.reject) node.appendChild(el("div", {class:"n-reject", text:n.reject}));
+    var items = el("div", {class:"n-items"});
+    n.items.forEach(function(it, i){
+      var b = D.blocks[it.block];
+      var row = el("div", {class:"n-item"});
+      if (it.call) row.appendChild(el("div", {class:"n-call", text:brk(it.call)}));
+      var chips = el("div", {class:"chips"}, [
+        el("button", {class:"chip file", text:brk(b.path), title:"파일 설명 보기", onclick:function(){ selectFile(b.path); }}),
+        el("button", {class:"chip " + (it.snippet ? "snip" : "fn"), text:it.label, title:"코드 보기", onclick:function(){ selectNode(n.id, i); }})
+      ]);
+      row.appendChild(chips);
+      items.appendChild(row);
+    });
+    node.appendChild(items);
+    return node;
+  }
+
+  function rectIn(elm, host){
+    var a = elm.getBoundingClientRect(), h = host.getBoundingClientRect();
+    return {l:a.left-h.left, r:a.right-h.left, t:a.top-h.top, b:a.bottom-h.top, cx:(a.left+a.right)/2-h.left, cy:(a.top+a.bottom)/2-h.top};
+  }
+  var raf = 0;
+  function scheduleEdges(){ cancelAnimationFrame(raf); raf = requestAnimationFrame(drawEdges); }
+  function drawEdges(){
+    var stage = $("stage"), svg = $("edges"), sc = scen();
+    Array.prototype.slice.call(svg.querySelectorAll("path.e")).forEach(function(p){ p.remove(); });
+    Array.prototype.slice.call(stage.querySelectorAll(".elabel")).forEach(function(p){ p.remove(); });
+    var svgNS = "http://www.w3.org/2000/svg";
+    sc.edges.forEach(function(e){
+      var a = nodeById(e.from), b = nodeById(e.to);
+      var ea = nodeEls[e.from], eb = nodeEls[e.to]; if (!ea || !eb) return;
+      var ra = rectIn(ea, stage), rb = rectIn(eb, stage), d, lx, ly;
+      if (a.col === b.col){
+        if (b.row - a.row <= 1){
+          d = "M" + ra.cx + " " + ra.b + " V" + rb.t; lx = ra.cx; ly = (ra.b + rb.t) / 2;
+        } else {
+          var x = Math.min(ra.l, rb.l) - 30;
+          d = "M" + ra.l + " " + ra.cy + " H" + x + " V" + rb.cy + " H" + rb.l; lx = x; ly = (ra.cy + rb.cy) / 2;
+        }
+      } else {
+        var dir = b.col > a.col ? 1 : -1;
+        var x1 = dir > 0 ? ra.r : ra.l, x2 = dir > 0 ? rb.l : rb.r;
+        var xm = x2 - dir * 30;
+        d = "M" + x1 + " " + ra.cy + " H" + xm + " V" + rb.cy + " H" + x2;
+        lx = (x1 + x2) / 2; ly = ra.cy;
+      }
+      var kind = e.kind === "call" ? "call" : "flow";
+      var p = document.createElementNS(svgNS, "path");
+      p.setAttribute("d", d); p.setAttribute("class", "e " + kind);
+      p.setAttribute("marker-end", "url(#" + (kind === "call" ? "ahc" : "ah") + ")");
+      p.setAttribute("data-from", e.from); p.setAttribute("data-to", e.to);
+      svg.appendChild(p);
+      if (e.label && kind === "flow"){
+        var lab = el("span", {class:"elabel", text:e.label});
+        lab.style.left = lx + "px"; lab.style.top = ly + "px";
+        stage.appendChild(lab);
+      }
+    });
+    svg.setAttribute("width", stage.scrollWidth); svg.setAttribute("height", stage.scrollHeight);
+    refreshSelection();
+  }
+
+  function refreshSelection(){
+    Object.keys(nodeEls).forEach(function(id){ nodeEls[id].setAttribute("aria-pressed", String(id === state.node)); });
+    var svg = $("edges"); if (!svg) return;
+    Array.prototype.slice.call(svg.querySelectorAll("path.e")).forEach(function(p){
+      var on = state.node && (p.getAttribute("data-from") === state.node || p.getAttribute("data-to") === state.node);
+      p.classList.toggle("active", !!on);
+    });
+  }
+  function scrollToNode(id){
+    var n = nodeEls[id]; if (n && n.scrollIntoView) n.scrollIntoView({block:"center", inline:"center", behavior:"smooth"});
+  }
+
+  /* ---------- 단계 이동 / 탭 ---------- */
+  function stepIndex(){ return scen().steps.indexOf(state.node); }
+  function updateStepper(){
+    var steps = scen().steps, i = stepIndex();
+    $("stepNo").textContent = i < 0 ? "– / " + steps.length : (i + 1) + " / " + steps.length;
+    $("prev").disabled = i <= 0 && state.node !== null ? true : false;
+    $("next").disabled = i >= steps.length - 1;
+    if (state.node === null){ $("prev").disabled = true; $("next").disabled = false; }
+  }
+  function go(delta){
+    var steps = scen().steps, i = stepIndex();
+    var j = i < 0 ? 0 : Math.max(0, Math.min(steps.length - 1, i + delta));
+    selectNode(steps[j], 0); scrollToNode(steps[j]);
+  }
+  function renderTabs(){
+    var t = $("tabs"); t.textContent = "";
+    D.scenarios.forEach(function(sc, i){
+      t.appendChild(el("button", {class:"tab", role:"tab", "aria-selected":String(i === state.sc), text:sc.name, onclick:function(){ switchScenario(i); }}));
+    });
+  }
+  function switchScenario(i){
+    state.sc = i; state.node = null; state.file = null;
+    renderTabs(); renderStage(); showHint(); updateStepper();
+    try { history.replaceState(null, "", "#" + D.scenarios[i].id); } catch(e){}
+  }
+
+  /* ---------- 시작 ---------- */
+  document.title = D.title + " — 코드 흐름도";
+  $("title").textContent = D.title + " · 코드 흐름도";
+  $("subtitle").textContent = D.subtitle;
+  $("mdlink").setAttribute("href", D.mdFile);
+  $("prev").addEventListener("click", function(){ go(-1); });
+  $("next").addEventListener("click", function(){ go(1); });
+  $("pClose").addEventListener("click", closePanel);
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape") closePanel(); });
+  $("theme").addEventListener("click", function(){
+    var r = document.documentElement, cur = r.getAttribute("data-theme");
+    var dark = cur ? cur === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    r.setAttribute("data-theme", dark ? "light" : "dark");
+  });
+  window.addEventListener("resize", scheduleEdges);
+  if (window.ResizeObserver) new ResizeObserver(scheduleEdges).observe($("stage"));
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleEdges);
+
+  var startId = (location.hash || "").replace("#", "");
+  var startIdx = 0; D.scenarios.forEach(function(s, i){ if (s.id === startId) startIdx = i; });
+  switchScenario(startIdx);
+  // 화면 확인/테스트용 지름길: window.__flow.select("s7")
+  window.__flow = { select: function(id, i){ selectNode(id, i || 0); }, file: selectFile, state: state };
+})();
+</script>
+</body>
+</html>
