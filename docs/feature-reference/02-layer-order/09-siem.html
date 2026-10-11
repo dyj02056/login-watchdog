@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>9. SIEM 상관분석 — 코드 흐름도</title>
+<style>
+  :root{
+    --bg:#f4f6f3; --surface:#ffffff; --surface-2:#eaefe9; --ink:#12201c; --ink-muted:#5a6b63;
+    --border:#d9e0da; --accent:#0f6f66; --accent-soft:#e2ede9; --danger:#bf3b2b; --danger-soft:#f8e6e2;
+    --edge:#7b8a82; --edge-call:#8a97a0;
+    --k-screen:#767f78; --k-screen-soft:#eef0ee;
+    --k-route:#2f5fd6;  --k-route-soft:#e7edfb;
+    --k-helper:#b56b0c; --k-helper-soft:#f7ecd9;
+    --k-db:#7a4fce;     --k-db-soft:#efe8fa;
+    --k-config:#0f6f66; --k-config-soft:#e2ede9;
+    --k-later:#9aa39d;  --k-later-soft:#f4f6f3;
+    --code-bg:#fbfcfb; --code-hl:#fff3c4; --code-hl-bar:#e0a800; --code-gutter:#8a978f;
+    --c-comment:#6b7d73; --c-str:#a1470f; --c-kw:#7a3fc0; --c-fn:#1f5fd0; --c-num:#0b7a6c; --c-deco:#b0306e;
+    --shadow:0 1px 2px rgba(18,32,28,.06), 0 6px 20px rgba(18,32,28,.07);
+    --panel-w: 520px;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0d1512; --surface:#141e1a; --surface-2:#1b2620; --ink:#e7efe9; --ink-muted:#93a49c;
+      --border:#28352e; --accent:#4fc9b8; --accent-soft:#17332d; --danger:#ec7a6a; --danger-soft:#3a1d19;
+      --edge:#6f8178; --edge-call:#5d6f67;
+      --k-screen:#9aa39d; --k-screen-soft:#1a221e;
+      --k-route:#7fa2f2;  --k-route-soft:#182236;
+      --k-helper:#e8a94c; --k-helper-soft:#31260f;
+      --k-db:#b49bee;     --k-db-soft:#241c34;
+      --k-config:#4fc9b8; --k-config-soft:#17332d;
+      --k-later:#6b7a72;  --k-later-soft:#111a16;
+      --code-bg:#0f1713; --code-hl:#3a3210; --code-hl-bar:#e8a94c; --code-gutter:#5f7068;
+      --c-comment:#7f9388; --c-str:#e9a27a; --c-kw:#c3a1f5; --c-fn:#8db3ff; --c-num:#6fd6c6; --c-deco:#f08ab8;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d1512; --surface:#141e1a; --surface-2:#1b2620; --ink:#e7efe9; --ink-muted:#93a49c;
+    --border:#28352e; --accent:#4fc9b8; --accent-soft:#17332d; --danger:#ec7a6a; --danger-soft:#3a1d19;
+    --edge:#6f8178; --edge-call:#5d6f67;
+    --k-screen:#9aa39d; --k-screen-soft:#1a221e;
+    --k-route:#7fa2f2;  --k-route-soft:#182236;
+    --k-helper:#e8a94c; --k-helper-soft:#31260f;
+    --k-db:#b49bee;     --k-db-soft:#241c34;
+    --k-config:#4fc9b8; --k-config-soft:#17332d;
+    --k-later:#6b7a72;  --k-later-soft:#111a16;
+    --code-bg:#0f1713; --code-hl:#3a3210; --code-hl-bar:#e8a94c; --code-gutter:#5f7068;
+    --c-comment:#7f9388; --c-str:#e9a27a; --c-kw:#c3a1f5; --c-fn:#8db3ff; --c-num:#6fd6c6; --c-deco:#f08ab8;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.55}
+  button{font:inherit;color:inherit;cursor:pointer}
+  code,.mono{font-family:var(--mono)}
+
+  .app{display:flex;height:100vh;min-height:0}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .top{padding:14px 20px 10px;border-bottom:1px solid var(--border);background:var(--surface)}
+  .top h1{margin:0;font-size:19px;letter-spacing:-.01em}
+  .top .sub{margin:2px 0 0;color:var(--ink-muted);font-size:13px}
+  .top-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+  .tabs{display:flex;gap:6px}
+  .tab{border:1px solid var(--border);background:var(--surface-2);border-radius:999px;padding:5px 14px;font-weight:600}
+  .tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+  :root[data-theme="dark"] .tab[aria-selected="true"]{color:#06201b}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tab[aria-selected="true"]{color:#06201b}}
+  .spacer{flex:1}
+  .btn{border:1px solid var(--border);background:var(--surface);border-radius:8px;padding:5px 11px;font-size:13px}
+  .btn:hover{border-color:var(--accent)}
+  .btn:disabled{opacity:.4;cursor:default}
+  .stepper{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-muted)}
+  .stepper b{color:var(--ink);min-width:42px;text-align:center}
+  a.link{color:var(--accent);text-decoration:none;font-size:13px}
+  a.link:hover{text-decoration:underline}
+
+  .intro{margin:0;padding:10px 20px;color:var(--ink-muted);font-size:13px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px 20px;font-size:12px;color:var(--ink-muted);border-bottom:1px solid var(--border)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+  .stage-wrap{flex:1;min-height:0;overflow:auto}
+  .stage{position:relative;display:grid;gap:26px 46px;padding:22px 22px 60px;width:max-content;min-width:100%}
+  .edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+  .edges path{fill:none;stroke:var(--edge);stroke-width:1.6}
+  .edges path.call{stroke:var(--edge-call);stroke-dasharray:5 4}
+  .edges path.active{stroke:var(--accent);stroke-width:2.4;stroke-dasharray:none}
+  .edges .head{fill:var(--edge)}
+  .edges .head-call{fill:var(--edge-call)}
+  .elabel{position:absolute;transform:translate(-50%,-50%);font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;
+    background:var(--surface);border:1px solid var(--border);color:var(--ink-muted);white-space:nowrap;pointer-events:none}
+
+  .colhead{font-size:12px;font-weight:700;color:var(--ink-muted);text-transform:none;border-bottom:2px solid var(--border);padding-bottom:6px;align-self:end}
+  .cell{display:flex;flex-direction:column;gap:12px;align-self:center;justify-content:center;position:relative;z-index:1}
+
+  .node{--k:var(--k-route);--ks:var(--k-route-soft);position:relative;background:var(--surface);border:1px solid var(--border);
+    border-left:5px solid var(--k);border-radius:10px;padding:10px 12px;box-shadow:var(--shadow);cursor:pointer;
+    transition:transform .08s, border-color .12s}
+  .node:hover{transform:translateY(-1px);border-color:var(--k)}
+  .node:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .node[aria-pressed="true"]{outline:3px solid var(--accent);outline-offset:1px}
+  .node.screen{--k:var(--k-screen);--ks:var(--k-screen-soft)}
+  .node.route{--k:var(--k-route);--ks:var(--k-route-soft)}
+  .node.helper{--k:var(--k-helper);--ks:var(--k-helper-soft)}
+  .node.db{--k:var(--k-db);--ks:var(--k-db-soft)}
+  .node.config{--k:var(--k-config);--ks:var(--k-config-soft)}
+  .node.later{--k:var(--k-later);--ks:var(--k-later-soft);background:var(--k-later-soft);box-shadow:none;border-style:dashed;border-left-style:solid;padding:8px 10px}
+  .n-title{font-weight:700;font-size:13.5px;letter-spacing:-.01em}
+  .n-plain{margin-top:3px;color:var(--ink-muted);font-size:12.5px}
+  .n-reject{margin-top:6px;font-size:12px;color:var(--danger);background:var(--danger-soft);border-radius:6px;padding:3px 8px}
+  .n-reject::before{content:"막히면 → ";font-weight:700}
+  .n-items{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+  .n-item{display:flex;flex-direction:column;gap:3px}
+  .n-call{overflow-wrap:anywhere;font-family:var(--mono);font-size:11.5px;color:var(--k);font-weight:600}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{max-width:100%;text-align:left;overflow-wrap:anywhere;border:1px solid var(--border);background:var(--ks);color:var(--ink);border-radius:6px;padding:1px 7px;font-family:var(--mono);font-size:11px}
+  .chip:hover{border-color:var(--k);color:var(--k)}
+  .chip.file::before{content:"📄 "}
+  .chip.fn::before{content:"ƒ ";color:var(--k);font-weight:700}
+  .chip.snip::before{content:"▤ ";color:var(--k);font-weight:700}
+  .tag-later{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:700;color:var(--ink-muted);border:1px solid var(--border);border-radius:999px;padding:0 7px;background:var(--surface)}
+
+  /* 코드 패널 */
+  .panel{width:var(--panel-w);flex:none;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;min-height:0}
+  .p-head{padding:14px 16px 10px;border-bottom:1px solid var(--border)}
+  .p-head h2{margin:0;font-size:15.5px;letter-spacing:-.01em}
+  .p-head p{margin:4px 0 0;color:var(--ink-muted);font-size:13px}
+  .p-close{display:none}
+  .p-body{flex:1;min-height:0;overflow:auto;padding:12px 16px 24px}
+  .hint{color:var(--ink-muted);font-size:13px}
+  .hint li{margin:4px 0}
+  .itabs{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+  .itab{border:1px solid var(--border);background:var(--surface-2);border-radius:6px;padding:2px 9px;font-family:var(--mono);font-size:12px}
+  .itab[aria-selected="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700}
+  .fileline{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}
+  .fileline .path{font-family:var(--mono);font-size:12.5px;font-weight:700}
+  .fileline .lines{font-family:var(--mono);font-size:12px;color:var(--ink-muted)}
+  .alias{border:1px solid var(--border);background:var(--k-db-soft);border-radius:8px;padding:8px 10px;margin:0 0 10px;font-size:12.5px}
+  .alias .route{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:5px;font-family:var(--mono);font-size:12px}
+  .alias .route span.step{padding:1px 7px;border-radius:6px;border:1px solid var(--border);background:var(--surface)}
+  .alias .route span.real{border-color:var(--k-db);color:var(--k-db);font-weight:700}
+  .alias .arrow{color:var(--ink-muted)}
+  .codebox{border:1px solid var(--border);border-radius:8px;background:var(--code-bg);overflow:auto;max-height:calc(100vh - 330px);min-height:240px}
+  .codebox.wrap table.code td.tx{white-space:pre-wrap;overflow-wrap:anywhere}
+  .btn[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700}
+  /* 흐름도 ↔ 코드 패널 사이 드래그 분할선 (겹쳐 놓아 레이아웃은 밀리지 않는다) */
+  .splitter{flex:none;position:relative;z-index:6;width:11px;margin:0 -5px;cursor:col-resize;touch-action:none;outline:none}
+  .splitter::before{content:"";position:absolute;left:5px;top:0;bottom:0;width:1px;background:var(--border);transition:background .12s,width .12s,left .12s}
+  .splitter::after{content:"";position:absolute;left:3px;top:50%;width:5px;height:44px;margin-top:-22px;border-radius:3px;background:var(--border);transition:background .12s}
+  .splitter:hover::before,.splitter:focus-visible::before,body.dragging .splitter::before{background:var(--accent);width:3px;left:4px}
+  .splitter:hover::after,.splitter:focus-visible::after,body.dragging .splitter::after{background:var(--accent)}
+  body.dragging{user-select:none;cursor:col-resize}
+  table.code{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12.2px;line-height:1.6}
+  table.code td{padding:0 10px;vertical-align:top;white-space:pre}
+  table.code td.ln{position:sticky;left:0;text-align:right;color:var(--code-gutter);user-select:none;background:var(--code-bg);border-right:1px solid var(--border);min-width:44px;padding-right:8px}
+  table.code tr.hl td{background:var(--code-hl)}
+  table.code tr.hl td.ln{background:var(--code-hl);color:var(--ink);font-weight:700;box-shadow:inset 3px 0 0 var(--code-hl-bar)}
+  .t-c{color:var(--c-comment);font-style:italic}.t-d{color:var(--c-comment)}.t-s{color:var(--c-str)}.t-k{color:var(--c-kw);font-weight:600}
+  .t-f{color:var(--c-fn)}.t-n{color:var(--c-num)}.t-a{color:var(--c-deco)}
+  .legend-hl{margin:8px 0 0;font-size:12px;color:var(--ink-muted)}
+  .legend-hl b{background:var(--code-hl);color:var(--ink);padding:0 6px;border-radius:4px}
+  .flist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:6px}
+  .flist button{width:100%;text-align:left;border:1px solid var(--border);background:var(--surface-2);border-radius:8px;padding:6px 10px}
+  .flist button:hover{border-color:var(--accent)}
+  .flist small{display:block;color:var(--ink-muted)}
+  details.hdr{margin-top:12px;font-size:13px}
+  details.hdr pre{white-space:pre-wrap;background:var(--surface-2);border-radius:8px;padding:10px;font-family:var(--sans);font-size:12.5px;color:var(--ink-muted)}
+
+  @media (max-width:900px){
+    .splitter{display:none}
+    .app{display:block;height:auto}
+    .stage-wrap{max-height:none;overflow-x:auto}
+    .panel{position:fixed;left:0;right:0;bottom:0;width:auto;height:62vh;border-left:0;border-top:2px solid var(--accent);
+      box-shadow:0 -10px 30px rgba(0,0,0,.25);z-index:20;transform:translateY(105%);transition:transform .18s}
+    body.open .panel{transform:none}
+    .p-close{display:inline-block;position:absolute;right:12px;top:10px}
+    .p-head{position:relative;padding-right:70px}
+    .top{padding:12px 16px 8px}
+    .stage{padding:16px 16px 70vh}
+  }
+  @media (prefers-reduced-motion: reduce){.node,.panel{transition:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="main">
+    <header class="top">
+      <h1 id="title"></h1>
+      <p class="sub" id="subtitle"></p>
+      <div class="top-row">
+        <div class="tabs" role="tablist" id="tabs"></div>
+        <div class="stepper"><button class="btn" id="prev">◀ 이전</button><b id="stepNo">–</b><button class="btn" id="next">다음 ▶</button></div>
+        <span class="spacer"></span>
+        <a class="link" id="mdlink" href="#">📝 설명 문서 보기</a>
+        <button class="btn" id="theme" title="라이트/다크 전환">🌓</button>
+      </div>
+    </header>
+    <p class="intro" id="intro"></p>
+    <div class="legend" aria-label="범례">
+      <span><i style="background:var(--k-screen)"></i>화면 · 도착지</span>
+      <span><i style="background:var(--k-route)"></i>routes (입구)</span>
+      <span><i style="background:var(--k-helper)"></i>판단 (security · helpers)</span>
+      <span><i style="background:var(--k-db)"></i>db (저장소)</span>
+      <span><i style="background:var(--k-config)"></i>설정값</span>
+      <span><i style="background:var(--k-later);opacity:.6"></i>다른 단원에서 자세히</span>
+      <span>━ 다음 단계 &nbsp; ┅ 함수 호출</span>
+    </div>
+    <div class="stage-wrap" id="stageWrap"><div class="stage" id="stage"></div></div>
+  </div>
+
+  <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" tabindex="0"
+       aria-label="코드 패널 너비 조절 (드래그, 또는 좌우 화살표 키 · 더블클릭하면 기본 너비)" title="드래그해서 코드 패널 너비 조절 · 더블클릭: 기본 너비"></div>
+  <aside class="panel" id="panel" aria-live="polite">
+    <div class="p-head">
+      <h2 id="pTitle"></h2><p id="pSub"></p>
+      <button class="btn p-close" id="pClose">닫기</button>
+    </div>
+    <div class="p-body" id="pBody"></div>
+  </aside>
+</div>
+
+<script type="application/json" id="data">{"title": "9. SIEM 상관분석", "subtitle": "흩어진 이벤트들이 '하나의 공격 사건'으로 묶이고 닫히는 과정의 코드 흐름도", "mdFile": "09-siem.md", "github": "https://github.com/dyj02056/login-watchdog/blob/main/", "columns": ["화면 · 도착지", "routes/ (입구)", "판단 (security · helpers)", "db/ · config.py (저장소 · 설정값)"], "scenarios": [{"id": "correlate", "name": "사건 묶기", "intro": "같은 IP 가 '웹 스캐닝(정찰) → 브루트포스(공격)'처럼 움직이면 우연이 아니라 하나의 공격 흐름일 가능성이 큽니다. 이벤트를 기록할 때마다 '최근 5분 안에 서로 다른 유형이 2개 이상인가?'를 확인합니다.", "nodes": [{"id": "correlate_n1", "col": 0, "row": 0, "kind": "screen", "title": "이벤트가 기록된 직후", "plain": "_record_event() 가 이벤트를 저장하고 나면 항상 상관분석을 부릅니다.", "reject": "", "later": "", "items": [{"block": "security/soar/_events.py:_record_event", "hl": [33, 33], "label": "_record_event()", "call": null, "snippet": false}]}, {"id": "correlate_n2", "col": 1, "row": 1, "kind": "route", "title": "① 최근 5분 안에 서로 다른 유형이 몇 개?", "plain": "같은 IP 의 최근 이벤트 유형 목록(중복 없이)을 가져옵니다. 방금 기록한 이벤트도 포함됩니다.", "reject": "", "later": "", "items": [{"block": "security/correlate.py:check_and_correlate", "hl": [49, 52], "label": "check_and_correlate()", "call": null, "snippet": false}]}, {"id": "correlate_n3", "col": 3, "row": 1, "kind": "db", "title": "최근 이벤트 유형 목록", "plain": "security_events 에서 이 IP 의 최근 N분 유형을 모아 중복을 없앱니다.", "reject": "", "later": "", "items": [{"block": "db/incidents.py:get_recent_distinct_event_types", "hl": null, "label": "get_recent_distinct_event_types()", "call": "db.get_recent_distinct_event_types()", "snippet": false}]}, {"id": "correlate_n4", "col": 3, "row": 1, "kind": "config", "title": "시간 창 설정 (5분)", "plain": "상관분석이 보는 시간 범위입니다.", "reject": "", "later": "", "items": [{"block": "config.py:103-103", "hl": null, "label": "config.py 시간 창", "call": null, "snippet": true}]}, {"id": "correlate_n5", "col": 1, "row": 2, "kind": "route", "title": "② 2개 미만이면 사건으로 만들지 않는다", "plain": "단발성 이벤트까지 전부 사건으로 묶으면 사건 표가 이벤트 표와 다를 바 없어집니다.", "reject": "", "later": "", "items": [{"block": "security/correlate.py:check_and_correlate", "hl": [52, 53], "label": "check_and_correlate()", "call": null, "snippet": false}]}, {"id": "correlate_n6", "col": 1, "row": 3, "kind": "route", "title": "③ 사건을 열거나 갱신", "plain": "이 IP 에 열린 사건이 있으면 합치고, 없으면 새로 엽니다.", "reject": "", "later": "", "items": [{"block": "security/correlate.py:check_and_correlate", "hl": [54, 54], "label": "check_and_correlate()", "call": null, "snippet": false}]}, {"id": "correlate_n7", "col": 3, "row": 3, "kind": "db", "title": "사건 열기 / 병합", "plain": "열린 사건을 찾아 병합하거나 새 사건을 만듭니다.", "reject": "", "later": "", "items": [{"block": "db/incidents.py:record_incident", "hl": null, "label": "record_incident()", "call": "db.record_incident()", "snippet": false}]}, {"id": "correlate_n8", "col": 3, "row": 3, "kind": "db", "title": "열린 사건 찾기", "plain": "이 IP 의 OPEN 사건 한 건을 가져옵니다.", "reject": "", "later": "", "items": [{"block": "db/incidents.py:get_open_incident", "hl": null, "label": "get_open_incident()", "call": "db.get_open_incident()", "snippet": false}]}, {"id": "correlate_n9", "col": 1, "row": 4, "kind": "route", "title": "④ 오래 조용했던 사건은 IDLE 로 옮기고 새로 연다", "plain": "마지막 이벤트로부터 30분 넘게 조용했던 사건에 새 공격을 억지로 합치지 않습니다. 이미 알림이 나간 옛 사건이 새 공격의 알림을 삼키는 일을 막기 위해서입니다.", "reject": "", "later": "", "items": [{"block": "db/incidents.py:record_incident", "hl": [129, 138], "label": "record_incident()", "call": "db.record_incident()", "snippet": false}]}, {"id": "correlate_n10", "col": 3, "row": 4, "kind": "db", "title": "오래 조용했나?", "plain": "last_event_at 이 유휴 기준(30분)보다 오래됐는지 비교합니다.", "reject": "", "later": "", "items": [{"block": "db/incidents.py:_is_idle", "hl": null, "label": "_is_idle()", "call": null, "snippet": false}]}, {"id": "correlate_n11", "col": 3, "row": 4, "kind": "db", "title": "OPEN → IDLE", "plain": "옛 사건을 '활동 없음'으로 옮깁니다(아직 관리자 미해결).", "reject": "", "later": "", "items": [{"block": "db/incidents.py:mark_incident_idle", "hl": null, "label": "mark_incident_idle()", "call": "db.mark_incident_idle()", "snippet": false}]}, {"id": "correlate_n12", "col": 1, "row": 5, "kind": "route", "title": "⑤ 열린 사건이 있으면 병합, 없으면 새로 열기", "plain": "유형 목록은 합집합, 위험등급은 더 높은 쪽으로 갱신합니다. 동시 요청이 겹쳐도 DB 유니크 인덱스가 중복을 막습니다.", "reject": "", "later": "", "items": [{"block": "db/incidents.py:record_incident", "hl": [139, 144], "label": "record_incident()", "call": "db.record_incident()", "snippet": false}]}, {"id": "correlate_n13", "col": 3, "row": 5, "kind": "db", "title": "기존 사건에 병합", "plain": "유형 합집합 + 더 높은 등급으로 갱신합니다.", "reject": "", "later": "", "items": [{"block": "db/incidents.py:_merge_into_existing", "hl": null, "label": "_merge_into_existing()", "call": null, "snippet": false}]}, {"id": "correlate_n14", "col": 3, "row": 5, "kind": "db", "title": "새 사건 열기", "plain": "status=OPEN, escalated=False 로 시작합니다.", "reject": "", "later": "", "items": [{"block": "db/incidents.py:_insert_incident", "hl": null, "label": "_insert_incident()", "call": null, "snippet": false}]}, {"id": "correlate_n15", "col": 1, "row": 6, "kind": "route", "title": "⑥ 에스컬레이션 판단", "plain": "사건이 충분히 심각해졌는지 이어서 확인합니다(10단원).", "reject": "", "later": "", "items": [{"block": "security/correlate.py:check_and_correlate", "hl": [55, 55], "label": "check_and_correlate()", "call": null, "snippet": false}]}, {"id": "correlate_n16", "col": 2, "row": 6, "kind": "later", "title": "복합 공격 에스컬레이션", "plain": "CRITICAL + 유형 3개 이상이면 추가 알림.", "reject": "", "later": "10단원", "items": [{"block": "security/correlate.py:_maybe_escalate", "hl": null, "label": "_maybe_escalate()", "call": null, "snippet": false}]}], "edges": [{"from": "correlate_n1", "to": "correlate_n2", "label": "", "kind": "flow"}, {"from": "correlate_n2", "to": "correlate_n3", "label": "", "kind": "call"}, {"from": "correlate_n2", "to": "correlate_n4", "label": "", "kind": "call"}, {"from": "correlate_n2", "to": "correlate_n5", "label": "", "kind": "flow"}, {"from": "correlate_n5", "to": "correlate_n6", "label": "", "kind": "flow"}, {"from": "correlate_n6", "to": "correlate_n7", "label": "", "kind": "call"}, {"from": "correlate_n7", "to": "correlate_n8", "label": "", "kind": "call"}, {"from": "correlate_n6", "to": "correlate_n9", "label": "", "kind": "flow"}, {"from": "correlate_n9", "to": "correlate_n10", "label": "", "kind": "call"}, {"from": "correlate_n9", "to": "correlate_n11", "label": "", "kind": "call"}, {"from": "correlate_n9", "to": "correlate_n12", "label": "", "kind": "flow"}, {"from": "correlate_n12", "to": "correlate_n13", "label": "", "kind": "call"}, {"from": "correlate_n12", "to": "correlate_n14", "label": "", "kind": "call"}, {"from": "correlate_n12", "to": "correlate_n15", "label": "", "kind": "flow"}, {"from": "correlate_n15", "to": "correlate_n16", "label": "", "kind": "call"}], "steps": ["correlate_n1", "correlate_n2", "correlate_n5", "correlate_n6", "correlate_n9", "correlate_n12", "correlate_n15"]}, {"id": "close", "name": "사건 해결 (관리자 버튼으로만)", "intro": "사건은 'IP 잠금 해제'와 별개입니다. 잠금은 접속 차단을 거두는 조치일 뿐이고, 사건은 관리자가 내용을 확인하고 '해결'을 눌러야만 닫힙니다.", "nodes": [{"id": "close_n1", "col": 0, "row": 0, "kind": "screen", "title": "대시보드 '해결' 클릭 (POST)", "plain": "연관 사건 표의 '해결' 버튼이 이 API 를 호출합니다.", "reject": "", "later": "", "items": [{"block": "routes/admin/incidents.py:api_security_incidents_resolve", "hl": [76, 77], "label": "api_security_incidents_resolve()", "call": null, "snippet": false}]}, {"id": "close_n2", "col": 1, "row": 1, "kind": "route", "title": "① 입력 확인", "plain": "incident_id 가 정수가 아니면 거부합니다. bool 도 정수처럼 보이지만 일부러 걸러냅니다.", "reject": "incident_id 값이 필요합니다. (400)", "later": "", "items": [{"block": "routes/admin/incidents.py:api_security_incidents_resolve", "hl": [88, 90], "label": "api_security_incidents_resolve()", "call": null, "snippet": false}]}, {"id": "close_n3", "col": 1, "row": 2, "kind": "route", "title": "② 해결자는 세션에서 가져온다", "plain": "누가 해결했는지는 요청 본문이 아니라 로그인 세션에서 가져옵니다. 본문 값은 위조할 수 있기 때문입니다.", "reject": "", "later": "", "items": [{"block": "routes/admin/incidents.py:api_security_incidents_resolve", "hl": [92, 92], "label": "api_security_incidents_resolve()", "call": null, "snippet": false}]}, {"id": "close_n4", "col": 3, "row": 2, "kind": "db", "title": "CLOSED 로 변경 + 해결자·시각 기록", "plain": "OPEN 또는 IDLE 인 사건에만 적용돼서 이미 해결된 사건을 다시 눌러도 안전합니다.", "reject": "", "later": "", "items": [{"block": "db/incidents.py:resolve_incident", "hl": [185, 187], "label": "resolve_incident()", "call": "db.resolve_incident()", "snippet": false}]}], "edges": [{"from": "close_n1", "to": "close_n2", "label": "", "kind": "flow"}, {"from": "close_n2", "to": "close_n3", "label": "", "kind": "flow"}, {"from": "close_n3", "to": "close_n4", "label": "", "kind": "call"}], "steps": ["close_n1", "close_n2", "close_n3"]}], "blocks": {"security/soar/_events.py:_record_event": {"path": "security/soar/_events.py", "start": 13, "end": 33, "lang": "python", "code": "def _record_event(\n    event_type: str,\n    severity: str,\n    ip: str,\n    path: str | None,\n    count: int,\n    action: str,\n    username: str | None = None,\n) -> None:\n    \"\"\"security_events에 이벤트를 기록하고, 곧바로 상관분석 훅(security/correlate.py)을\n    호출한다 (Track C guide27).\n\n    security/soar/ 안에서 직접 db.insert_security_event()를 부르는 곳을 여기 하나로\n    모아둔 이유: correlate.check_and_correlate()를 매번 손으로 챙겨 부르게\n    하면, 새 조치 함수를 추가할 때 상관분석 훅을 빠뜨리기 쉽다.\n    \"\"\"\n    if username is not None:\n        db.insert_security_event(event_type, severity, ip, path, count, action, username=username)\n    else:\n        db.insert_security_event(event_type, severity, ip, path, count, action)\n    correlate.check_and_correlate(ip, event_type, severity)", "alias": null}, "security/correlate.py:check_and_correlate": {"path": "security/correlate.py", "start": 39, "end": 63, "lang": "python", "code": "def check_and_correlate(ip: str, event_type: str, severity: str) -> None:\n    \"\"\"방금 security_events에 기록된 이벤트를 계기로, 이 IP가 최근\n    config.INCIDENT_CORRELATION_WINDOW_MINUTES분 안에 서로 다른 event_type을\n    2개 이상 남겼는지 확인한다.\n\n    2개 미만(=이 이벤트 하나뿐)이면 아무 것도 하지 않는다 — 단발성 이벤트까지\n    전부 \"사건\"으로 묶으면 security_incidents가 security_events와 다를 바\n    없어진다. 2개 이상이면 db.record_incident()로 사건을 열거나 갱신하고,\n    그 결과가 에스컬레이션 조건을 넘는지 이어서 확인한다.\n    \"\"\"\n    distinct_types = db.get_recent_distinct_event_types(\n        ip, config.INCIDENT_CORRELATION_WINDOW_MINUTES\n    )\n    if len(distinct_types) < 2:\n        return\n    incident = db.record_incident(ip, distinct_types, severity)\n    _maybe_escalate(ip, incident)\n\n    # 영구 잠금(guide33). 영구 잠금 이벤트 자체는 사건의 \"결과\"이므로 다시 승격을 시도하지\n    # 않는다(승격이 승격을 부르는 재귀 방지) — 대신 설정이 켜져 있으면 사건을 자동으로 닫는다.\n    # 그 외 이벤트는 사건 위험등급(T3 CRITICAL / T4 HIGH)에 따라 승격을 판단한다.\n    if event_type == lockdown.PERMANENT_LOCK_EVENT_TYPE:\n        lockdown.close_incident_if_configured(incident)\n    else:\n        lockdown.consider_incident_promotion(ip, incident)", "alias": null}, "db/incidents.py:get_recent_distinct_event_types": {"path": "db/incidents.py", "start": 22, "end": 37, "lang": "python", "code": "def get_recent_distinct_event_types(ip: str, window_minutes: int) -> list[str]:\n    \"\"\"이 IP가 최근 window_minutes분 안에 security_events에 남긴 서로 다른\n    event_type 목록을 정렬해서 돌려준다. 방금 기록된 이벤트도 포함된다\n    (correlate.check_and_correlate가 db.insert_security_event 직후에 이 함수를\n    부르기 때문).\n    \"\"\"\n    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=window_minutes)).isoformat()\n    res = (\n        db.get_client()\n        .table(\"security_events\")\n        .select(\"event_type\")\n        .eq(\"ip_address\", ip)\n        .gte(\"detected_at\", cutoff)\n        .execute()\n    )\n    return sorted({row[\"event_type\"] for row in res.data})", "alias": {"call": "db.get_recent_distinct_event_types()", "via": "db/__init__.py", "real": "db/incidents.py"}}, "config.py:103-103": {"path": "config.py", "start": 103, "end": 103, "lang": "python", "code": "INCIDENT_CORRELATION_WINDOW_MINUTES = int(os.environ.get(\"INCIDENT_CORRELATION_WINDOW_MINUTES\", 5))", "alias": null}, "db/incidents.py:record_incident": {"path": "db/incidents.py", "start": 117, "end": 148, "lang": "python", "code": "def record_incident(ip: str, event_types: list[str], severity: str) -> dict:\n    \"\"\"이 IP에 열린 사건이 있으면 event_types/최고 위험등급을 병합해서 갱신하고,\n    없으면 새로 연다. 병합/생성된 사건의 최종 상태(id/event_types/severity_max/\n    escalated)를 돌려준다 — security/correlate.py가 이 값을 보고 SOAR 플레이북(사건\n    에스컬레이션 알림, Track C guide28)을 실행할지 판단한다.\n\n    \"열려있는지 확인\" 후 \"새로 연다\" 사이의 아주 짧은 틈에 동시 요청 두 개가\n    겹치면(드문 경쟁 조건), docs/schema.sql의 idx_security_incidents_open_ip\n    부분 유니크 인덱스가 두 번째 삽입을 막아준다 — db.insert_security_event_or_bump()와\n    같은 방식으로, 그 충돌(Postgres 오류 코드 23505)을 여기서 붙잡아 새로 여는\n    대신 이미 삽입된 사건에 병합하는 것으로 대체한다.\n    \"\"\"\n    existing = get_open_incident(ip)\n    if existing and _is_idle(existing):\n        # 마지막 이벤트로부터 config.INCIDENT_MERGE_IDLE_MINUTES 넘게 조용했던 옛\n        # 사건 — 새 이벤트를 억지로 합치지 않고 IDLE(활동 없음, 아직 관리자\n        # 미해결)로 옮긴 뒤 새 사건을 연다. idx_security_incidents_open_ip는\n        # status='OPEN'에만 걸려 있으므로 옛 사건이 IDLE로 빠져야 새 OPEN 사건을\n        # 만들 수 있다. 새 사건은 escalated=False로 시작하므로, 이미 escalated\n        # 된 옛 사건이 새 공격의 에스컬레이션 알림을 삼키는 일이 없어진다.\n        mark_incident_idle(existing[\"id\"])\n        existing = None\n    if existing:\n        return _merge_into_existing(existing, event_types, severity)\n    try:\n        incident_id = _insert_incident(ip, event_types, severity)\n        return {\"id\": incident_id, \"event_types\": event_types, \"severity_max\": severity, \"escalated\": False}\n    except APIError as e:\n        if e.code != \"23505\":\n            raise\n        existing = get_open_incident(ip)\n        return _merge_into_existing(existing, event_types, severity)", "alias": {"call": "db.record_incident()", "via": "db/__init__.py", "real": "db/incidents.py"}}, "db/incidents.py:get_open_incident": {"path": "db/incidents.py", "start": 58, "end": 75, "lang": "python", "code": "def get_open_incident(ip: str) -> dict | None:\n    \"\"\"이 IP에 지금 열려있는(status='OPEN') 사건이 있으면 그 행을 돌려준다.\n\n    escalated도 함께 가져온다 — record_incident()가 병합할 때 \"이미 에스컬레이션\n    알림을 보낸 사건인지\"를 판단해야 하기 때문이다(Track C guide28, SOAR 플레이북).\n    last_event_at도 가져온다 — 마지막 이벤트로부터 너무 오래 지난 사건은 병합하지\n    않고 IDLE로 옮겨야 하는지(_is_idle) 판단하는 데 쓰인다.\n    \"\"\"\n    res = (\n        db.get_client()\n        .table(\"security_incidents\")\n        .select(\"id, event_types, severity_max, escalated, last_event_at\")\n        .eq(\"ip_address\", ip)\n        .eq(\"status\", \"OPEN\")\n        .limit(1)\n        .execute()\n    )\n    return res.data[0] if res.data else None", "alias": {"call": "db.get_open_incident()", "via": "db/__init__.py", "real": "db/incidents.py"}}, "db/incidents.py:_is_idle": {"path": "db/incidents.py", "start": 210, "end": 222, "lang": "python", "code": "def _is_idle(incident: dict) -> bool:\n    \"\"\"마지막 이벤트(last_event_at)로부터 config.INCIDENT_MERGE_IDLE_MINUTES가 지났는지.\n\n    last_event_at이 없으면(조회 결과에 빠진 경우) 오래됐다고 단정할 근거가 없으므로\n    False로 본다 — 기존처럼 병합하는 쪽이 안전하다.\n    \"\"\"\n    last_event_at = incident.get(\"last_event_at\")\n    if not last_event_at:\n        return False\n    last = datetime.fromisoformat(last_event_at)\n    if last.tzinfo is None:\n        last = last.replace(tzinfo=timezone.utc)\n    return datetime.now(timezone.utc) - last > timedelta(minutes=config.INCIDENT_MERGE_IDLE_MINUTES)", "alias": null}, "db/incidents.py:mark_incident_idle": {"path": "db/incidents.py", "start": 161, "end": 169, "lang": "python", "code": "def mark_incident_idle(incident_id: int) -> None:\n    \"\"\"이 사건을 IDLE(활동 없음, 아직 관리자 미해결)로 옮긴다.\n\n    record_incident()가 \"마지막 이벤트로부터 너무 오래 지난 사건\"을 만났을 때만\n    부른다. OPEN인 행에만 적용되므로 이미 CLOSED/IDLE인 사건은 건드리지 않는다.\n    \"\"\"\n    db.get_client().table(\"security_incidents\").update({\"status\": \"IDLE\"}).eq(\n        \"id\", incident_id\n    ).eq(\"status\", \"OPEN\").execute()", "alias": {"call": "db.mark_incident_idle()", "via": "db/__init__.py", "real": "db/incidents.py"}}, "db/incidents.py:_merge_into_existing": {"path": "db/incidents.py", "start": 105, "end": 114, "lang": "python", "code": "def _merge_into_existing(existing: dict, event_types: list[str], severity: str) -> dict:\n    merged_types = sorted(set(existing[\"event_types\"]) | set(event_types))\n    merged_severity = _higher_severity(existing[\"severity_max\"], severity)\n    _update_incident(existing[\"id\"], merged_types, merged_severity)\n    return {\n        \"id\": existing[\"id\"],\n        \"event_types\": merged_types,\n        \"severity_max\": merged_severity,\n        \"escalated\": existing[\"escalated\"],\n    }", "alias": null}, "db/incidents.py:_insert_incident": {"path": "db/incidents.py", "start": 78, "end": 96, "lang": "python", "code": "def _insert_incident(ip: str, event_types: list[str], severity_max: str) -> int:\n    now = db._now_iso()\n    res = (\n        db.get_client()\n        .table(\"security_incidents\")\n        .insert(\n            {\n                \"ip_address\": ip,\n                \"event_types\": event_types,\n                \"severity_max\": severity_max,\n                \"status\": \"OPEN\",\n                \"escalated\": False,\n                \"first_event_at\": now,\n                \"last_event_at\": now,\n            }\n        )\n        .execute()\n    )\n    return res.data[0][\"id\"]", "alias": null}, "security/correlate.py:_maybe_escalate": {"path": "security/correlate.py", "start": 66, "end": 86, "lang": "python", "code": "def _maybe_escalate(ip: str, incident: dict) -> None:\n    \"\"\"사건이 SOAR 플레이북(CRITICAL_MULTI_STAGE) 조건 — CRITICAL이면서\n    서로 다른 event_type이 config.INCIDENT_ESCALATION_MIN_EVENT_TYPES개\n    이상 — 에 도달했고, 아직 이 사건으로 에스컬레이션 알림을 보낸 적이\n    없다면 플레이북을 실행한다.\n\n    이미 escalated된 사건이면 건너뛴다 — soar.enforce_lockout()이 \"잠그는\n    순간에 딱 한 번만\" 알리는 것과 같은 이유로, 같은 사건에 이벤트가 하나씩\n    더 붙을 때마다 매번 재알림하면 알림 피로가 생긴다.\n    \"\"\"\n    if incident[\"escalated\"]:\n        return\n    if incident[\"severity_max\"] != \"CRITICAL\":\n        return\n    if len(incident[\"event_types\"]) < config.INCIDENT_ESCALATION_MIN_EVENT_TYPES:\n        return\n\n    for action_name in PLAYBOOKS[\"CRITICAL_MULTI_STAGE\"]:\n        action = getattr(alert, action_name)\n        action(ip, incident[\"event_types\"], incident[\"severity_max\"])\n    db.mark_incident_escalated(incident[\"id\"])", "alias": null}, "routes/admin/incidents.py:api_security_incidents_resolve": {"path": "routes/admin/incidents.py", "start": 76, "end": 93, "lang": "python", "code": "@admin_bp.route(\"/api/security-incidents/resolve\", methods=[\"POST\"])\n@require_permission(\"resolve_incident\")\ndef api_security_incidents_resolve():\n    \"\"\"대시보드 \"연관 사건\" 표의 \"해결\" 버튼을 눌렀을 때 브라우저가 호출하는 API.\n\n    IP 잠금 해제(/api/unlock)와는 별개다 — 잠금을 푸는 것은 접속 차단을 거두는\n    조치이고, 사건 해결은 \"관리자가 내용을 확인하고 조사가 끝났다\"는 판단이라\n    사람이 사건을 CLOSED로 만드는 길은 이 API뿐이다(예외: PERMANENT_LOCK_AUTO_CLOSE_INCIDENT를\n    켜면 영구 잠금이 걸린 사건을 시스템이 자동으로 닫는다, guide33). 누가 해결했는지는 요청 본문이 아니라\n    로그인 세션(admin_username)에서 가져온다 — 본문 값은 위조할 수 있기 때문이다.\n    \"\"\"\n    data = request.get_json(silent=True) or {}\n    incident_id = data.get(\"incident_id\")\n    if isinstance(incident_id, bool) or not isinstance(incident_id, int):\n        return jsonify({\"success\": False, \"error\": \"incident_id 값이 필요합니다.\"}), 400\n\n    resolved = db.resolve_incident(incident_id, session[\"admin_username\"])\n    return jsonify({\"success\": resolved})", "alias": null}, "db/incidents.py:resolve_incident": {"path": "db/incidents.py", "start": 172, "end": 190, "lang": "python", "code": "def resolve_incident(incident_id: int, admin_username: str) -> bool:\n    \"\"\"관리자가 대시보드에서 \"해결\"을 눌렀을 때, 이 사건을 CLOSED로 바꾸고 누가\n    언제 해결했는지 기록한다.\n\n    IP 잠금 해제와는 완전히 별개다 — 잠금을 푸는 것은 접속 차단을 거두는 조치이고,\n    사건 해결은 \"관리자가 내용을 확인하고 조사가 끝났다\"는 판단이므로 오직 이\n    함수(관리자 버튼)로만 사건이 CLOSED가 된다. OPEN 또는 IDLE인 사건에만 적용돼서,\n    이미 해결된 사건을 다시 눌러도 안전하다(res.data가 비어있으면 False를 돌려줌\n    — resolve_security_event()와 같은 방식).\n    \"\"\"\n    res = (\n        db.get_client()\n        .table(\"security_incidents\")\n        .update({\"status\": \"CLOSED\", \"resolved_at\": db._now_iso(), \"resolved_by\": admin_username})\n        .eq(\"id\", incident_id)\n        .in_(\"status\", [\"OPEN\", \"IDLE\"])\n        .execute()\n    )\n    return bool(res.data)", "alias": {"call": "db.resolve_incident()", "via": "db/__init__.py", "real": "db/incidents.py"}}}, "files": {"security/soar/_events.py": {"role": "이벤트를 저장한 직후 상관분석을 호출하는 공통 기록 지점.", "header": "security/soar/_events.py — 보안 이벤트 기록 + 상관분석 훅 (아래 조치 함수들이 공유)\n예전 soar.py(497줄)를 기능 묶음별로 나눈 조각 중 하나다. 다른 파일은 이 파일을 직접\n가리키지 않고 예전처럼 `from security import soar` 후 `soar.enforce_lockout(...)`으로\n쓴다(security/soar/__init__.py가 재내보내기). 배경은 docs/refactor/2026-10-09-module-plan.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/security/soar/_events.py"}, "security/correlate.py": {"role": "형사 역할. 같은 IP 의 이벤트들을 보고 사건으로 묶을지 '판단'한다. 저장·병합은 db 에 맡긴다.", "header": "security/correlate.py — \"형사\" 역할: 흩어진 개별 신고(security_events)들을 보고\n\"이거 같은 출처가 벌인 하나의 사건 아니야?\"를 판단한다 (Track C guide27, SIEM 상관분석)\nsecurity/soar/가 security_events에 새 이벤트를 기록할 때마다 이 모듈의\ncheck_and_correlate()를 호출한다. security/detector.py와 동일한 원칙으로, 이 파일도\n\"판단\"만 하고(사건으로 묶어야 하는가?) 실제 저장/병합은 db 패키지(db/incidents.py)에\n맡긴다 — security/soar/가 db에게 조치를 맡기는 것과 같은 구조다.\nPLAYBOOKS(Track C guide28, SOAR 플레이북)도 이 파일에 둔다. security/soar/가 이미\nsecurity/correlate.py를 import하고 있어서, 플레이북 실행을 security/soar/ 쪽에 두고\nsecurity/correlate.py가 그걸 호출하게 하면 반대 방향 import가 생겨 순환 참조가 된다.\nsecurity/correlate.py는 사건이 얼마나 심각해졌는지 이미 알고 있는 유일한 곳이므로,\n여기서 곧바로 notify/alert.py를 불러 실행하는 것이 security/soar/가 notify/alert.py를 직접\n부르는 것과 같은 자연스러운 구조다.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/security/correlate.py"}, "db/incidents.py": {"role": "security_incidents 표(사건)를 열고, 병합하고, 닫는 저장소 파일.", "header": "db/incidents.py — security_incidents 표 관련 함수 (Track C guide27, SIEM 상관분석)\nsecurity_events가 개별 신고서 한 장 한 장이라면, 이 표는 \"같은 IP가 짧은 시간\n안에 서로 다른 event_type을 2개 이상 남겼을 때\" 그 신고들을 하나로 묶어두는\n사건철이다. security/correlate.py가 판단(묶어야 하는가?)만 하고, 실제 조회/삽입/병합은\n전부 이 파일이 맡는다(security/detector.py·security/soar/와 동일한 판단·실행 분리 원칙).\ndb.get_client() 호출 이유는 db/attempts.py 상단 설명 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/db/incidents.py"}, "config.py": {"role": "상관분석 시간 창(5분)·유휴 기준(30분) 같은 설정값.", "header": "", "github": "https://github.com/dyj02056/login-watchdog/blob/main/config.py"}, "routes/admin/incidents.py": {"role": "관리자 대시보드의 '해결' 버튼이 호출하는 API 입구 파일.", "header": "routes/admin/incidents.py — AI 조기 경보 승인/반려, 보안 이벤트·연관 사건 처리 API\n예전 routes/admin.py(798줄)를 기능 묶음별로 나눈 조각 중 하나다. Blueprint(admin_bp)는\nroutes/admin/__init__.py에서 하나만 만들고, 이 파일은 거기에 라우트를 붙이기만 한다\n— 그래서 엔드포인트 이름(url_for(\"admin.xxx\"))은 나누기 전과 똑같다.\n배경은 docs/refactor/2026-10-09-module-plan.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/routes/admin/incidents.py"}}}</script>
+<script>
+(function(){
+  "use strict";
+  var D = JSON.parse(document.getElementById("data").textContent);
+  var $ = function(id){ return document.getElementById(id); };
+  var KIND_LABEL = {screen:"화면 · 도착지", route:"routes", helper:"판단", db:"db", config:"설정값", later:"다른 단원"};
+
+  var state = { sc: 0, node: null, item: 0, file: null };
+
+  /* ---------- 사용자 설정(브라우저에 기억 · 막혀 있어도 동작) ---------- */
+  function loadPref(k){ try { return window.localStorage.getItem(k); } catch(e){ return null; } }
+  function savePref(k, v){ try { if (v === null) window.localStorage.removeItem(k); else window.localStorage.setItem(k, v); } catch(e){} }
+  var prefs = { wrap: loadPref("lw-code-wrap") !== "0" };   // 기본: 줄바꿈 켜짐
+
+  function el(tag, attrs, kids){
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function(k){
+      if (k === "class") e.className = attrs[k];
+      else if (k === "text") e.textContent = attrs[k];
+      else if (k.slice(0,2) === "on") e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    });
+    (kids || []).forEach(function(c){ if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function brk(t){ return t.replace(/([\/._])/g, "$1\u200b"); }
+  function scen(){ return D.scenarios[state.sc]; }
+  function nodeById(id){ return scen().nodes.filter(function(n){ return n.id === id; })[0]; }
+  function fnName(label){ return label; }
+
+  /* ---------- 간단 문법 강조 ---------- */
+  var PY = /(#[^\n]*)|("""[\s\S]*?"""|'''[\s\S]*?''')|([rbfRBF]{0,2}"(?:\\.|[^"\\\n])*"|[rbfRBF]{0,2}'(?:\\.|[^'\\\n])*')|\b(def|class|return|if|elif|else|for|while|import|from|as|try|except|finally|with|in|not|and|or|is|None|True|False|raise|pass|lambda|yield|global|nonlocal|assert|del|continue|break)\b|(@[A-Za-z_][\w.]*)|\b(\d+(?:\.\d+)?)\b|\b([A-Za-z_]\w*)(?=\()/g;
+  var PYC = [null,"t-c","t-d","t-s","t-k","t-a","t-n","t-f"];
+  var HT = /(<!--[\s\S]*?-->)|(\{[{%#][\s\S]*?[}%#]\})|(<\/?[A-Za-z][\w-]*)|("[^"\n]*")|(\/?>)/g;
+  var HTC = [null,"t-c","t-a","t-k","t-s","t-k"];
+  var JS = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(`(?:\\.|[^`\\])*`)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|\b(const|let|var|function|return|if|else|for|while|import|from|export|default|async|await|try|catch|finally|new|class|extends|typeof|interface|type|null|undefined|true|false|throw|switch|case|break|continue|of|in|as)\b|(@[A-Za-z_]\w*)|\b(\d+(?:\.\d+)?)\b|\b([A-Za-z_$][\w$]*)(?=\()/g;
+  var JSC = [null,"t-c","t-s","t-s","t-k","t-a","t-n","t-f"];
+  var SQ = /(--[^\n]*|\/\*[\s\S]*?\*\/)|((?!))|('(?:''|[^'])*')|\b(select|from|where|insert|into|values|update|set|delete|create|table|index|alter|add|drop|on|conflict|do|nothing|and|or|not|null|default|primary|key|references|cascade|if|exists|as|order|by|group|limit|desc|asc|join|left|inner|count|returns|function|language|begin|end|return|with|union|all|distinct|in|is|true|false|unique|check|constraint|timestamptz|text|integer|bigint|boolean|interval|now|replace|trigger|view|policy|enable|row|level|security|using)\b|((?!))|\b(\d+(?:\.\d+)?)\b|\b([a-z_]\w*)(?=\()/gi;
+  var SQC = [null,"t-c",null,"t-s","t-k",null,"t-n","t-f"];
+  var SH = /(#[^\n]*)|((?!))|("(?:\\.|[^"\\\n])*"|'[^'\n]*')|\b(if|then|else|fi|for|do|done|while|case|esac|function|echo|export|python|pip|git|cd|run|name|on|jobs|steps|uses|with|env)\b|((?!))|\b(\d+)\b/g;
+  var SHC = [null,"t-c",null,"t-s","t-k",null,"t-n"];
+  function tokenize(code, lang){
+    var re = PY, cls = PYC;
+    if (lang === "html"){ re = HT; cls = HTC; }
+    else if (lang === "js"){ re = JS; cls = JSC; }
+    else if (lang === "sql"){ re = SQ; cls = SQC; }
+    else if (lang === "sh"){ re = SH; cls = SHC; }
+    var lines = [[]];
+    function push(text, c){
+      var parts = text.split("\n");
+      parts.forEach(function(p, i){
+        if (i > 0) lines.push([]);
+        if (p) lines[lines.length-1].push([p, c]);
+      });
+    }
+    var last = 0, m;
+    re.lastIndex = 0;
+    while ((m = re.exec(code)) !== null){
+      if (m.index > last) push(code.slice(last, m.index), null);
+      var idx = 1; while (idx < m.length && m[idx] === undefined) idx++;
+      push(m[0], cls[idx] || null);
+      last = m.index + m[0].length;
+      if (m[0].length === 0) re.lastIndex++;
+    }
+    if (last < code.length) push(code.slice(last), null);
+    return lines;
+  }
+
+  function codeTable(block, hl){
+    var lines = tokenize(block.code, block.lang);
+    var tbody = el("tbody");
+    var hlFirst = null;
+    lines.forEach(function(segs, i){
+      var no = block.start + i;
+      var on = hl && no >= hl[0] && no <= hl[1];
+      var td = el("td", {class:"tx"});
+      segs.forEach(function(s){ td.appendChild(s[1] ? el("span", {class:s[1], text:s[0]}) : document.createTextNode(s[0])); });
+      if (!segs.length) td.appendChild(document.createTextNode(" "));
+      var tr = el("tr", on ? {class:"hl"} : null, [el("td", {class:"ln", text:String(no)}), td]);
+      if (on && !hlFirst) hlFirst = tr;
+      tbody.appendChild(tr);
+    });
+    var box = el("div", {class:"codebox"}, [el("table", {class:"code"}, [tbody])]);
+    box._hlFirst = hlFirst;
+    return box;
+  }
+
+  function copyText(text, btn){
+    var done = function(){ var o = btn.textContent; btn.textContent = "복사됨 ✓"; setTimeout(function(){ btn.textContent = o; }, 1200); };
+    try { navigator.clipboard.writeText(text).then(done, fallback); } catch(e){ fallback(); }
+    function fallback(){
+      var ta = el("textarea", {style:"position:fixed;opacity:0"}); ta.value = text; document.body.appendChild(ta);
+      ta.select(); try { document.execCommand("copy"); done(); } catch(e){} document.body.removeChild(ta);
+    }
+  }
+
+  /* ---------- 패널 ---------- */
+  function openPanel(){ document.body.classList.add("open"); }
+  function closePanel(){ document.body.classList.remove("open"); }
+
+  function showHint(){
+    $("pTitle").textContent = "코드 보는 법";
+    $("pSub").textContent = "카드나 파일 이름을 누르면 실제 코드가 여기에 열립니다.";
+    var ul = el("ul", {class:"hint"}, [
+      el("li", {text:"카드(상자)를 누르면 그 단계에서 실행되는 실제 함수 코드가 열려요."}),
+      el("li", {text:"카드 안의 📄 파일 이름을 누르면 그 파일이 어떤 역할인지, 이 단원에서 쓰이는 함수가 무엇인지 보여줘요."}),
+      el("li", {text:"ƒ 함수 이름을 누르면 해당 함수 코드로 바로 이동해요."}),
+      el("li", {text:"노란색 줄이 지금 단계가 담당하는 부분이에요."}),
+      el("li", {text:"db.함수() 처럼 적혀 있어도 실제 코드는 db/users.py 같은 다른 파일에 있어요. 카드에 그 '진짜 파일'을 표시하고, 코드 위에 찾아가는 길도 그려줘요."}),
+      el("li", {text:"위쪽 ◀ ▶ 버튼으로 실행 순서대로 한 단계씩 따라갈 수 있어요."})
+    ]);
+    var b = $("pBody"); b.textContent = ""; b.appendChild(ul);
+  }
+
+  function renderAlias(a){
+    if (!a) return null;
+    return el("div", {class:"alias"}, [
+      el("div", {text:"코드에는 이렇게 적혀 있지만, 실제 함수는 다른 파일에 있어요."}),
+      el("div", {class:"route"}, [
+        el("span", {class:"step", text:a.call}), el("span", {class:"arrow", text:"→"}),
+        el("span", {class:"step", text:a.via + " (창구)"}), el("span", {class:"arrow", text:"→"}),
+        el("span", {class:"step real", text:a.real})
+      ])
+    ]);
+  }
+
+  function selectNode(id, itemIdx){
+    var n = nodeById(id); if (!n) return;
+    state.node = id; state.item = itemIdx || 0; state.file = null;
+    $("pTitle").textContent = n.title;
+    $("pSub").textContent = n.plain;
+    var body = $("pBody"); body.textContent = "";
+    if (n.reject) body.appendChild(el("div", {class:"n-reject", text:n.reject, style:"margin:0 0 10px"}));
+    if (n.items.length > 1){
+      var tabs = el("div", {class:"itabs", role:"tablist"});
+      n.items.forEach(function(it, i){
+        tabs.appendChild(el("button", {class:"itab", role:"tab", "aria-selected":String(i === state.item), text:it.label,
+          onclick:function(){ selectNode(id, i); }}));
+      });
+      body.appendChild(tabs);
+    }
+    var it = n.items[state.item];
+    var block = D.blocks[it.block];
+    var linesTxt = it.hl ? (it.hl[0] === it.hl[1] ? it.hl[0] + "줄" : it.hl[0] + "–" + it.hl[1] + "줄") : "";
+    var fl = el("div", {class:"fileline"}, [
+      el("button", {class:"chip file", onclick:function(){ selectFile(block.path); }, text:block.path}),
+      el("span", {class:"lines", text: block.start + "–" + block.end + "줄 표시" + (linesTxt ? " · 노란색 " + linesTxt : "")}),
+      el("span", {class:"spacer"}),
+      el("button", {class:"btn", id:"wrapBtn", "aria-pressed":String(prefs.wrap), title:"긴 줄을 화면 너비에 맞춰 줄바꿈", text:"줄바꿈", onclick:function(e){
+        prefs.wrap = !prefs.wrap; savePref("lw-code-wrap", prefs.wrap ? "1" : "0");
+        e.currentTarget.setAttribute("aria-pressed", String(prefs.wrap));
+        var bx = document.querySelector("#pBody .codebox"); if (bx) bx.classList.toggle("wrap", prefs.wrap);
+      }}),
+      el("button", {class:"btn", text:"복사", onclick:function(e){ copyText(block.code, e.currentTarget); }}),
+      el("a", {class:"btn link", href:D.files[block.path].github + "#L" + block.start + "-L" + block.end, target:"_blank", rel:"noopener", text:"GitHub ↗"})
+    ]);
+    body.appendChild(fl);
+    var al = renderAlias(block.alias); if (al) body.appendChild(al);
+    var box = codeTable(block, it.hl);
+    if (prefs.wrap) box.classList.add("wrap");
+    body.appendChild(box);
+    if (it.hl) body.appendChild(el("p", {class:"legend-hl"}, [el("b", {text:"노란색"}), " = 이 카드가 담당하는 줄"]));
+    refreshSelection();
+    openPanel();
+    if (box._hlFirst){
+      var off = box._hlFirst.offsetTop - 60;
+      box.scrollTop = Math.max(0, off);
+    }
+    updateStepper();
+  }
+
+  function selectFile(path){
+    state.file = path; state.node = null;
+    var f = D.files[path];
+    $("pTitle").textContent = "📄 " + path;
+    $("pSub").textContent = f.role;
+    var body = $("pBody"); body.textContent = "";
+    body.appendChild(el("div", {class:"fileline"}, [
+      el("a", {class:"btn link", href:f.github, target:"_blank", rel:"noopener", text:"GitHub에서 파일 열기 ↗"})
+    ]));
+    body.appendChild(el("h3", {text:"이 단원에서 쓰이는 함수", style:"font-size:13.5px;margin:12px 0 0"}));
+    var ul = el("ul", {class:"flist"}), seen = {};
+    D.scenarios.forEach(function(sc, si){
+      sc.nodes.forEach(function(n){
+        n.items.forEach(function(it, ii){
+          var b = D.blocks[it.block]; if (b.path !== path) return;
+          var key = si + n.id + ii; if (seen[key]) return; seen[key] = 1;
+          var li = el("li");
+          li.appendChild(el("button", {onclick:function(){
+            if (state.sc !== si) switchScenario(si);
+            selectNode(n.id, ii); scrollToNode(n.id);
+          }}, [
+            el("span", {class:"mono", text:it.label}), el("small", {text:sc.name + " · " + n.title})
+          ]));
+          ul.appendChild(li);
+        });
+      });
+    });
+    body.appendChild(ul);
+    if (f.header){
+      var d = el("details", {class:"hdr"}, [el("summary", {text:"파일 맨 위 설명 주석 보기"}), el("pre", {text:f.header})]);
+      body.appendChild(d);
+    }
+    refreshSelection();
+    openPanel();
+  }
+
+  /* ---------- 흐름도 ---------- */
+  var cols, colIndex, nodeEls = {};
+  function renderStage(){
+    var sc = scen();
+    var used = {}; sc.nodes.forEach(function(n){ used[n.col] = 1; });
+    cols = Object.keys(used).map(Number).sort(function(a,b){ return a-b; });
+    colIndex = {}; cols.forEach(function(c, i){ colIndex[c] = i + 1; });
+    var stage = $("stage");
+    stage.textContent = "";
+    stage.style.gridTemplateColumns = "repeat(" + cols.length + ", 196px)";
+    nodeEls = {};
+
+    var svgNS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("class", "edges"); svg.id = "edges";
+    svg.innerHTML = '<defs>' +
+      '<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head" d="M0 0L10 5L0 10z" style="stroke:none"/></marker>' +
+      '<marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head-call" d="M0 0L10 5L0 10z" style="stroke:none"/></marker>' +
+      '</defs>';
+    stage.appendChild(svg);
+
+    cols.forEach(function(c){
+      stage.appendChild(el("div", {class:"colhead", style:"grid-column:" + colIndex[c] + ";grid-row:1", text:D.columns[c]}));
+    });
+    var cells = {};
+    sc.nodes.forEach(function(n){
+      var k = n.row + ":" + n.col;
+      if (!cells[k]){
+        cells[k] = el("div", {class:"cell", style:"grid-column:" + colIndex[n.col] + ";grid-row:" + (n.row + 2)});
+        stage.appendChild(cells[k]);
+      }
+      var node = buildNode(n);
+      nodeEls[n.id] = node;
+      cells[k].appendChild(node);
+    });
+    $("intro").textContent = sc.intro;
+    scheduleEdges();
+  }
+
+  function buildNode(n){
+    var node = el("div", {class:"node " + n.kind, role:"button", tabindex:"0", "aria-pressed":"false", "data-id":n.id,
+      onclick:function(e){ if (e.target.closest(".chip")) return; selectNode(n.id, 0); },
+      onkeydown:function(e){ if ((e.key === "Enter" || e.key === " ") && !e.target.closest(".chip")){ e.preventDefault(); selectNode(n.id, 0); } }});
+    var title = el("div", {class:"n-title", text:n.title});
+    if (n.later) title.appendChild(el("span", {class:"tag-later", text:n.later + "에서 자세히"}));
+    node.appendChild(title);
+    if (n.kind !== "later" && n.plain) node.appendChild(el("div", {class:"n-plain", text:n.plain}));
+    if (n.reject) node.appendChild(el("div", {class:"n-reject", text:n.reject}));
+    var items = el("div", {class:"n-items"});
+    // 같은 파일에 있는 함수는 파일 칩 하나 아래에 함수 칩을 나란히 놓는다
+    var groups = [];
+    n.items.forEach(function(it, i){
+      var b = D.blocks[it.block], g = groups[groups.length - 1];
+      if (g && g.path === b.path) g.list.push({it: it, i: i}); else groups.push({path: b.path, list: [{it: it, i: i}]});
+    });
+    groups.forEach(function(g){
+      var row = el("div", {class:"n-item"});
+      if (g.list.length === 1 && g.list[0].it.call) row.appendChild(el("div", {class:"n-call", text:brk(g.list[0].it.call)}));
+      var chips = el("div", {class:"chips"}, [
+        el("button", {class:"chip file", text:brk(g.path), title:"파일 설명 보기", onclick:function(){ selectFile(g.path); }})
+      ]);
+      g.list.forEach(function(x){
+        chips.appendChild(el("button", {class:"chip " + (x.it.snippet ? "snip" : "fn"), text:x.it.label, title:(x.it.call ? x.it.call + " — " : "") + "코드 보기",
+          onclick:function(){ selectNode(n.id, x.i); }}));
+      });
+      row.appendChild(chips);
+      items.appendChild(row);
+    });
+    node.appendChild(items);
+    return node;
+  }
+
+  function rectIn(elm, host){
+    var a = elm.getBoundingClientRect(), h = host.getBoundingClientRect();
+    return {l:a.left-h.left, r:a.right-h.left, t:a.top-h.top, b:a.bottom-h.top, cx:(a.left+a.right)/2-h.left, cy:(a.top+a.bottom)/2-h.top};
+  }
+  var raf = 0;
+  function scheduleEdges(){ cancelAnimationFrame(raf); raf = requestAnimationFrame(drawEdges); }
+  function drawEdges(){
+    var stage = $("stage"), svg = $("edges"), sc = scen();
+    Array.prototype.slice.call(svg.querySelectorAll("path.e")).forEach(function(p){ p.remove(); });
+    Array.prototype.slice.call(stage.querySelectorAll(".elabel")).forEach(function(p){ p.remove(); });
+    var svgNS = "http://www.w3.org/2000/svg";
+    sc.edges.forEach(function(e){
+      var a = nodeById(e.from), b = nodeById(e.to);
+      var ea = nodeEls[e.from], eb = nodeEls[e.to]; if (!ea || !eb) return;
+      var ra = rectIn(ea, stage), rb = rectIn(eb, stage), d, lx, ly;
+      if (a.col === b.col){
+        if (b.row - a.row <= 1){
+          d = "M" + ra.cx + " " + ra.b + " V" + rb.t; lx = ra.cx; ly = (ra.b + rb.t) / 2;
+        } else {
+          var x = Math.min(ra.l, rb.l) - 30;
+          d = "M" + ra.l + " " + ra.cy + " H" + x + " V" + rb.cy + " H" + rb.l; lx = x; ly = (ra.cy + rb.cy) / 2;
+        }
+      } else {
+        var dir = b.col > a.col ? 1 : -1;
+        var x1 = dir > 0 ? ra.r : ra.l, x2 = dir > 0 ? rb.l : rb.r;
+        var xm = x2 - dir * 30;
+        d = "M" + x1 + " " + ra.cy + " H" + xm + " V" + rb.cy + " H" + x2;
+        lx = (x1 + x2) / 2; ly = ra.cy;
+      }
+      var kind = e.kind === "call" ? "call" : "flow";
+      var p = document.createElementNS(svgNS, "path");
+      p.setAttribute("d", d); p.setAttribute("class", "e " + kind);
+      p.setAttribute("marker-end", "url(#" + (kind === "call" ? "ahc" : "ah") + ")");
+      p.setAttribute("data-from", e.from); p.setAttribute("data-to", e.to);
+      svg.appendChild(p);
+      if (e.label && kind === "flow"){
+        var lab = el("span", {class:"elabel", text:e.label});
+        lab.style.left = lx + "px"; lab.style.top = ly + "px";
+        stage.appendChild(lab);
+      }
+    });
+    svg.setAttribute("width", stage.scrollWidth); svg.setAttribute("height", stage.scrollHeight);
+    refreshSelection();
+  }
+
+  function refreshSelection(){
+    Object.keys(nodeEls).forEach(function(id){ nodeEls[id].setAttribute("aria-pressed", String(id === state.node)); });
+    var svg = $("edges"); if (!svg) return;
+    Array.prototype.slice.call(svg.querySelectorAll("path.e")).forEach(function(p){
+      var on = state.node && (p.getAttribute("data-from") === state.node || p.getAttribute("data-to") === state.node);
+      p.classList.toggle("active", !!on);
+    });
+  }
+  function scrollToNode(id){
+    var n = nodeEls[id]; if (n && n.scrollIntoView) n.scrollIntoView({block:"center", inline:"center", behavior:"smooth"});
+  }
+
+  /* ---------- 단계 이동 / 탭 ---------- */
+  function stepIndex(){ return scen().steps.indexOf(state.node); }
+  function updateStepper(){
+    var steps = scen().steps, i = stepIndex();
+    $("stepNo").textContent = i < 0 ? "– / " + steps.length : (i + 1) + " / " + steps.length;
+    $("prev").disabled = i <= 0 && state.node !== null ? true : false;
+    $("next").disabled = i >= steps.length - 1;
+    if (state.node === null){ $("prev").disabled = true; $("next").disabled = false; }
+  }
+  function go(delta){
+    var steps = scen().steps, i = stepIndex();
+    var j = i < 0 ? 0 : Math.max(0, Math.min(steps.length - 1, i + delta));
+    selectNode(steps[j], 0); scrollToNode(steps[j]);
+  }
+  function renderTabs(){
+    var t = $("tabs"); t.textContent = "";
+    D.scenarios.forEach(function(sc, i){
+      t.appendChild(el("button", {class:"tab", role:"tab", "aria-selected":String(i === state.sc), text:sc.name, onclick:function(){ switchScenario(i); }}));
+    });
+  }
+  function switchScenario(i){
+    state.sc = i; state.node = null; state.file = null;
+    renderTabs(); renderStage(); showHint(); updateStepper();
+    try { history.replaceState(null, "", "#" + D.scenarios[i].id); } catch(e){}
+  }
+
+  /* ---------- 시작 ---------- */
+  document.title = D.title + " — 코드 흐름도";
+  $("title").textContent = D.title + " · 코드 흐름도";
+  $("subtitle").textContent = D.subtitle;
+  $("mdlink").setAttribute("href", D.mdFile);
+  $("prev").addEventListener("click", function(){ go(-1); });
+  $("next").addEventListener("click", function(){ go(1); });
+  $("pClose").addEventListener("click", closePanel);
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape") closePanel(); });
+  $("theme").addEventListener("click", function(){
+    var r = document.documentElement, cur = r.getAttribute("data-theme");
+    var dark = cur ? cur === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    r.setAttribute("data-theme", dark ? "light" : "dark");
+  });
+  window.addEventListener("resize", scheduleEdges);
+  if (window.ResizeObserver){ var ro = new ResizeObserver(scheduleEdges); ro.observe($("stage")); ro.observe($("stageWrap")); }
+
+  /* ---------- 코드 패널 너비: 자동 기본값 + 드래그/키보드 조절 + 기억 ---------- */
+  var MIN_PANEL = 360, MIN_MAIN = 420, SPLIT_KEY = "lw-panel-w";
+  var splitter = $("splitter");
+  function maxPanel(){ return Math.max(MIN_PANEL, Math.min(window.innerWidth * 0.75, window.innerWidth - MIN_MAIN - 6)); }
+  function clampPanel(w){ return Math.round(Math.min(maxPanel(), Math.max(MIN_PANEL, w))); }
+  // 흐름도가 실제로 차지하는 너비(가장 넓은 탭 기준)를 빼고 남는 공간을 패널에 준다
+  function autoPanelWidth(){
+    var most = 1;
+    D.scenarios.forEach(function(sc){ var u = {}; sc.nodes.forEach(function(n){ u[n.col] = 1; }); most = Math.max(most, Object.keys(u).length); });
+    var natural = most * 196 + (most - 1) * 46 + 44 + 24;
+    return clampPanel(Math.max(440, window.innerWidth - natural - 6));
+  }
+  var savedW = parseInt(loadPref(SPLIT_KEY), 10);
+  var userSet = savedW > 0;
+  function setPanelW(w, persist){
+    w = clampPanel(w);
+    document.documentElement.style.setProperty("--panel-w", w + "px");
+    splitter.setAttribute("aria-valuenow", String(w)); splitter.setAttribute("aria-valuemin", String(MIN_PANEL)); splitter.setAttribute("aria-valuemax", String(Math.round(maxPanel())));
+    if (persist){ userSet = true; savePref(SPLIT_KEY, String(w)); }
+    scheduleEdges();
+  }
+  function currentW(){ return $("panel").getBoundingClientRect().width; }
+  setPanelW(userSet ? savedW : autoPanelWidth(), false);
+  window.addEventListener("resize", function(){ setPanelW(userSet ? currentW() : autoPanelWidth(), false); });
+  splitter.addEventListener("pointerdown", function(e){
+    if (e.button !== undefined && e.button !== 0) return;
+    e.preventDefault(); splitter.setPointerCapture(e.pointerId); document.body.classList.add("dragging");
+    function move(ev){ setPanelW(window.innerWidth - ev.clientX, false); }
+    function up(ev){
+      splitter.removeEventListener("pointermove", move); splitter.removeEventListener("pointerup", up); splitter.removeEventListener("pointercancel", up);
+      try { splitter.releasePointerCapture(ev.pointerId); } catch(x){}
+      document.body.classList.remove("dragging"); setPanelW(currentW(), true);
+    }
+    splitter.addEventListener("pointermove", move); splitter.addEventListener("pointerup", up); splitter.addEventListener("pointercancel", up);
+  });
+  splitter.addEventListener("keydown", function(e){
+    var step = (e.shiftKey ? 72 : 24);
+    if (e.key === "ArrowLeft"){ e.preventDefault(); setPanelW(currentW() + step, true); }
+    else if (e.key === "ArrowRight"){ e.preventDefault(); setPanelW(currentW() - step, true); }
+    else if (e.key === "Home"){ e.preventDefault(); setPanelW(MIN_PANEL, true); }
+    else if (e.key === "End"){ e.preventDefault(); setPanelW(maxPanel(), true); }
+  });
+  splitter.addEventListener("dblclick", function(){ userSet = false; savePref(SPLIT_KEY, null); setPanelW(autoPanelWidth(), false); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleEdges);
+
+  var startId = (location.hash || "").replace("#", "");
+  var startIdx = 0; D.scenarios.forEach(function(s, i){ if (s.id === startId) startIdx = i; });
+  switchScenario(startIdx);
+  // 화면 확인/테스트용 지름길: window.__flow.select("s7")
+  window.__flow = { select: function(id, i){ selectNode(id, i || 0); }, file: selectFile, state: state };
+})();
+</script>
+</body>
+</html>
