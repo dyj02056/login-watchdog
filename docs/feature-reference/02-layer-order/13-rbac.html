@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>13. 관리자 RBAC — 코드 흐름도</title>
+<style>
+  :root{
+    --bg:#f4f6f3; --surface:#ffffff; --surface-2:#eaefe9; --ink:#12201c; --ink-muted:#5a6b63;
+    --border:#d9e0da; --accent:#0f6f66; --accent-soft:#e2ede9; --danger:#bf3b2b; --danger-soft:#f8e6e2;
+    --edge:#7b8a82; --edge-call:#8a97a0;
+    --k-screen:#767f78; --k-screen-soft:#eef0ee;
+    --k-route:#2f5fd6;  --k-route-soft:#e7edfb;
+    --k-helper:#b56b0c; --k-helper-soft:#f7ecd9;
+    --k-db:#7a4fce;     --k-db-soft:#efe8fa;
+    --k-config:#0f6f66; --k-config-soft:#e2ede9;
+    --k-later:#9aa39d;  --k-later-soft:#f4f6f3;
+    --code-bg:#fbfcfb; --code-hl:#fff3c4; --code-hl-bar:#e0a800; --code-gutter:#8a978f;
+    --c-comment:#6b7d73; --c-str:#a1470f; --c-kw:#7a3fc0; --c-fn:#1f5fd0; --c-num:#0b7a6c; --c-deco:#b0306e;
+    --shadow:0 1px 2px rgba(18,32,28,.06), 0 6px 20px rgba(18,32,28,.07);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0d1512; --surface:#141e1a; --surface-2:#1b2620; --ink:#e7efe9; --ink-muted:#93a49c;
+      --border:#28352e; --accent:#4fc9b8; --accent-soft:#17332d; --danger:#ec7a6a; --danger-soft:#3a1d19;
+      --edge:#6f8178; --edge-call:#5d6f67;
+      --k-screen:#9aa39d; --k-screen-soft:#1a221e;
+      --k-route:#7fa2f2;  --k-route-soft:#182236;
+      --k-helper:#e8a94c; --k-helper-soft:#31260f;
+      --k-db:#b49bee;     --k-db-soft:#241c34;
+      --k-config:#4fc9b8; --k-config-soft:#17332d;
+      --k-later:#6b7a72;  --k-later-soft:#111a16;
+      --code-bg:#0f1713; --code-hl:#3a3210; --code-hl-bar:#e8a94c; --code-gutter:#5f7068;
+      --c-comment:#7f9388; --c-str:#e9a27a; --c-kw:#c3a1f5; --c-fn:#8db3ff; --c-num:#6fd6c6; --c-deco:#f08ab8;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d1512; --surface:#141e1a; --surface-2:#1b2620; --ink:#e7efe9; --ink-muted:#93a49c;
+    --border:#28352e; --accent:#4fc9b8; --accent-soft:#17332d; --danger:#ec7a6a; --danger-soft:#3a1d19;
+    --edge:#6f8178; --edge-call:#5d6f67;
+    --k-screen:#9aa39d; --k-screen-soft:#1a221e;
+    --k-route:#7fa2f2;  --k-route-soft:#182236;
+    --k-helper:#e8a94c; --k-helper-soft:#31260f;
+    --k-db:#b49bee;     --k-db-soft:#241c34;
+    --k-config:#4fc9b8; --k-config-soft:#17332d;
+    --k-later:#6b7a72;  --k-later-soft:#111a16;
+    --code-bg:#0f1713; --code-hl:#3a3210; --code-hl-bar:#e8a94c; --code-gutter:#5f7068;
+    --c-comment:#7f9388; --c-str:#e9a27a; --c-kw:#c3a1f5; --c-fn:#8db3ff; --c-num:#6fd6c6; --c-deco:#f08ab8;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.55}
+  button{font:inherit;color:inherit;cursor:pointer}
+  code,.mono{font-family:var(--mono)}
+
+  .app{display:flex;height:100vh;min-height:0}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .top{padding:14px 20px 10px;border-bottom:1px solid var(--border);background:var(--surface)}
+  .top h1{margin:0;font-size:19px;letter-spacing:-.01em}
+  .top .sub{margin:2px 0 0;color:var(--ink-muted);font-size:13px}
+  .top-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+  .tabs{display:flex;gap:6px}
+  .tab{border:1px solid var(--border);background:var(--surface-2);border-radius:999px;padding:5px 14px;font-weight:600}
+  .tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+  :root[data-theme="dark"] .tab[aria-selected="true"]{color:#06201b}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tab[aria-selected="true"]{color:#06201b}}
+  .spacer{flex:1}
+  .btn{border:1px solid var(--border);background:var(--surface);border-radius:8px;padding:5px 11px;font-size:13px}
+  .btn:hover{border-color:var(--accent)}
+  .btn:disabled{opacity:.4;cursor:default}
+  .stepper{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-muted)}
+  .stepper b{color:var(--ink);min-width:42px;text-align:center}
+  a.link{color:var(--accent);text-decoration:none;font-size:13px}
+  a.link:hover{text-decoration:underline}
+
+  .intro{margin:0;padding:10px 20px;color:var(--ink-muted);font-size:13px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px 20px;font-size:12px;color:var(--ink-muted);border-bottom:1px solid var(--border)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+  .stage-wrap{flex:1;min-height:0;overflow:auto}
+  .stage{position:relative;display:grid;gap:26px 46px;padding:22px 22px 60px;width:max-content;min-width:100%}
+  .edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+  .edges path{fill:none;stroke:var(--edge);stroke-width:1.6}
+  .edges path.call{stroke:var(--edge-call);stroke-dasharray:5 4}
+  .edges path.active{stroke:var(--accent);stroke-width:2.4;stroke-dasharray:none}
+  .edges .head{fill:var(--edge)}
+  .edges .head-call{fill:var(--edge-call)}
+  .elabel{position:absolute;transform:translate(-50%,-50%);font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;
+    background:var(--surface);border:1px solid var(--border);color:var(--ink-muted);white-space:nowrap;pointer-events:none}
+
+  .colhead{font-size:12px;font-weight:700;color:var(--ink-muted);text-transform:none;border-bottom:2px solid var(--border);padding-bottom:6px;align-self:end}
+  .cell{display:flex;flex-direction:column;gap:12px;align-self:center;justify-content:center;position:relative;z-index:1}
+
+  .node{--k:var(--k-route);--ks:var(--k-route-soft);position:relative;background:var(--surface);border:1px solid var(--border);
+    border-left:5px solid var(--k);border-radius:10px;padding:10px 12px;box-shadow:var(--shadow);cursor:pointer;
+    transition:transform .08s, border-color .12s}
+  .node:hover{transform:translateY(-1px);border-color:var(--k)}
+  .node:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .node[aria-pressed="true"]{outline:3px solid var(--accent);outline-offset:1px}
+  .node.screen{--k:var(--k-screen);--ks:var(--k-screen-soft)}
+  .node.route{--k:var(--k-route);--ks:var(--k-route-soft)}
+  .node.helper{--k:var(--k-helper);--ks:var(--k-helper-soft)}
+  .node.db{--k:var(--k-db);--ks:var(--k-db-soft)}
+  .node.config{--k:var(--k-config);--ks:var(--k-config-soft)}
+  .node.later{--k:var(--k-later);--ks:var(--k-later-soft);background:var(--k-later-soft);box-shadow:none;border-style:dashed;border-left-style:solid;padding:8px 10px}
+  .n-title{font-weight:700;font-size:13.5px;letter-spacing:-.01em}
+  .n-plain{margin-top:3px;color:var(--ink-muted);font-size:12.5px}
+  .n-reject{margin-top:6px;font-size:12px;color:var(--danger);background:var(--danger-soft);border-radius:6px;padding:3px 8px}
+  .n-reject::before{content:"막히면 → ";font-weight:700}
+  .n-items{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+  .n-item{display:flex;flex-direction:column;gap:3px}
+  .n-call{overflow-wrap:anywhere;font-family:var(--mono);font-size:11.5px;color:var(--k);font-weight:600}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{max-width:100%;text-align:left;overflow-wrap:anywhere;border:1px solid var(--border);background:var(--ks);color:var(--ink);border-radius:6px;padding:1px 7px;font-family:var(--mono);font-size:11px}
+  .chip:hover{border-color:var(--k);color:var(--k)}
+  .chip.file::before{content:"📄 "}
+  .chip.fn::before{content:"ƒ ";color:var(--k);font-weight:700}
+  .chip.snip::before{content:"▤ ";color:var(--k);font-weight:700}
+  .tag-later{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:700;color:var(--ink-muted);border:1px solid var(--border);border-radius:999px;padding:0 7px;background:var(--surface)}
+
+  /* 코드 패널 */
+  .panel{width:440px;flex:none;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;min-height:0}
+  .p-head{padding:14px 16px 10px;border-bottom:1px solid var(--border)}
+  .p-head h2{margin:0;font-size:15.5px;letter-spacing:-.01em}
+  .p-head p{margin:4px 0 0;color:var(--ink-muted);font-size:13px}
+  .p-close{display:none}
+  .p-body{flex:1;min-height:0;overflow:auto;padding:12px 16px 24px}
+  .hint{color:var(--ink-muted);font-size:13px}
+  .hint li{margin:4px 0}
+  .itabs{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+  .itab{border:1px solid var(--border);background:var(--surface-2);border-radius:6px;padding:2px 9px;font-family:var(--mono);font-size:12px}
+  .itab[aria-selected="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700}
+  .fileline{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}
+  .fileline .path{font-family:var(--mono);font-size:12.5px;font-weight:700}
+  .fileline .lines{font-family:var(--mono);font-size:12px;color:var(--ink-muted)}
+  .alias{border:1px solid var(--border);background:var(--k-db-soft);border-radius:8px;padding:8px 10px;margin:0 0 10px;font-size:12.5px}
+  .alias .route{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:5px;font-family:var(--mono);font-size:12px}
+  .alias .route span.step{padding:1px 7px;border-radius:6px;border:1px solid var(--border);background:var(--surface)}
+  .alias .route span.real{border-color:var(--k-db);color:var(--k-db);font-weight:700}
+  .alias .arrow{color:var(--ink-muted)}
+  .codebox{border:1px solid var(--border);border-radius:8px;background:var(--code-bg);overflow:auto;max-height:62vh}
+  table.code{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12.2px;line-height:1.6}
+  table.code td{padding:0 10px;vertical-align:top;white-space:pre}
+  table.code td.ln{position:sticky;left:0;text-align:right;color:var(--code-gutter);user-select:none;background:var(--code-bg);border-right:1px solid var(--border);min-width:44px;padding-right:8px}
+  table.code tr.hl td{background:var(--code-hl)}
+  table.code tr.hl td.ln{background:var(--code-hl);color:var(--ink);font-weight:700;box-shadow:inset 3px 0 0 var(--code-hl-bar)}
+  .t-c{color:var(--c-comment);font-style:italic}.t-d{color:var(--c-comment)}.t-s{color:var(--c-str)}.t-k{color:var(--c-kw);font-weight:600}
+  .t-f{color:var(--c-fn)}.t-n{color:var(--c-num)}.t-a{color:var(--c-deco)}
+  .legend-hl{margin:8px 0 0;font-size:12px;color:var(--ink-muted)}
+  .legend-hl b{background:var(--code-hl);color:var(--ink);padding:0 6px;border-radius:4px}
+  .flist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:6px}
+  .flist button{width:100%;text-align:left;border:1px solid var(--border);background:var(--surface-2);border-radius:8px;padding:6px 10px}
+  .flist button:hover{border-color:var(--accent)}
+  .flist small{display:block;color:var(--ink-muted)}
+  details.hdr{margin-top:12px;font-size:13px}
+  details.hdr pre{white-space:pre-wrap;background:var(--surface-2);border-radius:8px;padding:10px;font-family:var(--sans);font-size:12.5px;color:var(--ink-muted)}
+
+  @media (max-width:900px){
+    .app{display:block;height:auto}
+    .stage-wrap{max-height:none;overflow-x:auto}
+    .panel{position:fixed;left:0;right:0;bottom:0;width:auto;height:62vh;border-left:0;border-top:2px solid var(--accent);
+      box-shadow:0 -10px 30px rgba(0,0,0,.25);z-index:20;transform:translateY(105%);transition:transform .18s}
+    body.open .panel{transform:none}
+    .p-close{display:inline-block;position:absolute;right:12px;top:10px}
+    .p-head{position:relative;padding-right:70px}
+    .top{padding:12px 16px 8px}
+    .stage{padding:16px 16px 70vh}
+  }
+  @media (prefers-reduced-motion: reduce){.node,.panel{transition:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="main">
+    <header class="top">
+      <h1 id="title"></h1>
+      <p class="sub" id="subtitle"></p>
+      <div class="top-row">
+        <div class="tabs" role="tablist" id="tabs"></div>
+        <div class="stepper"><button class="btn" id="prev">◀ 이전</button><b id="stepNo">–</b><button class="btn" id="next">다음 ▶</button></div>
+        <span class="spacer"></span>
+        <a class="link" id="mdlink" href="#">📝 설명 문서 보기</a>
+        <button class="btn" id="theme" title="라이트/다크 전환">🌓</button>
+      </div>
+    </header>
+    <p class="intro" id="intro"></p>
+    <div class="legend" aria-label="범례">
+      <span><i style="background:var(--k-screen)"></i>화면 · 도착지</span>
+      <span><i style="background:var(--k-route)"></i>routes (입구)</span>
+      <span><i style="background:var(--k-helper)"></i>판단 (security · helpers)</span>
+      <span><i style="background:var(--k-db)"></i>db (저장소)</span>
+      <span><i style="background:var(--k-config)"></i>설정값</span>
+      <span><i style="background:var(--k-later);opacity:.6"></i>다른 단원에서 자세히</span>
+      <span>━ 다음 단계 &nbsp; ┅ 함수 호출</span>
+    </div>
+    <div class="stage-wrap" id="stageWrap"><div class="stage" id="stage"></div></div>
+  </div>
+
+  <aside class="panel" id="panel" aria-live="polite">
+    <div class="p-head">
+      <h2 id="pTitle"></h2><p id="pSub"></p>
+      <button class="btn p-close" id="pClose">닫기</button>
+    </div>
+    <div class="p-body" id="pBody"></div>
+  </aside>
+</div>
+
+<script type="application/json" id="data">{"title": "13. 관리자 RBAC", "subtitle": "관리자 요청이 '세션 확인 → 역할별 권한 확인'의 두 단계 문지기를 통과하는 코드 흐름도", "mdFile": "13-rbac.md", "github": "https://github.com/dyj02056/login-watchdog/blob/main/", "columns": ["화면 · 도착지", "routes/ (입구)", "판단 (security · helpers)", "db/ · config.py (저장소 · 설정값)"], "scenarios": [{"id": "guard", "name": "권한 문지기 (require_permission)", "intro": "'로그인만 되면 뭐든 가능'은 위험합니다. 조회 담당자 계정이 털려도 회원 삭제까지 가능해지기 때문입니다. 그래서 요청마다 ① 세션이 아직 유효한가 ② 이 역할이 이 일을 해도 되는가를 차례로 확인합니다.", "nodes": [{"id": "guard_n1", "col": 0, "row": 0, "kind": "screen", "title": "보호된 API 호출 (예: /api/unlock)", "plain": "라우트 위에 @require_permission(\"unlock_ip\") 처럼 '필요한 액션'을 적어 둡니다.", "reject": "", "later": "", "items": [{"block": "routes/admin/locks.py:api_unlock", "hl": [25, 26], "label": "api_unlock()", "call": null, "snippet": false}]}, {"id": "guard_n2", "col": 1, "row": 1, "kind": "route", "title": "① 세션이 아직 유효한 관리자인가?", "plain": "세션의 관리자 번호·아이디가 실제 계정과 맞는지 매 요청마다 DB 에서 확인합니다. 삭제되거나 바뀐 계정이면 더 진행하지 않습니다.", "reject": "401(API) 또는 로그인 화면 / 무효 세션이면 다시 로그인", "later": "", "items": [{"block": "helpers/auth.py:require_permission", "hl": [145, 147], "label": "require_permission()", "call": null, "snippet": false}]}, {"id": "guard_n3", "col": 2, "row": 1, "kind": "helper", "title": "세션 → 관리자 계정", "plain": "id·아이디·수명을 확인하고 g.admin 에 담습니다.", "reject": "", "later": "", "items": [{"block": "helpers/auth.py:_load_current_admin", "hl": null, "label": "_load_current_admin()", "call": null, "snippet": false}]}, {"id": "guard_n4", "col": 2, "row": 1, "kind": "later", "title": "미인증 응답", "plain": "세션이 아예 없으면 미인증 접근으로 기록(6단원), 무효 세션이면 기록 없이 다시 로그인으로.", "reject": "", "later": "6단원", "items": [{"block": "helpers/auth.py:_reject_admin_request", "hl": null, "label": "_reject_admin_request()", "call": null, "snippet": false}]}, {"id": "guard_n5", "col": 1, "row": 2, "kind": "route", "title": "② 이 역할이 이 액션을 해도 되나?", "plain": "로그인은 됐지만 역할에 그 액션이 없으면 403 JSON 을 돌려줍니다. 이미 로그인한 상태에서 걸리는 경우라 화면 이동이 아니라 항상 JSON 입니다.", "reject": "이 작업을 수행할 권한이 없습니다. (403)", "later": "", "items": [{"block": "helpers/auth.py:require_permission", "hl": [148, 149], "label": "require_permission()", "call": null, "snippet": false}]}, {"id": "guard_n6", "col": 3, "row": 2, "kind": "db", "title": "permissions 표 조회", "plain": "(role, action) 한 줄이 있는지 매번 직접 조회합니다. 캐싱하지 않습니다.", "reject": "", "later": "", "items": [{"block": "db/roles.py:has_permission", "hl": null, "label": "has_permission()", "call": "db.has_permission()", "snippet": false}]}, {"id": "guard_n7", "col": 1, "row": 3, "kind": "route", "title": "③ 통과하면 실제 처리 함수 실행", "plain": "권한이 확인된 요청만 도달하므로, 처리 함수(예: soar.manual_release)는 권한을 다시 확인하지 않고 실행에만 집중합니다.", "reject": "", "later": "", "items": [{"block": "helpers/auth.py:require_permission", "hl": [151, 151], "label": "require_permission()", "call": null, "snippet": false}]}, {"id": "guard_n8", "col": 2, "row": 3, "kind": "later", "title": "즉시 해제 실행", "plain": "12단원.", "reject": "", "later": "12단원", "items": [{"block": "security/soar/lockouts.py:manual_release", "hl": null, "label": "manual_release()", "call": "soar.manual_release()", "snippet": false}]}], "edges": [{"from": "guard_n1", "to": "guard_n2", "label": "", "kind": "flow"}, {"from": "guard_n2", "to": "guard_n3", "label": "", "kind": "call"}, {"from": "guard_n2", "to": "guard_n4", "label": "", "kind": "call"}, {"from": "guard_n2", "to": "guard_n5", "label": "", "kind": "flow"}, {"from": "guard_n5", "to": "guard_n6", "label": "", "kind": "call"}, {"from": "guard_n5", "to": "guard_n7", "label": "", "kind": "flow"}, {"from": "guard_n7", "to": "guard_n8", "label": "", "kind": "call"}], "steps": ["guard_n1", "guard_n2", "guard_n5", "guard_n7"]}, {"id": "cache", "name": "권한은 캐싱하지 않는다 (즉시 회수)", "intro": "권한을 메모리에 담아 두면, super_admin 이 다른 관리자의 권한을 방금 바꿨는데도 그 관리자가 로그아웃하기 전까지 예전 권한이 유지됩니다. 그래서 요청마다 DB 를 직접 봅니다.", "nodes": [{"id": "cache_n1", "col": 0, "row": 0, "kind": "screen", "title": "권한 확인 요청 (매 요청마다)", "plain": "role 과 action 을 받아 permissions 표에 한 줄이 있는지만 봅니다.", "reject": "", "later": "", "items": [{"block": "db/roles.py:has_permission", "hl": [12, 12], "label": "has_permission()", "call": "db.has_permission()", "snippet": false}]}, {"id": "cache_n2", "col": 1, "row": 1, "kind": "route", "title": "① permissions 표에서 (역할, 액션) 조회", "plain": "있으면 허용, 없으면 거부입니다.", "reject": "", "later": "", "items": [{"block": "db/roles.py:has_permission", "hl": [22, 29], "label": "has_permission()", "call": "db.has_permission()", "snippet": false}]}, {"id": "cache_n3", "col": 3, "row": 1, "kind": "db", "title": "이 역할의 액션 전체 목록", "plain": "대시보드가 '어떤 버튼을 보여줄지' 정하려고 /api/status 에 실어 보내는 값입니다. 화면 표시용일 뿐 실제 검사는 서버가 따로 합니다.", "reject": "", "later": "", "items": [{"block": "db/roles.py:list_role_permissions", "hl": null, "label": "list_role_permissions()", "call": "db.list_role_permissions()", "snippet": false}]}], "edges": [{"from": "cache_n1", "to": "cache_n2", "label": "", "kind": "flow"}, {"from": "cache_n2", "to": "cache_n3", "label": "", "kind": "call"}], "steps": ["cache_n1", "cache_n2"]}, {"id": "admins", "name": "super_admin 은 이 화면에서 만들 수 없다", "intro": "'super_admin 은 1명만 둔다'는 운영 정책을 화면(select 옵션)뿐 아니라 서버에서도 강제합니다. fetch() 를 직접 조작해 우회하는 요청까지 막기 위해서입니다.", "nodes": [{"id": "admins_n1", "col": 0, "row": 0, "kind": "screen", "title": "관리자 계정 생성 (POST /api/admin-users/create)", "plain": "manage_admin_users 권한(= super_admin)이 있어야 호출할 수 있습니다.", "reject": "", "later": "", "items": [{"block": "routes/admin/manage.py:api_admin_users_create", "hl": [92, 93], "label": "api_admin_users_create()", "call": null, "snippet": false}]}, {"id": "admins_n2", "col": 1, "row": 1, "kind": "route", "title": "① 입력 규칙 + 만들 수 있는 역할 제한", "plain": "아이디 형식·비밀번호 길이는 회원가입과 같은 규칙을 쓰고, 역할은 security_viewer / security_admin 두 가지만 허용합니다.", "reject": "규칙에 어긋난 항목 안내 (400)", "later": "", "items": [{"block": "routes/admin/manage.py:api_admin_users_create", "hl": [108, 113], "label": "api_admin_users_create()", "call": null, "snippet": false}]}, {"id": "admins_n3", "col": 2, "row": 1, "kind": "helper", "title": "만들 수 있는 역할 (super_admin 없음)", "plain": "여기 super_admin 을 넣지 않은 것이 핵심 안전장치입니다.", "reject": "", "later": "", "items": [{"block": "routes/admin/manage.py:89-89", "hl": null, "label": "_CREATABLE_ADMIN_ROLES", "call": null, "snippet": true}]}, {"id": "admins_n4", "col": 1, "row": 2, "kind": "route", "title": "② 계정 저장", "plain": "이미 있는 아이디면 거부합니다.", "reject": "이미 존재하는 아이디입니다.", "later": "", "items": [{"block": "routes/admin/manage.py:api_admin_users_create", "hl": [115, 115], "label": "api_admin_users_create()", "call": null, "snippet": false}]}, {"id": "admins_n5", "col": 3, "row": 2, "kind": "db", "title": "관리자 계정 저장", "plain": "비밀번호를 해시로 바꿔 admin_users 표에 저장합니다.", "reject": "", "later": "", "items": [{"block": "db/admin.py:create_admin_user", "hl": null, "label": "create_admin_user()", "call": "db.create_admin_user()", "snippet": false}]}, {"id": "admins_n6", "col": 1, "row": 3, "kind": "route", "title": "③ 삭제: super_admin 이면 거부", "plain": "삭제 대상의 역할을 먼저 조회해 super_admin 이면 막습니다. 이렇게 하지 않으면 마지막 super_admin 까지 지워질 수 있습니다.", "reject": "super_admin 계정은 이 화면에서 삭제할 수 없습니다. (400)", "later": "", "items": [{"block": "routes/admin/manage.py:api_admin_users_delete", "hl": [135, 140], "label": "api_admin_users_delete()", "call": null, "snippet": false}]}, {"id": "admins_n7", "col": 3, "row": 3, "kind": "db", "title": "대상의 역할 조회", "plain": "삭제 전에 역할을 확인합니다.", "reject": "", "later": "", "items": [{"block": "db/admin.py:get_admin_role_by_id", "hl": null, "label": "get_admin_role_by_id()", "call": "db.get_admin_role_by_id()", "snippet": false}]}, {"id": "admins_n8", "col": 3, "row": 3, "kind": "db", "title": "관리자 계정 삭제", "plain": "super_admin 구분은 하지 않으므로 호출 전에 막아야 합니다.", "reject": "", "later": "", "items": [{"block": "db/admin.py:delete_admin_user", "hl": null, "label": "delete_admin_user()", "call": "db.delete_admin_user()", "snippet": false}]}], "edges": [{"from": "admins_n1", "to": "admins_n2", "label": "", "kind": "flow"}, {"from": "admins_n2", "to": "admins_n3", "label": "", "kind": "call"}, {"from": "admins_n2", "to": "admins_n4", "label": "", "kind": "flow"}, {"from": "admins_n4", "to": "admins_n5", "label": "", "kind": "call"}, {"from": "admins_n4", "to": "admins_n6", "label": "", "kind": "flow"}, {"from": "admins_n6", "to": "admins_n7", "label": "", "kind": "call"}, {"from": "admins_n6", "to": "admins_n8", "label": "", "kind": "call"}], "steps": ["admins_n1", "admins_n2", "admins_n4", "admins_n6"]}], "blocks": {"routes/admin/locks.py:api_unlock": {"path": "routes/admin/locks.py", "start": 25, "end": 43, "lang": "python", "code": "@admin_bp.route(\"/api/unlock\", methods=[\"POST\"])\n@require_permission(\"unlock_ip\")\ndef api_unlock():\n    \"\"\"대시보드의 \"즉시 해제\" 버튼을 눌렀을 때 브라우저가 호출하는 API.\n\n    이 라우트가 require_permission(\"unlock_ip\")로 보호되어 있으므로, 이 함수가 실행되는\n    시점엔 이미 \"IP 잠금 해제 권한이 있는 로그인된 관리자의 요청\"이라는 게 보장된 상태다\n    — 그래서 soar.manual_release는 권한 확인을 다시 하지 않고 바로 실행에만 집중할 수\n    있다(4단계 security/soar/ 설명 참고).\n    \"\"\"\n    data = request.get_json(silent=True) or {}\n    ip = data.get(\"ip\")\n    if not ip:\n        return jsonify({\"success\": False, \"error\": \"ip 값이 필요합니다.\"}), 400\n\n    released = soar.manual_release(ip)\n    if not released and lockdown.is_permanent_ip(ip):\n        return jsonify({\"success\": False, \"error\": \"영구 잠금은 '영구 해제'로만 풀 수 있습니다.\"}), 409\n    return jsonify({\"success\": released})", "alias": null}, "helpers/auth.py:require_permission": {"path": "helpers/auth.py", "start": 126, "end": 153, "lang": "python", "code": "def require_permission(action: str):\n    \"\"\"login_required보다 한 단계 더 세밀한 문지기 — \"로그인됐는가\"뿐 아니라\n    \"이 관리자의 역할이 정말 이 action을 해도 되는가\"까지 확인한다\n    (Track B guide26, RBAC 기본 구조).\n\n    login_required와 다르게 데코레이터 팩토리(괄호로 action을 받아 진짜\n    데코레이터를 만들어 돌려주는 함수) 형태다 — `@require_permission(\"delete_user\")`\n    처럼 라우트마다 어떤 액션을 확인할지 지정해야 하기 때문이다.\n\n    순서: 1) 세션 확인은 login_required와 완전히 동일하다(_load_current_admin /\n    _reject_admin_request). 2) 로그인은 됐지만 role이 이 action을 못 하면 403(권한 없음)\n    JSON을 돌려준다 — 이미 로그인된 상태에서 걸리는 경우이므로 화면 리다이렉트가 아니라\n    항상 JSON으로 응답한다(이 데코레이터가 보호하는 라우트는 전부 /api/* 뿐이라서).\n    role은 1)에서 계정을 조회할 때 함께 가져온 값을 쓴다 — 캐싱하지 않고 요청마다 DB에서\n    읽은 값이므로 role이 바뀌면 바로 다음 요청부터 적용된다.\n    \"\"\"\n    def decorator(view):\n        @wraps(view)\n        def wrapped_view(*args, **kwargs):\n            admin = _load_current_admin()\n            if admin is None:\n                return _reject_admin_request()\n            if not db.has_permission(admin[\"role\"], action):\n                return jsonify({\"error\": \"이 작업을 수행할 권한이 없습니다.\"}), 403\n\n            return view(*args, **kwargs)\n        return wrapped_view\n    return decorator", "alias": null}, "helpers/auth.py:_load_current_admin": {"path": "helpers/auth.py", "start": 45, "end": 66, "lang": "python", "code": "def _load_current_admin() -> dict | None:\n    \"\"\"세션이 아직 유효한 관리자 계정을 가리키면 그 계정({\"id\", \"username\", \"role\"})을\n    g.admin에 담아 돌려주고, 아니면 None을 돌려준다.\n\n    무효로 보는 경우: 세션 값 일부가 없음(이 기능 이전에 만들어진 세션 포함) /\n    로그인한 지 ADMIN_SESSION_MAX_HOURS가 지남 / DB에 그 id가 없음(삭제됨) /\n    id는 있는데 username이 다름. 수명은 \"마지막 활동\"이 아니라 \"로그인 시각\" 기준이다 —\n    대시보드가 5초마다 폴링하므로 활동이 없는 상태가 생기지 않기 때문이다.\n    \"\"\"\n    admin_id = session.get(\"admin_id\")\n    username = session.get(\"admin_username\")\n    login_at = session.get(\"admin_login_at\")\n    if admin_id is None or username is None or login_at is None:\n        return None\n    if time.time() - login_at > config.ADMIN_SESSION_MAX_HOURS * 3600:\n        return None\n\n    admin = db.get_admin_by_id(admin_id)\n    if admin is None or admin[\"username\"] != username:\n        return None\n    g.admin = admin\n    return admin", "alias": null}, "helpers/auth.py:_reject_admin_request": {"path": "helpers/auth.py", "start": 69, "end": 100, "lang": "python", "code": "def _reject_admin_request():\n    \"\"\"관리자 확인에 실패한 요청에 응답한다. 두 경우를 구분한다.\n\n    - 세션이 아예 없음: 지금까지처럼 미인증 접근으로 기록하고(21단계), 반복되면 알리거나\n      LLM 조기 경보를 판단한다(Track A, guide31).\n    - 세션은 있는데 무효(삭제·만료·옛 형식): 공격이 아니라 \"다시 로그인해야 하는 관리자\"다.\n      기록하지 않는다 — 기록하면 삭제된 관리자의 대시보드가 5초마다 폴링하면서 그 관리자의\n      IP가 미인증 접근 공격으로 잡혀 알림이 울린다. 관리자 세션 값만 지우고 돌려보낸다.\n    \"\"\"\n    is_api = request.path.startswith(\"/api/\")\n    if \"admin_username\" in session:\n        clear_admin_session()\n        if is_api:\n            return jsonify({\"error\": \"세션이 만료되었습니다. 다시 로그인해주세요.\"}), 401\n        flash(\"세션이 만료되었거나 계정 정보가 바뀌었습니다. 다시 로그인해주세요.\")\n        return redirect(url_for(\"admin.admin_login\"))\n\n    if is_api:\n        ip = get_request_ip()\n        db.log_unauthorized_attempt(ip, request.path)\n        suspicious, count, is_first_over_threshold = detector.is_unauthorized_access_suspicious(ip)\n        if suspicious and is_first_over_threshold:\n            soar.notify_unauthorized_access(ip, count, request.path)\n        elif not suspicious and count >= config.UNAUTHORIZED_ACCESS_ALERT_THRESHOLD - config.EARLY_WARNING_BAND:\n            # 아직 기준치는 안 넘었지만 코앞이면 LLM에게 조기 경보 여부를 물어본다\n            # (Track A, guide31).\n            soar.consider_early_warning(\n                \"UNAUTHORIZED_ACCESS\", \"ALERT_ONLY\", \"ip\", ip, count,\n                config.UNAUTHORIZED_ACCESS_ALERT_THRESHOLD, path=request.path,\n            )\n        return jsonify({\"error\": \"로그인이 필요합니다.\"}), 401\n    return redirect(url_for(\"admin.admin_login\"))", "alias": null}, "db/roles.py:has_permission": {"path": "db/roles.py", "start": 12, "end": 29, "lang": "python", "code": "def has_permission(role: str, action: str) -> bool:\n    \"\"\"이 role이 이 action을 해도 되는지 permissions 표를 조회해서 확인한다.\n\n    db/settings.py의 get_signup_enabled()와 같은 이유로 캐싱하지 않고 매번\n    Supabase를 직접 조회한다 — 역할별 권한(permissions 표)은 운영 중에 Supabase에서\n    바뀔 수 있는 값이라(대시보드에는 권한 편집 화면이 없다), 한 번 메모리에 담아두면 다른 서버 인스턴스(로컬/Vercel)나\n    이미 로그인된 세션에서 권한 변경이 즉시 반영되지 않는다.\n    \"\"\"\n    res = (\n        db.get_client()\n        .table(\"permissions\")\n        .select(\"role\")\n        .eq(\"role\", role)\n        .eq(\"action\", action)\n        .limit(1)\n        .execute()\n    )\n    return bool(res.data)", "alias": {"call": "db.has_permission()", "via": "db/__init__.py", "real": "db/roles.py"}}, "security/soar/lockouts.py:manual_release": {"path": "security/soar/lockouts.py", "start": 175, "end": 197, "lang": "python", "code": "def manual_release(ip: str) -> bool:\n    \"\"\"관리자가 대시보드의 \"즉시 해제\" 버튼을 눌렀을 때 호출되는 함수.\n\n    동작 순서:\n    1. 지금 잠겨있는 IP 목록을 전부 가져와서, 그 안에 이 ip가 있는지 확인한다.\n    2. 있다면 실제로 풀어주고 True(성공)를 돌려준다.\n    3. 애초에 잠긴 적이 없다면 아무것도 하지 않고 False(할 일 없음)를 돌려준다.\n\n    주의: 이 함수는 \"이 요청을 보낸 사람이 진짜 관리자인지\"는 전혀 확인하지 않는다.\n    그 권한 확인은 라우트의 require_permission 문지기(helpers/auth.py)가 미리 걸러주고, 이 함수는\n    \"이미 권한이 확인된 사람\"의 요청만 받는다고 가정하고 동작한다.\n    \"\"\"\n    active = {row[\"ip_address\"]: row for row in db.list_active_lockouts()}\n    if ip not in active:\n        return False\n    # 영구 잠금은 이 \"즉시 해제\"로 풀지 않는다 — 사유 기록과 권한 분리(release_permanent_lock,\n    # super_admin 전용)가 필요한 별도 경로(lockdown.release)로만 풀 수 있다(guide33).\n    if active[ip].get(\"lock_type\") == \"PERMANENT\":\n        return False\n    db.release_lockout(ip)\n    db.resolve_security_events_for_ip(ip)\n    # 연관 사건은 닫지 않는다 — try_release_expired_lockouts()의 같은 자리 주석 참고.\n    return True", "alias": {"call": "soar.manual_release()", "via": "security/soar/__init__.py", "real": "security/soar/lockouts.py"}}, "db/roles.py:list_role_permissions": {"path": "db/roles.py", "start": 32, "end": 40, "lang": "python", "code": "def list_role_permissions(role: str) -> list[str]:\n    \"\"\"이 role이 가진 action 목록 전체를 한 번의 조회로 가져온다.\n\n    대시보드가 \"이 관리자에게 어떤 버튼을 보여줄지\" 정하려고 /api/status 응답에 싣는\n    값이다(예: release_permanent_lock이 없으면 \"영구 해제\" 버튼을 숨긴다). 화면 표시용일\n    뿐이고, 실제 권한 검사는 서버의 require_permission()이 요청마다 따로 한다.\n    \"\"\"\n    res = db.get_client().table(\"permissions\").select(\"action\").eq(\"role\", role).execute()\n    return [row[\"action\"] for row in res.data]", "alias": {"call": "db.list_role_permissions()", "via": "db/__init__.py", "real": "db/roles.py"}}, "routes/admin/manage.py:api_admin_users_create": {"path": "routes/admin/manage.py", "start": 92, "end": 118, "lang": "python", "code": "@admin_bp.route(\"/api/admin-users/create\", methods=[\"POST\"])\n@require_permission(\"manage_admin_users\")\ndef api_admin_users_create():\n    \"\"\"대시보드 \"관리자 계정 관리\" 카드의 생성 폼이 호출하는 API.\n\n    scripts/management/create_admin.py와 동일한 검증 규칙(아이디 형식, 비밀번호 길이)을\n    쓰고, db.create_admin_user()도 그대로 재사용한다 — 다만 역할은\n    _CREATABLE_ADMIN_ROLES 두 가지로만 제한한다. 화면(select 옵션)에서도\n    super_admin을 아예 안 보여주지만, fetch()를 직접 조작해 super_admin을\n    보내는 요청도 여기서 한 번 더 막아야 실질적인 방어가 된다.\n    \"\"\"\n    data = request.get_json(silent=True) or {}\n    username = data.get(\"username\", \"\")\n    password = data.get(\"password\", \"\")\n    role = data.get(\"role\", \"\")\n\n    if not config.USERNAME_PATTERN.match(username):\n        return jsonify({\"success\": False, \"error\": \"아이디는 영문/숫자/밑줄 3~20자여야 합니다.\"}), 400\n    if len(password) < config.MIN_PASSWORD_LENGTH:\n        return jsonify({\"success\": False, \"error\": f\"비밀번호는 최소 {config.MIN_PASSWORD_LENGTH}자 이상이어야 합니다.\"}), 400\n    if role not in _CREATABLE_ADMIN_ROLES:\n        return jsonify({\"success\": False, \"error\": \"role은 security_viewer 또는 security_admin만 가능합니다.\"}), 400\n\n    created = db.create_admin_user(username, password, role)\n    if not created:\n        return jsonify({\"success\": False, \"error\": \"이미 존재하는 아이디입니다.\"}), 400\n    return jsonify({\"success\": True})", "alias": null}, "routes/admin/manage.py:89-89": {"path": "routes/admin/manage.py", "start": 89, "end": 89, "lang": "python", "code": "_CREATABLE_ADMIN_ROLES = (\"security_viewer\", \"security_admin\")", "alias": null}, "db/admin.py:create_admin_user": {"path": "db/admin.py", "start": 119, "end": 137, "lang": "python", "code": "def create_admin_user(username: str, password: str, role: str) -> bool:\n    \"\"\"새 관리자 계정을 role과 함께 만든다.\n\n    scripts/management/create_admin.py(터미널 스크립트)와 대시보드 \"관리자 계정 관리\"\n    (routes/admin/manage.py)가 둘 다 이 함수를 통해서만 계정을 만든다 — insert 로직이\n    두 곳에 따로 있으면 한쪽만 고치고 잊어버리는 사고가 나기 쉽다.\n\n    아이디가 이미 있으면(unique 제약) 아무것도 만들지 않고 False를 돌려준다.\n    \"\"\"\n    existing = (\n        db.get_client().table(\"admin_users\").select(\"id\").eq(\"username\", username).limit(1).execute()\n    )\n    if existing.data:\n        return False\n\n    db.get_client().table(\"admin_users\").insert(\n        {\"username\": username, \"password_hash\": generate_password_hash(password), \"role\": role}\n    ).execute()\n    return True", "alias": {"call": "db.create_admin_user()", "via": "db/__init__.py", "real": "db/admin.py"}}, "routes/admin/manage.py:api_admin_users_delete": {"path": "routes/admin/manage.py", "start": 121, "end": 140, "lang": "python", "code": "@admin_bp.route(\"/api/admin-users/delete\", methods=[\"POST\"])\n@require_permission(\"manage_admin_users\")\ndef api_admin_users_delete():\n    \"\"\"대시보드 \"관리자 계정 관리\" 카드의 \"삭제\" 버튼이 호출하는 API.\n\n    삭제 전에 대상의 role을 먼저 조회해서 super_admin이면 거부한다 —\n    db.delete_admin_user() 자체는 그 구분을 하지 않으므로(db/admin.py 설명 참고),\n    여기서 막지 않으면 마지막 super_admin 계정까지 지워질 수 있다.\n    \"\"\"\n    data = request.get_json(silent=True) or {}\n    admin_id = data.get(\"admin_id\")\n    if not admin_id:\n        return jsonify({\"success\": False, \"error\": \"admin_id 값이 필요합니다.\"}), 400\n\n    target_role = db.get_admin_role_by_id(admin_id)\n    if target_role == \"super_admin\":\n        return jsonify({\"success\": False, \"error\": \"super_admin 계정은 이 화면에서 삭제할 수 없습니다.\"}), 400\n\n    deleted = db.delete_admin_user(admin_id)\n    return jsonify({\"success\": deleted})", "alias": null}, "db/admin.py:get_admin_role_by_id": {"path": "db/admin.py", "start": 108, "end": 116, "lang": "python", "code": "def get_admin_role_by_id(admin_id: int) -> str | None:\n    \"\"\"id로 관리자 계정의 role을 조회한다. 대시보드의 \"계정 삭제\" 버튼은 행의\n    기본키(id)만 들고 있으므로 삭제 대상의 role을 확인할 때 이 조회를 쓴다.\n\n    routes/admin/manage.py가 삭제 전에 이 함수로 대상이 super_admin인지 먼저 확인해\n    \"이 화면에서는 super_admin을 지울 수 없다\"는 규칙을 지킨다.\n    \"\"\"\n    res = db.get_client().table(\"admin_users\").select(\"role\").eq(\"id\", admin_id).limit(1).execute()\n    return res.data[0][\"role\"] if res.data else None", "alias": {"call": "db.get_admin_role_by_id()", "via": "db/__init__.py", "real": "db/admin.py"}}, "db/admin.py:delete_admin_user": {"path": "db/admin.py", "start": 140, "end": 149, "lang": "python", "code": "def delete_admin_user(admin_id: int) -> bool:\n    \"\"\"관리자 계정을 하나 삭제한다.\n\n    super_admin을 지우면 안 되는 규칙(login_watchdog_expansion_plan.md 논의 —\n    super_admin은 1명만 두기로 결정)은 여기가 아니라 호출부(routes/admin/manage.py)가\n    delete_admin_user 호출 전에 get_admin_role_by_id로 먼저 확인한다 — 이 함수는\n    db/users.py의 delete_user()와 동일하게 \"삭제 실행\"에만 집중한다.\n    \"\"\"\n    res = db.get_client().table(\"admin_users\").delete().eq(\"id\", admin_id).execute()\n    return len(res.data) > 0", "alias": {"call": "db.delete_admin_user()", "via": "db/__init__.py", "real": "db/admin.py"}}}, "files": {"routes/admin/locks.py": {"role": "잠금 해제 등 권한이 필요한 처리 API 입구 파일.", "header": "routes/admin/locks.py — 잠금 해제·영구 잠금·IP 예외·복구 요청 관리 API\n예전 routes/admin.py(798줄)를 기능 묶음별로 나눈 조각 중 하나다. Blueprint(admin_bp)는\nroutes/admin/__init__.py에서 하나만 만들고, 이 파일은 거기에 라우트를 붙이기만 한다\n— 그래서 엔드포인트 이름(url_for(\"admin.xxx\"))은 나누기 전과 똑같다.\n배경은 docs/refactor/2026-10-09-module-plan.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/routes/admin/locks.py"}, "helpers/auth.py": {"role": "관리자 문지기(login_required)와 권한 문지기(require_permission)를 만드는 파일.", "header": "helpers/auth.py — 관리자/회원 세션과 로그인·권한 문지기(데코레이터)\n예전 helpers.py(314줄)를 기능 묶음별로 나눈 조각 중 하나다. 다른 파일은 이 파일을 직접\n가리키지 않고 예전처럼 `from helpers import ...`로 가져다 쓴다(helpers/__init__.py가\n재내보내기). 배경은 docs/refactor/2026-10-09-module-plan.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/helpers/auth.py"}, "db/roles.py": {"role": "역할(roles)과 허용 액션(permissions) 표를 조회하는 저장소 파일. 캐싱하지 않는다.", "header": "db/roles.py — roles / permissions 표 관련 함수 (Track B guide26, RBAC 기본 구조)\nadmin_users.role이 \"이 관리자가 어떤 역할인지\"를 말해준다면, 이 파일의\nhas_permission()은 \"그 역할이 지금 하려는 일을 해도 되는지\"를 확인한다.\ndb.get_client() 호출 이유는 db/attempts.py 상단 설명 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/db/roles.py"}, "security/soar/lockouts.py": {"role": "security/soar/lockouts.py — 잠금 집행(IP/회원 계정/관리자 계정)과 자동·수동 해제 예전 soar.py(497줄)를 기능 묶음별로 나눈 조각 중 하나다. 다른 파일은 이 파일을 직접 가리키지 않고 예전처럼 `from security import soar` 후 `", "header": "security/soar/lockouts.py — 잠금 집행(IP/회원 계정/관리자 계정)과 자동·수동 해제\n예전 soar.py(497줄)를 기능 묶음별로 나눈 조각 중 하나다. 다른 파일은 이 파일을 직접\n가리키지 않고 예전처럼 `from security import soar` 후 `soar.enforce_lockout(...)`으로\n쓴다(security/soar/__init__.py가 재내보내기). 배경은 docs/refactor/2026-10-09-module-plan.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/security/soar/lockouts.py"}, "routes/admin/manage.py": {"role": "회원 삭제·가입 on/off·게시글 삭제·관리자 계정 생성/삭제 API 입구 파일.", "header": "routes/admin/manage.py — 회원·회원가입 설정·게시판·관리자 계정 관리 API\n예전 routes/admin.py(798줄)를 기능 묶음별로 나눈 조각 중 하나다. Blueprint(admin_bp)는\nroutes/admin/__init__.py에서 하나만 만들고, 이 파일은 거기에 라우트를 붙이기만 한다\n— 그래서 엔드포인트 이름(url_for(\"admin.xxx\"))은 나누기 전과 똑같다.\n배경은 docs/refactor/2026-10-09-module-plan.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/routes/admin/manage.py"}, "db/admin.py": {"role": "관리자 계정(admin_users 표)을 만들고 지우고 조회하는 저장소 파일.", "header": "db/admin.py — admin_users / admin_login_log 표 관련 함수\n— 관리자(대시보드에 로그인하는 사람) 계정과, 그 로그인 시도 기록을 관리하는 기능\ndb.get_client() 호출 이유는 db/attempts.py 상단 설명 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/db/admin.py"}}}</script>
+<script>
+(function(){
+  "use strict";
+  var D = JSON.parse(document.getElementById("data").textContent);
+  var $ = function(id){ return document.getElementById(id); };
+  var KIND_LABEL = {screen:"화면 · 도착지", route:"routes", helper:"판단", db:"db", config:"설정값", later:"다른 단원"};
+
+  var state = { sc: 0, node: null, item: 0, file: null };
+
+  function el(tag, attrs, kids){
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function(k){
+      if (k === "class") e.className = attrs[k];
+      else if (k === "text") e.textContent = attrs[k];
+      else if (k.slice(0,2) === "on") e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    });
+    (kids || []).forEach(function(c){ if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function brk(t){ return t.replace(/([\/._])/g, "$1\u200b"); }
+  function scen(){ return D.scenarios[state.sc]; }
+  function nodeById(id){ return scen().nodes.filter(function(n){ return n.id === id; })[0]; }
+  function fnName(label){ return label; }
+
+  /* ---------- 간단 문법 강조 ---------- */
+  var PY = /(#[^\n]*)|("""[\s\S]*?"""|'''[\s\S]*?''')|([rbfRBF]{0,2}"(?:\\.|[^"\\\n])*"|[rbfRBF]{0,2}'(?:\\.|[^'\\\n])*')|\b(def|class|return|if|elif|else|for|while|import|from|as|try|except|finally|with|in|not|and|or|is|None|True|False|raise|pass|lambda|yield|global|nonlocal|assert|del|continue|break)\b|(@[A-Za-z_][\w.]*)|\b(\d+(?:\.\d+)?)\b|\b([A-Za-z_]\w*)(?=\()/g;
+  var PYC = [null,"t-c","t-d","t-s","t-k","t-a","t-n","t-f"];
+  var HT = /(<!--[\s\S]*?-->)|(\{[{%#][\s\S]*?[}%#]\})|(<\/?[A-Za-z][\w-]*)|("[^"\n]*")|(\/?>)/g;
+  var HTC = [null,"t-c","t-a","t-k","t-s","t-k"];
+  var JS = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(`(?:\\.|[^`\\])*`)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|\b(const|let|var|function|return|if|else|for|while|import|from|export|default|async|await|try|catch|finally|new|class|extends|typeof|interface|type|null|undefined|true|false|throw|switch|case|break|continue|of|in|as)\b|(@[A-Za-z_]\w*)|\b(\d+(?:\.\d+)?)\b|\b([A-Za-z_$][\w$]*)(?=\()/g;
+  var JSC = [null,"t-c","t-s","t-s","t-k","t-a","t-n","t-f"];
+  var SQ = /(--[^\n]*|\/\*[\s\S]*?\*\/)|((?!))|('(?:''|[^'])*')|\b(select|from|where|insert|into|values|update|set|delete|create|table|index|alter|add|drop|on|conflict|do|nothing|and|or|not|null|default|primary|key|references|cascade|if|exists|as|order|by|group|limit|desc|asc|join|left|inner|count|returns|function|language|begin|end|return|with|union|all|distinct|in|is|true|false|unique|check|constraint|timestamptz|text|integer|bigint|boolean|interval|now|replace|trigger|view|policy|enable|row|level|security|using)\b|((?!))|\b(\d+(?:\.\d+)?)\b|\b([a-z_]\w*)(?=\()/gi;
+  var SQC = [null,"t-c",null,"t-s","t-k",null,"t-n","t-f"];
+  var SH = /(#[^\n]*)|((?!))|("(?:\\.|[^"\\\n])*"|'[^'\n]*')|\b(if|then|else|fi|for|do|done|while|case|esac|function|echo|export|python|pip|git|cd|run|name|on|jobs|steps|uses|with|env)\b|((?!))|\b(\d+)\b/g;
+  var SHC = [null,"t-c",null,"t-s","t-k",null,"t-n"];
+  function tokenize(code, lang){
+    var re = PY, cls = PYC;
+    if (lang === "html"){ re = HT; cls = HTC; }
+    else if (lang === "js"){ re = JS; cls = JSC; }
+    else if (lang === "sql"){ re = SQ; cls = SQC; }
+    else if (lang === "sh"){ re = SH; cls = SHC; }
+    var lines = [[]];
+    function push(text, c){
+      var parts = text.split("\n");
+      parts.forEach(function(p, i){
+        if (i > 0) lines.push([]);
+        if (p) lines[lines.length-1].push([p, c]);
+      });
+    }
+    var last = 0, m;
+    re.lastIndex = 0;
+    while ((m = re.exec(code)) !== null){
+      if (m.index > last) push(code.slice(last, m.index), null);
+      var idx = 1; while (idx < m.length && m[idx] === undefined) idx++;
+      push(m[0], cls[idx] || null);
+      last = m.index + m[0].length;
+      if (m[0].length === 0) re.lastIndex++;
+    }
+    if (last < code.length) push(code.slice(last), null);
+    return lines;
+  }
+
+  function codeTable(block, hl){
+    var lines = tokenize(block.code, block.lang);
+    var tbody = el("tbody");
+    var hlFirst = null;
+    lines.forEach(function(segs, i){
+      var no = block.start + i;
+      var on = hl && no >= hl[0] && no <= hl[1];
+      var td = el("td", {class:"tx"});
+      segs.forEach(function(s){ td.appendChild(s[1] ? el("span", {class:s[1], text:s[0]}) : document.createTextNode(s[0])); });
+      if (!segs.length) td.appendChild(document.createTextNode(" "));
+      var tr = el("tr", on ? {class:"hl"} : null, [el("td", {class:"ln", text:String(no)}), td]);
+      if (on && !hlFirst) hlFirst = tr;
+      tbody.appendChild(tr);
+    });
+    var box = el("div", {class:"codebox"}, [el("table", {class:"code"}, [tbody])]);
+    box._hlFirst = hlFirst;
+    return box;
+  }
+
+  function copyText(text, btn){
+    var done = function(){ var o = btn.textContent; btn.textContent = "복사됨 ✓"; setTimeout(function(){ btn.textContent = o; }, 1200); };
+    try { navigator.clipboard.writeText(text).then(done, fallback); } catch(e){ fallback(); }
+    function fallback(){
+      var ta = el("textarea", {style:"position:fixed;opacity:0"}); ta.value = text; document.body.appendChild(ta);
+      ta.select(); try { document.execCommand("copy"); done(); } catch(e){} document.body.removeChild(ta);
+    }
+  }
+
+  /* ---------- 패널 ---------- */
+  function openPanel(){ document.body.classList.add("open"); }
+  function closePanel(){ document.body.classList.remove("open"); }
+
+  function showHint(){
+    $("pTitle").textContent = "코드 보는 법";
+    $("pSub").textContent = "카드나 파일 이름을 누르면 실제 코드가 여기에 열립니다.";
+    var ul = el("ul", {class:"hint"}, [
+      el("li", {text:"카드(상자)를 누르면 그 단계에서 실행되는 실제 함수 코드가 열려요."}),
+      el("li", {text:"카드 안의 📄 파일 이름을 누르면 그 파일이 어떤 역할인지, 이 단원에서 쓰이는 함수가 무엇인지 보여줘요."}),
+      el("li", {text:"ƒ 함수 이름을 누르면 해당 함수 코드로 바로 이동해요."}),
+      el("li", {text:"노란색 줄이 지금 단계가 담당하는 부분이에요."}),
+      el("li", {text:"db.함수() 처럼 적혀 있어도 실제 코드는 db/users.py 같은 다른 파일에 있어요. 카드에 그 '진짜 파일'을 표시하고, 코드 위에 찾아가는 길도 그려줘요."}),
+      el("li", {text:"위쪽 ◀ ▶ 버튼으로 실행 순서대로 한 단계씩 따라갈 수 있어요."})
+    ]);
+    var b = $("pBody"); b.textContent = ""; b.appendChild(ul);
+  }
+
+  function renderAlias(a){
+    if (!a) return null;
+    return el("div", {class:"alias"}, [
+      el("div", {text:"코드에는 이렇게 적혀 있지만, 실제 함수는 다른 파일에 있어요."}),
+      el("div", {class:"route"}, [
+        el("span", {class:"step", text:a.call}), el("span", {class:"arrow", text:"→"}),
+        el("span", {class:"step", text:a.via + " (창구)"}), el("span", {class:"arrow", text:"→"}),
+        el("span", {class:"step real", text:a.real})
+      ])
+    ]);
+  }
+
+  function selectNode(id, itemIdx){
+    var n = nodeById(id); if (!n) return;
+    state.node = id; state.item = itemIdx || 0; state.file = null;
+    $("pTitle").textContent = n.title;
+    $("pSub").textContent = n.plain;
+    var body = $("pBody"); body.textContent = "";
+    if (n.reject) body.appendChild(el("div", {class:"n-reject", text:n.reject, style:"margin:0 0 10px"}));
+    if (n.items.length > 1){
+      var tabs = el("div", {class:"itabs", role:"tablist"});
+      n.items.forEach(function(it, i){
+        tabs.appendChild(el("button", {class:"itab", role:"tab", "aria-selected":String(i === state.item), text:it.label,
+          onclick:function(){ selectNode(id, i); }}));
+      });
+      body.appendChild(tabs);
+    }
+    var it = n.items[state.item];
+    var block = D.blocks[it.block];
+    var linesTxt = it.hl ? (it.hl[0] === it.hl[1] ? it.hl[0] + "줄" : it.hl[0] + "–" + it.hl[1] + "줄") : "";
+    var fl = el("div", {class:"fileline"}, [
+      el("button", {class:"chip file", onclick:function(){ selectFile(block.path); }, text:block.path}),
+      el("span", {class:"lines", text: block.start + "–" + block.end + "줄 표시" + (linesTxt ? " · 노란색 " + linesTxt : "")}),
+      el("span", {class:"spacer"}),
+      el("button", {class:"btn", text:"복사", onclick:function(e){ copyText(block.code, e.currentTarget); }}),
+      el("a", {class:"btn link", href:D.files[block.path].github + "#L" + block.start + "-L" + block.end, target:"_blank", rel:"noopener", text:"GitHub ↗"})
+    ]);
+    body.appendChild(fl);
+    var al = renderAlias(block.alias); if (al) body.appendChild(al);
+    var box = codeTable(block, it.hl);
+    body.appendChild(box);
+    if (it.hl) body.appendChild(el("p", {class:"legend-hl"}, [el("b", {text:"노란색"}), " = 이 카드가 담당하는 줄"]));
+    refreshSelection();
+    openPanel();
+    if (box._hlFirst){
+      var off = box._hlFirst.offsetTop - 60;
+      box.scrollTop = Math.max(0, off);
+    }
+    updateStepper();
+  }
+
+  function selectFile(path){
+    state.file = path; state.node = null;
+    var f = D.files[path];
+    $("pTitle").textContent = "📄 " + path;
+    $("pSub").textContent = f.role;
+    var body = $("pBody"); body.textContent = "";
+    body.appendChild(el("div", {class:"fileline"}, [
+      el("a", {class:"btn link", href:f.github, target:"_blank", rel:"noopener", text:"GitHub에서 파일 열기 ↗"})
+    ]));
+    body.appendChild(el("h3", {text:"이 단원에서 쓰이는 함수", style:"font-size:13.5px;margin:12px 0 0"}));
+    var ul = el("ul", {class:"flist"}), seen = {};
+    D.scenarios.forEach(function(sc, si){
+      sc.nodes.forEach(function(n){
+        n.items.forEach(function(it, ii){
+          var b = D.blocks[it.block]; if (b.path !== path) return;
+          var key = si + n.id + ii; if (seen[key]) return; seen[key] = 1;
+          var li = el("li");
+          li.appendChild(el("button", {onclick:function(){
+            if (state.sc !== si) switchScenario(si);
+            selectNode(n.id, ii); scrollToNode(n.id);
+          }}, [
+            el("span", {class:"mono", text:it.label}), el("small", {text:sc.name + " · " + n.title})
+          ]));
+          ul.appendChild(li);
+        });
+      });
+    });
+    body.appendChild(ul);
+    if (f.header){
+      var d = el("details", {class:"hdr"}, [el("summary", {text:"파일 맨 위 설명 주석 보기"}), el("pre", {text:f.header})]);
+      body.appendChild(d);
+    }
+    refreshSelection();
+    openPanel();
+  }
+
+  /* ---------- 흐름도 ---------- */
+  var cols, colIndex, nodeEls = {};
+  function renderStage(){
+    var sc = scen();
+    var used = {}; sc.nodes.forEach(function(n){ used[n.col] = 1; });
+    cols = Object.keys(used).map(Number).sort(function(a,b){ return a-b; });
+    colIndex = {}; cols.forEach(function(c, i){ colIndex[c] = i + 1; });
+    var stage = $("stage");
+    stage.textContent = "";
+    stage.style.gridTemplateColumns = "repeat(" + cols.length + ", 196px)";
+    nodeEls = {};
+
+    var svgNS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("class", "edges"); svg.id = "edges";
+    svg.innerHTML = '<defs>' +
+      '<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head" d="M0 0L10 5L0 10z" style="stroke:none"/></marker>' +
+      '<marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head-call" d="M0 0L10 5L0 10z" style="stroke:none"/></marker>' +
+      '</defs>';
+    stage.appendChild(svg);
+
+    cols.forEach(function(c){
+      stage.appendChild(el("div", {class:"colhead", style:"grid-column:" + colIndex[c] + ";grid-row:1", text:D.columns[c]}));
+    });
+    var cells = {};
+    sc.nodes.forEach(function(n){
+      var k = n.row + ":" + n.col;
+      if (!cells[k]){
+        cells[k] = el("div", {class:"cell", style:"grid-column:" + colIndex[n.col] + ";grid-row:" + (n.row + 2)});
+        stage.appendChild(cells[k]);
+      }
+      var node = buildNode(n);
+      nodeEls[n.id] = node;
+      cells[k].appendChild(node);
+    });
+    $("intro").textContent = sc.intro;
+    scheduleEdges();
+  }
+
+  function buildNode(n){
+    var node = el("div", {class:"node " + n.kind, role:"button", tabindex:"0", "aria-pressed":"false", "data-id":n.id,
+      onclick:function(e){ if (e.target.closest(".chip")) return; selectNode(n.id, 0); },
+      onkeydown:function(e){ if ((e.key === "Enter" || e.key === " ") && !e.target.closest(".chip")){ e.preventDefault(); selectNode(n.id, 0); } }});
+    var title = el("div", {class:"n-title", text:n.title});
+    if (n.later) title.appendChild(el("span", {class:"tag-later", text:n.later + "에서 자세히"}));
+    node.appendChild(title);
+    if (n.kind !== "later" && n.plain) node.appendChild(el("div", {class:"n-plain", text:n.plain}));
+    if (n.reject) node.appendChild(el("div", {class:"n-reject", text:n.reject}));
+    var items = el("div", {class:"n-items"});
+    // 같은 파일에 있는 함수는 파일 칩 하나 아래에 함수 칩을 나란히 놓는다
+    var groups = [];
+    n.items.forEach(function(it, i){
+      var b = D.blocks[it.block], g = groups[groups.length - 1];
+      if (g && g.path === b.path) g.list.push({it: it, i: i}); else groups.push({path: b.path, list: [{it: it, i: i}]});
+    });
+    groups.forEach(function(g){
+      var row = el("div", {class:"n-item"});
+      if (g.list.length === 1 && g.list[0].it.call) row.appendChild(el("div", {class:"n-call", text:brk(g.list[0].it.call)}));
+      var chips = el("div", {class:"chips"}, [
+        el("button", {class:"chip file", text:brk(g.path), title:"파일 설명 보기", onclick:function(){ selectFile(g.path); }})
+      ]);
+      g.list.forEach(function(x){
+        chips.appendChild(el("button", {class:"chip " + (x.it.snippet ? "snip" : "fn"), text:x.it.label, title:(x.it.call ? x.it.call + " — " : "") + "코드 보기",
+          onclick:function(){ selectNode(n.id, x.i); }}));
+      });
+      row.appendChild(chips);
+      items.appendChild(row);
+    });
+    node.appendChild(items);
+    return node;
+  }
+
+  function rectIn(elm, host){
+    var a = elm.getBoundingClientRect(), h = host.getBoundingClientRect();
+    return {l:a.left-h.left, r:a.right-h.left, t:a.top-h.top, b:a.bottom-h.top, cx:(a.left+a.right)/2-h.left, cy:(a.top+a.bottom)/2-h.top};
+  }
+  var raf = 0;
+  function scheduleEdges(){ cancelAnimationFrame(raf); raf = requestAnimationFrame(drawEdges); }
+  function drawEdges(){
+    var stage = $("stage"), svg = $("edges"), sc = scen();
+    Array.prototype.slice.call(svg.querySelectorAll("path.e")).forEach(function(p){ p.remove(); });
+    Array.prototype.slice.call(stage.querySelectorAll(".elabel")).forEach(function(p){ p.remove(); });
+    var svgNS = "http://www.w3.org/2000/svg";
+    sc.edges.forEach(function(e){
+      var a = nodeById(e.from), b = nodeById(e.to);
+      var ea = nodeEls[e.from], eb = nodeEls[e.to]; if (!ea || !eb) return;
+      var ra = rectIn(ea, stage), rb = rectIn(eb, stage), d, lx, ly;
+      if (a.col === b.col){
+        if (b.row - a.row <= 1){
+          d = "M" + ra.cx + " " + ra.b + " V" + rb.t; lx = ra.cx; ly = (ra.b + rb.t) / 2;
+        } else {
+          var x = Math.min(ra.l, rb.l) - 30;
+          d = "M" + ra.l + " " + ra.cy + " H" + x + " V" + rb.cy + " H" + rb.l; lx = x; ly = (ra.cy + rb.cy) / 2;
+        }
+      } else {
+        var dir = b.col > a.col ? 1 : -1;
+        var x1 = dir > 0 ? ra.r : ra.l, x2 = dir > 0 ? rb.l : rb.r;
+        var xm = x2 - dir * 30;
+        d = "M" + x1 + " " + ra.cy + " H" + xm + " V" + rb.cy + " H" + x2;
+        lx = (x1 + x2) / 2; ly = ra.cy;
+      }
+      var kind = e.kind === "call" ? "call" : "flow";
+      var p = document.createElementNS(svgNS, "path");
+      p.setAttribute("d", d); p.setAttribute("class", "e " + kind);
+      p.setAttribute("marker-end", "url(#" + (kind === "call" ? "ahc" : "ah") + ")");
+      p.setAttribute("data-from", e.from); p.setAttribute("data-to", e.to);
+      svg.appendChild(p);
+      if (e.label && kind === "flow"){
+        var lab = el("span", {class:"elabel", text:e.label});
+        lab.style.left = lx + "px"; lab.style.top = ly + "px";
+        stage.appendChild(lab);
+      }
+    });
+    svg.setAttribute("width", stage.scrollWidth); svg.setAttribute("height", stage.scrollHeight);
+    refreshSelection();
+  }
+
+  function refreshSelection(){
+    Object.keys(nodeEls).forEach(function(id){ nodeEls[id].setAttribute("aria-pressed", String(id === state.node)); });
+    var svg = $("edges"); if (!svg) return;
+    Array.prototype.slice.call(svg.querySelectorAll("path.e")).forEach(function(p){
+      var on = state.node && (p.getAttribute("data-from") === state.node || p.getAttribute("data-to") === state.node);
+      p.classList.toggle("active", !!on);
+    });
+  }
+  function scrollToNode(id){
+    var n = nodeEls[id]; if (n && n.scrollIntoView) n.scrollIntoView({block:"center", inline:"center", behavior:"smooth"});
+  }
+
+  /* ---------- 단계 이동 / 탭 ---------- */
+  function stepIndex(){ return scen().steps.indexOf(state.node); }
+  function updateStepper(){
+    var steps = scen().steps, i = stepIndex();
+    $("stepNo").textContent = i < 0 ? "– / " + steps.length : (i + 1) + " / " + steps.length;
+    $("prev").disabled = i <= 0 && state.node !== null ? true : false;
+    $("next").disabled = i >= steps.length - 1;
+    if (state.node === null){ $("prev").disabled = true; $("next").disabled = false; }
+  }
+  function go(delta){
+    var steps = scen().steps, i = stepIndex();
+    var j = i < 0 ? 0 : Math.max(0, Math.min(steps.length - 1, i + delta));
+    selectNode(steps[j], 0); scrollToNode(steps[j]);
+  }
+  function renderTabs(){
+    var t = $("tabs"); t.textContent = "";
+    D.scenarios.forEach(function(sc, i){
+      t.appendChild(el("button", {class:"tab", role:"tab", "aria-selected":String(i === state.sc), text:sc.name, onclick:function(){ switchScenario(i); }}));
+    });
+  }
+  function switchScenario(i){
+    state.sc = i; state.node = null; state.file = null;
+    renderTabs(); renderStage(); showHint(); updateStepper();
+    try { history.replaceState(null, "", "#" + D.scenarios[i].id); } catch(e){}
+  }
+
+  /* ---------- 시작 ---------- */
+  document.title = D.title + " — 코드 흐름도";
+  $("title").textContent = D.title + " · 코드 흐름도";
+  $("subtitle").textContent = D.subtitle;
+  $("mdlink").setAttribute("href", D.mdFile);
+  $("prev").addEventListener("click", function(){ go(-1); });
+  $("next").addEventListener("click", function(){ go(1); });
+  $("pClose").addEventListener("click", closePanel);
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape") closePanel(); });
+  $("theme").addEventListener("click", function(){
+    var r = document.documentElement, cur = r.getAttribute("data-theme");
+    var dark = cur ? cur === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    r.setAttribute("data-theme", dark ? "light" : "dark");
+  });
+  window.addEventListener("resize", scheduleEdges);
+  if (window.ResizeObserver) new ResizeObserver(scheduleEdges).observe($("stage"));
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleEdges);
+
+  var startId = (location.hash || "").replace("#", "");
+  var startIdx = 0; D.scenarios.forEach(function(s, i){ if (s.id === startId) startIdx = i; });
+  switchScenario(startIdx);
+  // 화면 확인/테스트용 지름길: window.__flow.select("s7")
+  window.__flow = { select: function(id, i){ selectNode(id, i || 0); }, file: selectFile, state: state };
+})();
+</script>
+</body>
+</html>
