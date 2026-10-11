@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>21. 관리자 계정 단위 잠금 — 코드 흐름도</title>
+<style>
+  :root{
+    --bg:#f4f6f3; --surface:#ffffff; --surface-2:#eaefe9; --ink:#12201c; --ink-muted:#5a6b63;
+    --border:#d9e0da; --accent:#0f6f66; --accent-soft:#e2ede9; --danger:#bf3b2b; --danger-soft:#f8e6e2;
+    --edge:#7b8a82; --edge-call:#8a97a0;
+    --k-screen:#767f78; --k-screen-soft:#eef0ee;
+    --k-route:#2f5fd6;  --k-route-soft:#e7edfb;
+    --k-helper:#b56b0c; --k-helper-soft:#f7ecd9;
+    --k-db:#7a4fce;     --k-db-soft:#efe8fa;
+    --k-config:#0f6f66; --k-config-soft:#e2ede9;
+    --k-later:#9aa39d;  --k-later-soft:#f4f6f3;
+    --code-bg:#fbfcfb; --code-hl:#fff3c4; --code-hl-bar:#e0a800; --code-gutter:#8a978f;
+    --c-comment:#6b7d73; --c-str:#a1470f; --c-kw:#7a3fc0; --c-fn:#1f5fd0; --c-num:#0b7a6c; --c-deco:#b0306e;
+    --shadow:0 1px 2px rgba(18,32,28,.06), 0 6px 20px rgba(18,32,28,.07);
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0d1512; --surface:#141e1a; --surface-2:#1b2620; --ink:#e7efe9; --ink-muted:#93a49c;
+      --border:#28352e; --accent:#4fc9b8; --accent-soft:#17332d; --danger:#ec7a6a; --danger-soft:#3a1d19;
+      --edge:#6f8178; --edge-call:#5d6f67;
+      --k-screen:#9aa39d; --k-screen-soft:#1a221e;
+      --k-route:#7fa2f2;  --k-route-soft:#182236;
+      --k-helper:#e8a94c; --k-helper-soft:#31260f;
+      --k-db:#b49bee;     --k-db-soft:#241c34;
+      --k-config:#4fc9b8; --k-config-soft:#17332d;
+      --k-later:#6b7a72;  --k-later-soft:#111a16;
+      --code-bg:#0f1713; --code-hl:#3a3210; --code-hl-bar:#e8a94c; --code-gutter:#5f7068;
+      --c-comment:#7f9388; --c-str:#e9a27a; --c-kw:#c3a1f5; --c-fn:#8db3ff; --c-num:#6fd6c6; --c-deco:#f08ab8;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d1512; --surface:#141e1a; --surface-2:#1b2620; --ink:#e7efe9; --ink-muted:#93a49c;
+    --border:#28352e; --accent:#4fc9b8; --accent-soft:#17332d; --danger:#ec7a6a; --danger-soft:#3a1d19;
+    --edge:#6f8178; --edge-call:#5d6f67;
+    --k-screen:#9aa39d; --k-screen-soft:#1a221e;
+    --k-route:#7fa2f2;  --k-route-soft:#182236;
+    --k-helper:#e8a94c; --k-helper-soft:#31260f;
+    --k-db:#b49bee;     --k-db-soft:#241c34;
+    --k-config:#4fc9b8; --k-config-soft:#17332d;
+    --k-later:#6b7a72;  --k-later-soft:#111a16;
+    --code-bg:#0f1713; --code-hl:#3a3210; --code-hl-bar:#e8a94c; --code-gutter:#5f7068;
+    --c-comment:#7f9388; --c-str:#e9a27a; --c-kw:#c3a1f5; --c-fn:#8db3ff; --c-num:#6fd6c6; --c-deco:#f08ab8;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.55}
+  button{font:inherit;color:inherit;cursor:pointer}
+  code,.mono{font-family:var(--mono)}
+
+  .app{display:flex;height:100vh;min-height:0}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .top{padding:14px 20px 10px;border-bottom:1px solid var(--border);background:var(--surface)}
+  .top h1{margin:0;font-size:19px;letter-spacing:-.01em}
+  .top .sub{margin:2px 0 0;color:var(--ink-muted);font-size:13px}
+  .top-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+  .tabs{display:flex;gap:6px}
+  .tab{border:1px solid var(--border);background:var(--surface-2);border-radius:999px;padding:5px 14px;font-weight:600}
+  .tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+  :root[data-theme="dark"] .tab[aria-selected="true"]{color:#06201b}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tab[aria-selected="true"]{color:#06201b}}
+  .spacer{flex:1}
+  .btn{border:1px solid var(--border);background:var(--surface);border-radius:8px;padding:5px 11px;font-size:13px}
+  .btn:hover{border-color:var(--accent)}
+  .btn:disabled{opacity:.4;cursor:default}
+  .stepper{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-muted)}
+  .stepper b{color:var(--ink);min-width:42px;text-align:center}
+  a.link{color:var(--accent);text-decoration:none;font-size:13px}
+  a.link:hover{text-decoration:underline}
+
+  .intro{margin:0;padding:10px 20px;color:var(--ink-muted);font-size:13px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px 20px;font-size:12px;color:var(--ink-muted);border-bottom:1px solid var(--border)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+  .stage-wrap{flex:1;min-height:0;overflow:auto}
+  .stage{position:relative;display:grid;gap:26px 46px;padding:22px 22px 60px;width:max-content;min-width:100%}
+  .edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+  .edges path{fill:none;stroke:var(--edge);stroke-width:1.6}
+  .edges path.call{stroke:var(--edge-call);stroke-dasharray:5 4}
+  .edges path.active{stroke:var(--accent);stroke-width:2.4;stroke-dasharray:none}
+  .edges .head{fill:var(--edge)}
+  .edges .head-call{fill:var(--edge-call)}
+  .elabel{position:absolute;transform:translate(-50%,-50%);font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;
+    background:var(--surface);border:1px solid var(--border);color:var(--ink-muted);white-space:nowrap;pointer-events:none}
+
+  .colhead{font-size:12px;font-weight:700;color:var(--ink-muted);text-transform:none;border-bottom:2px solid var(--border);padding-bottom:6px;align-self:end}
+  .cell{display:flex;flex-direction:column;gap:12px;align-self:center;justify-content:center;position:relative;z-index:1}
+
+  .node{--k:var(--k-route);--ks:var(--k-route-soft);position:relative;background:var(--surface);border:1px solid var(--border);
+    border-left:5px solid var(--k);border-radius:10px;padding:10px 12px;box-shadow:var(--shadow);cursor:pointer;
+    transition:transform .08s, border-color .12s}
+  .node:hover{transform:translateY(-1px);border-color:var(--k)}
+  .node:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .node[aria-pressed="true"]{outline:3px solid var(--accent);outline-offset:1px}
+  .node.screen{--k:var(--k-screen);--ks:var(--k-screen-soft)}
+  .node.route{--k:var(--k-route);--ks:var(--k-route-soft)}
+  .node.helper{--k:var(--k-helper);--ks:var(--k-helper-soft)}
+  .node.db{--k:var(--k-db);--ks:var(--k-db-soft)}
+  .node.config{--k:var(--k-config);--ks:var(--k-config-soft)}
+  .node.later{--k:var(--k-later);--ks:var(--k-later-soft);background:var(--k-later-soft);box-shadow:none;border-style:dashed;border-left-style:solid;padding:8px 10px}
+  .n-title{font-weight:700;font-size:13.5px;letter-spacing:-.01em}
+  .n-plain{margin-top:3px;color:var(--ink-muted);font-size:12.5px}
+  .n-reject{margin-top:6px;font-size:12px;color:var(--danger);background:var(--danger-soft);border-radius:6px;padding:3px 8px}
+  .n-reject::before{content:"막히면 → ";font-weight:700}
+  .n-items{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+  .n-item{display:flex;flex-direction:column;gap:3px}
+  .n-call{overflow-wrap:anywhere;font-family:var(--mono);font-size:11.5px;color:var(--k);font-weight:600}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{max-width:100%;text-align:left;overflow-wrap:anywhere;border:1px solid var(--border);background:var(--ks);color:var(--ink);border-radius:6px;padding:1px 7px;font-family:var(--mono);font-size:11px}
+  .chip:hover{border-color:var(--k);color:var(--k)}
+  .chip.file::before{content:"📄 "}
+  .chip.fn::before{content:"ƒ ";color:var(--k);font-weight:700}
+  .chip.snip::before{content:"▤ ";color:var(--k);font-weight:700}
+  .tag-later{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:700;color:var(--ink-muted);border:1px solid var(--border);border-radius:999px;padding:0 7px;background:var(--surface)}
+
+  /* 코드 패널 */
+  .panel{width:440px;flex:none;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;min-height:0}
+  .p-head{padding:14px 16px 10px;border-bottom:1px solid var(--border)}
+  .p-head h2{margin:0;font-size:15.5px;letter-spacing:-.01em}
+  .p-head p{margin:4px 0 0;color:var(--ink-muted);font-size:13px}
+  .p-close{display:none}
+  .p-body{flex:1;min-height:0;overflow:auto;padding:12px 16px 24px}
+  .hint{color:var(--ink-muted);font-size:13px}
+  .hint li{margin:4px 0}
+  .itabs{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+  .itab{border:1px solid var(--border);background:var(--surface-2);border-radius:6px;padding:2px 9px;font-family:var(--mono);font-size:12px}
+  .itab[aria-selected="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700}
+  .fileline{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}
+  .fileline .path{font-family:var(--mono);font-size:12.5px;font-weight:700}
+  .fileline .lines{font-family:var(--mono);font-size:12px;color:var(--ink-muted)}
+  .alias{border:1px solid var(--border);background:var(--k-db-soft);border-radius:8px;padding:8px 10px;margin:0 0 10px;font-size:12.5px}
+  .alias .route{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:5px;font-family:var(--mono);font-size:12px}
+  .alias .route span.step{padding:1px 7px;border-radius:6px;border:1px solid var(--border);background:var(--surface)}
+  .alias .route span.real{border-color:var(--k-db);color:var(--k-db);font-weight:700}
+  .alias .arrow{color:var(--ink-muted)}
+  .codebox{border:1px solid var(--border);border-radius:8px;background:var(--code-bg);overflow:auto;max-height:62vh}
+  table.code{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12.2px;line-height:1.6}
+  table.code td{padding:0 10px;vertical-align:top;white-space:pre}
+  table.code td.ln{position:sticky;left:0;text-align:right;color:var(--code-gutter);user-select:none;background:var(--code-bg);border-right:1px solid var(--border);min-width:44px;padding-right:8px}
+  table.code tr.hl td{background:var(--code-hl)}
+  table.code tr.hl td.ln{background:var(--code-hl);color:var(--ink);font-weight:700;box-shadow:inset 3px 0 0 var(--code-hl-bar)}
+  .t-c{color:var(--c-comment);font-style:italic}.t-d{color:var(--c-comment)}.t-s{color:var(--c-str)}.t-k{color:var(--c-kw);font-weight:600}
+  .t-f{color:var(--c-fn)}.t-n{color:var(--c-num)}.t-a{color:var(--c-deco)}
+  .legend-hl{margin:8px 0 0;font-size:12px;color:var(--ink-muted)}
+  .legend-hl b{background:var(--code-hl);color:var(--ink);padding:0 6px;border-radius:4px}
+  .flist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:6px}
+  .flist button{width:100%;text-align:left;border:1px solid var(--border);background:var(--surface-2);border-radius:8px;padding:6px 10px}
+  .flist button:hover{border-color:var(--accent)}
+  .flist small{display:block;color:var(--ink-muted)}
+  details.hdr{margin-top:12px;font-size:13px}
+  details.hdr pre{white-space:pre-wrap;background:var(--surface-2);border-radius:8px;padding:10px;font-family:var(--sans);font-size:12.5px;color:var(--ink-muted)}
+
+  @media (max-width:900px){
+    .app{display:block;height:auto}
+    .stage-wrap{max-height:none;overflow-x:auto}
+    .panel{position:fixed;left:0;right:0;bottom:0;width:auto;height:62vh;border-left:0;border-top:2px solid var(--accent);
+      box-shadow:0 -10px 30px rgba(0,0,0,.25);z-index:20;transform:translateY(105%);transition:transform .18s}
+    body.open .panel{transform:none}
+    .p-close{display:inline-block;position:absolute;right:12px;top:10px}
+    .p-head{position:relative;padding-right:70px}
+    .top{padding:12px 16px 8px}
+    .stage{padding:16px 16px 70vh}
+  }
+  @media (prefers-reduced-motion: reduce){.node,.panel{transition:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="main">
+    <header class="top">
+      <h1 id="title"></h1>
+      <p class="sub" id="subtitle"></p>
+      <div class="top-row">
+        <div class="tabs" role="tablist" id="tabs"></div>
+        <div class="stepper"><button class="btn" id="prev">◀ 이전</button><b id="stepNo">–</b><button class="btn" id="next">다음 ▶</button></div>
+        <span class="spacer"></span>
+        <a class="link" id="mdlink" href="#">📝 설명 문서 보기</a>
+        <button class="btn" id="theme" title="라이트/다크 전환">🌓</button>
+      </div>
+    </header>
+    <p class="intro" id="intro"></p>
+    <div class="legend" aria-label="범례">
+      <span><i style="background:var(--k-screen)"></i>화면 · 도착지</span>
+      <span><i style="background:var(--k-route)"></i>routes (입구)</span>
+      <span><i style="background:var(--k-helper)"></i>판단 (security · helpers)</span>
+      <span><i style="background:var(--k-db)"></i>db (저장소)</span>
+      <span><i style="background:var(--k-config)"></i>설정값</span>
+      <span><i style="background:var(--k-later);opacity:.6"></i>다른 단원에서 자세히</span>
+      <span>━ 다음 단계 &nbsp; ┅ 함수 호출</span>
+    </div>
+    <div class="stage-wrap" id="stageWrap"><div class="stage" id="stage"></div></div>
+  </div>
+
+  <aside class="panel" id="panel" aria-live="polite">
+    <div class="p-head">
+      <h2 id="pTitle"></h2><p id="pSub"></p>
+      <button class="btn p-close" id="pClose">닫기</button>
+    </div>
+    <div class="p-body" id="pBody"></div>
+  </aside>
+</div>
+
+<script type="application/json" id="data">{"title": "21. 관리자 계정 단위 잠금", "subtitle": "IP를 나눠 쓰는 분산 브루트포스로부터 관리자 계정을 지키는 계정 단위 잠금의 코드 흐름도", "mdFile": "21-admin-account-lockout.md", "github": "https://github.com/dyj02056/login-watchdog/blob/main/", "columns": ["화면 · 도착지", "routes/ (입구)", "판단 (security · helpers)", "db/ · config.py (저장소 · 설정값)"], "scenarios": [{"id": "lock", "name": "관리자 계정이 잠기는 과정", "intro": "관리자 로그인은 IP 단위로만 잠겼습니다. IP 100개로 나눠 IP당 4회씩 시도하면 어느 IP도 기준을 넘지 않아 관리자 계정은 사실상 무제한으로 비밀번호를 시도당할 수 있었습니다. 회원 로그인에 이미 있던 계정 단위 잠금을 관리자에게도 적용했습니다.", "nodes": [{"id": "lock_n1", "col": 0, "row": 0, "kind": "screen", "title": "관리자 로그인 제출 (POST /admin/login)", "plain": "회원 로그인(/login)과 같은 화면 틀을 쓰지만 처리 경로·계정 표는 완전히 분리되어 있습니다.", "reject": "", "later": "", "items": [{"block": "routes/admin/login.py:admin_login_submit", "hl": [44, 45], "label": "admin_login_submit()", "call": null, "snippet": false}]}, {"id": "lock_n2", "col": 1, "row": 1, "kind": "route", "title": "① 이미 잠긴 관리자 아이디면 비밀번호 확인 없이 거절", "plain": "허용 목록 IP(관리자 PC)는 건너뜁니다 — 공격자가 일부러 틀려 관리자를 쫓아내도 관리자 PC 에서는 로그인해 대시보드에서 풀 수 있게 하기 위해서입니다.", "reject": "잠긴 계정입니다. 잠시 후 다시 시도해주세요.", "later": "", "items": [{"block": "routes/admin/login.py:admin_login_submit", "hl": [88, 89], "label": "admin_login_submit()", "call": null, "snippet": false}]}, {"id": "lock_n3", "col": 2, "row": 1, "kind": "helper", "title": "관리자 계정 잠금 여부", "plain": "admin_account_lockouts 에 유효한 잠금이 있는지.", "reject": "", "later": "", "items": [{"block": "security/detector.py:is_admin_account_locked", "hl": null, "label": "is_admin_account_locked()", "call": null, "snippet": false}]}, {"id": "lock_n4", "col": 3, "row": 1, "kind": "db", "title": "유효한 잠금 찾기", "plain": "회원 잠금 표와 별개의 표를 봅니다.", "reject": "", "later": "", "items": [{"block": "db/admin_lockouts.py:get_active_admin_account_lockout", "hl": null, "label": "get_active_admin_account_lockout()", "call": "db.get_active_admin_account_lockout()", "snippet": false}]}, {"id": "lock_n5", "col": 2, "row": 1, "kind": "later", "title": "허용 목록 IP 인가?", "plain": "PERMANENT_LOCK_IP_ALLOWLIST 와 같은 단위로 비교합니다.", "reject": "", "later": "16단원", "items": [{"block": "security/lockdown.py:is_ip_allowlisted", "hl": null, "label": "is_ip_allowlisted()", "call": null, "snippet": false}]}, {"id": "lock_n6", "col": 1, "row": 2, "kind": "route", "title": "② 비밀번호 확인 + 관리자 로그인 기록", "plain": "성공이든 실패든 기록합니다. 아이디가 없어도 더미 해시로 같은 시간이 걸립니다(15단원).", "reject": "", "later": "", "items": [{"block": "routes/admin/login.py:admin_login_submit", "hl": [93, 96], "label": "admin_login_submit()", "call": null, "snippet": false}]}, {"id": "lock_n7", "col": 3, "row": 2, "kind": "db", "title": "관리자 비밀번호 확인", "plain": "저장된 해시와 비교합니다.", "reject": "", "later": "", "items": [{"block": "db/admin.py:verify_admin_credentials", "hl": null, "label": "verify_admin_credentials()", "call": "db.verify_admin_credentials()", "snippet": false}]}, {"id": "lock_n8", "col": 3, "row": 2, "kind": "db", "title": "관리자 로그인 기록", "plain": "admin_login_log 에 한 줄 남깁니다.", "reject": "", "later": "", "items": [{"block": "db/admin.py:log_admin_attempt", "hl": null, "label": "log_admin_attempt()", "call": "db.log_admin_attempt()", "snippet": false}]}, {"id": "lock_n9", "col": 1, "row": 3, "kind": "route", "title": "③ IP 기준 판정이 먼저", "plain": "관리자 로그인 실패가 IP 기준을 넘으면 IP 를 잠급니다(5단원과 같은 lockouts 표 — /login 쪽에서도 함께 잠깁니다).", "reject": "", "later": "", "items": [{"block": "routes/admin/login.py:admin_login_submit", "hl": [113, 118], "label": "admin_login_submit()", "call": null, "snippet": false}]}, {"id": "lock_n10", "col": 2, "row": 3, "kind": "later", "title": "관리자 IP 기준 판정", "plain": "admin_login_log 를 셉니다.", "reject": "", "later": "5단원", "items": [{"block": "security/detector.py:is_admin_suspicious", "hl": null, "label": "is_admin_suspicious()", "call": null, "snippet": false}]}, {"id": "lock_n11", "col": 2, "row": 3, "kind": "later", "title": "IP 잠금 집행", "plain": "is_admin=True 로 ADMIN_BRUTE_FORCE 로 기록합니다.", "reject": "", "later": "5단원", "items": [{"block": "security/soar/lockouts.py:enforce_lockout", "hl": null, "label": "enforce_lockout()", "call": "soar.enforce_lockout()", "snippet": false}]}, {"id": "lock_n12", "col": 1, "row": 4, "kind": "route", "title": "④ 아니면 아이디 기준 판정 (IP 와 무관, 15분 창)", "plain": "회원(60초 창)보다 긴 15분 창으로 세서 분당 몇 회씩 천천히 시도하는 공격도 잡습니다. 관리자는 몇 명뿐이라 오탐 여지가 작습니다. 이미 잠긴 계정(허용 목록 IP 로 들어온 경우)은 다시 잠그지 않아 알림이 반복되지 않습니다.", "reject": "", "later": "", "items": [{"block": "routes/admin/login.py:admin_login_submit", "hl": [122, 125], "label": "admin_login_submit()", "call": null, "snippet": false}]}, {"id": "lock_n13", "col": 2, "row": 4, "kind": "helper", "title": "관리자 아이디 기준 판정", "plain": "15분 안에 8회를 '초과'하면 수상.", "reject": "", "later": "", "items": [{"block": "security/detector.py:is_admin_account_suspicious", "hl": null, "label": "is_admin_account_suspicious()", "call": null, "snippet": false}]}, {"id": "lock_n14", "col": 3, "row": 4, "kind": "db", "title": "아이디 기준 실패 세기", "plain": "IP 를 가리지 않고 이 관리자 아이디의 실패만 셉니다.", "reject": "", "later": "", "items": [{"block": "db/admin_lockouts.py:count_recent_admin_failures_by_username", "hl": null, "label": "count_recent_admin_failures_by_username()", "call": "db.count_recent_admin_failures_by_username()", "snippet": false}]}, {"id": "lock_n15", "col": 3, "row": 4, "kind": "config", "title": "임계값 (8회 / 15분)", "plain": "아이디가 실제로 있든 없든 같은 기준으로 잠가 존재 여부가 드러나지 않습니다.", "reject": "", "later": "", "items": [{"block": "config.py:35-36", "hl": null, "label": "config.py 관리자 임계값", "call": null, "snippet": true}]}, {"id": "lock_n16", "col": 1, "row": 5, "kind": "route", "title": "⑤ 잠금 집행 — 5분 잠금 + CRITICAL 알림, 영구 승격은 없음", "plain": "관리자 계정 전용 표에 잠그고 ADMIN_DISTRIBUTED_BRUTE_FORCE 이벤트를 남깁니다. 영구 잠금으로는 올리지 않습니다 — 관리자를 영구히 못 들어오게 만드는 것 자체가 공격자가 원하는 결과이기 때문입니다. 감사 추적을 위해 잠금 이력만 한 줄 남깁니다.", "reject": "", "later": "", "items": [{"block": "security/soar/lockouts.py:enforce_admin_account_lockout", "hl": [106, 120], "label": "enforce_admin_account_lockout()", "call": "soar.enforce_admin_account_lockout()", "snippet": false}]}, {"id": "lock_n17", "col": 3, "row": 5, "kind": "db", "title": "관리자 계정 잠금 저장", "plain": "회원 잠금과 분리된 표에 저장해 같은 이름의 회원과 서로 영향을 주지 않습니다.", "reject": "", "later": "", "items": [{"block": "db/admin_lockouts.py:create_admin_account_lockout", "hl": null, "label": "create_admin_account_lockout()", "call": "db.create_admin_account_lockout()", "snippet": false}]}, {"id": "lock_n18", "col": 2, "row": 5, "kind": "later", "title": "Slack 알림", "plain": "is_admin=True 로 관리자 배지를 붙입니다.", "reject": "", "later": "5단원", "items": [{"block": "notify/alert.py:send_account_lockout_alert", "hl": null, "label": "send_account_lockout_alert()", "call": null, "snippet": false}]}, {"id": "lock_n19", "col": 3, "row": 5, "kind": "db", "title": "잠금 이력 한 줄", "plain": "영구 승격 판단은 하지 않습니다.", "reject": "", "later": "", "items": [{"block": "db/lock_history.py:insert_lock_history", "hl": null, "label": "insert_lock_history()", "call": "db.insert_lock_history()", "snippet": false}]}, {"id": "lock_n20", "col": 1, "row": 6, "kind": "route", "title": "⑥ 잠긴 뒤 같은 문구로 거절", "plain": "아이디가 실제로 없어도 똑같이 잠그고 같은 문구로 거절합니다.", "reject": "잠긴 계정입니다. 잠시 후 다시 시도해주세요.", "later": "", "items": [{"block": "routes/admin/login.py:admin_login_submit", "hl": [126, 127], "label": "admin_login_submit()", "call": null, "snippet": false}]}], "edges": [{"from": "lock_n1", "to": "lock_n2", "label": "", "kind": "flow"}, {"from": "lock_n2", "to": "lock_n3", "label": "", "kind": "call"}, {"from": "lock_n3", "to": "lock_n4", "label": "", "kind": "call"}, {"from": "lock_n2", "to": "lock_n5", "label": "", "kind": "call"}, {"from": "lock_n2", "to": "lock_n6", "label": "", "kind": "flow"}, {"from": "lock_n6", "to": "lock_n7", "label": "", "kind": "call"}, {"from": "lock_n6", "to": "lock_n8", "label": "", "kind": "call"}, {"from": "lock_n6", "to": "lock_n9", "label": "", "kind": "flow"}, {"from": "lock_n9", "to": "lock_n10", "label": "", "kind": "call"}, {"from": "lock_n9", "to": "lock_n11", "label": "", "kind": "call"}, {"from": "lock_n9", "to": "lock_n12", "label": "", "kind": "flow"}, {"from": "lock_n12", "to": "lock_n13", "label": "", "kind": "call"}, {"from": "lock_n13", "to": "lock_n14", "label": "", "kind": "call"}, {"from": "lock_n12", "to": "lock_n15", "label": "", "kind": "call"}, {"from": "lock_n12", "to": "lock_n16", "label": "", "kind": "flow"}, {"from": "lock_n16", "to": "lock_n17", "label": "", "kind": "call"}, {"from": "lock_n16", "to": "lock_n18", "label": "", "kind": "call"}, {"from": "lock_n16", "to": "lock_n19", "label": "", "kind": "call"}, {"from": "lock_n16", "to": "lock_n20", "label": "", "kind": "flow"}], "steps": ["lock_n1", "lock_n2", "lock_n6", "lock_n9", "lock_n12", "lock_n16", "lock_n20"]}, {"id": "unlock", "name": "해제는 super_admin 만", "intro": "관리자 계정의 잠금을 푸는 것은 회원 계정보다 위험도가 높아서 일반 해제 권한(unlock_ip)과 따로 나눴습니다.", "nodes": [{"id": "unlock_n1", "col": 0, "row": 0, "kind": "screen", "title": "'즉시 해제' 클릭 (POST /api/unlock-admin-account)", "plain": "super_admin 에게만 이 버튼이 보입니다.", "reject": "", "later": "", "items": [{"block": "routes/admin/locks.py:api_unlock_admin_account", "hl": [64, 65], "label": "api_unlock_admin_account()", "call": null, "snippet": false}]}, {"id": "unlock_n2", "col": 1, "row": 1, "kind": "route", "title": "① unlock_admin_account 권한 확인 → 해제", "plain": "이 권한은 super_admin 만 가집니다(13단원).", "reject": "", "later": "", "items": [{"block": "routes/admin/locks.py:api_unlock_admin_account", "hl": [72, 76], "label": "api_unlock_admin_account()", "call": null, "snippet": false}]}, {"id": "unlock_n3", "col": 2, "row": 1, "kind": "helper", "title": "관리자 계정 즉시 해제", "plain": "잠금을 풀고 이 아이디의 관련 CRITICAL 이벤트만 정리합니다(같은 이름의 회원 이벤트는 그대로).", "reject": "", "later": "", "items": [{"block": "security/soar/lockouts.py:manual_release_admin_account", "hl": null, "label": "manual_release_admin_account()", "call": "soar.manual_release_admin_account()", "snippet": false}]}, {"id": "unlock_n4", "col": 1, "row": 2, "kind": "route", "title": "② 자동 해제도 같은 방식", "plain": "요청이 들어올 때마다 풀릴 시간이 지난 관리자 계정 잠금을 확인해 풉니다.", "reject": "", "later": "", "items": [{"block": "security/soar/lockouts.py:try_release_expired_admin_account_lockouts", "hl": [134, 134], "label": "try_release_expired_admin_account_lockouts()", "call": "soar.try_release_expired_admin_account_lockouts()", "snippet": false}]}, {"id": "unlock_n5", "col": 3, "row": 2, "kind": "db", "title": "만료된 관리자 잠금 목록", "plain": "풀릴 시각이 지난 active 잠금을 찾습니다.", "reject": "", "later": "", "items": [{"block": "db/admin_lockouts.py:list_expired_active_admin_account_lockouts", "hl": null, "label": "list_expired_active_admin_account_lockouts()", "call": "db.list_expired_active_admin_account_lockouts()", "snippet": false}]}], "edges": [{"from": "unlock_n1", "to": "unlock_n2", "label": "", "kind": "flow"}, {"from": "unlock_n2", "to": "unlock_n3", "label": "", "kind": "call"}, {"from": "unlock_n2", "to": "unlock_n4", "label": "", "kind": "flow"}, {"from": "unlock_n4", "to": "unlock_n5", "label": "", "kind": "call"}], "steps": ["unlock_n1", "unlock_n2", "unlock_n4"]}], "blocks": {"routes/admin/login.py:admin_login_submit": {"path": "routes/admin/login.py", "start": 44, "end": 131, "lang": "python", "code": "@admin_bp.route(\"/admin/login\", methods=[\"POST\"])\ndef admin_login_submit():\n    \"\"\"관리자 로그인 폼 제출을 처리한다.\n\n    /login(감시 대상 로그인)과 마찬가지로 IP 잠금을 적용한다 — 이전에는 이 라우트가\n    시도 기록만 남길 뿐 잠금 판정을 전혀 하지 않아서, 관리자 계정만 브루트포스에\n    무방비로 노출돼 있었다(18단계 보안 점검에서 발견 및 보완). 관리자 계정이 뚫리면\n    회원 삭제·잠금 해제·회원가입 On/Off까지 전부 장악되므로 우선순위가 가장 높았다.\n\n    IP 잠금만으로는 IP를 나눠 쓰는 분산 브루트포스를 못 막아서, 회원 로그인처럼 관리자\n    계정 단위 잠금도 건다(guide38). 아이디가 실제로 있든 없든 같은 기준으로 잠그고 같은\n    문구로 거절해서 관리자 아이디 존재 여부가 드러나지 않게 한다. 계정 잠금은 공격자가\n    관리자를 못 들어오게 만드는 수단도 될 수 있으므로, 허용 목록(PERMANENT_LOCK_IP_ALLOWLIST,\n    관리자 PC) IP에서의 로그인은 계정 잠금을 건너뛴다(IP 잠금은 그대로 적용).\n    \"\"\"\n    # 1) 시간이 지나 자동으로 풀려야 할 잠금들을 정리 (login_submit()과 동일)\n    soar.try_release_expired_lockouts()\n    soar.try_release_expired_admin_account_lockouts()\n\n    ip = get_request_ip()\n\n    # 허니팟 필드가 채워져 있으면 사람이 아니라 자동화 스크립트라고 보고,\n    # 자격 증명 확인/시도 기록 없이 즉시 거부한다 (L7 공격 보강 계획 Tier 3).\n    if is_bot_submission():\n        soar.notify_bot_detected(ip, request.path)\n        flash(\"아이디 또는 비밀번호가 올바르지 않습니다.\")\n        return render_template(\"login_form.html\", form_action=url_for(\"admin.admin_login_submit\"))\n\n    # 2) 이미 잠긴 IP라면 자격 증명 확인 자체를 건너뛰고 즉시 거부\n    #    영구 잠금(T5)된 관리자 IP에는 이메일 복구·예외가 없다 — 관리자 로그인은 위험도가\n    #    가장 높아서 오직 관리자 해제(대시보드/scripts/management/unlock_ip.py --permanent)로만 풀린다.\n    if detector.is_locked(ip):\n        if detector.get_ip_lock_state(ip) == detector.LOCK_STATE_PERMANENT:\n            flash(\"이 네트워크는 차단되어 있습니다. 관리자에게 문의해주세요.\")\n        else:\n            flash(\"잠긴 계정입니다. 잠시 후 다시 시도해주세요.\")\n        return render_template(\"login_form.html\", form_action=url_for(\"admin.admin_login_submit\"))\n\n    username = request.form.get(\"username\", \"\")\n    password = request.form.get(\"password\", \"\")\n\n    # 3) 이 관리자 아이디가 계정 단위로 잠겨 있으면 비밀번호를 확인하지 않고 거절한다(guide38).\n    #    허용 목록 IP는 건너뛴다 — 공격자가 일부러 틀려서 관리자를 잠가도 관리자 PC에서는\n    #    로그인해서 대시보드에서 풀 수 있게 하기 위해서다.\n    account_locked = detector.is_admin_account_locked(username)\n    if account_locked and not lockdown.is_ip_allowlisted(ip):\n        flash(\"잠긴 계정입니다. 잠시 후 다시 시도해주세요.\")\n        return render_template(\"login_form.html\", form_action=url_for(\"admin.admin_login_submit\"))\n\n    success = db.verify_admin_credentials(username, password)\n    # 성공/실패와 무관하게 \"누가 언제 관리자 로그인을 시도했는지\"는 항상 기록해서\n    # 나중에 대시보드에서 감사(audit) 이력을 확인할 수 있게 한다.\n    db.log_admin_attempt(username, success, ip)\n\n    if success:\n        # 세션(session)은 \"이 브라우저는 로그인된 상태다\"를 서버가 기억하게 해주는\n        # 저장 공간이다. 여기 값을 넣어두면, 같은 브라우저로 다시 요청이 올 때마다\n        # Flask가 자동으로 이 값을 복원해줘서 \"로그인 유지\"가 가능해진다.\n        # 아이디뿐 아니라 기본키와 로그인 시각까지 넣는다 — 요청마다 DB의 계정과 대조해서,\n        # 삭제된 계정의 쿠키나 수명(ADMIN_SESSION_MAX_HOURS)이 지난 쿠키를 걸러낸다(guide37).\n        admin_id = db.get_admin_id_by_username(username)\n        if admin_id is not None:\n            start_admin_session(admin_id, username)\n            return redirect(url_for(\"admin.admin_dashboard\"))\n\n    # 4) 이 실패로 인해 방금 임계값을 넘었는지 확인하고, 넘었다면 잠근다\n    #    (login_submit()과 동일한 detector/soar 조합 — 잠금 상태 자체는 lockouts\n    #    표를 공유하므로, 이 IP는 /login 쪽에서도 함께 잠긴다). IP 기준을 먼저 보고,\n    #    아니면 IP와 무관하게 이 관리자 아이디의 총 실패 횟수를 본다(guide38).\n    suspicious, failure_count = detector.is_admin_suspicious(ip)\n    if suspicious:\n        distinct_usernames = detector.count_distinct_admin_usernames(ip)\n        soar.enforce_lockout(ip, failure_count, distinct_usernames, is_admin=True)\n        flash(\"잠긴 계정입니다. 잠시 후 다시 시도해주세요.\")\n        return render_template(\"login_form.html\", form_action=url_for(\"admin.admin_login_submit\"))\n\n    # 이미 잠긴 계정(허용 목록 IP라서 여기까지 온 경우)은 다시 잠그지 않는다 — 실패할\n    # 때마다 Slack 알림과 이벤트가 반복되는 것을 막는다.\n    if not account_locked:\n        account_suspicious, account_failure_count = detector.is_admin_account_suspicious(username)\n        if account_suspicious:\n            distinct_ips = db.count_recent_distinct_admin_ips_by_username(username)\n            soar.enforce_admin_account_lockout(username, account_failure_count, distinct_ips, ip)\n            flash(\"잠긴 계정입니다. 잠시 후 다시 시도해주세요.\")\n            return render_template(\"login_form.html\", form_action=url_for(\"admin.admin_login_submit\"))\n\n    flash(\"아이디 또는 비밀번호가 올바르지 않습니다.\")\n    return render_template(\"login_form.html\", form_action=url_for(\"admin.admin_login_submit\"))", "alias": null}, "security/detector.py:is_admin_account_locked": {"path": "security/detector.py", "start": 93, "end": 95, "lang": "python", "code": "def is_admin_account_locked(username: str) -> bool:\n    \"\"\"이 관리자 아이디가 지금 잠겨 있는지(is_account_locked()의 관리자 버전).\"\"\"\n    return db.get_active_admin_account_lockout(username) is not None", "alias": null}, "db/admin_lockouts.py:get_active_admin_account_lockout": {"path": "db/admin_lockouts.py", "start": 76, "end": 88, "lang": "python", "code": "def get_active_admin_account_lockout(username: str) -> dict | None:\n    \"\"\"이 관리자 아이디가 지금 잠겨 있으면(active이고 unlock_at이 미래) 그 행을, 아니면 None.\"\"\"\n    res = (\n        db.get_client()\n        .table(\"admin_account_lockouts\")\n        .select(\"*\")\n        .eq(\"username\", username)\n        .eq(\"active\", True)\n        .gt(\"unlock_at\", db._now_iso())\n        .limit(1)\n        .execute()\n    )\n    return res.data[0] if res.data else None", "alias": {"call": "db.get_active_admin_account_lockout()", "via": "db/__init__.py", "real": "db/admin_lockouts.py"}}, "security/lockdown.py:is_ip_allowlisted": {"path": "security/lockdown.py", "start": 36, "end": 42, "lang": "python", "code": "def is_ip_allowlisted(ip: str) -> bool:\n    \"\"\"이 IP가 \"절대 영구 잠그지 않는 목록\"(관리자 PC 등)에 있는지.\n\n    양쪽을 같은 단위로 정규화해서 비교한다(guide42) — 요청 IP는 IPv6면 /64 대역 키로 들어오므로,\n    .env에 관리자 PC의 IPv6 전체 주소를 적어도 같은 대역이면 허용 목록으로 인정된다.\"\"\"\n    key = normalize_ip(ip)\n    return any(normalize_ip(entry) == key for entry in config.PERMANENT_LOCK_IP_ALLOWLIST)", "alias": null}, "db/admin.py:verify_admin_credentials": {"path": "db/admin.py", "start": 43, "end": 65, "lang": "python", "code": "def verify_admin_credentials(username: str, password: str) -> bool:\n    \"\"\"관리자가 로그인 화면에 입력한 아이디/비밀번호가 맞는지 확인한다.\n\n    비밀번호는 저장할 때 이미 암호화(해시)되어 있으므로, \"원래 글자를 복원\"해서\n    비교하는 게 아니라 \"입력한 비밀번호를 똑같은 방식으로 암호화했을 때 저장된\n    암호문과 글자가 일치하는가\"만 확인한다 (check_password_hash가 이 비교를 해줌).\n\n    타이밍 사이드채널 방지 (L7 공격 보강 계획 Tier 3, db/users.py의\n    verify_user_credentials와 동일한 이유): 아이디가 없을 때도 더미 해시로\n    항상 같은 비교 연산을 거치게 해서, \"즉시 반환\"과 \"해시 비교 후 반환\" 사이의\n    응답 시간 차이로 관리자 아이디 존재 여부를 추측하지 못하게 한다.\n    \"\"\"\n    res = (\n        db.get_client()\n        .table(\"admin_users\")\n        .select(\"password_hash\")\n        .eq(\"username\", username)\n        .limit(1)\n        .execute()\n    )\n    password_hash = res.data[0][\"password_hash\"] if res.data else _DUMMY_PASSWORD_HASH\n    result = check_password_hash(password_hash, password)\n    return result if res.data else False", "alias": {"call": "db.verify_admin_credentials()", "via": "db/__init__.py", "real": "db/admin.py"}}, "db/admin.py:log_admin_attempt": {"path": "db/admin.py", "start": 193, "end": 201, "lang": "python", "code": "def log_admin_attempt(username: str, success: bool, ip: str) -> None:\n    \"\"\"관리자 로그인 시도(성공이든 실패든) 한 건을 admin_login_log 표에 기록한다.\n\n    \"누가 언제 관리자 화면에 들어오려 했는지\" 감사(audit) 기록을 남겨서,\n    나중에 대시보드에서 확인할 수 있게 한다.\n    \"\"\"\n    db.get_client().table(\"admin_login_log\").insert(\n        {\"username\": username, \"success\": success, \"ip_address\": ip}\n    ).execute()", "alias": {"call": "db.log_admin_attempt()", "via": "db/__init__.py", "real": "db/admin.py"}}, "security/detector.py:is_admin_suspicious": {"path": "security/detector.py", "start": 41, "end": 51, "lang": "python", "code": "def is_admin_suspicious(ip: str) -> tuple[bool, int]:\n    \"\"\"이 IP가 \"관리자 로그인에 대해 수상한 상태\"인지 판단한다.\n\n    is_suspicious()와 판단 기준(초과 여부)은 동일하지만, 세는 대상이\n    login_attempts가 아니라 admin_login_log다 — 관리자 로그인(/admin/login)은\n    감시 대상 로그인(/login)과 완전히 별도 경로이므로, 그동안 이 판정이\n    빠져있어 관리자 계정은 무제한으로 비밀번호를 시도할 수 있었다\n    (18단계 보안 점검에서 발견 및 보완).\n    \"\"\"\n    failure_count = db.count_recent_admin_failures(ip)\n    return failure_count > FAILURE_THRESHOLD, failure_count", "alias": null}, "security/soar/lockouts.py:enforce_lockout": {"path": "security/soar/lockouts.py", "start": 17, "end": 58, "lang": "python", "code": "def enforce_lockout(\n    ip: str, failure_count: int, distinct_usernames: int, is_admin: bool = False\n) -> None:\n    \"\"\"이 IP에 실제로 잠금을 걸고, 그 사실을 Slack으로 알리고, CRITICAL 이벤트로 기록한다.\n\n    네 단계로 이루어진다:\n    1. db.create_lockout()으로 \"이 IP는 지금부터 5분간 잠김\"을 데이터베이스에 저장\n    2. alert.send_lockout_alert()로 \"IP, 실패 횟수, 조치 내용\"을 담은 알림을 전송\n    3. _record_event()로 위험등급(CRITICAL)과 함께 security_events에 기록하고 상관분석 훅 호출\n       (security-risk-response-summary.md 5절 — 관리자 대시보드/이력 조회용)\n    4. lockdown.after_temporary_lock()으로 잠금 이력을 남기고 영구 잠금 승격 여부 판단(guide33)\n\n    알림을 \"잠그는 순간에 딱 한 번만\" 보내는 이유: 만약 잠긴 상태에서도 계속\n    로그인을 시도할 때마다 매번 알림을 보내면, 관리자가 알림 폭탄을 맞아 정작\n    중요한 알림을 놓치게 된다(이른바 \"알림 피로\"). 그래서 \"새로 잠기는 순간\"에만 알린다.\n\n    distinct_usernames는 detector.count_distinct_usernames()(또는 관리자용)가 센\n    \"이 IP가 최근에 시도한 서로 다른 아이디 개수\"다 — 1개면 계정 하나에 집중된\n    Brute Force, 2개 이상이면 여러 계정을 돌아가며 두드리는 Password Spraying으로\n    의심할 수 있으므로, notify/alert.py가 Slack 메시지에 이 값으로 패턴을 구분해 보여준다.\n\n    is_admin은 이 잠금이 /login이 아니라 /admin/login에서 발생했는지를 나타낸다 —\n    관리자 로그인 무차별 대입은 Brute Force/Password Spraying과 별도의 event_type으로\n    기록하고, notify/alert.py의 Slack 메시지에도 그대로 표시한다.\n    \"\"\"\n    db.create_lockout(ip, failure_count)\n    alert.send_lockout_alert(\n        ip, failure_count, datetime.now(timezone.utc), distinct_usernames, is_admin\n    )\n\n    if is_admin:\n        event_type = \"ADMIN_BRUTE_FORCE\"\n    elif distinct_usernames > 1:\n        event_type = \"PASSWORD_SPRAYING\"\n    else:\n        event_type = \"BRUTE_FORCE\"\n    _record_event(event_type, \"CRITICAL\", ip, None, failure_count, \"LOCKED\")\n\n    # 잠금 이력을 남기고, 최근 기간 안에 N번째 잠금이면 영구 잠금으로 승격한다\n    # (guide33, T1/T5). 임시 잠금 알림·이벤트 기록이 모두 끝난 뒤에 실행해서, 영구\n    # 잠금 이벤트(PERMANENT_LOCK)가 같은 사건의 \"그 다음 단계\"로 기록되게 한다.\n    lockdown.after_temporary_lock(\"ip\", ip, event_type, failure_count)", "alias": {"call": "soar.enforce_lockout()", "via": "security/soar/__init__.py", "real": "security/soar/lockouts.py"}}, "security/detector.py:is_admin_account_suspicious": {"path": "security/detector.py", "start": 82, "end": 90, "lang": "python", "code": "def is_admin_account_suspicious(username: str) -> tuple[bool, int]:\n    \"\"\"이 관리자 아이디가 여러 IP에 걸쳐 분산 공격당하고 있는 상태인지 판단한다(guide38).\n\n    is_account_suspicious()의 관리자 버전 — admin_login_log를 회원보다 긴 창\n    (ADMIN_ACCOUNT_DETECTION_WINDOW_SECONDS, 기본 15분)으로 세고,\n    ADMIN_ACCOUNT_FAILURE_THRESHOLD(기본 8회)를 \"초과\"하면 수상하다고 본다.\n    \"\"\"\n    failure_count = db.count_recent_admin_failures_by_username(username)\n    return failure_count > ADMIN_ACCOUNT_FAILURE_THRESHOLD, failure_count", "alias": null}, "db/admin_lockouts.py:count_recent_admin_failures_by_username": {"path": "db/admin_lockouts.py", "start": 27, "end": 40, "lang": "python", "code": "def count_recent_admin_failures_by_username(\n    username: str, window_seconds: int = config.ADMIN_ACCOUNT_DETECTION_WINDOW_SECONDS\n) -> int:\n    \"\"\"최근 `window_seconds`(기본 15분) 동안 이 관리자 아이디로 실패한 로그인 횟수(IP 무관).\"\"\"\n    res = (\n        db.get_client()\n        .table(\"admin_login_log\")\n        .select(\"id\", count=\"exact\")\n        .eq(\"username\", username)\n        .eq(\"success\", False)\n        .gte(\"attempted_at\", _cutoff_iso(window_seconds))\n        .execute()\n    )\n    return res.count or 0", "alias": {"call": "db.count_recent_admin_failures_by_username()", "via": "db/__init__.py", "real": "db/admin_lockouts.py"}}, "config.py:35-36": {"path": "config.py", "start": 35, "end": 36, "lang": "python", "code": "ADMIN_ACCOUNT_FAILURE_THRESHOLD = int(os.environ.get(\"ADMIN_ACCOUNT_FAILURE_THRESHOLD\", 8))\nADMIN_ACCOUNT_DETECTION_WINDOW_SECONDS = int(os.environ.get(\"ADMIN_ACCOUNT_DETECTION_WINDOW_SECONDS\", 900))", "alias": null}, "security/soar/lockouts.py:enforce_admin_account_lockout": {"path": "security/soar/lockouts.py", "start": 94, "end": 121, "lang": "python", "code": "def enforce_admin_account_lockout(\n    username: str, failure_count: int, distinct_ip_count: int, triggering_ip: str\n) -> None:\n    \"\"\"관리자 계정에 잠금을 걸고, Slack으로 알리고, CRITICAL 이벤트로 기록한다(guide38).\n\n    enforce_account_lockout()의 관리자 버전이다. 다른 점은 둘이다.\n    - 회원 표(account_lockouts)가 아니라 admin_account_lockouts에 잠근다 — 같은 이름의\n      회원과 서로 영향을 주지 않게 한다.\n    - 영구 잠금으로 올리지 않는다(lockdown.after_temporary_lock을 부르지 않는다). 관리자를\n      영구히 못 들어오게 만드는 것 자체가 공격자가 노리는 서비스 거부가 되기 때문이다.\n      감사 추적을 위해 잠금 이력(lock_history)에는 한 줄 남긴다.\n    \"\"\"\n    db.create_admin_account_lockout(username, failure_count)\n    alert.send_account_lockout_alert(\n        username, failure_count, datetime.now(timezone.utc), distinct_ip_count, is_admin=True\n    )\n    _record_event(\n        db.ADMIN_ACCOUNT_LOCK_EVENT_TYPE,\n        \"CRITICAL\",\n        triggering_ip,\n        None,\n        failure_count,\n        \"ACCOUNT_LOCKED\",\n        username=username,\n    )\n    db.insert_lock_history(\n        \"admin_account\", username, \"TEMPORARY\", \"THRESHOLD\", db.ADMIN_ACCOUNT_LOCK_EVENT_TYPE\n    )", "alias": {"call": "soar.enforce_admin_account_lockout()", "via": "security/soar/__init__.py", "real": "security/soar/lockouts.py"}}, "db/admin_lockouts.py:create_admin_account_lockout": {"path": "db/admin_lockouts.py", "start": 59, "end": 73, "lang": "python", "code": "def create_admin_account_lockout(\n    username: str, failure_count: int, duration_seconds: int = config.LOCKOUT_DURATION_SECONDS\n) -> None:\n    \"\"\"이 관리자 아이디를 지금부터 `duration_seconds`(기본 5분) 동안 잠근다(upsert).\"\"\"\n    now = datetime.now(timezone.utc)\n    db.get_client().table(\"admin_account_lockouts\").upsert(\n        {\n            \"username\": username,\n            \"locked_at\": now.isoformat(),\n            \"unlock_at\": (now + timedelta(seconds=duration_seconds)).isoformat(),\n            \"failure_count\": failure_count,\n            \"active\": True,\n        },\n        on_conflict=\"username\",\n    ).execute()", "alias": {"call": "db.create_admin_account_lockout()", "via": "db/__init__.py", "real": "db/admin_lockouts.py"}}, "notify/alert.py:send_account_lockout_alert": {"path": "notify/alert.py", "start": 107, "end": 130, "lang": "python", "code": "def send_account_lockout_alert(\n    username: str, failure_count: int, locked_at: datetime, distinct_ip_count: int, is_admin: bool = False\n) -> None:\n    \"\"\"계정(아이디) 잠금이 발생했다는 사실을 Slack 채널에 메시지로 알린다.\n\n    send_lockout_alert()(IP 잠금)와 메시지 조립 구조는 같지만, 대상이 IP가\n    아니라 계정이다 — 여러 IP에 걸쳐 나뉘어 들어온 공격이 계정 전체 실패\n    횟수 기준으로 잠긴 경우이므로, \"몇 개의 IP가 관련됐는지\"를 함께 보여줘서\n    분산 브루트포스임을 한눈에 알 수 있게 한다.\n\n    is_admin=True면 관리자 계정 잠금(guide38)이다 — 대상이 관리자 계정이라는 점을\n    표시해서 회원 계정 잠금과 구분한다.\n    \"\"\"\n    minutes = config.LOCKOUT_DURATION_SECONDS // 60\n    target_label = \"관리자 계정\" if is_admin else \"대상 계정\"\n    message = (\n        \":rotating_light: [CRITICAL] 로그인 워치독 알림\\n\"\n        f\"시각: {locked_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\\n\"\n        f\"{target_label}: {username}\\n\"\n        f\"실패 횟수: {failure_count}회 (서로 다른 IP {distinct_ip_count}개에서 분산 시도)\\n\"\n        \"공격 유형: 분산/저속 브루트포스 의심 (여러 IP가 한 계정을 나눠서 집중 공격)\\n\"\n        f\"조치: {minutes}분간 계정 잠금 처리\"\n    )\n    _send_slack_message(message)", "alias": null}, "db/lock_history.py:insert_lock_history": {"path": "db/lock_history.py", "start": 16, "end": 41, "lang": "python", "code": "def insert_lock_history(\n    target_kind: str,\n    target_value: str,\n    lock_type: str,\n    trigger_reason: str,\n    source_event_type: str | None = None,\n    incident_id: int | None = None,\n    trigger_note: str | None = None,\n) -> None:\n    \"\"\"잠금이 걸린 사실을 이력에 한 줄 추가한다.\n\n    target_kind는 'ip' / 'account' / 'admin_account'(관리자 계정, guide38), lock_type은 'TEMPORARY'/'PERMANENT',\n    trigger_reason은 THRESHOLD / REPEAT_OFFENDER / SIEM_CRITICAL / SIEM_HIGH /\n    NETWORK_IDS / ADMIN_MANUAL 중 하나다(docs/schema.sql의 CHECK 제약과 같다).\n    \"\"\"\n    db.get_client().table(\"lock_history\").insert(\n        {\n            \"target_kind\": target_kind,\n            \"target_value\": target_value,\n            \"lock_type\": lock_type,\n            \"trigger_reason\": trigger_reason,\n            \"source_event_type\": source_event_type,\n            \"incident_id\": incident_id,\n            \"trigger_note\": trigger_note,\n        }\n    ).execute()", "alias": {"call": "db.insert_lock_history()", "via": "db/__init__.py", "real": "db/lock_history.py"}}, "routes/admin/locks.py:api_unlock_admin_account": {"path": "routes/admin/locks.py", "start": 64, "end": 76, "lang": "python", "code": "@admin_bp.route(\"/api/unlock-admin-account\", methods=[\"POST\"])\n@require_permission(\"unlock_admin_account\")\ndef api_unlock_admin_account():\n    \"\"\"잠긴 관리자 계정의 \"즉시 해제\" 버튼이 호출하는 API(guide38). super_admin만 가진\n    unlock_admin_account 권한이 필요하다 — 관리자 계정의 잠금을 푸는 것은 회원 계정보다\n    위험도가 높아서 /api/unlock-account(unlock_ip 권한)와 권한을 나눴다.\n    \"\"\"\n    data = request.get_json(silent=True) or {}\n    username = data.get(\"username\")\n    if not username:\n        return jsonify({\"success\": False, \"error\": \"username 값이 필요합니다.\"}), 400\n\n    return jsonify({\"success\": soar.manual_release_admin_account(username)})", "alias": null}, "security/soar/lockouts.py:manual_release_admin_account": {"path": "security/soar/lockouts.py", "start": 138, "end": 142, "lang": "python", "code": "def manual_release_admin_account(username: str) -> bool:\n    \"\"\"대시보드 \"즉시 해제\"(super_admin 전용) 또는 CLI로 관리자 계정 잠금을 푼다. 잠겨 있지 않았으면 False.\"\"\"\n    if db.get_active_admin_account_lockout(username) is None:\n        return False\n    return _release_admin_account(username)", "alias": {"call": "soar.manual_release_admin_account()", "via": "security/soar/__init__.py", "real": "security/soar/lockouts.py"}}, "security/soar/lockouts.py:try_release_expired_admin_account_lockouts": {"path": "security/soar/lockouts.py", "start": 132, "end": 135, "lang": "python", "code": "def try_release_expired_admin_account_lockouts() -> None:\n    \"\"\"잠금 시간이 지난 관리자 계정 잠금을 풀어준다(try_release_expired_account_lockouts()의 관리자 버전).\"\"\"\n    for lockout in db.list_expired_active_admin_account_lockouts():\n        _release_admin_account(lockout[\"username\"])", "alias": {"call": "soar.try_release_expired_admin_account_lockouts()", "via": "security/soar/__init__.py", "real": "security/soar/lockouts.py"}}, "db/admin_lockouts.py:list_expired_active_admin_account_lockouts": {"path": "db/admin_lockouts.py", "start": 117, "end": 127, "lang": "python", "code": "def list_expired_active_admin_account_lockouts() -> list[dict]:\n    \"\"\"잠금 시간이 지났는데 아직 active로 남아 있는 관리자 계정 잠금(자동 해제 대상).\"\"\"\n    res = (\n        db.get_client()\n        .table(\"admin_account_lockouts\")\n        .select(\"*\")\n        .eq(\"active\", True)\n        .lte(\"unlock_at\", db._now_iso())\n        .execute()\n    )\n    return res.data", "alias": {"call": "db.list_expired_active_admin_account_lockouts()", "via": "db/__init__.py", "real": "db/admin_lockouts.py"}}}, "files": {"routes/admin/login.py": {"role": "관리자 로그인(/admin/login) 입구 파일. 확인 → 기록 → 판정 → 집행 순서를 지휘한다.", "header": "routes/admin/login.py — 관리자 로그인/로그아웃 (/admin/login, /admin/logout)\n예전 routes/admin.py(798줄)를 기능 묶음별로 나눈 조각 중 하나다. Blueprint(admin_bp)는\nroutes/admin/__init__.py에서 하나만 만들고, 이 파일은 거기에 라우트를 붙이기만 한다\n— 그래서 엔드포인트 이름(url_for(\"admin.xxx\"))은 나누기 전과 똑같다.\n배경은 docs/refactor/2026-10-09-module-plan.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/routes/admin/login.py"}, "security/detector.py": {"role": "판사 파일. 관리자 아이디의 실패 횟수가 기준을 넘었는지 판정만 한다.", "header": "security/detector.py — \"판사\" 역할: 지금 이 IP가 수상한지, 지금 잠겨있는지만 판단한다\n이 파일은 데이터베이스의 상태를 절대 바꾸지 않는다(아무것도 저장/수정/삭제하지 않음).\n오직 db에게 \"지금 상태가 어때?\"라고 물어보고, 그 답을 바탕으로\nTrue/False 같은 \"판정 결과\"만 돌려준다.\n실제로 잠그거나 알림을 보내는 \"실행\"은 이 파일이 아니라 security/soar/가 담당한다\n(판단과 실행을 분리해두면, \"판단 기준만 바꾸고 싶다\" 같은 수정이 훨씬 쉬워진다).", "github": "https://github.com/dyj02056/login-watchdog/blob/main/security/detector.py"}, "db/admin_lockouts.py": {"role": "관리자 계정 잠금 전용 표(admin_account_lockouts)를 다루는 저장소 파일. 회원 잠금과 분리되어 있다.", "header": "db/admin_lockouts.py — admin_account_lockouts 표 + 관리자 계정 단위 실패 집계 (guide38)\ndb/account_lockouts.py(회원 계정 잠금)의 관리자 버전이다. 회원 표를 같이 쓰지 않는 이유:\naccount_lockouts는 username이 기본키라 회원 \"alice\"와 관리자 \"alice\"가 같은 줄을 쓰게\n되고(관리자가 공격당하면 같은 이름의 회원까지 잠김), 회원 잠금에는 이메일 복구·보호관찰·\n영구 승격 흐름이 얽혀 있어서 관리자에게는 맞지 않는다. 관리자 계정 잠금은 항상 임시\n잠금뿐이라 표 구조도 처음 account_lockouts와 같은 단순한 형태다.\n실패 횟수는 admin_login_log에서 IP와 무관하게 \"이 아이디가 몇 번 실패했는가\"를 센다\n(db.count_recent_failures_by_username()의 관리자 버전). 아이디가 실제로 있든 없든 똑같이\n세고 똑같이 잠근다 — 그래야 \"잠겼다\"는 응답으로 관리자 아이디 존재 여부가 드러나지 않는다.\ndb.get_client()를 통해 호출하는 이유는 db/attempts.py 상단 설명 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/db/admin_lockouts.py"}, "security/lockdown.py": {"role": "허용 목록 IP 판단 등 영구 잠금 로직 파일. 관리자 계정 잠금에서는 허용 목록 확인에 쓰인다.", "header": "security/lockdown.py — \"영구 출입금지 담당 부서\": 임시 잠금을 영구 잠금으로 올리고(승격),\n영구 잠금을 풀어주는(관리자 해제 / 이메일 복구) 로직 본체 (guide33 / guide34-a)\n왜 별도 모듈인가: security/soar/가 이미 security/correlate.py를 import하고 있어서, security/correlate.py가\nsecurity/soar/의 승격 함수를 직접 부르면 순환 import가 된다. 그래서 승격·해제 로직을 이\n파일 하나로 모으고, security/soar/와 security/correlate.py가 둘 다 이 파일만 import하게 한다.\n이 파일은 모듈 수준에서 db / alert / config / ip_utils만 import한다. 영구 잠금 이벤트를\n상관분석(correlate)에 흘려보내는 부분만 함수 안에서 늦게 import한다(순환 방지).\n설계 원칙 (docs의 permanent-lock 계획서 1.1 참고)\n- \"영구\"는 시간이 아니라 해제 조건의 문제다: 자동 만료가 없고 이메일 인증이나\n관리자 수동 해제로만 풀린다.\n- IP 영구 잠금은 이메일로 \"해제\"하지 않고 본인+본인 기기에게만 \"예외\"를 발급한다.\n- 허용 목록(PERMANENT_LOCK_IP_ALLOWLIST)의 IP는 절대 영구 잠그지 않는다(자충수 방지).", "github": "https://github.com/dyj02056/login-watchdog/blob/main/security/lockdown.py"}, "db/admin.py": {"role": "관리자 계정과 관리자 로그인 기록(admin_login_log)을 다루는 저장소 파일.", "header": "db/admin.py — admin_users / admin_login_log 표 관련 함수\n— 관리자(대시보드에 로그인하는 사람) 계정과, 그 로그인 시도 기록을 관리하는 기능\ndb.get_client() 호출 이유는 db/attempts.py 상단 설명 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/db/admin.py"}, "security/soar/lockouts.py": {"role": "집행관 파일. 관리자 계정을 5분 잠그고 알림·기록을 남긴다(영구 승격은 안 함).", "header": "security/soar/lockouts.py — 잠금 집행(IP/회원 계정/관리자 계정)과 자동·수동 해제\n예전 soar.py(497줄)를 기능 묶음별로 나눈 조각 중 하나다. 다른 파일은 이 파일을 직접\n가리키지 않고 예전처럼 `from security import soar` 후 `soar.enforce_lockout(...)`으로\n쓴다(security/soar/__init__.py가 재내보내기). 배경은 docs/refactor/2026-10-09-module-plan.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/security/soar/lockouts.py"}, "config.py": {"role": "임계값·시간 창·잠금 시간·규칙값 등 프로젝트 공용 설정값을 한 곳에 모은 파일.", "header": "", "github": "https://github.com/dyj02056/login-watchdog/blob/main/config.py"}, "notify/alert.py": {"role": "notify/alert.py — \"전화 교환원\" 역할: Slack에 실제로 메시지를 전송한다 이 파일이 하는 일은 딱 하나, \"메시지를 조립해서 Slack 웹훅 주소로 던지는 것\"뿐이다. \"언제 알림을 보낼지\"를 결정하는 판단은 이 파일의 몫이 아니고 security/soar/(대부분)", "header": "notify/alert.py — \"전화 교환원\" 역할: Slack에 실제로 메시지를 전송한다\n이 파일이 하는 일은 딱 하나, \"메시지를 조립해서 Slack 웹훅 주소로 던지는 것\"뿐이다.\n\"언제 알림을 보낼지\"를 결정하는 판단은 이 파일의 몫이 아니고 security/soar/(대부분),\nsecurity/correlate.py·lockdown.py, notify/mailer.py(메일 발송 실패)가 결정해서\n이 파일의 함수를 호출해줄 때만 동작한다.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/notify/alert.py"}, "db/lock_history.py": {"role": "db/lock_history.py — lock_history 표 관련 함수 (guide33, 영구 잠금) lockouts/account_lockouts는 같은 IP·계정이 다시 잠기면 같은 행에 덮어쓰는(upsert) \"현재 상태판\"이라서 \"최근 30일 안에 몇 번 잠겼는가\"를 셀 수 ", "header": "db/lock_history.py — lock_history 표 관련 함수 (guide33, 영구 잠금)\nlockouts/account_lockouts는 같은 IP·계정이 다시 잠기면 같은 행에 덮어쓰는(upsert)\n\"현재 상태판\"이라서 \"최근 30일 안에 몇 번 잠겼는가\"를 셀 수 없다. 이 표는 잠금이\n걸릴 때마다 한 줄씩 추가만 하는(append-only) 이력이라 그 횟수를 센다.\ndb.get_client() 호출 이유는 db/attempts.py 상단 설명 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/db/lock_history.py"}, "routes/admin/locks.py": {"role": "잠금 해제 API 입구 파일. 관리자 계정 해제는 super_admin 만 가능하다.", "header": "routes/admin/locks.py — 잠금 해제·영구 잠금·IP 예외·복구 요청 관리 API\n예전 routes/admin.py(798줄)를 기능 묶음별로 나눈 조각 중 하나다. Blueprint(admin_bp)는\nroutes/admin/__init__.py에서 하나만 만들고, 이 파일은 거기에 라우트를 붙이기만 한다\n— 그래서 엔드포인트 이름(url_for(\"admin.xxx\"))은 나누기 전과 똑같다.\n배경은 docs/refactor/2026-10-09-module-plan.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/routes/admin/locks.py"}}}</script>
+<script>
+(function(){
+  "use strict";
+  var D = JSON.parse(document.getElementById("data").textContent);
+  var $ = function(id){ return document.getElementById(id); };
+  var KIND_LABEL = {screen:"화면 · 도착지", route:"routes", helper:"판단", db:"db", config:"설정값", later:"다른 단원"};
+
+  var state = { sc: 0, node: null, item: 0, file: null };
+
+  function el(tag, attrs, kids){
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function(k){
+      if (k === "class") e.className = attrs[k];
+      else if (k === "text") e.textContent = attrs[k];
+      else if (k.slice(0,2) === "on") e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    });
+    (kids || []).forEach(function(c){ if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function brk(t){ return t.replace(/([\/._])/g, "$1\u200b"); }
+  function scen(){ return D.scenarios[state.sc]; }
+  function nodeById(id){ return scen().nodes.filter(function(n){ return n.id === id; })[0]; }
+  function fnName(label){ return label; }
+
+  /* ---------- 간단 문법 강조 ---------- */
+  var PY = /(#[^\n]*)|("""[\s\S]*?"""|'''[\s\S]*?''')|([rbfRBF]{0,2}"(?:\\.|[^"\\\n])*"|[rbfRBF]{0,2}'(?:\\.|[^'\\\n])*')|\b(def|class|return|if|elif|else|for|while|import|from|as|try|except|finally|with|in|not|and|or|is|None|True|False|raise|pass|lambda|yield|global|nonlocal|assert|del|continue|break)\b|(@[A-Za-z_][\w.]*)|\b(\d+(?:\.\d+)?)\b|\b([A-Za-z_]\w*)(?=\()/g;
+  var PYC = [null,"t-c","t-d","t-s","t-k","t-a","t-n","t-f"];
+  var HT = /(<!--[\s\S]*?-->)|(\{[{%#][\s\S]*?[}%#]\})|(<\/?[A-Za-z][\w-]*)|("[^"\n]*")|(\/?>)/g;
+  var HTC = [null,"t-c","t-a","t-k","t-s","t-k"];
+  var JS = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(`(?:\\.|[^`\\])*`)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|\b(const|let|var|function|return|if|else|for|while|import|from|export|default|async|await|try|catch|finally|new|class|extends|typeof|interface|type|null|undefined|true|false|throw|switch|case|break|continue|of|in|as)\b|(@[A-Za-z_]\w*)|\b(\d+(?:\.\d+)?)\b|\b([A-Za-z_$][\w$]*)(?=\()/g;
+  var JSC = [null,"t-c","t-s","t-s","t-k","t-a","t-n","t-f"];
+  var SQ = /(--[^\n]*|\/\*[\s\S]*?\*\/)|((?!))|('(?:''|[^'])*')|\b(select|from|where|insert|into|values|update|set|delete|create|table|index|alter|add|drop|on|conflict|do|nothing|and|or|not|null|default|primary|key|references|cascade|if|exists|as|order|by|group|limit|desc|asc|join|left|inner|count|returns|function|language|begin|end|return|with|union|all|distinct|in|is|true|false|unique|check|constraint|timestamptz|text|integer|bigint|boolean|interval|now|replace|trigger|view|policy|enable|row|level|security|using)\b|((?!))|\b(\d+(?:\.\d+)?)\b|\b([a-z_]\w*)(?=\()/gi;
+  var SQC = [null,"t-c",null,"t-s","t-k",null,"t-n","t-f"];
+  var SH = /(#[^\n]*)|((?!))|("(?:\\.|[^"\\\n])*"|'[^'\n]*')|\b(if|then|else|fi|for|do|done|while|case|esac|function|echo|export|python|pip|git|cd|run|name|on|jobs|steps|uses|with|env)\b|((?!))|\b(\d+)\b/g;
+  var SHC = [null,"t-c",null,"t-s","t-k",null,"t-n"];
+  function tokenize(code, lang){
+    var re = PY, cls = PYC;
+    if (lang === "html"){ re = HT; cls = HTC; }
+    else if (lang === "js"){ re = JS; cls = JSC; }
+    else if (lang === "sql"){ re = SQ; cls = SQC; }
+    else if (lang === "sh"){ re = SH; cls = SHC; }
+    var lines = [[]];
+    function push(text, c){
+      var parts = text.split("\n");
+      parts.forEach(function(p, i){
+        if (i > 0) lines.push([]);
+        if (p) lines[lines.length-1].push([p, c]);
+      });
+    }
+    var last = 0, m;
+    re.lastIndex = 0;
+    while ((m = re.exec(code)) !== null){
+      if (m.index > last) push(code.slice(last, m.index), null);
+      var idx = 1; while (idx < m.length && m[idx] === undefined) idx++;
+      push(m[0], cls[idx] || null);
+      last = m.index + m[0].length;
+      if (m[0].length === 0) re.lastIndex++;
+    }
+    if (last < code.length) push(code.slice(last), null);
+    return lines;
+  }
+
+  function codeTable(block, hl){
+    var lines = tokenize(block.code, block.lang);
+    var tbody = el("tbody");
+    var hlFirst = null;
+    lines.forEach(function(segs, i){
+      var no = block.start + i;
+      var on = hl && no >= hl[0] && no <= hl[1];
+      var td = el("td", {class:"tx"});
+      segs.forEach(function(s){ td.appendChild(s[1] ? el("span", {class:s[1], text:s[0]}) : document.createTextNode(s[0])); });
+      if (!segs.length) td.appendChild(document.createTextNode(" "));
+      var tr = el("tr", on ? {class:"hl"} : null, [el("td", {class:"ln", text:String(no)}), td]);
+      if (on && !hlFirst) hlFirst = tr;
+      tbody.appendChild(tr);
+    });
+    var box = el("div", {class:"codebox"}, [el("table", {class:"code"}, [tbody])]);
+    box._hlFirst = hlFirst;
+    return box;
+  }
+
+  function copyText(text, btn){
+    var done = function(){ var o = btn.textContent; btn.textContent = "복사됨 ✓"; setTimeout(function(){ btn.textContent = o; }, 1200); };
+    try { navigator.clipboard.writeText(text).then(done, fallback); } catch(e){ fallback(); }
+    function fallback(){
+      var ta = el("textarea", {style:"position:fixed;opacity:0"}); ta.value = text; document.body.appendChild(ta);
+      ta.select(); try { document.execCommand("copy"); done(); } catch(e){} document.body.removeChild(ta);
+    }
+  }
+
+  /* ---------- 패널 ---------- */
+  function openPanel(){ document.body.classList.add("open"); }
+  function closePanel(){ document.body.classList.remove("open"); }
+
+  function showHint(){
+    $("pTitle").textContent = "코드 보는 법";
+    $("pSub").textContent = "카드나 파일 이름을 누르면 실제 코드가 여기에 열립니다.";
+    var ul = el("ul", {class:"hint"}, [
+      el("li", {text:"카드(상자)를 누르면 그 단계에서 실행되는 실제 함수 코드가 열려요."}),
+      el("li", {text:"카드 안의 📄 파일 이름을 누르면 그 파일이 어떤 역할인지, 이 단원에서 쓰이는 함수가 무엇인지 보여줘요."}),
+      el("li", {text:"ƒ 함수 이름을 누르면 해당 함수 코드로 바로 이동해요."}),
+      el("li", {text:"노란색 줄이 지금 단계가 담당하는 부분이에요."}),
+      el("li", {text:"db.함수() 처럼 적혀 있어도 실제 코드는 db/users.py 같은 다른 파일에 있어요. 카드에 그 '진짜 파일'을 표시하고, 코드 위에 찾아가는 길도 그려줘요."}),
+      el("li", {text:"위쪽 ◀ ▶ 버튼으로 실행 순서대로 한 단계씩 따라갈 수 있어요."})
+    ]);
+    var b = $("pBody"); b.textContent = ""; b.appendChild(ul);
+  }
+
+  function renderAlias(a){
+    if (!a) return null;
+    return el("div", {class:"alias"}, [
+      el("div", {text:"코드에는 이렇게 적혀 있지만, 실제 함수는 다른 파일에 있어요."}),
+      el("div", {class:"route"}, [
+        el("span", {class:"step", text:a.call}), el("span", {class:"arrow", text:"→"}),
+        el("span", {class:"step", text:a.via + " (창구)"}), el("span", {class:"arrow", text:"→"}),
+        el("span", {class:"step real", text:a.real})
+      ])
+    ]);
+  }
+
+  function selectNode(id, itemIdx){
+    var n = nodeById(id); if (!n) return;
+    state.node = id; state.item = itemIdx || 0; state.file = null;
+    $("pTitle").textContent = n.title;
+    $("pSub").textContent = n.plain;
+    var body = $("pBody"); body.textContent = "";
+    if (n.reject) body.appendChild(el("div", {class:"n-reject", text:n.reject, style:"margin:0 0 10px"}));
+    if (n.items.length > 1){
+      var tabs = el("div", {class:"itabs", role:"tablist"});
+      n.items.forEach(function(it, i){
+        tabs.appendChild(el("button", {class:"itab", role:"tab", "aria-selected":String(i === state.item), text:it.label,
+          onclick:function(){ selectNode(id, i); }}));
+      });
+      body.appendChild(tabs);
+    }
+    var it = n.items[state.item];
+    var block = D.blocks[it.block];
+    var linesTxt = it.hl ? (it.hl[0] === it.hl[1] ? it.hl[0] + "줄" : it.hl[0] + "–" + it.hl[1] + "줄") : "";
+    var fl = el("div", {class:"fileline"}, [
+      el("button", {class:"chip file", onclick:function(){ selectFile(block.path); }, text:block.path}),
+      el("span", {class:"lines", text: block.start + "–" + block.end + "줄 표시" + (linesTxt ? " · 노란색 " + linesTxt : "")}),
+      el("span", {class:"spacer"}),
+      el("button", {class:"btn", text:"복사", onclick:function(e){ copyText(block.code, e.currentTarget); }}),
+      el("a", {class:"btn link", href:D.files[block.path].github + "#L" + block.start + "-L" + block.end, target:"_blank", rel:"noopener", text:"GitHub ↗"})
+    ]);
+    body.appendChild(fl);
+    var al = renderAlias(block.alias); if (al) body.appendChild(al);
+    var box = codeTable(block, it.hl);
+    body.appendChild(box);
+    if (it.hl) body.appendChild(el("p", {class:"legend-hl"}, [el("b", {text:"노란색"}), " = 이 카드가 담당하는 줄"]));
+    refreshSelection();
+    openPanel();
+    if (box._hlFirst){
+      var off = box._hlFirst.offsetTop - 60;
+      box.scrollTop = Math.max(0, off);
+    }
+    updateStepper();
+  }
+
+  function selectFile(path){
+    state.file = path; state.node = null;
+    var f = D.files[path];
+    $("pTitle").textContent = "📄 " + path;
+    $("pSub").textContent = f.role;
+    var body = $("pBody"); body.textContent = "";
+    body.appendChild(el("div", {class:"fileline"}, [
+      el("a", {class:"btn link", href:f.github, target:"_blank", rel:"noopener", text:"GitHub에서 파일 열기 ↗"})
+    ]));
+    body.appendChild(el("h3", {text:"이 단원에서 쓰이는 함수", style:"font-size:13.5px;margin:12px 0 0"}));
+    var ul = el("ul", {class:"flist"}), seen = {};
+    D.scenarios.forEach(function(sc, si){
+      sc.nodes.forEach(function(n){
+        n.items.forEach(function(it, ii){
+          var b = D.blocks[it.block]; if (b.path !== path) return;
+          var key = si + n.id + ii; if (seen[key]) return; seen[key] = 1;
+          var li = el("li");
+          li.appendChild(el("button", {onclick:function(){
+            if (state.sc !== si) switchScenario(si);
+            selectNode(n.id, ii); scrollToNode(n.id);
+          }}, [
+            el("span", {class:"mono", text:it.label}), el("small", {text:sc.name + " · " + n.title})
+          ]));
+          ul.appendChild(li);
+        });
+      });
+    });
+    body.appendChild(ul);
+    if (f.header){
+      var d = el("details", {class:"hdr"}, [el("summary", {text:"파일 맨 위 설명 주석 보기"}), el("pre", {text:f.header})]);
+      body.appendChild(d);
+    }
+    refreshSelection();
+    openPanel();
+  }
+
+  /* ---------- 흐름도 ---------- */
+  var cols, colIndex, nodeEls = {};
+  function renderStage(){
+    var sc = scen();
+    var used = {}; sc.nodes.forEach(function(n){ used[n.col] = 1; });
+    cols = Object.keys(used).map(Number).sort(function(a,b){ return a-b; });
+    colIndex = {}; cols.forEach(function(c, i){ colIndex[c] = i + 1; });
+    var stage = $("stage");
+    stage.textContent = "";
+    stage.style.gridTemplateColumns = "repeat(" + cols.length + ", 196px)";
+    nodeEls = {};
+
+    var svgNS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("class", "edges"); svg.id = "edges";
+    svg.innerHTML = '<defs>' +
+      '<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head" d="M0 0L10 5L0 10z" style="stroke:none"/></marker>' +
+      '<marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head-call" d="M0 0L10 5L0 10z" style="stroke:none"/></marker>' +
+      '</defs>';
+    stage.appendChild(svg);
+
+    cols.forEach(function(c){
+      stage.appendChild(el("div", {class:"colhead", style:"grid-column:" + colIndex[c] + ";grid-row:1", text:D.columns[c]}));
+    });
+    var cells = {};
+    sc.nodes.forEach(function(n){
+      var k = n.row + ":" + n.col;
+      if (!cells[k]){
+        cells[k] = el("div", {class:"cell", style:"grid-column:" + colIndex[n.col] + ";grid-row:" + (n.row + 2)});
+        stage.appendChild(cells[k]);
+      }
+      var node = buildNode(n);
+      nodeEls[n.id] = node;
+      cells[k].appendChild(node);
+    });
+    $("intro").textContent = sc.intro;
+    scheduleEdges();
+  }
+
+  function buildNode(n){
+    var node = el("div", {class:"node " + n.kind, role:"button", tabindex:"0", "aria-pressed":"false", "data-id":n.id,
+      onclick:function(e){ if (e.target.closest(".chip")) return; selectNode(n.id, 0); },
+      onkeydown:function(e){ if ((e.key === "Enter" || e.key === " ") && !e.target.closest(".chip")){ e.preventDefault(); selectNode(n.id, 0); } }});
+    var title = el("div", {class:"n-title", text:n.title});
+    if (n.later) title.appendChild(el("span", {class:"tag-later", text:n.later + "에서 자세히"}));
+    node.appendChild(title);
+    if (n.kind !== "later" && n.plain) node.appendChild(el("div", {class:"n-plain", text:n.plain}));
+    if (n.reject) node.appendChild(el("div", {class:"n-reject", text:n.reject}));
+    var items = el("div", {class:"n-items"});
+    // 같은 파일에 있는 함수는 파일 칩 하나 아래에 함수 칩을 나란히 놓는다
+    var groups = [];
+    n.items.forEach(function(it, i){
+      var b = D.blocks[it.block], g = groups[groups.length - 1];
+      if (g && g.path === b.path) g.list.push({it: it, i: i}); else groups.push({path: b.path, list: [{it: it, i: i}]});
+    });
+    groups.forEach(function(g){
+      var row = el("div", {class:"n-item"});
+      if (g.list.length === 1 && g.list[0].it.call) row.appendChild(el("div", {class:"n-call", text:brk(g.list[0].it.call)}));
+      var chips = el("div", {class:"chips"}, [
+        el("button", {class:"chip file", text:brk(g.path), title:"파일 설명 보기", onclick:function(){ selectFile(g.path); }})
+      ]);
+      g.list.forEach(function(x){
+        chips.appendChild(el("button", {class:"chip " + (x.it.snippet ? "snip" : "fn"), text:x.it.label, title:(x.it.call ? x.it.call + " — " : "") + "코드 보기",
+          onclick:function(){ selectNode(n.id, x.i); }}));
+      });
+      row.appendChild(chips);
+      items.appendChild(row);
+    });
+    node.appendChild(items);
+    return node;
+  }
+
+  function rectIn(elm, host){
+    var a = elm.getBoundingClientRect(), h = host.getBoundingClientRect();
+    return {l:a.left-h.left, r:a.right-h.left, t:a.top-h.top, b:a.bottom-h.top, cx:(a.left+a.right)/2-h.left, cy:(a.top+a.bottom)/2-h.top};
+  }
+  var raf = 0;
+  function scheduleEdges(){ cancelAnimationFrame(raf); raf = requestAnimationFrame(drawEdges); }
+  function drawEdges(){
+    var stage = $("stage"), svg = $("edges"), sc = scen();
+    Array.prototype.slice.call(svg.querySelectorAll("path.e")).forEach(function(p){ p.remove(); });
+    Array.prototype.slice.call(stage.querySelectorAll(".elabel")).forEach(function(p){ p.remove(); });
+    var svgNS = "http://www.w3.org/2000/svg";
+    sc.edges.forEach(function(e){
+      var a = nodeById(e.from), b = nodeById(e.to);
+      var ea = nodeEls[e.from], eb = nodeEls[e.to]; if (!ea || !eb) return;
+      var ra = rectIn(ea, stage), rb = rectIn(eb, stage), d, lx, ly;
+      if (a.col === b.col){
+        if (b.row - a.row <= 1){
+          d = "M" + ra.cx + " " + ra.b + " V" + rb.t; lx = ra.cx; ly = (ra.b + rb.t) / 2;
+        } else {
+          var x = Math.min(ra.l, rb.l) - 30;
+          d = "M" + ra.l + " " + ra.cy + " H" + x + " V" + rb.cy + " H" + rb.l; lx = x; ly = (ra.cy + rb.cy) / 2;
+        }
+      } else {
+        var dir = b.col > a.col ? 1 : -1;
+        var x1 = dir > 0 ? ra.r : ra.l, x2 = dir > 0 ? rb.l : rb.r;
+        var xm = x2 - dir * 30;
+        d = "M" + x1 + " " + ra.cy + " H" + xm + " V" + rb.cy + " H" + x2;
+        lx = (x1 + x2) / 2; ly = ra.cy;
+      }
+      var kind = e.kind === "call" ? "call" : "flow";
+      var p = document.createElementNS(svgNS, "path");
+      p.setAttribute("d", d); p.setAttribute("class", "e " + kind);
+      p.setAttribute("marker-end", "url(#" + (kind === "call" ? "ahc" : "ah") + ")");
+      p.setAttribute("data-from", e.from); p.setAttribute("data-to", e.to);
+      svg.appendChild(p);
+      if (e.label && kind === "flow"){
+        var lab = el("span", {class:"elabel", text:e.label});
+        lab.style.left = lx + "px"; lab.style.top = ly + "px";
+        stage.appendChild(lab);
+      }
+    });
+    svg.setAttribute("width", stage.scrollWidth); svg.setAttribute("height", stage.scrollHeight);
+    refreshSelection();
+  }
+
+  function refreshSelection(){
+    Object.keys(nodeEls).forEach(function(id){ nodeEls[id].setAttribute("aria-pressed", String(id === state.node)); });
+    var svg = $("edges"); if (!svg) return;
+    Array.prototype.slice.call(svg.querySelectorAll("path.e")).forEach(function(p){
+      var on = state.node && (p.getAttribute("data-from") === state.node || p.getAttribute("data-to") === state.node);
+      p.classList.toggle("active", !!on);
+    });
+  }
+  function scrollToNode(id){
+    var n = nodeEls[id]; if (n && n.scrollIntoView) n.scrollIntoView({block:"center", inline:"center", behavior:"smooth"});
+  }
+
+  /* ---------- 단계 이동 / 탭 ---------- */
+  function stepIndex(){ return scen().steps.indexOf(state.node); }
+  function updateStepper(){
+    var steps = scen().steps, i = stepIndex();
+    $("stepNo").textContent = i < 0 ? "– / " + steps.length : (i + 1) + " / " + steps.length;
+    $("prev").disabled = i <= 0 && state.node !== null ? true : false;
+    $("next").disabled = i >= steps.length - 1;
+    if (state.node === null){ $("prev").disabled = true; $("next").disabled = false; }
+  }
+  function go(delta){
+    var steps = scen().steps, i = stepIndex();
+    var j = i < 0 ? 0 : Math.max(0, Math.min(steps.length - 1, i + delta));
+    selectNode(steps[j], 0); scrollToNode(steps[j]);
+  }
+  function renderTabs(){
+    var t = $("tabs"); t.textContent = "";
+    D.scenarios.forEach(function(sc, i){
+      t.appendChild(el("button", {class:"tab", role:"tab", "aria-selected":String(i === state.sc), text:sc.name, onclick:function(){ switchScenario(i); }}));
+    });
+  }
+  function switchScenario(i){
+    state.sc = i; state.node = null; state.file = null;
+    renderTabs(); renderStage(); showHint(); updateStepper();
+    try { history.replaceState(null, "", "#" + D.scenarios[i].id); } catch(e){}
+  }
+
+  /* ---------- 시작 ---------- */
+  document.title = D.title + " — 코드 흐름도";
+  $("title").textContent = D.title + " · 코드 흐름도";
+  $("subtitle").textContent = D.subtitle;
+  $("mdlink").setAttribute("href", D.mdFile);
+  $("prev").addEventListener("click", function(){ go(-1); });
+  $("next").addEventListener("click", function(){ go(1); });
+  $("pClose").addEventListener("click", closePanel);
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape") closePanel(); });
+  $("theme").addEventListener("click", function(){
+    var r = document.documentElement, cur = r.getAttribute("data-theme");
+    var dark = cur ? cur === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    r.setAttribute("data-theme", dark ? "light" : "dark");
+  });
+  window.addEventListener("resize", scheduleEdges);
+  if (window.ResizeObserver) new ResizeObserver(scheduleEdges).observe($("stage"));
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleEdges);
+
+  var startId = (location.hash || "").replace("#", "");
+  var startIdx = 0; D.scenarios.forEach(function(s, i){ if (s.id === startId) startIdx = i; });
+  switchScenario(startIdx);
+  // 화면 확인/테스트용 지름길: window.__flow.select("s7")
+  window.__flow = { select: function(id, i){ selectNode(id, i || 0); }, file: selectFile, state: state };
+})();
+</script>
+</body>
+</html>
