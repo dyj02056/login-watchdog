@@ -139,3 +139,7 @@ def _stub_permanent_lock_defaults(request, monkeypatch):
     # 회원 화면 문지기(member_login_required)의 세션 세대 번호 확인(guide35) — 기존 회원 화면
     # 테스트는 세대 번호를 모르므로 "변경 없음(0)"으로 둔다.
     monkeypatch.setattr(db, "get_user_session_version", lambda user_id: 0)
+
+    # === Track D === (각 줄 끝에 작업 번호 주석. 예: ...  # [B1-2])
+    # Track D 작업이 기존 코드 경로에 새 DB 호출을 끼워 넣어 기존 테스트가 실제 Supabase에
+    # 접속하게 되면, 그 기본값(가짜)을 이 아래에 한 줄씩 추가한다(team-plan 01 3.2).
