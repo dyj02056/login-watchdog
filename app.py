@@ -26,7 +26,7 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
-from flask import Flask, flash, redirect, request, url_for
+from flask import Flask, flash, jsonify, redirect, request, url_for
 from flask_limiter import Limiter
 from flask_limiter.errors import RateLimitExceeded
 from flask_wtf import CSRFProtect
@@ -47,6 +47,7 @@ from routes.admin import admin_bp
 from routes.auth import auth_bp
 from routes.board import board_bp
 from routes.email import email_bp
+from routes.internal import internal_bp
 from routes.member import member_bp
 from routes.password import password_bp
 from routes.recovery import recovery_bp
@@ -103,6 +104,12 @@ app.register_blueprint(member_bp)
 app.register_blueprint(recovery_bp)
 app.register_blueprint(email_bp)
 app.register_blueprint(password_bp)
+
+# Track D 내부 API(/api/internal/*, routes/internal/) — 브라우저가 아니라 같은 Docker 단지 안의
+# shipper·fw-agent만 부르는 창구다. 세션 쿠키가 아니라 요청마다 붙는 서명(HMAC)으로 보낸이를
+# 확인하므로, 브라우저용 방어인 CSRF 토큰 검사에서는 뺀다(토큰을 받을 방법이 없는 프로그램이라).
+app.register_blueprint(internal_bp)
+csrf.exempt(internal_bp)
 
 # 운영(production)에서 복구 메일 설정이 비어 있으면 서버 시작 로그에 경고를 남긴다(guide34-a).
 mailer.print_configuration_warnings()
@@ -162,7 +169,13 @@ def handle_rate_limit_exceeded(error):
     soar.record_rejection()은 signup/post/comment 요청 거부와 동일한 HIGH 등급
     "상태 기반 중복 방지" 패턴을 쓴다 — 같은 IP가 계속 도배해도 미해결 이벤트
     하나의 count만 올리고, security_events가 HIGH로 도배되지 않게 한다.
+
+    Track D 내부 API(/api/internal/*)가 한도를 넘긴 경우는 공격이 아니라 우리 센서가 바쁜
+    것이므로 HTTP_FLOOD로 기록하지 않고 JSON 429만 돌려준다(계약서 K3 실패 응답). 이걸
+    기록하면 SYN Flood 시연 중 센서 자신의 전송이 "HTTP 폭주"로 잡혀 상관분석이 오염된다.
     """
+    if request.blueprint == "internal":
+        return jsonify(error="rate_limited"), 429
     ip = get_request_ip()
     soar.record_rejection("HTTP_FLOOD", ip, request.path, config.GLOBAL_RATE_LIMIT_PER_MINUTE)
     return error.get_response()
