@@ -5,6 +5,9 @@
 #   security/correlate.py  — 같은 IP의 서로 다른 이벤트를 하나의 사건으로 묶는다 (SIEM, guide27)
 #   soar/         — 판정 결과를 실제 조치(잠금·알림·해제·조기 경보)로 실행한다 (SOAR, guide28)
 #   security/lockdown.py   — 임시 잠금을 영구 잠금으로 승격·해제·복구한다 (guide33)
+#   security/net_ingest.py — 네트워크 경보를 보안 이벤트로 올리고 L4 차단을 기록한다 (Track D, 역할 B)
+#   security/playbooks.py  — Track D 교차 계층 규칙이 맞았을 때의 대응 절차 (Track D, 역할 B)
+#   security/netblock.py   — L4 차단 요청 장부에 막기·풀기를 적는다 (Track D, 역할 C)
 #
 # 이 파일은 일부러 비워둔다(재내보내기 없음) — 호출부는 `from security import detector`처럼
 # 모듈 단위로 가져다 쓰고, 테스트도 `monkeypatch.setattr(detector, ...)`로 그 모듈을 바꿔치기한다.

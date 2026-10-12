@@ -48,6 +48,7 @@ from routes.auth import auth_bp
 from routes.board import board_bp
 from routes.email import email_bp
 from routes.internal import internal_bp
+from routes.internal import ingest as internal_ingest
 from routes.member import member_bp
 from routes.password import password_bp
 from routes.recovery import recovery_bp
@@ -158,6 +159,13 @@ for _endpoint in ("password.password_forgot_submit", "password.password_reset_su
     app.view_functions[_endpoint] = limiter.limit(
         f"{config.PASSWORD_RESET_RATE_LIMIT_PER_MINUTE} per minute"
     )(app.view_functions[_endpoint])
+# Track D 경보 수집 창구(POST /api/internal/net-events)는 전역 한도에서 빠지는 대신(helpers/hooks.py의
+# PAGE_ACCESS_EXCLUDED_ENDPOINTS) 보낸이별 한도를 따로 건다(계약서 K1). IP가 아니라 보낸이 이름으로 세는
+# 이유: shipper는 Docker 내부 주소 하나에서 모든 경보를 보내므로, IP로 세면 의미 있는 구분이 없다.
+app.view_functions["internal.net_events"] = limiter.limit(
+    f"{config.NET_INGEST_RATE_LIMIT_PER_MINUTE} per minute",
+    key_func=internal_ingest.rate_limit_key,
+)(app.view_functions["internal.net_events"])
 
 
 @app.errorhandler(RateLimitExceeded)
