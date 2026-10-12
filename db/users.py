@@ -221,3 +221,15 @@ def update_user_password(user_id: int, new_password: str) -> int:
         if res.data:
             return current + 1
     raise RuntimeError("비밀번호 변경 중 세션 번호 갱신 경쟁이 반복되었습니다.")
+
+
+def bump_session_version(user_id: int) -> bool:
+    """세션 세대 번호만 1 올려 이 회원의 모든 기존 세션을 끊는다(비밀번호는 그대로).
+
+    Track D CR-03(의심 로그인 성공)의 조치 함수다. 계약서 K8, 역할 C가 C2-1에서
+    update_user_password()와 같은 조건부 UPDATE 방식으로 구현한다.
+
+    기존 db/*.py 중 Track D 뼈대 PR이 새 함수 자리를 만든 유일한 곳이다 — 세션 번호를
+    다루는 코드가 이 파일에 모여 있어서, 다른 모듈에 두면 같은 규칙이 두 군데로 갈라진다.
+    """
+    raise NotImplementedError("C2-1에서 구현 — 계약서 K8")
