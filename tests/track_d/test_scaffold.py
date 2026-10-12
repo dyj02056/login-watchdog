@@ -66,10 +66,96 @@ def test_bump_session_version_placeholder_is_exported():
     assert callable(db.bump_session_version)
 
 
+# 계약서 K3의 기준 예시 서명값. B0-1의 sign(), A의 shipper, C의 fw-agent가 모두 이 값을 만들어야 한다.
+K3_REFERENCE_SIGNATURE = "2f744cec328f65506df5ad72df7fdd688c7a3cf3c6f90b1e0085849106179de2"
+
+
 def test_signed_headers_reference_value(signed_headers):
-    # 계약서 K3의 기준 예시. B0-1의 sign()과 shipper·fw-agent의 서명이 모두 이 값과 같아야 한다.
     headers = signed_headers("shipper", "test-key", b'{"a":1}', timestamp="1760930000")
     assert headers["X-LW-Sender"] == "shipper"
     assert headers["X-LW-Timestamp"] == "1760930000"
-    assert len(headers["X-LW-Signature"]) == 64
-    assert headers["X-LW-Signature"] == headers["X-LW-Signature"].lower()
+    assert headers["X-LW-Signature"] == K3_REFERENCE_SIGNATURE
+
+
+# 계약서 K1의 설정 이름 전부. 뼈대 PR이 미리 만들어 두고, 각 역할은 값만 조정한다.
+K1_CONFIG_DEFAULTS = {
+    "NET_INGEST_SECRET": "",
+    "NET_INTERNAL_MAX_SKEW_SECONDS": 60,
+    "NET_INGEST_MAX_BODY_BYTES": 16384,
+    "NET_INGEST_RATE_LIMIT_PER_MINUTE": 600,
+    "NET_CORRELATION_WINDOW_MINUTES": 15,
+    "NET_FLOOD_WINDOW_MINUTES": 5,
+    "NET_SUCCESS_LOGIN_LOOKBACK_MINUTES": 30,
+    "NET_ROTATION_WINDOW_MINUTES": 10,
+    "NET_SUBNET_MIN_IPS": 3,
+    "NET_FLOOD_REPEAT_DAYS": 30,
+    "NET_AGENT_SECRET": "",
+    "TRUSTED_PROXY_IPS": [],
+    "NET_EDGE_SUBNET": "",
+    "NET_BLOCK_DEFAULT_TTL_SECONDS": 3600,
+    "NET_BLOCK_MAX_TTL_SECONDS": 21600,
+    "NET_BLOCK_REPEAT_DAYS": 30,
+    "SUSPICIOUS_LOGIN_MAIL_COOLDOWN_SECONDS": 3600,
+    "FW_AGENT_STALE_SECONDS": 30,
+    "SHIPPER_STALE_SECONDS": 120,
+    "AGENT_ALERT_COOLDOWN_SECONDS": 600,
+    "LW_NODE_NAME": "",
+}
+
+
+def test_k1_config_names_have_contract_defaults(monkeypatch):
+    # .env에 값이 있어도 기본값을 확인할 수 있게, 환경변수를 지우고 config를 새로 읽는다.
+    import importlib
+
+    import config
+
+    for name in K1_CONFIG_DEFAULTS:
+        monkeypatch.delenv(name, raising=False)
+    fresh = importlib.reload(config)
+    try:
+        for name, default in K1_CONFIG_DEFAULTS.items():
+            assert getattr(fresh, name) == default, name
+    finally:
+        monkeypatch.undo()
+        importlib.reload(config)
+
+
+def test_trusted_proxy_ips_is_trimmed_list(monkeypatch):
+    import importlib
+
+    import config
+
+    monkeypatch.setenv("TRUSTED_PROXY_IPS", " 172.29.0.10 , ,10.0.0.1")
+    try:
+        assert importlib.reload(config).TRUSTED_PROXY_IPS == ["172.29.0.10", "10.0.0.1"]
+    finally:
+        monkeypatch.undo()
+        importlib.reload(config)
+
+
+def test_contract_stubs_exist():
+    from security import net_ingest, netblock, playbooks
+
+    for module, names in (
+        (net_ingest, ("record_net_blocked", "resolve_net_blocked")),
+        (netblock, ("request_block", "request_unblock")),
+        (playbooks, ("run",)),
+    ):
+        for name in names:
+            assert callable(getattr(module, name)), f"{module.__name__}.{name}"
+
+
+def test_ingest_endpoint_has_its_own_rate_limit(client, monkeypatch):
+    # 경보 수집 창구는 전역 한도에서 빠지는 대신 보낸이별 한도(NET_INGEST_RATE_LIMIT_PER_MINUTE)를 쓴다.
+    # 한도를 넘기면 HTTP_FLOOD로 기록하지 않고 JSON 429만 돌려준다.
+    from security import soar
+
+    recorded = []
+    monkeypatch.setattr(soar, "record_rejection", lambda *a, **k: recorded.append(a))
+    statuses = [
+        client.post("/api/internal/net-events", json={}, headers={"X-LW-Sender": "shipper"}).status_code
+        for _ in range(601)
+    ]
+    assert statuses[:600] == [401] * 600
+    assert statuses[600] == 429
+    assert recorded == []
