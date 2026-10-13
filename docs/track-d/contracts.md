@@ -2,7 +2,7 @@
 
 # 02. 연동 계약서 — 역할끼리 주고받는 약속
 
-> **버전 v1.0 확정 (2026-10-12)** — 통합 담당자가 현재 저장소 코드·역할별 요청서와 대조해 확정했다. 10/14 계획 확정 회의에서 세 사람의 동의를 받는다. 이후 바뀌는 내용은 맨 아래 변경 기록에 남긴다.
+> **버전 v1.0 확정 (2026-10-12) · 10/13 보완(맨 아래 변경 기록)** — 통합 담당자가 현재 저장소 코드·역할별 요청서와 대조해 확정했다. 10/14 계획 확정 회의에서 세 사람의 동의를 받는다. 이후 바뀌는 내용은 맨 아래 변경 기록에 남긴다.
 > **이 문서가 기준이다.** 함수 이름·인자·JSON 모양이 이 문서와 다르면 코드가 틀린 것이다.
 > 뼈대 PR(I0-1)에서 이 문서를 저장소의 `docs/track-d/contracts.md`로 복사한다. LLM(Codex)은 저장소 사본을 읽는다.
 > 바꾸려면 01의 8장 절차를 따른다. 바꾼 내용은 맨 아래 **변경 기록**에 남긴다.
@@ -61,6 +61,7 @@
 |---|---|---|
 | `LW_EDGE_PREFIX` | `172.28.13` | 사람별 공격 대역 앞 세 자리 (01의 4장 표) |
 | `SENSOR_IFACE` | `eth0` | Suricata·Scapy가 감시할 인터페이스 (A0-2에서 확인한 값) |
+| `LW_VICTIM_PASSWORD` | (사람마다 다름) | S4·S6에서 공격 상자(attacker-2)가 `victim_<역할>` 계정으로 로그인할 때 쓰는 테스트 계정 비밀번호. A2-1의 로그인 명령과 C3-1이 읽는다. **LLM에 붙여 넣지 않고** 이미지·compose·README에 값을 적지 않는다 |
 
 ---
 
@@ -256,6 +257,9 @@ def request_unblock(ip: str, actor: str) -> bool:
 ```
 
 - `reason` 값은 K12 표에서 고른다. `requested_by`는 `playbook:<플레이북 이름>`, `admin:<관리자 아이디>`, `script:<스크립트 이름>` 중 하나.
+- **플레이북이 부를 때 넘기는 값 (B2-2):**
+  - `block_l4_ttl` → `request_block(ip, "NET_FLOOD", evidence="SPOOFABLE", ttl_seconds=None, requested_by="playbook:<플레이북>")`. TTL 계산(기본 × 2^반복, 상한)은 이 함수만 한다. CR-02처럼 연결 완성 증거가 있어도 `SPOOFABLE`로 넘긴다 — `CONNECTED` + `None`은 영구 차단이 되기 때문이다.
+  - `block_l4` → `request_block(ip, "KILL_CHAIN", evidence="CONNECTED", ttl_seconds=None, requested_by="playbook:KILL_CHAIN")`. CR-01 영구 L4 전용.
 - `netblock.py`는 `db`, `config`, `lockdown.is_ip_allowlisted`만 import한다(순환 import 방지: `lockdown`은 `release()` 안에서 함수 안 import로 `netblock`을 부른다).
 
 **C0-2가 머지되기 전 B의 임시 방법:** 테스트에서 `monkeypatch.setattr(netblock, "request_block", lambda *a, **k: True)`.
@@ -275,7 +279,7 @@ def send_suspicious_login_notice(to_address: str, ip: str, at_iso: str) -> str:
     """의심 로그인 경고 메일. 반환: mailer.SENT / REFUSED / FAILED / SKIPPED.
     (SKIPPED는 지금 mailer.py에 없는 값이다. C2-1이 SENT·REFUSED·FAILED 옆에 SKIPPED = "SKIPPED"를 추가한다.)
     같은 주소로 SUSPICIOUS_LOGIN_MAIL_COOLDOWN_SECONDS 안에 이미 보냈으면 보내지 않고 SKIPPED.
-    쿨다운은 db.try_acquire_cooldown(f"mail:suspicious:{to_address.lower()}", 초)로 판단(여러 워커 공통)."""
+    쿨다운은 db.try_acquire_cooldown(f"mail:suspicious:{to_address.lower()}", 초)로 판단(여러 스레드·여러 PC 공통)."""
 
 # notify/alert.py
 def send_playbook_alert(playbook: str, ip: str, matched_rules: list[str],
@@ -353,9 +357,10 @@ ctx = {
 ```
 
 - `agent`는 `X-LW-Sender`와 같아야 한다(다르면 400). `detail`은 JSON 객체, 직렬화 2KB 이하.
-- 보내는 주기: fw-agent **10초**, shipper **30초**. (본 계획서의 "fw-agent 30초"는 정지 판단 기준과 같아 깜빡임이 생기므로 10초로 조정)
+- 보내는 주기: fw-agent **10초**, shipper **30초**. (정지 판단 기준 30초와 같으면 배지가 깜빡이므로 fw-agent는 10초. 본 계획서 2.6도 10/13에 맞췄다)
 - 앱은 받은 신호를 **(agent, `LW_NODE_NAME`)** 한 줄로 저장한다. 세 PC가 같은 DB를 써도 서로 덮어쓰지 않는다. `LW_NODE_NAME`이 비어 있으면 `400 {"error": "invalid", "field": "node"}`.
 - `stalled: true`를 받으면 앱이 Slack 알림(구성요소당 `AGENT_ALERT_COOLDOWN_SECONDS` 쿨다운).
+- 신호를 받을 때 **상대 장비**(fw-agent ↔ shipper)의 마지막 신호도 확인해, 정지 기준(`FW_AGENT_STALE_SECONDS` / `SHIPPER_STALE_SECONDS`)을 넘었으면 Slack 알림을 보낸다. 쿨다운 키 `slack:stale:<LW_NODE_NAME>:<장비>`는 K10 화면 쪽(C2-3) 정지 알림과 같아서 두 번 가지 않는다. 관리자 화면을 아무도 열지 않아도 정지를 알리기 위해서다. 이 확인이 실패해도 응답은 `200 {"ok": true}`.
 - 응답: `200 {"ok": true}`.
 
 ---
@@ -406,10 +411,12 @@ ctx = {
 
 본 계획서 2.3 ⑥의 SQL에 아래를 **더한다**.
 
+> 쿨다운 표와 PC별 생존 신호 표는 10/13에 본 계획서 2.3 ⑥에도 같은 정의로 반영했다. guide52에는 한 번만 만든다.
+
 | 추가 | 내용 | 이유 |
 |---|---|---|
 | 기존 사건 값 채우기 | `update security_incidents set app_severity_max = severity_max where app_severity_max is null;` | 기존 사건은 모두 앱 이벤트뿐이다. `consider_incident_promotion()`이 새 칸만 읽어도 기존 사건 판단이 바뀌지 않음 |
-| 쿨다운 표 (C 소유) | `create table notification_cooldowns (key text primary key, last_sent_at timestamptz not null);` | 메일·Slack 쿨다운을 gunicorn 워커 여러 개가 함께 지키도록 |
+| 쿨다운 표 (C 소유) | `create table notification_cooldowns (key text primary key, last_sent_at timestamptz not null);` | 메일·Slack 쿨다운을 여러 스레드·여러 PC(같은 DB)·Vercel 인스턴스가 함께 지키도록 |
 | 생존 신호 표 변경 (C 소유) | 본 계획서 DDL 대신: `create table agent_heartbeats (agent text not null check (agent in ('fw-agent','shipper')), node text not null, last_seen_at timestamptz not null, detail jsonb, primary key (agent, node));` | 세 PC가 같은 DB를 쓰므로 PC(`LW_NODE_NAME`)별로 저장 |
 | 권한 추가 | `permissions_action_check`에 `'release_network_block'` 추가, `unlock_ip`를 가진 역할에 같은 권한 insert | (선택) L4 해제 버튼. 나중에 마이그레이션을 다시 만들지 않도록 미리 넣는다 |
 | `access_requests` 확장 | 본 계획서대로 `NET_REPEAT_FLOOD`·`NET_SUBNET_ATTACK` / `BLOCK_L4_PERMANENT`·`BLOCK_SUBNET` / `subnet` 허용 | CR-02 반복, CR-04 |
@@ -464,3 +471,7 @@ ctx = {
 | 2026-10-12 | K10·K11 | 차단 목록도 `NET_EDGE_SUBNET`으로 거른다고 명시, `network_layer` 통계는 공용 합계라고 명시. 해제 권한의 이유를 "(선택) L4 해제 버튼"으로 고침 | 같은 회의에서 확인 |
 | 2026-10-12 | K12 | `trigger_ref`를 `incident:<사건 id>:<규칙 ID>` 하나로 정함(`event:<id>` 삭제). `ADMIN_MANUAL`은 M1 확인용 SQL 수동 차단. 기존 `CRITICAL_MULTI_STAGE`는 `correlate.py`에 그대로 둠. 필수·선택 규칙 구분 명시 | 같은 회의에서 확인 |
 | 2026-10-12 | 전체 | **v1.0 확정**: 저장소 코드(`main` `6a7fc71`)·역할별 요청서와 대조 완료 | 10/14 회의에서 동의 |
+| 2026-10-13 | K1 | `.env` 전용 값에 `LW_VICTIM_PASSWORD` 추가 — S4·S6은 공격 상자(attacker-2)에서 로그인해야 CR-03이 맞으므로 A2-1의 로그인 명령과 C3-1이 함께 쓴다 | 10/14 회의에서 확인 |
+| 2026-10-13 | K7 | 플레이북이 `request_block`에 넘기는 값 명시: `block_l4_ttl`은 `SPOOFABLE`·`ttl_seconds=None`·`NET_FLOOD`, `block_l4`는 `CONNECTED`·`KILL_CHAIN`. ctx의 `CONNECTED`를 그대로 넘기면 CR-02가 영구 차단되는 문제 방지 | 같은 회의 |
+| 2026-10-13 | K9 | heartbeat를 받을 때 상대 장비 정지도 확인해 알림(관리자 화면을 안 열어도 알림). fw-agent 10초 메모 정리 | 같은 회의 |
+| 2026-10-13 | K8·K11 | 쿨다운을 DB에 두는 이유를 "여러 워커"에서 "여러 스레드·여러 PC·Vercel"로 고침(app은 gunicorn 워커 1개 + 스레드 — 확장 계획서 2.2). K11의 쿨다운·생존 신호 표는 본 계획서 2.3 ⑥에도 반영됨 | — |
