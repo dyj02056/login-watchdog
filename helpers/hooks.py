@@ -25,12 +25,20 @@ from security import detector, soar
 # Blueprint로 분리하면서 각 라우트의 엔드포인트 이름이 "api_status"에서
 # "admin.api_status"처럼 "<블루프린트 이름>.<함수 이름>"으로 바뀌었다 — 이 집합도
 # 그 이름을 그대로 맞춰줘야 폴링 API가 계속 관찰 대상에서 제외된다.
+#
+# Track D 내부 API(internal.*)도 같은 이유로 뺀다 — fw-agent는 2초마다, shipper는 경보마다
+# 부르므로 사람 기준의 반복 접근·매크로 판정이나 전역 요청 한도에 걸리면 안 된다. 이 창구들은
+# 대신 요청마다 서명(HMAC)을 검사하고, 경보 접수 창구에는 센서별 한도를 따로 건다.
 PAGE_ACCESS_EXCLUDED_ENDPOINTS = {
     "static",
     "admin.api_status",
     "admin.api_stats",
     "spa_session",
     "board.api_board_comments_latest",
+    "internal.net_events",
+    "internal.list_blocks",
+    "internal.ack_block",
+    "internal.heartbeat",
 }
 
 
