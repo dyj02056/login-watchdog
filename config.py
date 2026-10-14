@@ -259,3 +259,55 @@ MAIL_FAILURE_ALERT_COOLDOWN_SECONDS = int(os.environ.get("MAIL_FAILURE_ALERT_COO
 MAIL_FROM = os.environ.get("MAIL_FROM", "login-watchdog@localhost")
 # 복구 링크의 기준 주소 — Host 헤더(공격자가 조작 가능)가 아니라 이 값으로만 링크를 만든다.
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
+
+
+# === Track D ===
+# 네트워크 계층(L3/L4/L7) 탐지·차단 확장의 설정값. 이름과 기본값은 docs/track-d/contracts.md(계약서 K1)가
+# 기준이다. Track D 뼈대 PR이 모든 이름을 미리 만들어 두었으므로, 각 역할은 자기 소구역의 값만 조정한다
+# (세 사람이 같은 파일 끝에 줄을 추가하면 합칠 때마다 충돌이 나기 때문).
+# 기본값은 모두 "Track D가 꺼진 상태"로도 기존 앱이 그대로 동작하게 골랐다 — 비밀 키가 비어 있으면
+# 내부 API가 모든 요청을 거부하고, 대역·PC 이름이 비어 있으면 거르기·장비 감시를 하지 않는다(Vercel 배포).
+
+# --- A (탐지: 인프라·센서·shipper) ---
+# A의 값(LW_EDGE_PREFIX, SENSOR_IFACE)은 Docker Compose가 .env에서 직접 읽으므로 여기에는 없다.
+
+# --- B (SIEM: 수집·상관분석) ---
+# shipper → 앱 서명 키(계약서 K3). 비어 있으면 수집 API가 모든 요청을 401로 거부한다.
+NET_INGEST_SECRET = os.environ.get("NET_INGEST_SECRET", "")
+# 서명 타임스탬프 허용 오차(초). 엿본 요청을 나중에 다시 보내는 재전송을 막는다.
+NET_INTERNAL_MAX_SKEW_SECONDS = int(os.environ.get("NET_INTERNAL_MAX_SKEW_SECONDS", 60))
+NET_INGEST_MAX_BODY_BYTES = int(os.environ.get("NET_INGEST_MAX_BODY_BYTES", 16384))
+# 보낸이(X-LW-Sender)별 분당 수집 요청 한도. PC마다 shipper가 하나라 사실상 PC별 한도다.
+NET_INGEST_RATE_LIMIT_PER_MINUTE = int(os.environ.get("NET_INGEST_RATE_LIMIT_PER_MINUTE", 600))
+# 교차 계층 규칙의 시간 창(분)과 기준 — 규칙 ID는 계약서 K12.
+NET_CORRELATION_WINDOW_MINUTES = int(os.environ.get("NET_CORRELATION_WINDOW_MINUTES", 15))  # CR-01·04·06
+NET_FLOOD_WINDOW_MINUTES = int(os.environ.get("NET_FLOOD_WINDOW_MINUTES", 5))  # CR-02
+NET_SUCCESS_LOGIN_LOOKBACK_MINUTES = int(os.environ.get("NET_SUCCESS_LOGIN_LOOKBACK_MINUTES", 30))  # CR-03
+NET_ROTATION_WINDOW_MINUTES = int(os.environ.get("NET_ROTATION_WINDOW_MINUTES", 10))  # CR-05
+NET_SUBNET_MIN_IPS = int(os.environ.get("NET_SUBNET_MIN_IPS", 3))  # CR-04: 같은 /24 최소 IP 수
+NET_FLOOD_REPEAT_DAYS = int(os.environ.get("NET_FLOOD_REPEAT_DAYS", 30))  # CR-02 반복 판단 기간
+
+# --- C (SOAR 대응·관제 데이터) ---
+# fw-agent → 앱 서명 키(계약서 K3). shipper 키와 반드시 다른 값이어야 한다 — 하나가 새도 다른 쪽은 안전하게.
+NET_AGENT_SECRET = os.environ.get("NET_AGENT_SECRET", "")
+# 이 주소에서 온 요청만 X-Forwarded-For를 믿는다(쉼표 목록). 비어 있으면 기존 동작 그대로다.
+TRUSTED_PROXY_IPS = [
+    value.strip() for value in os.environ.get("TRUSTED_PROXY_IPS", "").split(",") if value.strip()
+]
+# 이 PC가 맡는 공격 대역(예: 172.28.13.0/24). 세 PC가 DB 하나를 쓰므로 차단 목록·화면을 내 대역으로 거른다.
+# 비어 있으면 거르지 않는다.
+NET_EDGE_SUBNET = os.environ.get("NET_EDGE_SUBNET", "").strip()
+# 위조 가능한 증거(SYN·포트 스캔)로 거는 L4 차단의 기본 시간과 상한(초). 반복되면 2배씩 늘린다.
+NET_BLOCK_DEFAULT_TTL_SECONDS = int(os.environ.get("NET_BLOCK_DEFAULT_TTL_SECONDS", 3600))
+NET_BLOCK_MAX_TTL_SECONDS = int(os.environ.get("NET_BLOCK_MAX_TTL_SECONDS", 21600))
+NET_BLOCK_REPEAT_DAYS = int(os.environ.get("NET_BLOCK_REPEAT_DAYS", 30))
+# 같은 주소로 의심 로그인 경고 메일을 다시 보내기까지의 시간(초) — 메일 폭탄 방지.
+SUSPICIOUS_LOGIN_MAIL_COOLDOWN_SECONDS = int(os.environ.get("SUSPICIOUS_LOGIN_MAIL_COOLDOWN_SECONDS", 3600))
+# 생존 신호가 이 시간(초)보다 오래 없으면 "정지"로 본다. fw-agent는 10초, shipper는 30초마다 보낸다.
+FW_AGENT_STALE_SECONDS = int(os.environ.get("FW_AGENT_STALE_SECONDS", 30))
+SHIPPER_STALE_SECONDS = int(os.environ.get("SHIPPER_STALE_SECONDS", 120))
+# 구성요소 정지 Slack 알림을 다시 보내기까지의 시간(초).
+AGENT_ALERT_COOLDOWN_SECONDS = int(os.environ.get("AGENT_ALERT_COOLDOWN_SECONDS", 600))
+# 이 앱이 어느 PC의 Track D인지(A·B·C·demo). 생존 신호를 PC별로 저장한다.
+# 비어 있으면(Vercel 등 Docker 단지가 없는 곳) 장비 정지 감시·알림을 하지 않는다.
+LW_NODE_NAME = os.environ.get("LW_NODE_NAME", "").strip()

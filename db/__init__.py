@@ -29,6 +29,14 @@
 #   recovery.py          — recovery_requests, users.email_status (이메일 복구, guide34-a)
 #   ip_exemptions.py     — ip_lock_exemptions (IP 영구 잠금 본인 기기 예외, guide34-a)
 #   email_tokens.py      — email_tokens (이메일 인증·변경 확인·비밀번호 재설정 링크, guide40)
+#   network_events.py    — network_events (Track D 센서 경보, 역할 B)
+#   playbook_runs.py     — playbook_runs (Track D 플레이북 실행 기록, 역할 B)
+#   network_blocks.py    — network_blocks (Track D L4 차단, 역할 C)
+#   agent_heartbeats.py  — agent_heartbeats (Track D 장비 생존 신호, 역할 C)
+#
+# Track D 모듈 4개는 아래쪽 목록과 달리 "from .모듈 import *"로 한꺼번에 내보낸다 — 세 사람이
+# 함수를 추가할 때마다 이 파일을 고치면 머지 충돌이 나므로, 각 모듈의 __all__에 이름만 넣으면
+# 여기를 고치지 않아도 db.함수이름으로 쓸 수 있게 했다(Track D 뼈대 PR, team-plan 01 3.2).
 #
 # 이 파일은 위 각 모듈의 함수를 그대로 다시 내보내기(re-export)만 한다 — 그래서
 # app.py, routes/, security/, services/, scripts/*.py나 테스트 코드는 예전처럼
@@ -199,6 +207,7 @@ from .settings import (
     set_signup_enabled,
 )
 from .users import (
+    bump_session_version,
     change_user_email,
     create_user,
     delete_user,
@@ -364,4 +373,27 @@ __all__ = [
     # 비밀번호 변경 + 세션 무효화 (guide35)
     "get_user_session_version",
     "update_user_password",
+    # Track D 의심 로그인 성공 시 세션 끊기 (계약서 K8, C2-1에서 구현)
+    "bump_session_version",
 ]
+
+# ============================================================================
+# Track D 모듈 — 각 모듈의 __all__에 있는 이름을 그대로 다시 내보낸다(맨 위 설명 참고).
+# 맨 아래에 두는 이유: 이 모듈들은 안에서 `import db`를 하므로, 위의 기존 함수들이 모두
+# 준비된 뒤에 불러와야 한다.
+# ============================================================================
+from . import agent_heartbeats as _agent_heartbeats  # noqa: E402
+from . import network_blocks as _network_blocks  # noqa: E402
+from . import network_events as _network_events  # noqa: E402
+from . import playbook_runs as _playbook_runs  # noqa: E402
+from .agent_heartbeats import *  # noqa: E402,F401,F403
+from .network_blocks import *  # noqa: E402,F401,F403
+from .network_events import *  # noqa: E402,F401,F403
+from .playbook_runs import *  # noqa: E402,F401,F403
+
+__all__ += (
+    _network_events.__all__
+    + _playbook_runs.__all__
+    + _network_blocks.__all__
+    + _agent_heartbeats.__all__
+)
