@@ -50,6 +50,12 @@ def _is_trusted_proxy(addr: str) -> bool:
 
     ipaddress.ip_address 객체로 변환하여 비교하며, TRUSTED_PROXY_IPS 항목 중
     올바르지 않은 IP 형식이 있다면 무시한다.
+
+    문자열 그대로 비교하지 않는 이유: 같은 주소라도 IPv6 축약("::1" / "0:0:...:1")처럼
+    표기가 다를 수 있어서, 문자열 비교는 진짜 gateway 요청을 '모르는 주소'로 잘못 볼 수 있다.
+    잘못된 항목을 오류로 멈추지 않고 건너뛰는 이유: .env에 오타가 하나 있다고 모든 요청에서
+    예외가 나면 로그인 화면까지 열리지 않는다. 그 항목만 '신뢰하지 않음'으로 두는 쪽이
+    안전하다(신뢰하지 않으면 XFF 대신 remote_addr를 쓰므로 가짜 주소 주장은 여전히 막힌다).
     """
     if not addr:
         return False
@@ -98,6 +104,8 @@ def get_request_ip() -> str:
     이 함수 하나만 바꾸면 이 값을 쓰는 탐지·잠금·요청 제한·이벤트가 전부 같은 단위로 동작한다.
     """
     if config.TRUST_FORWARDED_FOR:
+        # V13: 목록이 비어 있으면 이 검사를 건너뛰어 기존 동작(시뮬레이터가 XFF로 IP를 흉내 냄)을
+        # 그대로 둔다. 목록이 있으면 gateway가 아닌 곳(옆문)에서 온 요청의 XFF는 버린다.
         if config.TRUSTED_PROXY_IPS and not _is_trusted_proxy(request.remote_addr):
             return normalize_ip(request.remote_addr)
 
