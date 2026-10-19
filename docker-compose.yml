@@ -1,3 +1,5 @@
+# 공격 상자는 edge에만 연결한다. 일회용 실행법은 README용 최종 보고에 정리한다.
+
 services:
   gateway:
     image: nginx:1.27-alpine
@@ -99,35 +101,53 @@ services:
     command: ["sh", "-c", "while true; do sleep 3600; done"]
 
   attacker-1:
-    image: alpine:3.20
+    build:
+      context: .
+      dockerfile: netwatch/attacker/Dockerfile
+    image: lw-attacker:latest
     profiles:
       - attack
-    command: ["sh", "-c", "while true; do sleep 3600; done"]
+    cap_add:
+      - NET_RAW
+    environment:
+      TARGET_URL: "http://${LW_EDGE_PREFIX}.10:8080"
     networks:
       edge:
         ipv4_address: "${LW_EDGE_PREFIX}.101"
 
   attacker-2:
-    image: alpine:3.20
+    build:
+      context: .
+      dockerfile: netwatch/attacker/Dockerfile
+    image: lw-attacker:latest
     profiles:
       - attack
-    command: ["sh", "-c", "while true; do sleep 3600; done"]
+    cap_add:
+      - NET_RAW
+    environment:
+      TARGET_URL: "http://${LW_EDGE_PREFIX}.10:8080"
     networks:
       edge:
         ipv4_address: "${LW_EDGE_PREFIX}.102"
 
   attacker-3:
-    image: alpine:3.20
+    build:
+      context: .
+      dockerfile: netwatch/attacker/Dockerfile
+    image: lw-attacker:latest
     profiles:
       - attack
-    command: ["sh", "-c", "while true; do sleep 3600; done"]
+    cap_add:
+      - NET_RAW
+    environment:
+      TARGET_URL: "http://${LW_EDGE_PREFIX}.10:8080"
     networks:
       edge:
         ipv4_address: "${LW_EDGE_PREFIX}.103"
 
 networks:
   edge:
-    name: login-watchdog-edge
+    name: lw_edge
     driver: bridge
     ipam:
       config:
