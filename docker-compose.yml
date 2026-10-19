@@ -28,6 +28,10 @@ services:
     env_file:
       - .env
     environment:
+      # gateway(nginx)가 X-Forwarded-For를 $remote_addr로 덮어써 넘기므로, 이 값을 켜야 공격 상자마다
+      # 다른 출발지 IP(.101~.103·일회용 .111 등)가 앱에 보인다. 끄면 모든 요청이 gateway core 주소로 보여
+      # brute가 그 주소를 잠가 모두 차단된다. 옆문 위조는 아래 TRUSTED_PROXY_IPS가 막는다(C0-1).
+      TRUST_FORWARDED_FOR: "true"
       TRUSTED_PROXY_IPS: "172.29.0.10"
       PUBLIC_BASE_URL: "http://localhost:8080"
       MAIL_BACKEND: "smtp"
@@ -63,7 +67,7 @@ services:
       - gateway
     command: ["sh", "-c", "while true; do sleep 3600; done"]
 
-  # 이후 단계에서 실제 L4 탐지 프로그램으로 교체한다.
+  # Scapy L4 측정기(A1-2) — SYN 비율·서로 다른 포트 수를 세어 l4.json에 쓴다.
   l4-detector:
     build:
       context: ./netwatch/l4_detector
@@ -78,6 +82,9 @@ services:
     environment:
       SENSOR_IFACE: ${SENSOR_IFACE:-eth0}
       LW_EDGE_PREFIX: ${LW_EDGE_PREFIX}
+    volumes:
+      # Suricata eve.json과 같은 볼륨에 l4.json을 써서 shipper가 두 파일을 함께 읽게 한다.
+      - eve:/var/log/suricata
 
   # 이후 단계에서 탐지 이벤트 전송 프로그램으로 교체한다.
   shipper:
@@ -165,3 +172,7 @@ networks:
   egress:
     name: login-watchdog-egress
     driver: bridge
+
+volumes:
+  # 센서 기록(eve.json·l4.json) 공유 볼륨 — sensor·l4-detector가 쓰고 shipper가 읽는다.
+  eve: {}

@@ -202,12 +202,12 @@ def test_gateway_and_core_sources_are_excluded() -> None:
     )
 
     assert detector.observe("192.0.2.10", 8080, "S") == []
-    assert detector.observe("172.29.0.25", 8080, "S") == []
+    assert detector.observe("172.30.0.25", 8080, "S") == []
 
     assert "192.0.2.10" not in detector._syn_events
     assert "192.0.2.10" not in detector._port_events
-    assert "172.29.0.25" not in detector._syn_events
-    assert "172.29.0.25" not in detector._port_events
+    assert "172.30.0.25" not in detector._syn_events
+    assert "172.30.0.25" not in detector._port_events
 
 
 def test_compose_passes_l4_detector_environment() -> None:
@@ -226,3 +226,6 @@ def test_compose_passes_l4_detector_environment() -> None:
     assert "environment:" in l4_block
     assert "SENSOR_IFACE: ${SENSOR_IFACE:-eth0}" in l4_block
     assert "LW_EDGE_PREFIX: ${LW_EDGE_PREFIX}" in l4_block
+    # l4.json을 shipper와 공유하는 eve 볼륨(최상위 volumes에 선언)
+    assert "- eve:/var/log/suricata" in l4_block
+    assert "\nvolumes:\n" in compose
