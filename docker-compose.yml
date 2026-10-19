@@ -56,8 +56,6 @@ services:
   # 이후 단계에서 실제 Suricata 설정으로 교체한다.
   sensor:
     image: alpine:3.20
-    profiles:
-      - net
     network_mode: "service:gateway"
     depends_on:
       - gateway
@@ -68,8 +66,6 @@ services:
     build:
       context: ./netwatch/l4_detector
       dockerfile: Dockerfile
-    profiles:
-      - net
     network_mode: "service:gateway"
     depends_on:
       - gateway
@@ -81,14 +77,24 @@ services:
 
   # 이후 단계에서 탐지 이벤트 전송 프로그램으로 교체한다.
   shipper:
-    image: python:3.12-slim
-    profiles:
-      - net
+    build:
+      context: .
+      dockerfile: netwatch/shipper/Dockerfile
     depends_on:
       - app
-    command: ["sh", "-c", "while true; do sleep 3600; done"]
+      - sensor
+      - l4-detector
+    environment:
+      NET_INGEST_URL: ${NET_INGEST_URL:-http://app:5000/api/internal/net-events}
+      NET_INGEST_SECRET: ${NET_INGEST_SECRET}
+      APP_INTERNAL_URL: ${APP_INTERNAL_URL:-http://app:5000}
+      EVE_PATH: /var/log/suricata/eve.json
+      L4_PATH: /var/log/suricata/l4.json
+    volumes:
+      - eve:/var/log/suricata:ro
     networks:
       - core
+    restart: unless-stopped
 
   # 이후 단계에서 방화벽 차단 에이전트로 교체한다.
   fw-agent:
@@ -165,3 +171,6 @@ networks:
   egress:
     name: login-watchdog-egress
     driver: bridge
+
+volumes:
+  eve:
