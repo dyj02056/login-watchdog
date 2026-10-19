@@ -63,12 +63,32 @@ services:
       - egress
 
   # 이후 단계에서 실제 Suricata 설정으로 교체한다(A1-1 전까지는 대기용 껍데기 — eve.json을 만들지 않는다).
+    # Suricata IDS — gateway 네임스페이스의 edge 트래픽을 감시한다.
   sensor:
-    image: alpine:3.20
+    image: jasonish/suricata:7.0.17
     network_mode: "service:gateway"
     depends_on:
       - gateway
-    command: ["sh", "-c", "while true; do sleep 3600; done"]
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_NICE
+    environment:
+      SENSOR_IFACE: ${SENSOR_IFACE:-eth0}
+      LW_EDGE_PREFIX: ${LW_EDGE_PREFIX}
+    entrypoint:
+      - /bin/sh
+      - /etc/suricata/custom/entrypoint.sh
+    volumes:
+      # Windows에서도 실행 권한 문제를 피하기 위해 /bin/sh로 직접 실행한다.
+      - ./netwatch/suricata:/etc/suricata/custom:ro
+
+      # eve.json은 l4-detector·shipper와 공유한다.
+      - eve:/var/log/suricata
+
+      # ET Open은 최초 한 번만 받고 이후 컨테이너 재시작 시 재사용한다.
+      - suricata-rules:/var/lib/suricata/rules
+    restart: unless-stopped
 
   # Scapy L4 측정기(A1-2) — SYN 비율·서로 다른 포트 수를 세어 l4.json에 쓴다.
   l4-detector:
@@ -199,3 +219,4 @@ networks:
 volumes:
   # 센서 기록(eve.json·l4.json) 공유 볼륨 — sensor·l4-detector가 쓰고 shipper가 읽는다.
   eve: {}
+  suricata-rules:
