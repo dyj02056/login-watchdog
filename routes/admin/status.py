@@ -7,6 +7,8 @@
 # 배경은 docs/refactor/2026-10-09-module-plan.md 참고.
 # ============================================================================
 
+import datetime
+import ipaddress
 import math
 import threading
 import time
@@ -18,6 +20,7 @@ import config
 import db
 from db import stats as db_stats
 from helpers import _attach_locations, login_required
+from notify import alert
 from routes.admin import admin_bp
 from security import soar
 
@@ -168,6 +171,61 @@ def _build_permanent_locks(ip_lockouts: list[dict], account_lockouts: list[dict]
     return locks
 
 
+def _in_edge_subnet(ip: str) -> bool:
+    if not config.NET_EDGE_SUBNET or not ip:
+        return True
+    try:
+        subnet = ipaddress.ip_network(config.NET_EDGE_SUBNET, strict=False)
+        return ipaddress.ip_address(ip) in subnet
+    except ValueError:
+        return True
+
+
+def _build_agent_status(rows: dict[str, dict], now: datetime.datetime) -> dict:
+    if not config.LW_NODE_NAME:
+        return {}
+
+    result = {}
+    agents_config = [
+        ("fw-agent", config.FW_AGENT_STALE_SECONDS),
+        ("shipper", config.SHIPPER_STALE_SECONDS),
+    ]
+
+    for agent, stale_seconds in agents_config:
+        if agent not in rows:
+            result[agent] = {"last_seen_at": None, "stale": True, "detail": {}}
+            continue
+
+        row = rows[agent]
+        last_seen_str = row.get("last_seen_at")
+        detail = row.get("detail") or {}
+
+        if not last_seen_str:
+            result[agent] = {"last_seen_at": None, "stale": True, "detail": detail}
+            continue
+
+        try:
+            last_seen_dt = datetime.datetime.fromisoformat(last_seen_str.replace("Z", "+00:00"))
+            if last_seen_dt.tzinfo is None:
+                last_seen_dt = last_seen_dt.replace(tzinfo=datetime.timezone.utc)
+            diff_sec = (now - last_seen_dt).total_seconds()
+            is_stale = diff_sec > stale_seconds
+            result[agent] = {
+                "last_seen_at": last_seen_str,
+                "stale": is_stale,
+                "detail": detail,
+            }
+
+            if is_stale:
+                cooldown_key = f"slack:stale:{config.LW_NODE_NAME}:{agent}"
+                if db.try_acquire_cooldown(cooldown_key, config.AGENT_ALERT_COOLDOWN_SECONDS):
+                    alert.send_component_alert(agent, f"{int(diff_sec)}초 넘게 생존 신호가 없습니다 (PC: {config.LW_NODE_NAME})")
+        except Exception:
+            result[agent] = {"last_seen_at": last_seen_str, "stale": True, "detail": detail}
+
+    return result
+
+
 @admin_bp.route("/api/stats", methods=["GET"])
 @login_required
 def api_stats():
@@ -268,7 +326,7 @@ def api_status():
     # 아래 스레드에서는 g를 쓸 수 없으므로 여기서 먼저 꺼내둔다.
     role = g.admin["role"]
 
-    with ThreadPoolExecutor(max_workers=17) as executor:
+    with ThreadPoolExecutor(max_workers=20) as executor:
         attempts_future = executor.submit(db.list_recent_attempts, attempts_page, config.ADMIN_PAGE_SIZE)
         lockouts_future = executor.submit(db.list_active_lockouts)
         # "현재 잠긴 IP / 계정" 카드의 계정 잠금 목록 — IP 잠금 목록과 같은 배치로 병렬 조회.
@@ -300,6 +358,15 @@ def api_status():
         can_manage_admins_future = executor.submit(db.has_permission, role, "manage_admin_users")
         admin_users_future = executor.submit(db.list_admin_users)
 
+        # Track D 추가 쿼리
+        net_events_future = executor.submit(db.list_recent_network_events, 50)
+        net_blocks_future = executor.submit(db.list_network_blocks_for_dashboard)
+        agent_heartbeats_future = (
+            executor.submit(db.get_agent_heartbeats, config.LW_NODE_NAME)
+            if config.LW_NODE_NAME
+            else None
+        )
+
         attempts, attempts_count = attempts_future.result()
         recent_attempts = _attach_locations(attempts)  # 다른 future들이 도는 동안 함께 실행됨
         active_lockouts = lockouts_future.result()
@@ -319,6 +386,12 @@ def api_status():
         can_manage_admins = can_manage_admins_future.result()
         # 권한이 없으면 결과를 꺼내지 않는다 — 실패했더라도 그 관리자의 화면과는 무관하다.
         admin_users = admin_users_future.result() if can_manage_admins else None
+
+        net_events = [e for e in net_events_future.result() if _in_edge_subnet(e.get("src_ip"))]
+        net_blocks = [b for b in net_blocks_future.result() if _in_edge_subnet(b.get("ip_address"))]
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        agent_rows = agent_heartbeats_future.result() if agent_heartbeats_future else {}
+        agent_status = _build_agent_status(agent_rows, now_utc)
 
     response_data = {
             "recent_attempts": recent_attempts,
@@ -355,6 +428,10 @@ def api_status():
             "recovery_requests": recovery_requests,
             "ip_exemptions": ip_exemptions,
             "permissions": permissions,
+            # Track D 네트워크 상태 추가 키
+            "network_events": net_events,
+            "network_blocks": net_blocks,
+            "agent_status": agent_status,
         }
 
     # "관리자 계정 관리" 카드는 super_admin(manage_admin_users 권한 보유자)에게만
