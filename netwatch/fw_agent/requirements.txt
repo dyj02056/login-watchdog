@@ -1,0 +1,2 @@
+# fw-agent 컨테이너 전용(루트 requirements.txt와 별개). 앱 내부 API 호출에만 쓴다.
+requests==2.34.2
