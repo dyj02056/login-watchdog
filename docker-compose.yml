@@ -1,0 +1,141 @@
+services:
+  gateway:
+    image: nginx:1.27-alpine
+    container_name: login-watchdog-gateway
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./netwatch/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    sysctls:
+      net.ipv4.tcp_syncookies: "1"
+    networks:
+      edge:
+        ipv4_address: "${LW_EDGE_PREFIX}.10"
+      core:
+        ipv4_address: "172.29.0.10"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: login-watchdog-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TRUSTED_PROXY_IPS: "172.29.0.10"
+      PUBLIC_BASE_URL: "http://localhost:8080"
+      MAIL_BACKEND: "smtp"
+      SMTP_HOST: "mailpit"
+      SMTP_PORT: "1025"
+      SMTP_STARTTLS: "false"
+    expose:
+      - "5000"
+    depends_on:
+      - mailpit
+    networks:
+      - core
+      - egress
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: login-watchdog-mailpit
+    restart: unless-stopped
+    expose:
+      - "1025"
+    ports:
+      - "127.0.0.1:8025:8025"
+    networks:
+      - core
+
+  # 이후 단계에서 실제 Suricata 설정으로 교체한다.
+  sensor:
+    image: alpine:3.20
+    profiles:
+      - net
+    network_mode: "service:gateway"
+    depends_on:
+      - gateway
+    command: ["sh", "-c", "while true; do sleep 3600; done"]
+
+  # 이후 단계에서 실제 L4 탐지 프로그램으로 교체한다.
+  l4-detector:
+    image: python:3.12-slim
+    profiles:
+      - net
+    network_mode: "service:gateway"
+    depends_on:
+      - gateway
+    command: ["sh", "-c", "while true; do sleep 3600; done"]
+
+  # 이후 단계에서 탐지 이벤트 전송 프로그램으로 교체한다.
+  shipper:
+    image: python:3.12-slim
+    profiles:
+      - net
+    depends_on:
+      - app
+    command: ["sh", "-c", "while true; do sleep 3600; done"]
+    networks:
+      - core
+
+  # 이후 단계에서 방화벽 차단 에이전트로 교체한다.
+  fw-agent:
+    image: python:3.12-slim
+    profiles:
+      - agent
+    network_mode: "service:gateway"
+    depends_on:
+      - gateway
+    command: ["sh", "-c", "while true; do sleep 3600; done"]
+
+  attacker-1:
+    image: alpine:3.20
+    profiles:
+      - attack
+    command: ["sh", "-c", "while true; do sleep 3600; done"]
+    networks:
+      edge:
+        ipv4_address: "${LW_EDGE_PREFIX}.101"
+
+  attacker-2:
+    image: alpine:3.20
+    profiles:
+      - attack
+    command: ["sh", "-c", "while true; do sleep 3600; done"]
+    networks:
+      edge:
+        ipv4_address: "${LW_EDGE_PREFIX}.102"
+
+  attacker-3:
+    image: alpine:3.20
+    profiles:
+      - attack
+    command: ["sh", "-c", "while true; do sleep 3600; done"]
+    networks:
+      edge:
+        ipv4_address: "${LW_EDGE_PREFIX}.103"
+
+networks:
+  edge:
+    name: login-watchdog-edge
+    driver: bridge
+    ipam:
+      config:
+        - subnet: "${LW_EDGE_PREFIX}.0/24"
+          gateway: "${LW_EDGE_PREFIX}.1"
+
+  core:
+    name: login-watchdog-core
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: "172.29.0.0/24"
+
+  egress:
+    name: login-watchdog-egress
+    driver: bridge
