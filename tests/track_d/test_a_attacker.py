@@ -263,7 +263,9 @@ def test_login_without_password_returns_json_error() -> None:
 @pytest.mark.parametrize(
     ("status_code", "location", "expected_success"),
     [
-        (302, "/member/dashboard", True),
+        (302, "/dashboard", True),
+        (302, "http://172.28.11.10:8080/dashboard", True),
+        (302, "/login", False),
         (200, None, False),
     ],
 )
@@ -272,7 +274,7 @@ def test_login_success_judgment(
     location: str | None,
     expected_success: bool,
 ) -> None:
-    """302 member 이동만 로그인 성공으로 판단한다."""
+    """302로 회원 대시보드(/dashboard)에 갈 때만 로그인 성공으로 판단한다."""
     password = "test-victim-pw"
     session = FakeSession(
         FakeResponse(
@@ -337,28 +339,33 @@ def test_command_stdout_ends_with_json(
 
 
 @pytest.mark.parametrize(
-    ("argv", "expected_path"),
+    ("argv", "expected_path", "expects_remote_flag"),
     [
         (
             ["webscan"],
             "/app/scripts/simulation/medium/"
             "web_scanning_sim.py",
+            # web_scanning_sim에는 --i-know-what-im-doing 인자가 없다(붙이면 exit 2).
+            False,
         ),
         (
             ["brute", "--username", "u", "--attempts", "3"],
             "/app/scripts/simulation/critical/"
             "bruteforce_sim.py",
+            True,
         ),
         (
             ["httpflood", "--path", "/", "--requests", "10"],
             "/app/scripts/simulation/high/"
             "http_flood_sim.py",
+            True,
         ),
     ],
 )
 def test_simulators_use_python_and_image_paths(
     argv: list[str],
     expected_path: str,
+    expects_remote_flag: bool,
 ) -> None:
     """기존 시뮬레이터를 이미지 안의 고정 경로로 실행한다."""
     runner = FakeRunner()
@@ -376,7 +383,47 @@ def test_simulators_use_python_and_image_paths(
     assert command[
         command.index("--host") + 1
     ] == TARGET_URL
-    assert "--i-know-what-im-doing" in command
+    assert ("--i-know-what-im-doing" in command) is expects_remote_flag
+
+
+def test_simulators_accept_the_flags_lw_passes() -> None:
+    """lw가 넘기는 --i-know-what-im-doing을 실제 시뮬레이터가 받는지 원본에서 확인한다."""
+    simulation = PROJECT_ROOT / "scripts" / "simulation"
+    flag = '"--i-know-what-im-doing"'
+
+    assert flag not in (
+        simulation / "medium" / "web_scanning_sim.py"
+    ).read_text(encoding="utf-8")
+    assert flag in (
+        simulation / "critical" / "bruteforce_sim.py"
+    ).read_text(encoding="utf-8")
+    assert flag in (
+        simulation / "high" / "http_flood_sim.py"
+    ).read_text(encoding="utf-8")
+
+
+def test_member_dashboard_path_matches_app_route() -> None:
+    """login 성공 판정 경로가 앱의 회원 대시보드 라우트와 같다."""
+    member_routes = (PROJECT_ROOT / "routes" / "member.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert '@member_bp.route("/dashboard"' in member_routes
+    assert lw.MEMBER_DASHBOARD_PATH == "/dashboard"
+
+
+def test_app_trusts_gateway_forwarded_for() -> None:
+    """공격 상자마다 다른 출발지 IP가 앱에 보이도록 app이 gateway의 XFF를 믿는다.
+
+    TRUST_FORWARDED_FOR가 없으면 모든 요청이 gateway core 주소로 보여 brute가
+    gateway 주소를 잠그고(모두 차단) S4·S6을 확인할 수 없다.
+    """
+    compose = (PROJECT_ROOT / "docker-compose.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'TRUST_FORWARDED_FOR: "true"' in compose
+
 
 def test_compose_defines_fixed_attacker_network() -> None:
     """공격 상자가 고정된 lw_edge 네트워크만 사용하게 한다."""

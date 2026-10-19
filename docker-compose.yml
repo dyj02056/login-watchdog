@@ -17,7 +17,7 @@ services:
       edge:
         ipv4_address: "${LW_EDGE_PREFIX}.10"
       core:
-        ipv4_address: "172.29.0.10"
+        ipv4_address: "172.30.0.10"
 
   app:
     build:
@@ -28,12 +28,18 @@ services:
     env_file:
       - .env
     environment:
-      TRUSTED_PROXY_IPS: "172.29.0.10"
+      # gateway(nginx)가 X-Forwarded-For를 $remote_addr로 덮어써 넘기므로, 이 값을 켜야 공격 상자마다
+      # 다른 출발지 IP(.101~.103·일회용 .111 등)가 앱에 보인다. 끄면 모든 요청이 gateway core 주소로 보여
+      # brute가 그 주소를 잠가 모두 차단된다. 옆문 위조는 아래 TRUSTED_PROXY_IPS가 막는다(C0-1).
+      TRUST_FORWARDED_FOR: "true"
+      TRUSTED_PROXY_IPS: "172.30.0.10"
       PUBLIC_BASE_URL: "http://localhost:8080"
       MAIL_BACKEND: "smtp"
       SMTP_HOST: "mailpit"
       SMTP_PORT: "1025"
       SMTP_STARTTLS: "false"
+      # .env에 배포용 Gmail 값(SMTP_USE_SSL=true)이 남아 있어도 SSL 없는 Mailpit(1025)으로 보내게 고정한다.
+      SMTP_USE_SSL: "false"
     expose:
       - "5000"
     depends_on:
@@ -51,9 +57,12 @@ services:
     ports:
       - "127.0.0.1:8025:8025"
     networks:
+      # 앱은 core로 메일을 보낸다. core는 internal이라 Docker가 포트를 공개하지 않으므로,
+      # 브라우저에서 8025 화면을 열 수 있게 외부 연결이 되는 egress에도 붙인다.
       - core
+      - egress
 
-  # 이후 단계에서 실제 Suricata 설정으로 교체한다.
+  # 이후 단계에서 실제 Suricata 설정으로 교체한다(A1-1 전까지는 대기용 껍데기 — eve.json을 만들지 않는다).
   sensor:
     image: alpine:3.20
     network_mode: "service:gateway"
@@ -61,7 +70,7 @@ services:
       - gateway
     command: ["sh", "-c", "while true; do sleep 3600; done"]
 
-  # 이후 단계에서 실제 L4 탐지 프로그램으로 교체한다.
+  # Scapy L4 측정기(A1-2) — SYN 비율·서로 다른 포트 수를 세어 l4.json에 쓴다.
   l4-detector:
     build:
       context: ./netwatch/l4_detector
@@ -72,14 +81,18 @@ services:
     cap_add:
       - NET_RAW
     environment:
-      SENSOR_IFACE: ${SENSOR_IFACE:-eth0}
+      SENSOR_IFACE: ${SENSOR_IFACE:-eth1}
       LW_EDGE_PREFIX: ${LW_EDGE_PREFIX}
+    volumes:
+      # Suricata eve.json과 같은 볼륨에 l4.json을 써서 shipper가 두 파일을 함께 읽게 한다.
+      - eve:/var/log/suricata
 
-  # 이후 단계에서 탐지 이벤트 전송 프로그램으로 교체한다.
+  # eve.json·l4.json을 읽어 앱 수집 창구로 보내는 배달원 shipper(A1-3).
   shipper:
     build:
-      context: .
-      dockerfile: netwatch/shipper/Dockerfile
+      # 루트 .dockerignore가 netwatch/를 통째로 빼므로(앱 이미지용), 이 폴더를 빌드 컨텍스트로 쓴다.
+      context: ./netwatch/shipper
+      dockerfile: Dockerfile
     depends_on:
       - app
       - sensor
@@ -96,15 +109,24 @@ services:
       - core
     restart: unless-stopped
 
-  # 이후 단계에서 방화벽 차단 에이전트로 교체한다.
+  # L4 차단 실행기 fw-agent(C1-3) — 앱 내부 API를 HMAC으로 폴링해 gateway 네임스페이스의
+  # ipset lw_block을 고친다. .env 전체를 넘기지 않고 필요한 변수만 준다(계획 P6 — NET_ADMIN 컨테이너에 DB 키 금지).
   fw-agent:
-    image: python:3.12-slim
-    profiles:
-      - agent
+    build:
+      context: ./netwatch/fw_agent
+      dockerfile: Dockerfile
     network_mode: "service:gateway"
     depends_on:
       - gateway
-    command: ["sh", "-c", "while true; do sleep 3600; done"]
+      - app
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      APP_INTERNAL_URL: "http://app:5000"
+      NET_AGENT_SECRET: ${NET_AGENT_SECRET}
+      PERMANENT_LOCK_IP_ALLOWLIST: ${PERMANENT_LOCK_IP_ALLOWLIST}
+    restart: unless-stopped
 
   attacker-1:
     build:
@@ -166,11 +188,14 @@ networks:
     internal: true
     ipam:
       config:
-        - subnet: "172.29.0.0/24"
+        # 172.29.0.0/24는 Docker Desktop(4.91, WSL2)이 VM 내부 통신에 쓰는 대역이라
+        # 겹치면 호스트↔엔진 연결이 끊겨 "Network Creating"에서 멈춘다. 그래서 172.30을 쓴다.
+        - subnet: "172.30.0.0/24"
 
   egress:
     name: login-watchdog-egress
     driver: bridge
 
 volumes:
-  eve:
+  # 센서 기록(eve.json·l4.json) 공유 볼륨 — sensor·l4-detector가 쓰고 shipper가 읽는다.
+  eve: {}

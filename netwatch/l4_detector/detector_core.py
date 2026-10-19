@@ -20,7 +20,9 @@ from typing import Callable
 SYN_FLAG = 0x02
 ACK_FLAG = 0x10
 SYN_WINDOW_SECONDS = 1.0
-CORE_NETWORK = ipaddress.ip_network("172.29.0.0/24")
+# gateway·app·shipper가 쓰는 core 대역(compose의 core 네트워크와 같아야 한다).
+# 예전 172.29.0.0/24는 Docker Desktop(WSL2) 내부 대역과 겹쳐 172.30으로 옮겼다(A0-1 보완).
+CORE_NETWORK = ipaddress.ip_network("172.30.0.0/24")
 
 
 def utc_timestamp(timestamp: float) -> str:

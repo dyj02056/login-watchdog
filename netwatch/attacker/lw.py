@@ -36,6 +36,10 @@ HTTP_FLOOD_SCRIPT = (
     SIMULATION_ROOT / "high" / "http_flood_sim.py"
 )
 
+# 로그인 성공 시 앱이 보내는 회원 대시보드 경로(routes/member.py의 member_dashboard).
+# 앱에서 이 경로가 바뀌면 여기도 함께 바꿔야 S6 판정(success)이 맞게 나온다.
+MEMBER_DASHBOARD_PATH = "/dashboard"
+
 SCANNER_USER_AGENTS = (
     "sqlmap",
     "nikto",
@@ -268,16 +272,25 @@ def run_simulator(
     target_url: str,
     runner: Callable[..., object],
     stderr: TextIO,
+    allow_remote_flag: bool = True,
 ) -> tuple[dict, int, str]:
-    """기존 시뮬레이터를 현재 Python으로 실행한다."""
+    """기존 시뮬레이터를 현재 Python으로 실행한다.
+
+    allow_remote_flag: bruteforce·http_flood 시뮬레이터는 로컬이 아닌 --host를
+    --i-know-what-im-doing 없이는 거부하므로 붙인다. web_scanning_sim은 그 인자
+    자체가 없어서(붙이면 argparse가 exit 2로 끝남) webscan에서는 False로 넘긴다.
+    """
     command = [
         sys.executable,
         str(script_path),
         "--host",
         target_url,
-        "--i-know-what-im-doing",
-        *arguments,
     ]
+
+    if allow_remote_flag:
+        command.append("--i-know-what-im-doing")
+
+    command.extend(arguments)
     completed = run_process(command, runner, stderr)
     exit_code = int(getattr(completed, "returncode", 1))
     output = getattr(completed, "stdout", "") or ""
@@ -305,6 +318,7 @@ def command_webscan(
         target_url=target_url,
         runner=runner,
         stderr=stderr,
+        allow_remote_flag=False,
     )
     return result, exit_code
 
@@ -436,10 +450,14 @@ def command_login(
 
         status = int(post_response.status_code)
         redirect = post_response.headers.get("Location")
+        # Location은 상대 경로("/dashboard")나 절대 URL로 올 수 있어 경로만 비교한다.
+        # "/login"으로 되돌아가는 302(잠금·CR-03 안내 등)는 성공이 아니다.
+        redirect_path = (
+            urlparse(redirect).path.rstrip("/") if redirect else ""
+        )
         success = (
             status == 302
-            and redirect is not None
-            and "member" in redirect.lower()
+            and redirect_path == MEMBER_DASHBOARD_PATH
         )
 
         result.update(

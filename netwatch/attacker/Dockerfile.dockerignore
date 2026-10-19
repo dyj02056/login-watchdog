@@ -1,0 +1,9 @@
+# 공격 상자 이미지 전용 제외 목록 — BuildKit은 Dockerfile 옆의 <Dockerfile>.dockerignore가 있으면
+# 저장소 루트 .dockerignore 대신 이 파일을 쓴다.
+# 루트 .dockerignore는 앱 이미지용이라 netwatch/를 통째로 빼므로, 그대로 쓰면 lw.py를 복사하지 못해 빌드가 실패한다.
+# 그래서 이미지에 필요한 두 경로(기존 시뮬레이터·공격 상자)만 남기고 나머지(.env 같은 비밀 파일 포함)는 모두 뺀다.
+*
+!scripts/simulation/
+!netwatch/attacker/
+**/__pycache__
+**/*.py[cod]

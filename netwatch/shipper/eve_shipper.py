@@ -301,6 +301,19 @@ class Tailer:
         self.last_size = current_size
 
         with self.path.open("rb") as file:
+            # inode만으로는 재생성을 놓칠 수 있다: 리눅스는 unlink 직후 새로 만든 파일에
+            # 같은 inode 번호를 다시 쓸 수 있어(Windows 로컬에서는 재현되지 않고 CI에서만 터진다)
+            # recreated가 False가 되고, 옛 position에서 줄 중간부터 읽어 JSON이 깨진다.
+            # 우리는 항상 줄 끝(\n)에서만 멈추므로, position 바로 앞 바이트가 \n이 아니면
+            # 내용이 교체된 것으로 보고 처음부터 다시 읽는다(줄 경계로 재생성을 확인).
+            if self.position > 0:
+                if self.position > current_size:
+                    self.position = 0
+                else:
+                    file.seek(self.position - 1)
+                    if file.read(1) != b"\n":
+                        self.position = 0
+
             file.seek(self.position)
             data = file.read()
 

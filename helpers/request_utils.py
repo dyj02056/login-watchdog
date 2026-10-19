@@ -45,6 +45,35 @@ def is_bot_submission() -> bool:
     return bool(request.form.get(HONEYPOT_FIELD_NAME, "").strip())
 
 
+def _is_trusted_proxy(addr: str) -> bool:
+    """주어진 접속 IP(addr)가 config.TRUSTED_PROXY_IPS 목록에 포함된 신뢰 프록시인지 확인한다.
+
+    ipaddress.ip_address 객체로 변환하여 비교하며, TRUSTED_PROXY_IPS 항목 중
+    올바르지 않은 IP 형식이 있다면 무시한다.
+
+    문자열 그대로 비교하지 않는 이유: 같은 주소라도 IPv6 축약("::1" / "0:0:...:1")처럼
+    표기가 다를 수 있어서, 문자열 비교는 진짜 gateway 요청을 '모르는 주소'로 잘못 볼 수 있다.
+    잘못된 항목을 오류로 멈추지 않고 건너뛰는 이유: .env에 오타가 하나 있다고 모든 요청에서
+    예외가 나면 로그인 화면까지 열리지 않는다. 그 항목만 '신뢰하지 않음'으로 두는 쪽이
+    안전하다(신뢰하지 않으면 XFF 대신 remote_addr를 쓰므로 가짜 주소 주장은 여전히 막힌다).
+    """
+    if not addr:
+        return False
+    try:
+        remote_ip = ipaddress.ip_address(addr)
+    except ValueError:
+        return False
+
+    for trusted_str in config.TRUSTED_PROXY_IPS:
+        try:
+            trusted_ip = ipaddress.ip_address(trusted_str)
+            if remote_ip == trusted_ip:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def get_request_ip() -> str:
     """이번 요청을 보낸 사람의 IP 주소를 알아낸다.
 
@@ -56,6 +85,11 @@ def get_request_ip() -> str:
     왔다"고 헤더로 주장하면 그걸 믿어주는 우회로를 마련해둔 것이다.
     실제 운영 서비스에서는 이 헤더를 함부로 신뢰하면 공격자가 IP를 속여
     잠금을 피해갈 수 있으므로 위험하다 — 그래서 기본값은 꺼짐(False)이다.
+
+    V13: 옆문 요청의 가짜 주소 주장 방지 — config.TRUSTED_PROXY_IPS가 설정되어 있는 경우,
+    실제 접속 IP(request.remote_addr)가 신뢰할 수 있는 프록시 목록에 있을 때만
+    X-Forwarded-For 헤더를 신뢰한다. 목록에 없는 옆문 요청이 들어온 경우에는 헤더를 무시하고
+    remote_addr로 되돌아간다.
 
     SSRF 방지 (L7 공격 보강 계획 Tier 3): 이 값은 이후 services/geoip.py가 외부
     위치 조회 API 주소에 그대로 끼워 넣는 데 쓰인다. X-Forwarded-For는
@@ -70,6 +104,11 @@ def get_request_ip() -> str:
     이 함수 하나만 바꾸면 이 값을 쓰는 탐지·잠금·요청 제한·이벤트가 전부 같은 단위로 동작한다.
     """
     if config.TRUST_FORWARDED_FOR:
+        # V13: 목록이 비어 있으면 이 검사를 건너뛰어 기존 동작(시뮬레이터가 XFF로 IP를 흉내 냄)을
+        # 그대로 둔다. 목록이 있으면 gateway가 아닌 곳(옆문)에서 온 요청의 XFF는 버린다.
+        if config.TRUSTED_PROXY_IPS and not _is_trusted_proxy(request.remote_addr):
+            return normalize_ip(request.remote_addr)
+
         forwarded = request.headers.get("X-Forwarded-For")
         if forwarded:
             # 이 헤더는 "1.2.3.4, 5.6.7.8"처럼 여러 IP가 콤마로 이어질 수 있어서

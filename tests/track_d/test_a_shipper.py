@@ -557,3 +557,51 @@ def test_heartbeat_body_contains_required_detail() -> None:
             "queue": 3,
         },
     }
+
+def _compose_service_block(compose: str, name: str) -> str:
+    """PyYAML 없이 compose 문자열에서 서비스 한 개의 블록만 잘라 낸다."""
+    rest = compose.split(f"\n  {name}:\n", 1)[1]
+    markers = (
+        rest.find("\n  attacker-1:"),
+        rest.find("\n  fw-agent:"),
+        rest.find("\nnetworks:"),
+        rest.find("\nvolumes:"),
+    )
+    end = min((i for i in markers if i != -1), default=len(rest))
+    return rest[:end]
+
+
+def test_compose_shipper_builds_from_own_folder() -> None:
+    """shipper는 기본으로 켜지고, 루트 .dockerignore에 막히지 않는 빌드 컨텍스트를 쓴다."""
+    compose = (PROJECT_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    block = _compose_service_block(compose, "shipper")
+
+    assert "profiles:" not in block
+    # 루트 .dockerignore가 netwatch/를 빼므로 shipper 폴더 자체를 컨텍스트로 써야 빌드가 된다.
+    assert "context: ./netwatch/shipper" in block
+    assert "- eve:/var/log/suricata:ro" in block
+    assert "NET_INGEST_SECRET: ${NET_INGEST_SECRET}" in block
+
+
+def test_compose_fw_agent_runs_by_default_without_db_keys() -> None:
+    """fw-agent는 기본으로 켜지고, DB 키 없이 필요한 변수만 받는다(계획 P6)."""
+    compose = (PROJECT_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    block = _compose_service_block(compose, "fw-agent")
+
+    assert "profiles:" not in block
+    assert "context: ./netwatch/fw_agent" in block
+    assert "- NET_ADMIN" in block
+    assert "NET_AGENT_SECRET: ${NET_AGENT_SECRET}" in block
+    # .env 전체(env_file)를 넘기지 않는다 — NET_ADMIN 컨테이너에 DB 키 금지.
+    assert "env_file" not in block
+
+
+def test_compose_has_no_stale_core_subnet() -> None:
+    """예전 core 대역 172.29는 Docker Desktop(WSL2) 내부 대역과 겹쳐 설정값으로 쓰지 않는다."""
+    compose = (PROJECT_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    # 주석(# …)으로 "왜 172.30으로 옮겼나"를 설명하는 줄은 허용하고, 실제 설정값에만 없어야 한다.
+    config_lines = [
+        line for line in compose.splitlines()
+        if "172.29." in line and not line.lstrip().startswith("#")
+    ]
+    assert config_lines == []
