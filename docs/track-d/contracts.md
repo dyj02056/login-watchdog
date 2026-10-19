@@ -70,7 +70,7 @@
 | 대상 | 주소 | 비고 |
 |---|---|---|
 | gateway(nginx) edge 쪽 | `${LW_EDGE_PREFIX}.10` | sensor·l4-detector·fw-agent가 이 네임스페이스를 공유 |
-| gateway core 쪽 | `172.29.0.10` (고정) | 앱의 `TRUSTED_PROXY_IPS` 값 |
+| gateway core 쪽 | `172.30.0.10` (고정) | 앱의 `TRUSTED_PROXY_IPS` 값 |
 | attacker-1 / 2 / 3 | `${LW_EDGE_PREFIX}.101` / `.102` / `.103` | `profiles: [attack]` |
 | 내 브라우저(호스트) | `${LW_EDGE_PREFIX}.1` | 허용 목록에 넣는다 |
 | 앱 내부 주소 | `http://app:5000` | shipper·fw-agent가 사용 |

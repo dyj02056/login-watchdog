@@ -15,7 +15,7 @@ services:
       edge:
         ipv4_address: "${LW_EDGE_PREFIX}.10"
       core:
-        ipv4_address: "172.29.0.10"
+        ipv4_address: "172.30.0.10"
 
   app:
     build:
@@ -26,7 +26,7 @@ services:
     env_file:
       - .env
     environment:
-      TRUSTED_PROXY_IPS: "172.29.0.10"
+      TRUSTED_PROXY_IPS: "172.30.0.10"
       PUBLIC_BASE_URL: "http://localhost:8080"
       MAIL_BACKEND: "smtp"
       SMTP_HOST: "mailpit"
@@ -134,7 +134,9 @@ networks:
     internal: true
     ipam:
       config:
-        - subnet: "172.29.0.0/24"
+        # 172.29.0.0/24는 Docker Desktop(4.91, WSL2)이 VM 내부 통신에 쓰는 대역이라
+        # 겹치면 호스트↔엔진 연결이 끊겨 "Network Creating"에서 멈춘다. 그래서 172.30을 쓴다.
+        - subnet: "172.30.0.0/24"
 
   egress:
     name: login-watchdog-egress

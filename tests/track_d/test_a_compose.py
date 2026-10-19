@@ -62,8 +62,8 @@ def test_compose_uses_track_d_network_contract() -> None:
     assert '"${LW_EDGE_PREFIX}.102"' in compose
     assert '"${LW_EDGE_PREFIX}.103"' in compose
     assert '"${LW_EDGE_PREFIX}.0/24"' in compose
-    assert '"172.29.0.10"' in compose
-    assert '"172.29.0.0/24"' in compose
+    assert '"172.30.0.10"' in compose
+    assert '"172.30.0.0/24"' in compose
     assert "internal: true" in compose
 
 
@@ -73,7 +73,7 @@ def test_compose_exposes_only_gateway_and_mailpit_ui() -> None:
 
     assert '"127.0.0.1:8080:8080"' in compose
     assert '"127.0.0.1:8025:8025"' in compose
-    assert 'TRUSTED_PROXY_IPS: "172.29.0.10"' in compose
+    assert 'TRUSTED_PROXY_IPS: "172.30.0.10"' in compose
     assert 'SMTP_HOST: "mailpit"' in compose
 
 
