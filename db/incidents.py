@@ -114,7 +114,7 @@ def _merge_into_existing(existing: dict, event_types: list[str], severity: str) 
     }
 
 
-def record_incident(ip: str, event_types: list[str], severity: str) -> dict:
+def record_incident(ip: str, event_types: list[str], severity: str, source: str = "APP") -> dict:
     """이 IP에 열린 사건이 있으면 event_types/최고 위험등급을 병합해서 갱신하고,
     없으면 새로 연다. 병합/생성된 사건의 최종 상태(id/event_types/severity_max/
     escalated)를 돌려준다 — security/correlate.py가 이 값을 보고 SOAR 플레이북(사건
@@ -126,6 +126,7 @@ def record_incident(ip: str, event_types: list[str], severity: str) -> dict:
     같은 방식으로, 그 충돌(Postgres 오류 코드 23505)을 여기서 붙잡아 새로 여는
     대신 이미 삽입된 사건에 병합하는 것으로 대체한다.
     """
+    # source는 B1-3의 앱 위험등급 분리에 대비해 받고 현재 병합 판단은 유지한다.
     existing = get_open_incident(ip)
     if existing and _is_idle(existing):
         # 마지막 이벤트로부터 config.INCIDENT_MERGE_IDLE_MINUTES 넘게 조용했던 옛
