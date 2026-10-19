@@ -1,25 +1,54 @@
-# ============================================================================
-# routes/internal/_hmac.py — 내부 API 서명(HMAC) 검증 공용 함수 (계약서 K3)
-#
-# 담당: 역할 B (B0-1에서 구현). 지금은 Track D 뼈대 PR(I0-1)이 넣은 껍데기다.
-#
-# 뼈대 단계의 verify_request()는 "항상 거절(None)"을 돌려준다 — 구현 전에 내부 창구가
-# 실수로 열려 있지 않도록, 서명 검사가 생기기 전까지는 어떤 요청도 통과시키지 않는다.
-# ============================================================================
+"""내부 API의 원본 본문과 시각을 인증한다(계약서 K3).
+
+P7에 따라 shipper와 fw-agent의 키를 분리해 한쪽 키가 유출되어도 다른
+보낸이의 권한을 사용할 수 없게 한다. 시각 오차를 기본 60초로 제한해
+오래된 요청의 재전송을 막는다. 허용 시간 안의 중복 재전송까지 막지는 않는다.
+"""
+
+import hashlib
+import hmac
+import time
+
+from flask import request
+
+import config
 
 
 def sign(key: str, timestamp: str, body: bytes) -> str:
-    """서명 문자열(hex)을 만든다. 테스트와 보내는 쪽(shipper·fw-agent) 구현의 기준값.
-
-    B0-1에서 구현한다(계약서 K3).
-    """
-    raise NotImplementedError("B0-1에서 구현 — 계약서 K3")
+    """송신 측과 같은 바이트 규칙을 사용해 서명 호환성을 보장한다."""
+    return hmac.new(key.encode(), timestamp.encode("ascii") + b"." + body, hashlib.sha256).hexdigest()
 
 
 def verify_request(allowed_senders: set[str]) -> str | None:
-    """현재 flask.request의 서명을 검증한다.
+    """실패 상세는 로그에만 남기고 호출자는 공통 인증 실패로 응답하게 한다."""
+    sender = request.headers.get("X-LW-Sender")
+    timestamp = request.headers.get("X-LW-Timestamp")
+    signature = request.headers.get("X-LW-Signature")
+    if not sender or not timestamp or not signature:
+        print("internal_hmac: missing_header")
+        return None
+    if sender not in allowed_senders or sender not in {"shipper", "fw-agent"}:
+        print("internal_hmac: disallowed_sender")
+        return None
 
-    성공하면 보낸이 이름('shipper' | 'fw-agent'), 실패하면 None.
-    B0-1에서 구현하기 전까지는 항상 None(거절)을 돌려준다.
-    """
-    return None
+    key = config.NET_INGEST_SECRET if sender == "shipper" else config.NET_AGENT_SECRET
+    if not key:
+        print("internal_hmac: empty_key")
+        return None
+    try:
+        timestamp.encode("ascii")
+        timestamp_value = int(timestamp)
+    except (ValueError, UnicodeEncodeError):
+        print("internal_hmac: invalid_timestamp")
+        return None
+    if abs(time.time() - timestamp_value) > config.NET_INTERNAL_MAX_SKEW_SECONDS:
+        print("internal_hmac: timestamp_skew")
+        return None
+
+    # 원본 바이트를 캐시해야 이후 라우트에서 get_json()으로 본문을 다시 읽을 수 있다.
+    expected = sign(key, timestamp, request.get_data(cache=True))
+    # 비ASCII 입력도 예외로 중단되지 않고 인증 실패로 처리한다.
+    if not hmac.compare_digest(expected.encode("ascii"), signature.encode("utf-8")):
+        print("internal_hmac: signature_mismatch")
+        return None
+    return sender
