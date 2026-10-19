@@ -221,8 +221,8 @@ def test_compose_passes_l4_detector_environment() -> None:
         1,
     )[0]
 
-    assert "profiles:" in l4_block
-    assert "- net" in l4_block
+    # A1-3부터 L4 측정기는 기본 서비스로 실행한다(shipper가 두 파일을 함께 tail하려면 항상 켜져 있어야 함).
+    assert "profiles:" not in l4_block
     assert "environment:" in l4_block
     assert "SENSOR_IFACE: ${SENSOR_IFACE:-eth1}" in l4_block
     assert "LW_EDGE_PREFIX: ${LW_EDGE_PREFIX}" in l4_block
