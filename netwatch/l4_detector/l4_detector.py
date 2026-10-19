@@ -1,8 +1,9 @@
 """Scapy로 TCP 패킷을 받아 l4.json에 경보를 기록한다.
 
 환경변수 기본값과 이유:
-- SENSOR_IFACE=eth0
-  Docker에서 gateway와 네트워크 네임스페이스를 공유할 때 기본 인터페이스다.
+- SENSOR_IFACE=eth1
+  gateway 네임스페이스에서 edge(공격이 들어오는 쪽) 인터페이스다. gateway는 core·edge 순으로
+  붙어 eth0=core(172.30), eth1=edge가 된다(10/19 ip addr로 확인). core는 탐지에서 빼므로 eth0이면 0건이 된다.
 - L4_SYN_PER_SEC=100
   Suricata sid 9000001과 비슷한 수준으로 SYN Flood를 판단한다.
 - L4_DISTINCT_PORTS_10S=15
@@ -26,7 +27,7 @@ from scapy.all import IP, TCP, sniff
 from detector_core import L4Detector
 
 
-DEFAULT_SENSOR_IFACE = "eth0"
+DEFAULT_SENSOR_IFACE = "eth1"
 DEFAULT_SYN_THRESHOLD = 100
 DEFAULT_DISTINCT_PORTS_THRESHOLD = 15
 DEFAULT_OUTPUT = "/var/log/suricata/l4.json"

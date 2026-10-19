@@ -93,4 +93,4 @@ def test_env_example_contains_role_a_values() -> None:
     env_example = read_project_file(".env.example")
 
     assert "LW_EDGE_PREFIX=172.28.11" in env_example
-    assert "SENSOR_IFACE=eth0" in env_example
+    assert "SENSOR_IFACE=eth1" in env_example

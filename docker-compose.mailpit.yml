@@ -5,6 +5,11 @@
 # 그래서 팀원이 메일 계정 없이도 "잠금 → 복구 메일 → 링크 클릭 → 해제" 전체 흐름을
 # 직접 확인할 수 있다. 개발·테스트 전용이다(운영 배포에 쓰지 않는다).
 #
+# ※ Docker 없이 앱을 직접 실행(python app.py)할 때만 쓴다. Track D Docker 실행(docker compose up)에는
+#   기본 docker-compose.yml에 mailpit이 이미 들어 있고, 컨테이너 이름(login-watchdog-mailpit)과
+#   8025 포트가 같아 둘을 함께 띄우면 충돌한다. 먼저 이 파일 쪽을 내린다:
+#   docker compose -f docker-compose.mailpit.yml down
+#
 # 실행:   docker compose -f docker-compose.mailpit.yml up -d
 # 종료:   docker compose -f docker-compose.mailpit.yml down
 # 메일함: http://127.0.0.1:8025  (보낸 메일이 여기 쌓인다)

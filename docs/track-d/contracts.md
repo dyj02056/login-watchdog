@@ -60,7 +60,7 @@
 | 이름 | 예 | 뜻 |
 |---|---|---|
 | `LW_EDGE_PREFIX` | `172.28.13` | 사람별 공격 대역 앞 세 자리 (01의 4장 표) |
-| `SENSOR_IFACE` | `eth0` | Suricata·Scapy가 감시할 인터페이스 (A0-2에서 확인한 값) |
+| `SENSOR_IFACE` | `eth1` | Suricata·Scapy가 감시할 인터페이스. gateway 안에서 eth0=core(172.30), eth1=edge라 edge 쪽인 eth1 (2026-10-19 `ip -4 -o addr`로 확인) |
 | `LW_VICTIM_PASSWORD` | (사람마다 다름) | S4·S6에서 공격 상자(attacker-2)가 `victim_<역할>` 계정으로 로그인할 때 쓰는 테스트 계정 비밀번호. A2-1의 로그인 명령과 C3-1이 읽는다. **LLM에 붙여 넣지 않고** 이미지·compose·README에 값을 적지 않는다 |
 
 ---
@@ -475,3 +475,5 @@ ctx = {
 | 2026-10-13 | K7 | 플레이북이 `request_block`에 넘기는 값 명시: `block_l4_ttl`은 `SPOOFABLE`·`ttl_seconds=None`·`NET_FLOOD`, `block_l4`는 `CONNECTED`·`KILL_CHAIN`. ctx의 `CONNECTED`를 그대로 넘기면 CR-02가 영구 차단되는 문제 방지 | 같은 회의 |
 | 2026-10-13 | K9 | heartbeat를 받을 때 상대 장비 정지도 확인해 알림(관리자 화면을 안 열어도 알림). fw-agent 10초 메모 정리 | 같은 회의 |
 | 2026-10-13 | K8·K11 | 쿨다운을 DB에 두는 이유를 "여러 워커"에서 "여러 스레드·여러 PC·Vercel"로 고침(app은 gunicorn 워커 1개 + 스레드 — 확장 계획서 2.2). K11의 쿨다운·생존 신호 표는 본 계획서 2.3 ⑥에도 반영됨 | — |
+| 2026-10-19 | K2 | gateway core 쪽 고정 주소 `172.29.0.10`→`172.30.0.10`(core 대역 `172.30.0.0/24`). Docker Desktop(WSL2)이 VM 내부 통신에 `172.29.0.0/24`를 써서 겹치면 엔진 연결이 끊겼다 | 통합 담당자 확인 |
+| 2026-10-19 | K1 | `SENSOR_IFACE` 예 `eth0`→`eth1`. gateway 안에서 eth0=core, eth1=edge로 확인(`ip -4 -o addr`). eth0이면 L4 탐지가 0건 | 통합 담당자 확인 |

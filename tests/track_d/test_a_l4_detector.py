@@ -224,7 +224,7 @@ def test_compose_passes_l4_detector_environment() -> None:
     assert "profiles:" in l4_block
     assert "- net" in l4_block
     assert "environment:" in l4_block
-    assert "SENSOR_IFACE: ${SENSOR_IFACE:-eth0}" in l4_block
+    assert "SENSOR_IFACE: ${SENSOR_IFACE:-eth1}" in l4_block
     assert "LW_EDGE_PREFIX: ${LW_EDGE_PREFIX}" in l4_block
     # l4.json을 shipper와 공유하는 eve 볼륨(최상위 volumes에 선언)
     assert "- eve:/var/log/suricata" in l4_block
