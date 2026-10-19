@@ -291,6 +291,9 @@ NET_FLOOD_REPEAT_DAYS = int(os.environ.get("NET_FLOOD_REPEAT_DAYS", 30))  # CR-0
 # fw-agent → 앱 서명 키(계약서 K3). shipper 키와 반드시 다른 값이어야 한다 — 하나가 새도 다른 쪽은 안전하게.
 NET_AGENT_SECRET = os.environ.get("NET_AGENT_SECRET", "")
 # 이 주소에서 온 요청만 X-Forwarded-For를 믿는다(쉼표 목록). 비어 있으면 기존 동작 그대로다.
+# Docker로 띄우면 docker-compose.yml이 gateway(nginx)의 core 쪽 고정 주소 172.30.0.10을 직접 넣는다.
+# 예전 값 172.29.0.10은 Docker Desktop(WSL2)이 VM 내부 통신에 쓰는 172.29.0.0/24와 겹쳐 엔진 연결이
+# 끊기는 바람에 core 대역을 172.30.0.0/24로 옮겼다 — .env에 예전 값을 적어 두었다면 바꿔야 한다.
 TRUSTED_PROXY_IPS = [
     value.strip() for value in os.environ.get("TRUSTED_PROXY_IPS", "").split(",") if value.strip()
 ]
