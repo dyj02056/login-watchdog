@@ -11,6 +11,7 @@ import config
 import db
 from db import network_events
 from routes.internal import ingest
+from security import net_ingest
 
 
 URL = "/api/internal/net-events"
@@ -41,6 +42,8 @@ def event():
 @pytest.fixture
 def storage(monkeypatch):
     inserted, bumped = [], []
+    # 수집 API 테스트가 실제 승격·DB 호출로 이어지지 않게 분리한다.
+    monkeypatch.setattr(net_ingest, "promote", lambda row: False)
     monkeypatch.setattr(config, "NET_INGEST_SECRET", SECRET)
     monkeypatch.setattr(config, "NET_AGENT_SECRET", "test-agent-secret")
     monkeypatch.setattr(config, "NET_INGEST_MAX_BODY_BYTES", 16384)

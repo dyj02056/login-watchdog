@@ -36,7 +36,7 @@ PLAYBOOKS = {
 }
 
 
-def check_and_correlate(ip: str, event_type: str, severity: str) -> None:
+def check_and_correlate(ip: str, event_type: str, severity: str, source: str = "APP") -> None:
     """방금 security_events에 기록된 이벤트를 계기로, 이 IP가 최근
     config.INCIDENT_CORRELATION_WINDOW_MINUTES분 안에 서로 다른 event_type을
     2개 이상 남겼는지 확인한다.
@@ -51,7 +51,11 @@ def check_and_correlate(ip: str, event_type: str, severity: str) -> None:
     )
     if len(distinct_types) < 2:
         return
-    incident = db.record_incident(ip, distinct_types, severity)
+    # 기본 APP 호출은 기존 모양을 유지하고 NET 출처는 사건 기록 계층까지 전달한다.
+    if source == "APP":
+        incident = db.record_incident(ip, distinct_types, severity)
+    else:
+        incident = db.record_incident(ip, distinct_types, severity, source=source)
     _maybe_escalate(ip, incident)
 
     # 영구 잠금(guide33). 영구 잠금 이벤트 자체는 사건의 "결과"이므로 다시 승격을 시도하지

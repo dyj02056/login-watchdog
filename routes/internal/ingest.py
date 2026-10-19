@@ -15,6 +15,7 @@ import db
 
 from routes.internal import internal_bp
 from routes.internal._hmac import verify_request
+from security import net_ingest
 from services.ip_utils import normalize_ip
 
 
@@ -95,7 +96,10 @@ def net_events():
     row["last_seen_at"] = row["observed_at"]
     row["promoted"] = False
     if db.insert_network_event(row):
-        return jsonify(status="stored", promoted=False)
+        promoted = net_ingest.promote(row)
+        if promoted:
+            db.mark_network_event_promoted(row["event_id"])
+        return jsonify(status="stored", promoted=promoted)
     db.bump_network_event(row["event_id"], row["packet_count"], last_seen_at=row["observed_at"])
     return jsonify(status="updated", promoted=False)
 

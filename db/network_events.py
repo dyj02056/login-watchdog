@@ -22,10 +22,26 @@ __all__ = [
     "bump_network_event",
     "list_recent_network_events",
     "count_network_events_by_category",
+    "mark_network_event_promoted",
+    "resolve_net_blocked_events",
 ]
 
 _PAGE = 1000
 _MAX_ROWS = 20000
+
+
+def mark_network_event_promoted(event_id: str) -> None:
+    """승격을 마친 원본 경보만 표시하고 반복 호출로 상태를 되돌리지 않는다."""
+    db.get_client().table("network_events").update({"promoted": True}).eq(
+        "event_id", event_id
+    ).eq("promoted", False).execute()
+
+
+def resolve_net_blocked_events(ip: str) -> None:
+    """IP와 이벤트 유형 및 미해결 조건을 함께 걸어 다른 보안 기록을 보존한다."""
+    db.get_client().table("security_events").update({"resolved_at": db._now_iso()}).eq(
+        "ip_address", ip
+    ).eq("event_type", "NET_BLOCKED").is_("resolved_at", "null").execute()
 
 
 def insert_network_event(row: dict) -> bool:
