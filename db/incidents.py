@@ -66,7 +66,7 @@ def get_open_incident(ip: str) -> dict | None:
     res = (
         db.get_client()
         .table("security_incidents")
-        .select("id, event_types, severity_max, escalated, last_event_at")
+        .select("id, event_types, severity_max, app_severity_max, matched_rules, escalated, last_event_at")
         .eq("ip_address", ip)
         .eq("status", "OPEN")
         .limit(1)
@@ -85,6 +85,9 @@ def _insert_incident(ip: str, event_types: list[str], severity_max: str) -> int:
                 "ip_address": ip,
                 "event_types": event_types,
                 "severity_max": severity_max,
+                # 출처는 record_incident만 알고 있으므로 APP 확인 전에는 등급을 비워 둔다.
+                "app_severity_max": None,
+                "matched_rules": [],
                 "status": "OPEN",
                 "escalated": False,
                 "first_event_at": now,
@@ -110,15 +113,20 @@ def _merge_into_existing(existing: dict, event_types: list[str], severity: str) 
         "id": existing["id"],
         "event_types": merged_types,
         "severity_max": merged_severity,
+        "app_severity_max": existing.get("app_severity_max"),
+        "matched_rules": existing.get("matched_rules") or [],
         "escalated": existing["escalated"],
     }
 
 
-def record_incident(ip: str, event_types: list[str], severity: str) -> dict:
+def record_incident(ip: str, event_types: list[str], severity: str, source: str = "APP") -> dict:
     """이 IP에 열린 사건이 있으면 event_types/최고 위험등급을 병합해서 갱신하고,
     없으면 새로 연다. 병합/생성된 사건의 최종 상태(id/event_types/severity_max/
     escalated)를 돌려준다 — security/correlate.py가 이 값을 보고 SOAR 플레이북(사건
     에스컬레이션 알림, Track C guide28)을 실행할지 판단한다.
+
+    전체 등급과 별개로 APP 출처만 앱 등급을 올리고 matched_rules는 기존 값을 보존한다.
+    새 행의 앱 등급은 우선 NULL로 두어 출처 확인 전 NET 등급으로 잠금이 걸리지 않게 한다.
 
     "열려있는지 확인" 후 "새로 연다" 사이의 아주 짧은 틈에 동시 요청 두 개가
     겹치면(드문 경쟁 조건), docs/schema.sql의 idx_security_incidents_open_ip
@@ -137,15 +145,39 @@ def record_incident(ip: str, event_types: list[str], severity: str) -> dict:
         mark_incident_idle(existing["id"])
         existing = None
     if existing:
-        return _merge_into_existing(existing, event_types, severity)
-    try:
-        incident_id = _insert_incident(ip, event_types, severity)
-        return {"id": incident_id, "event_types": event_types, "severity_max": severity, "escalated": False}
-    except APIError as e:
-        if e.code != "23505":
-            raise
-        existing = get_open_incident(ip)
-        return _merge_into_existing(existing, event_types, severity)
+        incident = _merge_into_existing(existing, event_types, severity)
+    else:
+        try:
+            incident_id = _insert_incident(ip, event_types, severity)
+            incident = {
+                "id": incident_id, "event_types": event_types, "severity_max": severity,
+                "app_severity_max": None, "matched_rules": [], "escalated": False,
+            }
+        except APIError as e:
+            if e.code != "23505":
+                raise
+            existing = get_open_incident(ip)
+            incident = _merge_into_existing(existing, event_types, severity)
+
+    if source == "APP":
+        # 조회 뒤 다른 요청이 더 높은 앱 등급을 저장해도 현재 값보다 낮게 덮어쓰지 않는다.
+        lower = [value for value, rank in _SEVERITY_RANK.items() if rank < _SEVERITY_RANK[severity]]
+        condition = "app_severity_max.is.null"
+        if lower:
+            condition += f",app_severity_max.in.({','.join(lower)})"
+        updated = (
+            db.get_client().table("security_incidents").update({"app_severity_max": severity})
+            .eq("id", incident["id"]).or_(condition).execute().data
+        )
+        # 경합으로 이미 더 높은 값이 저장된 경우도 최신 앱 등급과 규칙 목록을 돌려준다.
+        current = updated or (
+            db.get_client().table("security_incidents").select("app_severity_max, matched_rules")
+            .eq("id", incident["id"]).limit(1).execute().data
+        )
+        if current:
+            incident["app_severity_max"] = current[0].get("app_severity_max")
+            incident["matched_rules"] = current[0].get("matched_rules") or []
+    return incident
 
 
 def mark_incident_escalated(incident_id: int) -> None:

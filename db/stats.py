@@ -12,8 +12,9 @@
 # 시각은 전부 한국 시간(KST, UTC+9)으로 묶는다 — 관제 화면의 "오늘"은 한국 날짜 기준이고,
 # 일별 요약표(log_daily_summary)도 같은 기준으로 만들어진다. 한국은 서머타임이 없어 고정 오프셋이다.
 #
-# L3/L4(네트워크·전송 계층) 공격은 아직 수집하지 않는다 — README "알려진 제한사항" 참고.
-# 그래서 응답의 network_layer는 항상 빈 목록이고, 화면은 이를 "데이터 없음" 상태로 그린다.
+# L3/L4(네트워크·전송 계층) 경보는 Track D 센서(로컬 Docker)가 network_events에 쌓는다(C2-3).
+# network_layer는 최근 RECENT_DAYS일을 category·layer로 센 값이고, 센서가 없는 환경(Vercel 등)에서는
+# 빈 목록이 되어 화면이 "데이터 없음" 상태로 그린다. 세 PC가 같은 DB를 쓰므로 공용 합계다(계약서 K10).
 # ============================================================================
 
 import threading
@@ -156,6 +157,9 @@ def fetch_raw(now: datetime | None = None) -> dict:
             events_since,
         ),
         "summary": lambda: _summary_rows((today_start - timedelta(days=RECENT_DAYS - 1)).date()),
+        # [C2-3] 네트워크 경보 종류별 개수 — 집계는 B의 db.count_network_events_by_category(계약서 K10).
+        # NET_EDGE_SUBNET으로 거르지 않는다(세 PC 합계, 발표 날에는 시연 PC만 돈다).
+        "network_layer": lambda: db.count_network_events_by_category(week_ago_start.isoformat()),
     }
     for source in LOG_SOURCES:
         column = _LOG_TIME_COLUMN.get(source, "attempted_at")
@@ -417,8 +421,8 @@ def build_threat_stats(raw: dict, *, active_locks: int, pending_ai: int, locatio
         "pathless_total": sum(pathless_by_type.values()),
         "country_flow": {"links": country_links},
         "events": live_events,
-        # L3/L4 센서는 아직 없다 — 화면은 이 빈 목록을 "수집 전" 상태로 그린다.
-        "network_layer": [],
+        # [C2-3] fetch_raw가 가져온 네트워크 경보 집계. 없으면(센서 없는 환경) 빈 목록 — 화면은 "수집 전"으로 그린다.
+        "network_layer": raw.get("network_layer") or [],
     }
 
 

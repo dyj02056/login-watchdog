@@ -134,3 +134,16 @@ def test_heartbeat_detects_other_stale(client, signed_headers, monkeypatch):
     assert res.status_code == 200
     assert len(alerts) == 1
     assert alerts[0][0] == "shipper"
+
+@pytest.mark.parametrize("path,sender,key", [
+    ("/api/internal/blocks/ack", "fw-agent", "agent-secret"),
+    ("/api/internal/heartbeat", "fw-agent", "agent-secret"),
+])
+def test_non_object_json_body_is_rejected_as_invalid(client, signed_headers, path, sender, key):
+    # [C1-1·C1-2 보완] JSON 목록처럼 객체가 아닌 본문은 500이 아니라 400 field body로 거절한다.
+    body = b'["not", "an", "object"]'
+    headers = signed_headers(sender, key, body)
+    headers["Content-Type"] = "application/json"
+    res = client.post(path, data=body, headers=headers)
+    assert res.status_code == 400
+    assert res.get_json() == {"error": "invalid", "field": "body"}

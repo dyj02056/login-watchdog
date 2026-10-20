@@ -3,8 +3,9 @@
 #   GET  /api/internal/blocks      — 지금 막아야 할 IP 목록(원하는 상태 전체)
 #   POST /api/internal/blocks/ack  — fw-agent가 실제로 반영했다는 확인 보고
 #
-# 담당: 역할 C (C1-2에서 구현). 지금은 Track D 뼈대 PR(I0-1)이 넣은 껍데기다.
-# fw-agent만 부를 수 있다(보낸이 "fw-agent"). 서명이 없거나 틀리면 401, 구현 전까지는 501.
+# 담당: 역할 C (C1-2). fw-agent만 부를 수 있다(보낸이 "fw-agent"). 서명이 없거나 틀리면 401.
+# 앱은 "원하는 상태"만 장부(network_blocks)에 적고, 실제 ipset 반영은 fw-agent가 한다(P6 —
+# NET_ADMIN 권한 컨테이너에 DB 키를 주지 않기 위해). 그래서 이 창구가 장부와 agent를 잇는다.
 # ============================================================================
 
 from datetime import datetime, timezone
@@ -21,6 +22,8 @@ from security import net_ingest
 
 
 def _parse_iso(value: str | None) -> datetime | None:
+    """DB가 돌려준 시각 문자열을 UTC datetime으로 바꾼다. 해석할 수 없으면 None —
+    잘못된 행 하나 때문에 목록 전체가 500이 되면 fw-agent가 모든 차단을 못 받기 때문이다."""
     if not value:
         return None
     try:
@@ -34,7 +37,10 @@ def _parse_iso(value: str | None) -> datetime | None:
 
 @internal_bp.route("/blocks", methods=["GET"])
 def list_blocks():
-    """fw-agent가 2초마다 가져가는 차단 목록. C1-2에서 구현한다."""
+    """fw-agent가 2초마다 가져가는 차단 목록(계약서 K9 ①).
+
+    응답 전에 만료된 차단을 REMOVED로 바꾼다(지연 만료). 앱에 별도 스케줄러가 없으므로
+    agent가 묻는 이 순간이 만료를 정리하기 가장 확실한 시점이다."""
     if verify_request({"fw-agent"}) is None:
         return jsonify(error="unauthorized"), 401
 
@@ -85,11 +91,17 @@ def list_blocks():
 
 @internal_bp.route("/blocks/ack", methods=["POST"])
 def ack_block():
-    """fw-agent의 반영 확인(APPLIED·REMOVED·FAILED). C1-2에서 구현한다."""
+    """fw-agent의 반영 확인(APPLIED·REMOVED·FAILED, 계약서 K9 ②).
+
+    상태 전이는 조건부 UPDATE로만 한다 — 같은 보고가 두 번 와도(재전송) 두 번째는
+    changed=false가 되어 NET_BLOCKED가 중복 기록되지 않는다(멱등)."""
     if verify_request({"fw-agent"}) is None:
         return jsonify(error="unauthorized"), 401
 
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    # [C1-1·C1-2 보완] 본문이 JSON 객체가 아니면(목록·문자열 등) .get()에서 500이 나므로 400으로 거절한다.
+    if not isinstance(data, dict):
+        return jsonify(error="invalid", field="body"), 400
     ip = data.get("ip")
     status = data.get("status")
     error = data.get("error")
