@@ -57,6 +57,8 @@ def storage(monkeypatch):
 
     monkeypatch.setattr(db, "insert_network_event", insert, raising=False)
     monkeypatch.setattr(db, "bump_network_event", bump, raising=False)
+    # 재전송 경로의 승격 복구 확인도 실제 DB에 닿지 않게 "이미 승격됨"으로 둔다. [B1-1 보완]
+    monkeypatch.setattr(db, "is_network_event_unpromoted", lambda event_id: False, raising=False)
     return SimpleNamespace(inserted=inserted, bumped=bumped)
 
 

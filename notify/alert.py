@@ -333,3 +333,16 @@ def send_mail_failure_alert(category: str, detail: str) -> None:
         "영향: 영구 잠금된 사용자가 이메일 인증으로 복구할 수 없습니다(관리자 해제는 가능)."
     )
     _send_slack_message(message)
+
+
+def send_component_alert(component: str, message: str) -> None:
+    """fw-agent·shipper 같은 Track D 구성요소가 멈췄거나 센서 기록이 늘지 않을 때 Slack에 알린다
+    (계약서 K9 ③, C1-2). 장비 정지는 패시브 IDS라 트래픽은 흐르지만 탐지·차단만 조용히
+    사라지는 상황이므로, 관리자 화면을 열지 않아도 알 수 있게 알림으로 보낸다. 같은 장비의
+    반복 알림은 호출하는 쪽이 db.try_acquire_cooldown()으로 막는다."""
+    text = (
+        f":warning: [HIGH] 로그인 워치독 장애 알림\n"
+        f"대상 장비/에이전트: {component}\n"
+        f"상세 내용: {message}"
+    )
+    _send_slack_message(text)

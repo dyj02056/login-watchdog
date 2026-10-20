@@ -11,6 +11,66 @@
 # db.get_client() 호출 이유는 db/attempts.py 상단 설명 참고(import db 후 db.get_client()).
 # ============================================================================
 
-import db  # noqa: F401  (함수를 추가하면 db.get_client()로 쓴다)
+from datetime import datetime, timedelta, timezone
 
-__all__: list[str] = []
+from postgrest.exceptions import APIError
+
+import db
+
+__all__ = [
+    "upsert_agent_heartbeat",
+    "get_agent_heartbeats",
+    "try_acquire_cooldown",
+]
+
+
+def upsert_agent_heartbeat(agent: str, node: str, detail: dict) -> None:
+    now_iso = datetime.now(timezone.utc).isoformat()
+    row = {
+        "agent": agent,
+        "node": node,
+        "last_seen_at": now_iso,
+        "detail": detail,
+    }
+    db.get_client().table("agent_heartbeats").upsert(row, on_conflict="agent,node").execute()
+
+
+def get_agent_heartbeats(node: str) -> dict[str, dict]:
+    res = (
+        db.get_client()
+        .table("agent_heartbeats")
+        .select("*")
+        .eq("node", node)
+        .execute()
+    )
+    rows = res.data or []
+    return {row["agent"]: row for row in rows}
+
+
+def try_acquire_cooldown(key: str, seconds: int) -> bool:
+    now_dt = datetime.now(timezone.utc)
+    now_iso = now_dt.isoformat()
+    cutoff_iso = (now_dt - timedelta(seconds=seconds)).isoformat()
+
+    # 1. 조건부 update 시도 (last_sent_at < cutoff_iso)
+    res = (
+        db.get_client()
+        .table("notification_cooldowns")
+        .update({"last_sent_at": now_iso})
+        .eq("key", key)
+        .lt("last_sent_at", cutoff_iso)
+        .execute()
+    )
+    if res.data:
+        return True
+
+    # 2. 행이 없는 경우 insert 시도
+    try:
+        db.get_client().table("notification_cooldowns").insert(
+            {"key": key, "last_sent_at": now_iso}
+        ).execute()
+        return True
+    except APIError as e:
+        if getattr(e, "code", None) == "23505":
+            return False
+        raise

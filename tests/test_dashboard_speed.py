@@ -141,8 +141,8 @@ def test_all_dashboard_queries_go_out_in_one_wave():
     # 동시 처리 한도가 조회 개수보다 작으면 일부가 앞 조회를 기다렸다가 두 번째로 나간다.
     source = (ROOT / "routes" / "admin" / "status.py").read_text(encoding="utf-8")
     body = source[source.index("def api_status():"):source.index("response_data = {")]
-    pool = body[body.index("with ThreadPoolExecutor(max_workers=17) as executor:"):]
-    assert pool.count("executor.submit(") == 17
+    pool = body[body.index("with ThreadPoolExecutor(max_workers=20) as executor:"):]  # [C2-3] Track D 조회 3개 추가(17→20, 통합 담당자 승인)
+    assert pool.count("executor.submit(") == 20
 
 
 def test_admin_users_list_is_dropped_without_permission(admin_client, calls, monkeypatch):

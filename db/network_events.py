@@ -24,6 +24,7 @@ __all__ = [
     "count_network_events_by_category",
     "mark_network_event_promoted",
     "resolve_net_blocked_events",
+    "is_network_event_unpromoted",
 ]
 
 _PAGE = 1000
@@ -35,6 +36,18 @@ def mark_network_event_promoted(event_id: str) -> None:
     db.get_client().table("network_events").update({"promoted": True}).eq(
         "event_id", event_id
     ).eq("promoted", False).execute()
+
+
+def is_network_event_unpromoted(event_id: str) -> bool:
+    """저장은 됐지만 승격이 끝나지 않은 경보인지 본다. 재전송 때 승격을 마저 할지 판단하는 데 쓴다.
+
+    행이 없으면 False — 승격할 원본이 없으므로 아무것도 하지 않는 쪽이 안전하다.
+    """
+    rows = (
+        db.get_client().table("network_events").select("promoted")
+        .eq("event_id", event_id).limit(1).execute().data
+    )
+    return bool(rows) and rows[0].get("promoted") is False
 
 
 def resolve_net_blocked_events(ip: str) -> None:

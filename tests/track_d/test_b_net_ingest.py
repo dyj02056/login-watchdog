@@ -315,8 +315,58 @@ def test_promoted_mark_is_limited_to_matching_event(stored, row):
     assert [event["promoted"] for event in stored.network] == [True, False]
 
 
+@pytest.mark.parametrize("category,event_type,severity", EXPECTED)
+def test_retry_after_promotion_failure_promotes_once(client, signed_headers, stored, row,
+                                                    monkeypatch, category, event_type, severity):
+    # [B1-1 보완] 저장 직후 승격이 끊긴 경보는 shipper 재전송 때 승격을 마저 한다.
+    row["category"] = category
+    real_promote = net_ingest.promote
+
+    def fail(event):
+        raise RuntimeError("test-promotion-error")
+
+    monkeypatch.setattr(net_ingest, "promote", fail)
+    with pytest.raises(RuntimeError, match="test-promotion-error"):
+        _post(client, signed_headers, row)
+    assert stored.network[0]["promoted"] is False
+
+    monkeypatch.setattr(net_ingest, "promote", real_promote)
+    response = _post(client, signed_headers, row)
+    assert response.get_json() == {"status": "updated", "promoted": True}
+    assert stored.network[0]["promoted"] is True
+    assert [event["event_type"] for event in stored.events] == [event_type]
+
+    # 승격을 마친 뒤의 재전송은 다시 올리지 않는다.
+    response = _post(client, signed_headers, row)
+    assert response.get_json() == {"status": "updated", "promoted": False}
+    assert len(stored.events) == 1
+
+
+def test_retry_of_other_category_does_not_check_promotion(client, signed_headers, stored, row, monkeypatch):
+    # [B1-1 보완] OTHER는 승격 대상이 아니므로 재전송 때 승격 여부를 조회하지 않는다.
+    row["category"] = "OTHER"
+    _post(client, signed_headers, row)
+
+    def unexpected(event_id):
+        raise AssertionError("OTHER 재전송에서 승격 여부를 조회하면 안 된다")
+
+    monkeypatch.setattr(db, "is_network_event_unpromoted", unexpected)
+    response = _post(client, signed_headers, row)
+    assert response.get_json() == {"status": "updated", "promoted": False}
+    assert stored.events == []
+
+
+def test_is_network_event_unpromoted(stored, row):
+    # [B1-1 보완] 행이 없으면 False, promoted 값에 따라 True/False.
+    assert network_events.is_network_event_unpromoted(row["event_id"]) is False
+    stored.network.append({**row, "promoted": False})
+    assert network_events.is_network_event_unpromoted(row["event_id"]) is True
+    stored.network[0]["promoted"] = True
+    assert network_events.is_network_event_unpromoted(row["event_id"]) is False
+
+
 def test_new_db_functions_are_exported():
-    for name in ("mark_network_event_promoted", "resolve_net_blocked_events"):
+    for name in ("mark_network_event_promoted", "resolve_net_blocked_events", "is_network_event_unpromoted"):
         assert name in network_events.__all__
         assert name in db.__all__
         assert getattr(db, name) is getattr(network_events, name)

@@ -101,6 +101,13 @@ def net_events():
             db.mark_network_event_promoted(row["event_id"])
         return jsonify(status="stored", promoted=promoted)
     db.bump_network_event(row["event_id"], row["packet_count"], last_seen_at=row["observed_at"])
+    # 처음 저장한 직후 승격이 예외로 끊기면 shipper는 500을 받고 같은 event_id로 다시 보낸다.
+    # 그때 "updated"로만 처리하면 그 경보는 끝내 보안 이벤트가 되지 않으므로, 승격 대상인데
+    # 아직 promoted=false로 남은 행만 승격을 마저 한다. 이미 승격된 경보는 다시 올리지 않는다(K4).
+    if row["category"] in net_ingest.CATEGORY_MAP and db.is_network_event_unpromoted(row["event_id"]):
+        if net_ingest.promote(row):
+            db.mark_network_event_promoted(row["event_id"])
+            return jsonify(status="updated", promoted=True)
     return jsonify(status="updated", promoted=False)
 
 
