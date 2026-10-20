@@ -65,6 +65,70 @@ def gateway_ip_from_prefix(
     return ipaddress.ip_address(int(network.network_address) + 10)
 
 
+def resolve_sensor_iface(
+    configured: str | None,
+    edge_prefix: str | None,
+    list_ifaces: Callable[[], list[str]],
+    get_addr: Callable[[str], str],
+    fallback: str,
+) -> tuple[str, str | None]:
+    """감시할 인터페이스 이름과 경고 문구(없으면 None)를 고른다.
+
+    Docker는 컨테이너에 네트워크를 붙이는 순서를 보장하지 않아, gateway 안에서
+    edge가 eth0인 PC와 eth1인 PC가 함께 있다(10/19·10/20 확인). 이름을 고정하면
+    어떤 PC에서는 core만 보게 되고, core는 탐지에서 빼므로 오류 없이 0건이 된다.
+    그래서 이름 대신 "edge 쪽 gateway 주소(.10)가 붙은 인터페이스"를 기준으로 삼는다.
+
+    - configured가 비었거나 "auto"면 그 기준으로 찾는다.
+    - 이름을 지정했어도 그 인터페이스에 edge 주소가 없고 다른 인터페이스에 있으면
+      그쪽으로 바꾼다. 지정한 이름이 core라면 어차피 탐지가 0건이라 지킬 이유가 없다.
+    - edge 주소를 끝내 못 찾으면 지정값(없으면 fallback)을 그대로 쓰고 경고만 남긴다.
+      측정기를 멈추는 것보다 일단 돌면서 로그로 알리는 편이 원인 파악이 쉽다.
+    """
+    name = (configured or "").strip()
+    wants_auto = name.lower() in ("", "auto")
+    edge_ip = gateway_ip_from_prefix(edge_prefix)
+
+    if edge_ip is None:
+        chosen = fallback if wants_auto else name
+        return (
+            chosen,
+            f"LW_EDGE_PREFIX가 없거나 형식이 틀려 edge 인터페이스를 확인하지 못했습니다. "
+            f"{chosen}을 그대로 감시합니다.",
+        )
+
+    def has_edge_ip(iface: str) -> bool:
+        # 주소가 없거나 조회에 실패한 인터페이스는 후보에서 뺀다(Scapy는 0.0.0.0을 돌려준다).
+        try:
+            return ipaddress.ip_address(get_addr(iface)) == edge_ip
+        except (OSError, ValueError):
+            return False
+
+    try:
+        matches = [iface for iface in list_ifaces() if has_edge_ip(iface)]
+    except OSError:
+        matches = []
+
+    if not wants_auto and has_edge_ip(name):
+        return name, None
+
+    if matches:
+        if wants_auto:
+            return matches[0], None
+        return (
+            matches[0],
+            f"SENSOR_IFACE={name}에는 edge 주소 {edge_ip}가 없어 "
+            f"{matches[0]}을 대신 감시합니다.",
+        )
+
+    chosen = fallback if wants_auto else name
+    return (
+        chosen,
+        f"edge 주소 {edge_ip}가 붙은 인터페이스를 찾지 못했습니다. "
+        f"{chosen}을 그대로 감시하지만 탐지가 0건일 수 있습니다.",
+    )
+
+
 class L4Detector:
     """출발지별 SYN 비율과 서로 다른 목적지 포트 수를 측정한다."""
 
