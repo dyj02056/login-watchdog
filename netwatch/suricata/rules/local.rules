@@ -1,0 +1,23 @@
+# ============================================================================
+# Login Watchdog 자체 Suricata 규칙
+#
+# SID 범위:
+#   9000000~9099999: Suricata 자체 규칙
+#   9100001 이상: Scapy L4 측정기 예약
+#
+# 아래 SID는 계약서 K4의 category 매핑에 사용된다.
+# 번호를 바꾸면 역할 B의 이벤트 매핑이 깨지므로 변경하지 않는다.
+#
+# 9000001 -> SYN_FLOOD
+# 9000003 -> LOGIN_BURST
+# 9000004 -> SCANNER_UA
+#
+# 9000004는 shipper가 SID를 기준으로 SCANNER_UA로 분류하므로
+# classtype 값과 무관하게 별도의 category로 매핑된다.
+# ============================================================================
+
+alert tcp any any -> $HOME_NET 8080 (msg:"LW SYN flood suspected"; flags:S,12; threshold:type both, track by_src, count 100, seconds 5; classtype:attempted-dos; sid:9000001; rev:1;)
+
+alert http any any -> $HOME_NET 8080 (msg:"LW login POST burst"; flow:to_server,established; http.method; content:"POST"; http.uri; content:"/login"; startswith; threshold:type both, track by_src, count 20, seconds 10; classtype:attempted-user; sid:9000003; rev:1;)
+
+alert http any any -> $HOME_NET 8080 (msg:"LW scanner user-agent"; flow:to_server,established; http.user_agent; pcre:"/(sqlmap|nikto|nmap|masscan|dirbuster|gobuster)/i"; classtype:web-application-attack; sid:9000004; rev:1;)
