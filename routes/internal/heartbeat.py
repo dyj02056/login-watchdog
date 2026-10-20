@@ -1,8 +1,9 @@
 # ============================================================================
 # routes/internal/heartbeat.py — POST /api/internal/heartbeat: 장비 생존 신호 (계약서 K9 ③)
 #
-# 담당: 역할 C (C1-2에서 구현). 지금은 Track D 뼈대 PR(I0-1)이 넣은 껍데기다.
-# fw-agent와 shipper 둘 다 부른다. 서명이 없거나 틀리면 401, 구현 전까지는 501.
+# 담당: 역할 C (C1-2). fw-agent와 shipper 둘 다 부른다. 서명이 없거나 틀리면 401.
+# 생존 신호는 (agent, LW_NODE_NAME) 한 줄로 저장한다 — 세 PC가 같은 DB를 써도 서로 덮어쓰지
+# 않게 하기 위해서다(계약서 K9 ③·K11).
 # ============================================================================
 
 from datetime import datetime, timezone
@@ -19,7 +20,10 @@ from routes.internal._hmac import verify_request
 
 @internal_bp.route("/heartbeat", methods=["POST"])
 def heartbeat():
-    """fw-agent(10초)·shipper(30초)의 생존 신호. C1-2에서 구현한다."""
+    """fw-agent(10초)·shipper(30초)의 생존 신호(계약서 K9 ③).
+
+    받을 때마다 상대 장비(fw-agent ↔ shipper)의 마지막 신호도 확인한다 — 관리자 화면을
+    아무도 열지 않아도 장비 정지를 Slack으로 알리기 위해서다."""
     sender = verify_request({"fw-agent", "shipper"})
     if sender is None:
         return jsonify(error="unauthorized"), 401
@@ -27,7 +31,10 @@ def heartbeat():
     if not config.LW_NODE_NAME:
         return jsonify(error="invalid", field="node"), 400
 
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    # [C1-1·C1-2 보완] 본문이 JSON 객체가 아니면 .get()에서 500이 나므로 400으로 거절한다.
+    if not isinstance(data, dict):
+        return jsonify(error="invalid", field="body"), 400
     agent = data.get("agent")
     detail = data.get("detail")
 

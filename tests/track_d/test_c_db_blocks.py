@@ -140,7 +140,7 @@ def test_upsert_agent_heartbeat(monkeypatch):
         builders.append(builder)
         return builder
 
-    monkeypatch.setattr(db, "get_client", lambda: type("Client", (), {"table": fake_table})())
+    monkeypatch.setattr(db, "get_client", lambda: type("Client", (), {"table": staticmethod(fake_table)})())  # [C1-1 보완] 클래스 속성 함수가 메서드로 묶여 self가 끼지 않게
 
     db.upsert_agent_heartbeat("fw-agent", "node-1", {"status": "ok"})
     assert len(builders) == 1
@@ -153,7 +153,7 @@ def test_try_acquire_cooldown(monkeypatch):
     def fake_table_update_success(name):
         return FakeQueryBuilder(name, {"return_data": [{"key": "test_key"}]})
 
-    monkeypatch.setattr(db, "get_client", lambda: type("Client", (), {"table": fake_table_update_success})())
+    monkeypatch.setattr(db, "get_client", lambda: type("Client", (), {"table": staticmethod(fake_table_update_success)})())  # [C1-1 보완] 클래스 속성 함수가 메서드로 묶여 self가 끼지 않게
     assert db.try_acquire_cooldown("test_key", 60) is True
 
     # 2. update 실패 후 insert 23505 충돌 시 False
@@ -166,5 +166,5 @@ def test_try_acquire_cooldown(monkeypatch):
         builder.insert = mock_insert
         return builder
 
-    monkeypatch.setattr(db, "get_client", lambda: type("Client", (), {"table": fake_table_insert_duplicate})())
+    monkeypatch.setattr(db, "get_client", lambda: type("Client", (), {"table": staticmethod(fake_table_insert_duplicate)})())  # [C1-1 보완] 클래스 속성 함수가 메서드로 묶여 self가 끼지 않게
     assert db.try_acquire_cooldown("test_key", 60) is False
