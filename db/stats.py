@@ -1,448 +1,451 @@
 # ============================================================================
-# routes/admin/status.py — 관리자 대시보드 화면(/admin/dashboard)과 대시보드 폴링 API(/api/status)
+# db/stats.py — 관제 대시보드(차트·히트맵·흐름도)용 집계
 #
-# 예전 routes/admin.py(798줄)를 기능 묶음별로 나눈 조각 중 하나다. Blueprint(admin_bp)는
-# routes/admin/__init__.py에서 하나만 만들고, 이 파일은 거기에 라우트를 붙이기만 한다
-# — 그래서 엔드포인트 이름(url_for("admin.xxx"))은 나누기 전과 똑같다.
-# 배경은 docs/refactor/2026-10-09-module-plan.md 참고.
+# 관리자 대시보드의 화면 A(위협 현황)·B(공격 상세)가 쓰는 숫자를 한 번에 계산한다.
+# 표에서 원본 줄을 가져와 파이썬에서 묶는다 — 이 프로젝트의 로그는 하루 수천 줄 규모라
+# 별도 집계 쿼리·뷰를 DB에 새로 만들 필요가 없고, 새 마이그레이션 없이 배포할 수 있다.
+#
+# 구조는 둘로 나눴다.
+#   fetch_raw()           — Supabase에서 원본 줄을 가져온다(여러 쿼리를 동시에).
+#   build_threat_stats()  — 가져온 줄로 화면용 숫자를 계산한다. DB 없이 테스트할 수 있는 순수 함수.
+#
+# 시각은 전부 한국 시간(KST, UTC+9)으로 묶는다 — 관제 화면의 "오늘"은 한국 날짜 기준이고,
+# 일별 요약표(log_daily_summary)도 같은 기준으로 만들어진다. 한국은 서머타임이 없어 고정 오프셋이다.
+#
+# L3/L4(네트워크·전송 계층) 공격은 아직 수집하지 않는다 — README "알려진 제한사항" 참고.
+# 그래서 응답의 network_layer는 항상 빈 목록이고, 화면은 이를 "데이터 없음" 상태로 그린다.
 # ============================================================================
 
-import datetime
-import ipaddress
-import math
 import threading
 import time
+from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
-
-from flask import g, jsonify, redirect, render_template, request, url_for
+from datetime import date, datetime, timedelta, timezone
 
 import config
 import db
-from db import stats as db_stats
-from helpers import _attach_locations, login_required
-from notify import alert
-from routes.admin import admin_bp
-from security import soar
+
+KST = timezone(timedelta(hours=9))
+
+# log_daily_summary(guide47)가 요약하는 "요청 로그" 표들. 하루 로그 발생량 막대에 쓴다.
+LOG_SOURCES = (
+    "login_attempts",
+    "signup_attempts",
+    "not_found_attempts",
+    "unauthorized_attempts",
+    "page_access_attempts",
+    "api_access_log",
+)
+_LOG_TIME_COLUMN = {"api_access_log": "requested_at"}
+
+EVENT_WINDOW_DAYS = 30  # 신규/반복 공격자 판정에 쓰는 이벤트 조회 기간
+RECENT_DAYS = 7
+_PAGE = 1000  # Supabase 한 번에 가져올 수 있는 최대 줄 수
+_MAX_ROWS = 20000  # 한 표에서 가져올 최대 줄 수(폭주 시 응답이 무한정 느려지지 않게)
+
+SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2}
+PATHLESS_TYPE_LIMIT = 4  # 경로 없는 이벤트를 유형별로 보여줄 때 따로 세는 유형 수(나머지는 "기타")
+
+# "연관 사건" 표에 올리는 상태. OPEN은 아직 처리 중, IDLE은 새 이벤트가 끊겼는데도 관리자가 "해결"을 안 누른 것.
+# CLOSED여도 시스템이 자동으로 닫은 것(resolved_by가 "system:"으로 시작)은 사람이 확인하지 않았으므로 함께 보여준다.
+INCIDENT_STATUS_ORDER = {"OPEN": 0, "IDLE": 1, "CLOSED": 2}
+OPEN_INCIDENT_LIMIT = 8
+LOCK_LIMIT = 8
 
 
-# ============================================================================
-# 관리자 대시보드 화면 및 API — 조회는 login_required, 상태를 바꾸는 API는
-# require_permission(역할별 권한 확인, guide26)으로 보호됨
-#
-# 주소가 /dashboard가 아니라 /admin/login·/admin/logout과 같은 묶음인
-# /admin/dashboard인 이유: 12단계에서 회원(일반 사용자) 전용 대시보드를
-# /dashboard 주소에 새로 만들면서, 기존 관리자 대시보드를 이 주소로 옮겼다.
-# ============================================================================
-
-@admin_bp.route("/admin/dashboard", methods=["GET"])
-@login_required
-def admin_dashboard():
-    """관리자 대시보드 화면의 뼈대(HTML)만 보여준다. 실제 데이터는 화면의
-    자바스크립트가 아래 /api/status를 주기적으로 호출해서 채워넣는다(6단계에서 구현).
-
-    poll_interval_ms : dashboard/main.js가 몇 밀리초마다 /api/status를 다시 부를지.
-    숫자를 JS 파일에 직접 박아두지 않고 config.py 한 곳에서 관리한다(다른
-    상수들과 동일한 원칙 — 값을 바꾸려고 여러 파일을 찾아다닐 필요가 없게 함).
-    """
-    return render_template("admin_dashboard.html", poll_interval_ms=config.ADMIN_DASHBOARD_POLL_MS)
+def build_locks(ip_locks: list[dict], account_locks: list[dict], admin_locks: list[dict]) -> dict:
+    """지금 잠긴 IP·회원 계정·관리자 계정을 영구 잠금과 함께 한 목록으로 합친다(영구가 먼저, 그다음 최근순)."""
+    rows = []
+    for kind, source, key in (("ip", ip_locks, "ip_address"), ("account", account_locks, "username"), ("admin", admin_locks, "username")):
+        for row in source:
+            rows.append(
+                {
+                    "kind": kind,
+                    "target": row.get(key),
+                    "permanent": row.get("lock_type") == "PERMANENT",
+                    "locked_at": row.get("locked_at"),
+                    "unlock_at": row.get("unlock_at"),
+                }
+            )
+    rows.sort(key=lambda r: r["locked_at"] or "", reverse=True)
+    rows.sort(key=lambda r: not r["permanent"])  # 안정 정렬이라 영구끼리·임시끼리는 최근순이 유지된다
+    return {"locks": rows[:LOCK_LIMIT], "locks_total": len(rows), "locks_permanent": sum(1 for r in rows if r["permanent"])}
 
 
-@admin_bp.route("/admin/attack", methods=["GET"])
-@login_required
-def admin_attack():
-    """공격 상세 모니터링 화면. Next 화면(spa/)이 있을 때만 의미가 있고, 없으면 대시보드로 돌려보낸다."""
-    return redirect(url_for("admin.admin_dashboard"))
+def _parse(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(KST)
 
 
-@admin_bp.route("/admin/ops", methods=["GET"])
-@login_required
-def admin_ops():
-    """처리 작업대 화면. Next 화면(spa/)이 있을 때만 의미가 있고, 없으면 대시보드로 돌려보낸다."""
-    return redirect(url_for("admin.admin_dashboard"))
+def _fetch_rows(table: str, columns: str, time_column: str, since: datetime, **filters) -> list[dict]:
+    """`since` 이후의 줄을 최신순으로 페이지 단위로 모아 온다(최대 _MAX_ROWS줄)."""
+    rows: list[dict] = []
+    start = 0
+    while start < _MAX_ROWS:
+        query = (
+            db.get_client()
+            .table(table)
+            .select(columns)
+            .gte(time_column, since.isoformat())
+            .order(time_column, desc=True)
+            .range(start, start + _PAGE - 1)
+        )
+        for column, value in filters.items():
+            query = query.eq(column, value)
+        page = query.execute().data
+        rows.extend(page)
+        if len(page) < _PAGE:
+            break
+        start += _PAGE
+    return rows
 
 
-def _page_param(name: str) -> int:
-    """쿼리 파라미터로 받은 페이지 번호를 정수로 변환한다. board_list()의 page
-    처리와 동일한 원칙 — 값이 없거나 이상해도(?users_page=abc) 에러 없이
-    1페이지로 취급한다.
-    """
-    page = request.args.get(name, 1, type=int)
-    return page if page and page > 0 else 1
+def _count_since(table: str, time_column: str, since: datetime) -> int:
+    res = (
+        db.get_client()
+        .table(table)
+        .select("*", count="exact", head=True)
+        .gte(time_column, since.isoformat())
+        .execute()
+    )
+    return res.count or 0
 
 
-# 페이지가 있는 표 8개 — 대시보드가 한 표의 페이지만 넘길 때 ?only=<이름>으로 그 표만 받는다(guide46).
-# 이름: (페이지 파라미터, db 조회 함수 이름, 응답의 목록 키, 응답의 전체 페이지 수 키)
-_PAGED_SECTIONS = {
-    "attempts": ("attempts_page", "list_recent_attempts", "recent_attempts", "attempts_total_pages"),
-    "users": ("users_page", "list_users", "users", "users_total_pages"),
-    "posts": ("posts_page", "list_posts", "recent_posts", "posts_total_pages"),
-    "comments": ("comments_page", "list_comments_admin", "recent_comments", "comments_total_pages"),
-    "admin_log": ("admin_log_page", "list_admin_login_log", "admin_login_log", "admin_log_total_pages"),
-    "security_events": (
-        "security_events_page", "list_security_events", "security_events", "security_events_total_pages",
-    ),
-    "security_incidents": (
-        "security_incidents_page", "list_security_incidents", "security_incidents", "security_incidents_total_pages",
-    ),
-    "access_requests": (
-        "access_requests_page", "list_pending_requests", "access_requests", "access_requests_total_pages",
-    ),
-}
-
-
-def _api_status_section(name: str):
-    """표 하나의 이번 페이지만 돌려준다(?only=<이름>). 세션 확인 + 조회 1번(로그인 시도 표는 위치
-    캐시 1번 더)으로 끝난다 — 전체 조회는 약 21번이다. 만료된 잠금 정리는 전체 갱신이 맡는다."""
-    if name not in _PAGED_SECTIONS:
-        return jsonify({"error": "알 수 없는 표입니다."}), 400
-    page_param, query_name, rows_key, total_key = _PAGED_SECTIONS[name]
-    rows, count = getattr(db, query_name)(_page_param(page_param), config.ADMIN_PAGE_SIZE)
-    if name == "attempts":
-        rows = _attach_locations(rows)
-    return jsonify({rows_key: rows, total_key: max(1, math.ceil(count / config.ADMIN_PAGE_SIZE))})
-
-
-# 이 서버 인스턴스가 마지막으로 만료된 잠금을 정리한 시각(time.monotonic). 대시보드 갱신마다 정리하지
-# 않고 ADMIN_STATUS_RELEASE_INTERVAL_SECONDS에 한 번만 한다(guide46). 동시에 들어온 갱신 둘이 함께
-# 정리하지 않게 잠금으로 보호한다.
-_expiry_release_state = {"at": None}
-_expiry_release_lock = threading.Lock()
-
-
-def _release_expired_locks_if_due() -> None:
-    """만료된 잠금 정리 3종(IP·회원 계정·관리자 계정)을 정해진 간격마다 동시에 돌린다.
-
-    서로 무관하므로 동시에 돌리고(guide45), 호출한 쪽의 목록 조회보다는 먼저 끝난다 — 같이 돌리면
-    방금 풀린 잠금이 한 주기 동안 "잠김"으로 보일 수 있다. 예외는 .result()가 그대로 다시 일으킨다.
-    """
-    interval = config.ADMIN_STATUS_RELEASE_INTERVAL_SECONDS
-    now = time.monotonic()
-    with _expiry_release_lock:
-        last = _expiry_release_state["at"]
-        if interval > 0 and last is not None and now - last < interval:
-            return
-        _expiry_release_state["at"] = now
-
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        release_futures = [
-            executor.submit(soar.try_release_expired_lockouts),
-            executor.submit(soar.try_release_expired_account_lockouts),
-            executor.submit(soar.try_release_expired_admin_account_lockouts),
-        ]
-        for future in release_futures:
-            future.result()
-
-
-def _build_permanent_locks(ip_lockouts: list[dict], account_lockouts: list[dict]) -> list[dict]:
-    """active인 잠금 중 영구(PERMANENT)인 것만 골라 대시보드 "영구 잠금" 카드용 한 목록으로 만든다.
-
-    이미 위에서 조회한 active_lockouts/active_account_lockouts를 걸러내기만 하므로 추가 조회가
-    없다(계정의 "이메일 확인 불가" 배지용 email_status만 영구 계정이 있을 때 한 번 조회한다).
-    """
-    locks = [
-        {
-            "kind": "ip",
-            "target": row["ip_address"],
-            "locked_at": row.get("locked_at"),
-            "promoted_at": row.get("promoted_at"),
-            "permanent_reason": row.get("permanent_reason"),
-            "recoverable": row.get("recoverable"),
-            "failure_count": row.get("failure_count"),
-            "email_status": None,
-        }
-        for row in ip_lockouts
-        if row.get("lock_type") == "PERMANENT"
-    ]
-    accounts = [row for row in account_lockouts if row.get("lock_type") == "PERMANENT"]
-    statuses = db.get_email_statuses([row["username"] for row in accounts]) if accounts else {}
-    locks += [
-        {
-            "kind": "account",
-            "target": row["username"],
-            "locked_at": row.get("locked_at"),
-            "promoted_at": row.get("promoted_at"),
-            "permanent_reason": row.get("permanent_reason"),
-            "recoverable": row.get("recoverable"),
-            "failure_count": row.get("failure_count"),
-            "email_status": statuses.get(row["username"]),
-        }
-        for row in accounts
-    ]
-    return locks
-
-
-def _in_edge_subnet(ip: str) -> bool:
-    if not config.NET_EDGE_SUBNET or not ip:
-        return True
+def _summary_rows(since_day: date) -> list[dict]:
+    """일별 요약표. 마이그레이션(guide47)을 아직 안 돌린 DB에서는 비어 있는 것으로 취급한다."""
     try:
-        subnet = ipaddress.ip_network(config.NET_EDGE_SUBNET, strict=False)
-        return ipaddress.ip_address(ip) in subnet
-    except ValueError:
-        return True
+        res = (
+            db.get_client()
+            .table("log_daily_summary")
+            .select("day,source,count")
+            .gte("day", since_day.isoformat())
+            .in_("source", list(LOG_SOURCES))
+            .execute()
+        )
+        return res.data
+    except Exception:  # noqa: BLE001 — 표가 없거나 접근 불가면 "요약 없음"으로 계속한다
+        return []
 
 
-def _build_agent_status(rows: dict[str, dict], now: datetime.datetime) -> dict:
-    if not config.LW_NODE_NAME:
-        return {}
+def fetch_raw(now: datetime | None = None) -> dict:
+    """대시보드 집계에 필요한 원본 줄을 동시에 가져온다."""
+    now = (now or datetime.now(KST)).astimezone(KST)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_ago_start = today_start - timedelta(days=RECENT_DAYS)  # 지난주 같은 요일 포함
+    events_since = today_start - timedelta(days=EVENT_WINDOW_DAYS)
 
-    result = {}
-    agents_config = [
-        ("fw-agent", config.FW_AGENT_STALE_SECONDS),
-        ("shipper", config.SHIPPER_STALE_SECONDS),
+    jobs = {
+        "events": lambda: _fetch_rows(
+            "security_events",
+            "id,event_type,severity,ip_address,path,count,action,username,detected_at,resolved_at",
+            "detected_at",
+            events_since,
+        ),
+        "failed_logins": lambda: _fetch_rows(
+            "login_attempts", "attempted_at", "attempted_at", week_ago_start, success=False
+        ),
+        "not_found": lambda: _fetch_rows("not_found_attempts", "attempted_at", "attempted_at", week_ago_start),
+        "unauthorized": lambda: _fetch_rows(
+            "unauthorized_attempts", "attempted_at", "attempted_at", week_ago_start
+        ),
+        "incidents": lambda: _fetch_rows(
+            "security_incidents",
+            "id,ip_address,event_types,severity_max,status,first_event_at,last_event_at,resolved_by",
+            "last_event_at",
+            events_since,
+        ),
+        "summary": lambda: _summary_rows((today_start - timedelta(days=RECENT_DAYS - 1)).date()),
+    }
+    for source in LOG_SOURCES:
+        column = _LOG_TIME_COLUMN.get(source, "attempted_at")
+        jobs[f"today:{source}"] = lambda s=source, c=column: _count_since(s, c, today_start)
+
+    with ThreadPoolExecutor(max_workers=len(jobs)) as executor:
+        futures = {name: executor.submit(job) for name, job in jobs.items()}
+        raw = {name: future.result() for name, future in futures.items()}
+
+    raw["today_counts"] = {source: raw.pop(f"today:{source}") for source in LOG_SOURCES}
+    raw["now"] = now
+    return raw
+
+
+# ---------------------------------------------------------------------------
+# 순수 계산
+# ---------------------------------------------------------------------------
+
+def _hourly(times: list[datetime], day: date, until_hour: int | None) -> list[int | None]:
+    """`day` 하루를 0~23시 24칸으로 센다. until_hour 이후(아직 오지 않은 시간)는 None으로 둔다."""
+    buckets = [0] * 24
+    for t in times:
+        if t.date() == day:
+            buckets[t.hour] += 1
+    if until_hour is not None:
+        return [value if hour <= until_hour else None for hour, value in enumerate(buckets)]
+    return buckets
+
+
+def _day_labels(today: date) -> list[date]:
+    return [today - timedelta(days=offset) for offset in range(RECENT_DAYS - 1, -1, -1)]
+
+
+def _top(counter: Counter, n: int) -> list[dict]:
+    return [{"name": name, "count": count} for name, count in counter.most_common(n)]
+
+
+def build_threat_stats(raw: dict, *, active_locks: int, pending_ai: int, locations: dict[str, dict]) -> dict:
+    """원본 줄 → 화면용 숫자. `locations`는 {IP: {"country": ...}} (ip_locations 캐시)."""
+    now: datetime = raw["now"]
+    today = now.date()
+    days = _day_labels(today)
+    day_set = set(days)
+
+    events = []
+    for row in raw["events"]:
+        detected = _parse(row["detected_at"])
+        if detected is not None:
+            events.append({**row, "_t": detected, "_d": detected.date()})
+    recent_events = [e for e in events if e["_d"] in day_set]
+
+    # 1) 시간대별 탐지량 — 보안 이벤트 + 로그인 실패 + 404 + 미인증 접근을 한 줄로 합친다.
+    detection_times = [e["_t"] for e in events if e["_d"] >= today - timedelta(days=RECENT_DAYS)]
+    for key in ("failed_logins", "not_found", "unauthorized"):
+        detection_times += [t for t in (_parse(r["attempted_at"]) for r in raw[key]) if t is not None]
+    hourly = {
+        "today": _hourly(detection_times, today, now.hour),
+        "yesterday": _hourly(detection_times, today - timedelta(days=1), None),
+        "last_week": _hourly(detection_times, today - timedelta(days=RECENT_DAYS), None),
+    }
+
+    # 2) 최근 7일 로그 발생량 — 지난 날은 일별 요약표, 오늘은 원본 표 개수.
+    summary_by_day: dict[str, int] = defaultdict(int)
+    for row in raw["summary"]:
+        summary_by_day[row["day"]] += row["count"]
+    log_volume = [
+        {
+            "day": d.isoformat(),
+            "count": sum(raw["today_counts"].values()) if d == today else summary_by_day.get(d.isoformat(), 0),
+            "live": d == today,
+        }
+        for d in days
     ]
 
-    for agent, stale_seconds in agents_config:
-        if agent not in rows:
-            result[agent] = {"last_seen_at": None, "stale": True, "detail": {}}
-            continue
+    # 3) 공격자 IP × 날짜 히트맵 — 7일간 이벤트가 많은 IP 상위 8개.
+    per_ip: Counter = Counter(e["ip_address"] for e in recent_events)
+    heat_ips = [ip for ip, _ in per_ip.most_common(8)]
+    per_ip_day: Counter = Counter((e["ip_address"], e["_d"]) for e in recent_events)
+    heatmap = {
+        "days": [d.isoformat() for d in days],
+        "ips": heat_ips,
+        "cells": [[per_ip_day.get((ip, d), 0) for d in days] for ip in heat_ips],
+    }
 
-        row = rows[agent]
-        last_seen_str = row.get("last_seen_at")
-        detail = row.get("detail") or {}
+    # 4) 흐름도: IP → 공격 유형 → 조치 (상위 IP 6개만, 나머지는 '그 외')
+    flow_ips = [ip for ip, _ in per_ip.most_common(6)]
+    flow_links: Counter = Counter()
+    for e in recent_events:
+        ip = e["ip_address"] if e["ip_address"] in flow_ips else "(그 외)"
+        flow_links[(ip, e["event_type"], e["action"])] += 1
+    sankey_links = []
+    for (ip, event_type, action), n in flow_links.items():
+        sankey_links.append({"source": ip, "target": event_type, "value": n})
+    action_links: Counter = Counter()
+    for (ip, event_type, action), n in flow_links.items():
+        action_links[(event_type, action)] += n
+    sankey_links += [{"source": t, "target": f"조치:{a}", "value": n} for (t, a), n in action_links.items()]
 
-        if not last_seen_str:
-            result[agent] = {"last_seen_at": None, "stale": True, "detail": detail}
-            continue
+    # 5) 신규 공격자 / 반복 공격자 / 미처리 / 복합 공격
+    first_seen: dict[str, date] = {}
+    days_seen: dict[str, set] = defaultdict(set)
+    last_seen: dict[str, datetime] = {}
+    types_by_ip: dict[str, set] = defaultdict(set)
+    count_by_ip: Counter = Counter()
+    for e in events:
+        ip = e["ip_address"]
+        first_seen[ip] = min(first_seen.get(ip, e["_d"]), e["_d"])
+        days_seen[ip].add(e["_d"])
+        last_seen[ip] = max(last_seen.get(ip, e["_t"]), e["_t"])
+        types_by_ip[ip].add(e["event_type"])
+        if e["_d"] in day_set:
+            count_by_ip[ip] += 1
 
-        try:
-            last_seen_dt = datetime.datetime.fromisoformat(last_seen_str.replace("Z", "+00:00"))
-            if last_seen_dt.tzinfo is None:
-                last_seen_dt = last_seen_dt.replace(tzinfo=datetime.timezone.utc)
-            diff_sec = (now - last_seen_dt).total_seconds()
-            is_stale = diff_sec > stale_seconds
-            result[agent] = {
-                "last_seen_at": last_seen_str,
-                "stale": is_stale,
-                "detail": detail,
-            }
+    new_cutoff = today - timedelta(days=RECENT_DAYS - 1)
+    new_attackers = sorted(
+        (ip for ip, d in first_seen.items() if d >= new_cutoff and count_by_ip[ip] > 0),
+        key=lambda ip: last_seen[ip],
+        reverse=True,
+    )
+    repeat_attackers = sorted(
+        (ip for ip in count_by_ip if len({d for d in days_seen[ip] if d in day_set}) >= 3),
+        key=lambda ip: count_by_ip[ip],
+        reverse=True,
+    )
 
-            if is_stale:
-                cooldown_key = f"slack:stale:{config.LW_NODE_NAME}:{agent}"
-                if db.try_acquire_cooldown(cooldown_key, config.AGENT_ALERT_COOLDOWN_SECONDS):
-                    alert.send_component_alert(agent, f"{int(diff_sec)}초 넘게 생존 신호가 없습니다 (PC: {config.LW_NODE_NAME})")
-        except Exception:
-            result[agent] = {"last_seen_at": last_seen_str, "stale": True, "detail": detail}
-
-    return result
-
-
-@admin_bp.route("/api/stats", methods=["GET"])
-@login_required
-def api_stats():
-    """관제 화면(위협 현황·공격 상세)의 차트·히트맵·표 숫자를 한 번에 돌려준다(db/stats.py).
-
-    /api/status와 달리 목록 전체가 아니라 집계만 내려보낸다. 조회만 하므로 권한은 로그인 확인이면 충분하다.
-    """
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        locks = executor.submit(db.list_active_lockouts)
-        account_locks = executor.submit(db.list_active_account_lockouts)
-        admin_locks = executor.submit(db.list_active_admin_account_lockouts)
-        pending = executor.submit(db.list_pending_requests, 1, 1)
-        ip_locks, member_locks, admin_account_locks = locks.result(), account_locks.result(), admin_locks.result()
-        active = len(ip_locks) + len(member_locks) + len(admin_account_locks)
-        pending_count = pending.result()[1]
-    stats = db_stats.get_threat_stats(active_locks=active, pending_ai=pending_count)
-    # 잠금 목록은 건수가 같아도 내용이 바뀔 수 있어서(풀림·재잠금) 보관된 집계에 매번 새로 얹는다.
-    return jsonify({**stats, **db_stats.build_locks(ip_locks, member_locks, admin_account_locks)})
-
-
-# 전체 상태 응답을 잠깐 보관해 탭 여러 개가 같은 조회를 나눠 쓴다(config.ADMIN_STATUS_CACHE_SECONDS).
-# 권한(role)에 따라 응답이 다르므로 role과 쪽 번호(쿼리 문자열)별로 따로 둔다. 처리 요청(POST)이 끝나면
-# 바로 비워서, 방금 누른 버튼의 결과가 오래된 값에 가려지지 않게 한다.
-_status_cache: dict = {}
-_status_cache_lock = threading.Lock()
-
-
-@admin_bp.after_request
-def _clear_status_cache_after_change(response):
-    if request.method == "POST":
-        with _status_cache_lock:
-            _status_cache.clear()
-    return response
-
-
-@admin_bp.route("/api/status", methods=["GET"])
-@login_required
-def api_status():
-    """대시보드가 5초마다 호출하는 API(탭이 보일 때만, guide45). 최신 상태를 JSON으로 돌려준다.
-
-    JSON이란? 파이썬의 딕셔너리(dict)와 거의 똑같이 생긴, 서버와 브라우저가
-    데이터를 주고받을 때 가장 널리 쓰이는 표준 형식이다. jsonify()는 파이썬
-    딕셔너리를 이 JSON 형식으로 자동 변환해서 브라우저에 보내주는 Flask 도구다.
-
-    관리자 대시보드의 페이지가 있는 표 8개(최근 로그인 시도/회원/게시글/댓글/관리자
-    로그인 기록/보안 이벤트/연관 사건/AI 조기 경보 — _PAGED_SECTIONS)는 각자
-    ?attempts_page=, ?users_page=, ?posts_page=, ?comments_page=, ?admin_log_page=,
-    ?security_events_page=, ?security_incidents_page=, ?access_requests_page=로
-    현재 보고 있는 페이지 번호를 받는다 —
-    dashboard/api.js가 board_list()와 동일한 페이지 번호 방식으로 표를 그릴 수 있도록,
-    각 표의 이번 페이지 데이터와 전체 페이지 수(*_total_pages)를 함께 내려준다
-    (예전에는 최근 N개만 고정으로 가져와서, 그 이상 쌓이면 오래된 항목이 화면에서
-    아예 사라졌었다).
-
-    db.list_*() 함수들은 (이번 페이지 데이터, 전체 개수) 튜플을 돌려준다 — 목록
-    조회와 개수 조회를 별도 쿼리 두 번으로 나누지 않고 한 번의 왕복으로 끝내기
-    위해서다(db.list_recent_attempts() 설명 참고).
-
-    그래도 여전히 서로 무관한 쿼리들(처음엔 9개, 지금은 표·카드·권한 조회까지 17개)을
-    하나씩 순서대로 기다리면, Supabase까지의 왕복 시간(쿼리 하나당 대략 150~500ms)이
-    그대로 다 더해진다 — 쿼리가 9개였던 시절에도 요청 하나가 2~3초까지 걸렸고, 특히
-    Vercel 서버리스 환경은 매 요청마다 커넥션을 새로 맺어야 해서 체감이 더 심했다.
-    ThreadPoolExecutor로 이 쿼리들을 동시에 보내면
-    전체 소요 시간이 "가장 느린 쿼리 하나" 수준으로 줄어든다(실측 약 5배 개선).
-    IP 위치 조회(_attach_locations)는 attempts 결과가 있어야 시작할 수 있는
-    후속 작업이라 별도로 남겨뒀지만, 나머지 futures가 백그라운드에서 계속
-    돌고 있는 동안 같이 실행되므로 추가 대기 시간은 거의 없다.
-
-    응답 속도(guide46):
-    - ?only=<표 이름>이면 그 표 하나만 돌려준다(_api_status_section) — 페이지 넘기기용.
-    - 만료된 잠금 정리는 정해진 간격마다만 한다(_release_expired_locks_if_due).
-    - 아래 조회는 전부 한 번에(동시 처리 한도 = 조회 개수) 보낸다. "관리자 계정 관리" 카드의
-      권한 확인과 목록도 같은 배치에 넣고, 권한이 없으면 목록은 버린다(응답에 싣지 않는다).
-    """
-    only = request.args.get("only")
-    if only is not None:
-        return _api_status_section(only)
-
-    ttl = config.ADMIN_STATUS_CACHE_SECONDS
-    cache_key = (g.admin["role"], request.query_string)
-    if ttl > 0:
-        with _status_cache_lock:
-            hit = _status_cache.get(cache_key)
-        if hit and time.monotonic() - hit[0] < ttl:
-            return jsonify(hit[1])
-
-    _release_expired_locks_if_due()
-
-    attempts_page = _page_param("attempts_page")
-    users_page = _page_param("users_page")
-    posts_page = _page_param("posts_page")
-    comments_page = _page_param("comments_page")
-    admin_log_page = _page_param("admin_log_page")
-    security_events_page = _page_param("security_events_page")
-    security_incidents_page = _page_param("security_incidents_page")
-    access_requests_page = _page_param("access_requests_page")
-    # login_required가 세션을 확인하면서 계정(role 포함)을 이미 조회해 g.admin에 담아뒀다(guide37).
-    # 아래 스레드에서는 g를 쓸 수 없으므로 여기서 먼저 꺼내둔다.
-    role = g.admin["role"]
-
-    with ThreadPoolExecutor(max_workers=20) as executor:
-        attempts_future = executor.submit(db.list_recent_attempts, attempts_page, config.ADMIN_PAGE_SIZE)
-        lockouts_future = executor.submit(db.list_active_lockouts)
-        # "현재 잠긴 IP / 계정" 카드의 계정 잠금 목록 — IP 잠금 목록과 같은 배치로 병렬 조회.
-        account_lockouts_future = executor.submit(db.list_active_account_lockouts)
-        admin_account_lockouts_future = executor.submit(db.list_active_admin_account_lockouts)
-        admin_log_future = executor.submit(db.list_admin_login_log, admin_log_page, config.ADMIN_PAGE_SIZE)
-        users_future = executor.submit(db.list_users, users_page, config.ADMIN_PAGE_SIZE)
-        signup_future = executor.submit(db.get_signup_enabled)
-        posts_future = executor.submit(db.list_posts, posts_page, config.ADMIN_PAGE_SIZE)
-        comments_future = executor.submit(db.list_comments_admin, comments_page, config.ADMIN_PAGE_SIZE)
-        security_events_future = executor.submit(
-            db.list_security_events, security_events_page, config.ADMIN_PAGE_SIZE
-        )
-        # 연관 사건(SIEM 상관분석, Track C guide27) 표 — 위 보안 이벤트와 같은
-        # 페이지네이션 방식이다.
-        security_incidents_future = executor.submit(
-            db.list_security_incidents, security_incidents_page, config.ADMIN_PAGE_SIZE
-        )
-        # "AI 조기 경보" 표(Track A, guide31) — 위 표들과 같은 페이지네이션 방식이다.
-        access_requests_future = executor.submit(
-            db.list_pending_requests, access_requests_page, config.ADMIN_PAGE_SIZE
-        )
-        # 영구 잠금 + 이메일 복구(guide33/34-a) 카드용 데이터와, 화면이 어떤 버튼을 보여줄지
-        # 정하는 데 쓰는 "현재 관리자의 권한 목록" — 위 쿼리들과 같은 배치로 병렬 조회한다.
-        recovery_future = executor.submit(db.list_recent_recovery_requests, 20)
-        exemptions_future = executor.submit(db.list_active_ip_exemptions, 20)
-        permissions_future = executor.submit(db.list_role_permissions, role)
-        # "관리자 계정 관리" 카드 — 권한 확인과 목록을 같은 배치로 미리 보낸다(권한이 없으면 목록은 버림).
-        can_manage_admins_future = executor.submit(db.has_permission, role, "manage_admin_users")
-        admin_users_future = executor.submit(db.list_admin_users)
-
-        # Track D 추가 쿼리
-        net_events_future = executor.submit(db.list_recent_network_events, 50)
-        net_blocks_future = executor.submit(db.list_network_blocks_for_dashboard)
-        agent_heartbeats_future = (
-            executor.submit(db.get_agent_heartbeats, config.LW_NODE_NAME)
-            if config.LW_NODE_NAME
-            else None
-        )
-
-        attempts, attempts_count = attempts_future.result()
-        recent_attempts = _attach_locations(attempts)  # 다른 future들이 도는 동안 함께 실행됨
-        active_lockouts = lockouts_future.result()
-        active_account_lockouts = account_lockouts_future.result()
-        active_admin_account_lockouts = admin_account_lockouts_future.result()
-        admin_log, admin_log_count = admin_log_future.result()
-        users, users_count = users_future.result()
-        signup_enabled = signup_future.result()
-        posts, posts_count = posts_future.result()
-        comments, comments_count = comments_future.result()
-        security_events, security_events_count = security_events_future.result()
-        security_incidents, security_incidents_count = security_incidents_future.result()
-        access_requests, access_requests_count = access_requests_future.result()
-        recovery_requests = recovery_future.result()
-        ip_exemptions = exemptions_future.result()
-        permissions = permissions_future.result()
-        can_manage_admins = can_manage_admins_future.result()
-        # 권한이 없으면 결과를 꺼내지 않는다 — 실패했더라도 그 관리자의 화면과는 무관하다.
-        admin_users = admin_users_future.result() if can_manage_admins else None
-
-        net_events = [e for e in net_events_future.result() if _in_edge_subnet(e.get("src_ip"))]
-        net_blocks = [b for b in net_blocks_future.result() if _in_edge_subnet(b.get("ip_address"))]
-        now_utc = datetime.datetime.now(datetime.timezone.utc)
-        agent_rows = agent_heartbeats_future.result() if agent_heartbeats_future else {}
-        agent_status = _build_agent_status(agent_rows, now_utc)
-
-    response_data = {
-            "recent_attempts": recent_attempts,
-            "attempts_total_pages": max(1, math.ceil(attempts_count / config.ADMIN_PAGE_SIZE)),
-            "active_lockouts": active_lockouts,
-            "active_account_lockouts": active_account_lockouts,
-            # 관리자 계정 단위 잠금(guide38) — 회원 계정 잠금과 같은 카드에 "관리자" 배지로 표시한다.
-            "active_admin_account_lockouts": active_admin_account_lockouts,
-            "admin_login_log": admin_log,
-            "admin_log_total_pages": max(1, math.ceil(admin_log_count / config.ADMIN_PAGE_SIZE)),
-            "users": users,
-            "users_total_pages": max(1, math.ceil(users_count / config.ADMIN_PAGE_SIZE)),
-            "signup_enabled": signup_enabled,
-            # 게시판 관리 섹션(관리자 대시보드)용 — recent_attempts 등과 같은 폴링
-            # 주기(dashboard/main.js, 5초)로 함께 갱신된다.
-            "recent_posts": posts,
-            "posts_total_pages": max(1, math.ceil(posts_count / config.ADMIN_PAGE_SIZE)),
-            "recent_comments": comments,
-            "comments_total_pages": max(1, math.ceil(comments_count / config.ADMIN_PAGE_SIZE)),
-            # 보안 이벤트(위험등급 통합) 섹션 — security-risk-response-summary.md 5절.
-            "security_events": security_events,
-            "security_events_total_pages": max(1, math.ceil(security_events_count / config.ADMIN_PAGE_SIZE)),
-            # 연관 사건(SIEM 상관분석) 섹션 — Track C guide27.
-            "security_incidents": security_incidents,
-            "security_incidents_total_pages": max(1, math.ceil(security_incidents_count / config.ADMIN_PAGE_SIZE)),
-            # AI 조기 경보(Track A guide31) 섹션 — 임계값을 아직 안 넘긴 코앞
-            # 구간에서 LLM이 위험하다고 판단해 등록한 PENDING 요청과, SIEM HIGH 사건의
-            # 영구 잠금 후보(guide33, security/lockdown.py)를 보여준다.
-            "access_requests": access_requests,
-            "access_requests_total_pages": max(1, math.ceil(access_requests_count / config.ADMIN_PAGE_SIZE)),
-            # 영구 잠금 + 이메일 복구(guide33/34-a): 영구 잠금 카드·복구 요청 카드·IP 예외
-            # 카드와, 현재 관리자가 가진 권한(버튼 노출용 — 실제 검사는 서버가 따로 한다).
-            "permanent_locks": _build_permanent_locks(active_lockouts, active_account_lockouts),
-            "recovery_requests": recovery_requests,
-            "ip_exemptions": ip_exemptions,
-            "permissions": permissions,
-            # Track D 네트워크 상태 추가 키
-            "network_events": net_events,
-            "network_blocks": net_blocks,
-            "agent_status": agent_status,
+    def _ip_row(ip: str, **extra) -> dict:
+        return {
+            "ip": ip,
+            "country": (locations.get(ip) or {}).get("country"),
+            "count": count_by_ip[ip],
+            "types": sorted(types_by_ip[ip]),
+            "last_seen": last_seen[ip].isoformat(),
+            **extra,
         }
 
-    # "관리자 계정 관리" 카드는 super_admin(manage_admin_users 권한 보유자)에게만
-    # 응답에 실어 보낸다 — viewer/security_admin의 화면에는 이 키 자체가 없어서
-    # dashboard/render/tables.js가 카드를 숨긴다(다른 관리자 계정 목록이 노출되지 않음).
-    if can_manage_admins:
-        response_data["admin_users"] = admin_users
+    unresolved = sorted(
+        (e for e in events if e["resolved_at"] is None),
+        key=lambda e: (SEVERITY_ORDER.get(e["severity"], 9), -e["_t"].timestamp()),
+    )
+    compound = [
+        {
+            "ip": i["ip_address"],
+            "types": i["event_types"],
+            "type_count": len(i["event_types"]),
+            "severity": i["severity_max"],
+            "status": i["status"],
+            "last_event_at": i["last_event_at"],
+            "country": (locations.get(i["ip_address"]) or {}).get("country"),
+        }
+        for i in raw["incidents"]
+        if len(i["event_types"]) >= 3 and (_parse(i["last_event_at"]) or now).date() >= new_cutoff
+    ]
+    pending_incidents = sorted(
+        (
+            i
+            for i in raw["incidents"]
+            if i["status"] in ("OPEN", "IDLE") or (i["status"] == "CLOSED" and str(i.get("resolved_by") or "").startswith("system"))
+        ),
+        key=lambda i: (
+            INCIDENT_STATUS_ORDER.get(i["status"], 9),
+            SEVERITY_ORDER.get(i["severity_max"], 9),
+            -(_parse(i["last_event_at"]) or now).timestamp(),
+        ),
+    )
 
-    if ttl > 0:
-        with _status_cache_lock:
-            _status_cache[cache_key] = (time.monotonic(), response_data)
-            if len(_status_cache) > 64:  # 쪽 번호 조합이 무한히 늘지 않게
-                _status_cache.pop(next(iter(_status_cache)))
-    return jsonify(response_data)
+    # 6) 상세 모니터링: Top 5들과 나라별 흐름
+    today_events = [e for e in events if e["_d"] == today]
+    yesterday_events = [e for e in events if e["_d"] == today - timedelta(days=1)]
+    top_sources = _top(Counter(e["ip_address"] for e in recent_events), 5)
+    top_types = _top(Counter(e["event_type"] for e in recent_events), 5)
+    # 경로가 있는 이벤트만 경로별로 센다. 경로가 없는 이벤트(브루트포스·스프레이 등 계정·행위 단위 탐지)는
+    # 한 덩어리로 섞이면 도넛을 지배하므로 공격 유형별로 따로 센다.
+    top_paths = _top(Counter(e["path"] for e in recent_events if e["path"]), 5)
+    pathless_by_type = Counter(e["event_type"] for e in recent_events if not e["path"])
+    pathless_types = _top(pathless_by_type, PATHLESS_TYPE_LIMIT)
+    pathless_rest = sum(pathless_by_type.values()) - sum(item["count"] for item in pathless_types)
+    if pathless_rest > 0:
+        pathless_types.append({"name": "기타", "count": pathless_rest})
+    severity_counts = Counter(e["severity"] for e in recent_events)
+
+    country_flow: Counter = Counter()
+    for e in recent_events:
+        country = (locations.get(e["ip_address"]) or {}).get("country") or "위치 미확인"
+        country_flow[(country, e["event_type"])] += 1
+    country_links = [{"source": c, "target": t, "value": n} for (c, t), n in country_flow.items()]
+
+    live_events = [
+        {
+            "id": e["id"],
+            "detected_at": e["detected_at"],
+            "severity": e["severity"],
+            "event_type": e["event_type"],
+            "ip": e["ip_address"],
+            "country": (locations.get(e["ip_address"]) or {}).get("country"),
+            "path": e["path"],
+            "count": e["count"],
+            "action": e["action"],
+            "resolved": e["resolved_at"] is not None,
+        }
+        for e in sorted(events, key=lambda e: e["_t"], reverse=True)[:30]
+    ]
+
+    failed_today = sum(
+        1 for t in (_parse(r["attempted_at"]) for r in raw["failed_logins"]) if t is not None and t.date() == today
+    )
+
+    return {
+        "generated_at": now.isoformat(),
+        "kpi": {
+            "events_today": len(today_events),
+            "events_yesterday": len(yesterday_events),
+            "failed_logins_today": failed_today,
+            "blocked_today": sum(1 for e in today_events if any(k in (e["action"] or "").upper() for k in ("LOCK", "REJECT"))),
+            "active_locks": active_locks,
+            "pending_ai": pending_ai,
+            "unresolved_critical": sum(1 for e in unresolved if e["severity"] == "CRITICAL"),
+            "unresolved_total": len(unresolved),
+            "severity_7d": {k: severity_counts.get(k, 0) for k in ("CRITICAL", "HIGH", "MEDIUM")},
+        },
+        "hourly": hourly,
+        "log_volume": log_volume,
+        "summary_available": bool(raw["summary"]),
+        "heatmap": heatmap,
+        "flow": {"links": sankey_links},
+        "new_attackers": [_ip_row(ip) for ip in new_attackers[:6]],
+        "repeat_attackers": [
+            _ip_row(ip, days=len({d for d in days_seen[ip] if d in day_set})) for ip in repeat_attackers[:6]
+        ],
+        "unresolved": [
+            {
+                "id": e["id"],
+                "severity": e["severity"],
+                "event_type": e["event_type"],
+                "ip": e["ip_address"],
+                "country": (locations.get(e["ip_address"]) or {}).get("country"),
+                "path": e["path"],
+                "detected_at": e["detected_at"],
+            }
+            for e in unresolved[:8]
+        ],
+        "compound": compound[:6],
+        "open_incidents": [
+            {
+                "id": i["id"],
+                "ip": i["ip_address"],
+                "types": i["event_types"],
+                "severity": i["severity_max"],
+                "status": i["status"],
+                "auto_closed": i["status"] == "CLOSED",
+                "last_event_at": i["last_event_at"],
+            }
+            for i in pending_incidents[:OPEN_INCIDENT_LIMIT]
+        ],
+        "open_incidents_total": len(pending_incidents),
+        "top_sources": top_sources,
+        "top_types": top_types,
+        "top_paths": top_paths,
+        "pathless_types": pathless_types,
+        "pathless_total": sum(pathless_by_type.values()),
+        "country_flow": {"links": country_links},
+        "events": live_events,
+        # L3/L4 센서는 아직 없다 — 화면은 이 빈 목록을 "수집 전" 상태로 그린다.
+        "network_layer": [],
+    }
+
+
+# 같은 집계를 여러 관리자 탭이 동시에 요청해도 DB 조회는 한 번만 한다(단일 비행 + 짧은 보관).
+_cache_lock = threading.Lock()
+_cache: dict = {"at": None, "key": None, "value": None}
+
+
+def _compute(active_locks: int, pending_ai: int) -> dict:
+    raw = fetch_raw()
+    ips = {e["ip_address"] for e in raw["events"]} | {i["ip_address"] for i in raw["incidents"]}
+    locations = db.get_cached_ip_locations(sorted(ips)) if ips else {}
+    return build_threat_stats(raw, active_locks=active_locks, pending_ai=pending_ai, locations=locations)
+
+
+def get_threat_stats(active_locks: int, pending_ai: int) -> dict:
+    """관리자 화면이 부르는 진입점: 원본을 가져와 계산하고, 상위 IP의 나라 정보를 붙인다.
+
+    config.ADMIN_STATS_CACHE_SECONDS 안에 같은 요청이 또 오면 계산해 둔 값을 돌려준다. 락을 잡은 채로
+    계산하므로, 동시에 들어온 다른 탭은 기다렸다가 같은 결과를 받는다(DB를 N번 두드리지 않는다).
+    """
+    ttl = config.ADMIN_STATS_CACHE_SECONDS
+    if ttl <= 0:
+        return _compute(active_locks, pending_ai)
+    key = (active_locks, pending_ai)
+    with _cache_lock:
+        fresh = _cache["at"] is not None and time.monotonic() - _cache["at"] < ttl and _cache["key"] == key
+        if not fresh:
+            _cache.update(value=_compute(active_locks, pending_ai), key=key, at=time.monotonic())
+        return _cache["value"]
