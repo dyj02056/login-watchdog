@@ -190,13 +190,17 @@ def _in_probation(account_lockout_row: dict) -> bool:
 
 
 def consider_incident_promotion(ip: str, incident: dict) -> None:
-    """상관분석 사건의 최고 위험등급에 따라 영구 잠금을 건다(T3/T4).
+    """상관분석 사건의 앱 이벤트 최고 위험등급에 따라 영구 잠금을 건다(T3/T4).
+
+    P4·V1에 따라 출발지 위조가 가능한 NET 경보의 등급을 영구 잠금 근거로 쓰지 않는다.
+    NET 경보가 섞여도 기존 앱 등급은 유지하므로 기존 방어 판단을 끄지도 못한다.
+    app_severity_max가 없거나 None이면 전체 등급으로 대체하지 않고 판단을 건너뛴다.
 
     CRITICAL → 즉시 승격. HIGH → PERMANENT_LOCK_AUTO_ON_HIGH가 true면 승격, 아니면
     관리자 승인 대기(access_requests)로 올린다(Human-in-the-loop). 이미 영구 잠금인
     IP나 허용 목록 IP는 건너뛴다.
     """
-    severity = incident.get("severity_max")
+    severity = incident.get("app_severity_max")
     if severity not in ("CRITICAL", "HIGH") or is_ip_allowlisted(ip):
         return
 

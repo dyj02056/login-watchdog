@@ -244,6 +244,7 @@ def test_record_incident_accepts_net_source_without_changing_existing_logic(monk
     monkeypatch.setattr(incidents, "_insert_incident", lambda *a: calls.append(a) or 7)
     assert incidents.record_incident(IP, ["NET_SYN_FLOOD", "NET_PORT_SCAN"], "HIGH", source="NET") == {
         "id": 7, "event_types": ["NET_SYN_FLOOD", "NET_PORT_SCAN"], "severity_max": "HIGH", "escalated": False,
+        "app_severity_max": None, "matched_rules": [],
     }
     assert calls == [(IP, ["NET_SYN_FLOOD", "NET_PORT_SCAN"], "HIGH")]
 
