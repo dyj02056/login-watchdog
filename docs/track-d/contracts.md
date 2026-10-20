@@ -184,7 +184,8 @@ def verify_request(allowed_senders: set[str]) -> str | None:
 | 경우 | 응답 |
 |---|---|
 | 처음 저장 | `200 {"status": "stored", "promoted": true/false}` |
-| 같은 `event_id` 재전송·갱신 | `200 {"status": "updated", "promoted": false}` — `packet_count`(더 큰 값)·`last_seen_at`만 갱신, 보안 이벤트로 다시 올리지 않음 |
+| 같은 `event_id` 재전송·갱신 | `200 {"status": "updated", "promoted": false}` — `packet_count`(더 큰 값)·`last_seen_at`만 갱신, 이미 승격된 경보는 다시 올리지 않음 |
+| 재전송 중 승격 복구 (K5 승격 대상이면서 아직 `promoted=false`) | `200 {"status": "updated", "promoted": true}` — 이전 승격이 실패한 경보만 이번에 보안 이벤트로 올림 |
 
 > 재시도 판단(A): `5xx`·연결 실패만 지수 백오프로 재시도한다. `4xx`는 재시도하지 않고 로그만 남긴다.
 
