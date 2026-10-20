@@ -25,6 +25,8 @@ def insert_security_event(
     count: int,
     action: str,
     username: str | None = None,
+    source: str = "APP",
+    layer: str | None = None,
 ) -> None:
     """이상행위 이벤트 한 건을 security_events 표에 기록한다.
 
@@ -32,17 +34,19 @@ def insert_security_event(
     잠금)일 때만 채운다 — 기존 IP 단위 이벤트(BRUTE_FORCE 등)는 인자를 넘기지
     않으면 그대로 None(비어있음)이라 호출부 코드가 하나도 안 바뀐다.
     """
-    db.get_client().table("security_events").insert(
-        {
-            "event_type": event_type,
-            "severity": severity,
-            "ip_address": ip,
-            "path": path,
-            "count": count,
-            "action": action,
-            "username": username,
-        }
-    ).execute()
+    row = {
+        "event_type": event_type,
+        "severity": severity,
+        "ip_address": ip,
+        "path": path,
+        "count": count,
+        "action": action,
+        "username": username,
+    }
+    # APP 기본 호출은 기존 행 모양과 DB 기본값(APP, NULL)을 유지한다.
+    if source != "APP" or layer is not None:
+        row.update(source=source, layer=layer)
+    db.get_client().table("security_events").insert(row).execute()
 
 
 def list_security_events(page: int = 1, page_size: int = 20) -> tuple[list[dict], int]:
@@ -251,7 +255,8 @@ def delete_all_security_events() -> int:
 
 
 def insert_security_event_or_bump(
-    event_type: str, severity: str, ip: str, path: str | None, count: int, action: str
+    event_type: str, severity: str, ip: str, path: str | None, count: int, action: str,
+    source: str = "APP", layer: str | None = None,
 ) -> None:
     """HIGH 이벤트를 새로 기록하되, 아주 드물게 동시 요청 두 개가 거의 같은
     순간에 "미해결 이벤트 없음"을 확인하고 둘 다 새로 삽입을 시도하는 경쟁
@@ -264,7 +269,10 @@ def insert_security_event_or_bump(
     실제로 겹친 "드문 경우"만 뒤에서 조용히 정리하는 안전망이다.
     """
     try:
-        insert_security_event(event_type, severity, ip, path, count, action)
+        if source == "APP" and layer is None:
+            insert_security_event(event_type, severity, ip, path, count, action)
+        else:
+            insert_security_event(event_type, severity, ip, path, count, action, source=source, layer=layer)
     except APIError as e:
         if e.code != "23505":
             raise
