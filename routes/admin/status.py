@@ -7,6 +7,8 @@
 # 배경은 docs/refactor/2026-10-09-module-plan.md 참고.
 # ============================================================================
 
+import datetime
+import ipaddress
 import math
 import threading
 import time
@@ -18,6 +20,7 @@ import config
 import db
 from db import stats as db_stats
 from helpers import _attach_locations, login_required
+from notify import alert
 from routes.admin import admin_bp
 from security import soar
 
@@ -168,6 +171,91 @@ def _build_permanent_locks(ip_lockouts: list[dict], account_lockouts: list[dict]
     return locks
 
 
+# ---------------------------------------------------------------------------
+# Track D 화면 데이터 (C2-3, 계약서 K10)
+# ---------------------------------------------------------------------------
+
+def _in_edge_subnet(ip: str | None) -> bool:
+    """이 PC가 맡은 공격 대역(NET_EDGE_SUBNET) 안의 IP인지 본다.
+
+    세 PC가 같은 DB를 쓰므로, 거르지 않으면 남의 PC 경보·차단이 내 화면에 섞인다(01 D4).
+    설정이 비었거나 잘못됐으면 거르지 않는다 — 잘못된 설정 때문에 화면이 통째로 비면
+    관리자가 "공격이 없다"고 오해하기 쉬워서다(잘못된 값은 로그로 알린다)."""
+    if not config.NET_EDGE_SUBNET or not ip:
+        return True
+    try:
+        subnet = ipaddress.ip_network(config.NET_EDGE_SUBNET, strict=False)
+    except ValueError:
+        print(f"[status] 잘못된 NET_EDGE_SUBNET 설정 — 거르지 않습니다: {config.NET_EDGE_SUBNET!r}")
+        return True
+    try:
+        return ipaddress.ip_address(ip) in subnet
+    except ValueError:
+        return False
+
+
+def _network_block_for_dashboard(row: dict) -> dict:
+    """network_blocks 행을 계약서 K10 모양으로 바꾼다. DB 칸 이름은 ip_address지만 화면 계약은 ip다."""
+    return {
+        "ip": row.get("ip_address"),
+        "reason": row.get("reason"),
+        "evidence": row.get("evidence"),
+        "status": row.get("status"),
+        "expires_at": row.get("expires_at"),
+        "requested_by": row.get("requested_by"),
+        "applied_at": row.get("applied_at"),
+        "last_error": row.get("last_error"),
+    }
+
+
+def _build_agent_status(rows: dict[str, dict], now: datetime.datetime) -> dict:
+    """이 PC(LW_NODE_NAME)의 fw-agent·shipper 상태를 계약서 K10 agent_status 모양으로 만든다.
+
+    LW_NODE_NAME이 비어 있으면(Vercel 등 Docker 단지가 없는 환경) 감시할 장비가 없으므로 {}.
+    기록이 없거나 마지막 신호가 기준(FW_AGENT_STALE_SECONDS·SHIPPER_STALE_SECONDS)보다 오래되면
+    stale이다. 한 번이라도 신호를 보낸 장비가 멈췄을 때만 Slack으로 알린다 — 아직 켠 적 없는
+    장비까지 알리면 단지를 켜지 않은 PC에서 화면을 열 때마다 알림이 쌓인다. 쿨다운 키는 heartbeat
+    창구(C1-2)의 상대 장비 정지 알림과 같아서 알림이 두 번 가지 않는다."""
+    if not config.LW_NODE_NAME:
+        return {}
+
+    result = {}
+    for agent, stale_seconds in (
+        ("fw-agent", config.FW_AGENT_STALE_SECONDS),
+        ("shipper", config.SHIPPER_STALE_SECONDS),
+    ):
+        row = rows.get(agent)
+        if not row or not row.get("last_seen_at"):
+            result[agent] = {"last_seen_at": None, "stale": True, "detail": (row or {}).get("detail") or {}}
+            continue
+
+        last_seen_str = row["last_seen_at"]
+        detail = row.get("detail") or {}
+        try:
+            last_seen_dt = datetime.datetime.fromisoformat(last_seen_str.replace("Z", "+00:00"))
+            if last_seen_dt.tzinfo is None:
+                last_seen_dt = last_seen_dt.replace(tzinfo=datetime.timezone.utc)
+        except (TypeError, ValueError):
+            # 시각을 읽을 수 없으면 살아 있다고 보장할 수 없으므로 정지로 표시한다(알림은 보내지 않음).
+            result[agent] = {"last_seen_at": last_seen_str, "stale": True, "detail": detail}
+            continue
+
+        diff_sec = (now - last_seen_dt).total_seconds()
+        is_stale = diff_sec > stale_seconds
+        result[agent] = {"last_seen_at": last_seen_str, "stale": is_stale, "detail": detail}
+        if is_stale:
+            cooldown_key = f"slack:stale:{config.LW_NODE_NAME}:{agent}"
+            try:
+                if db.try_acquire_cooldown(cooldown_key, config.AGENT_ALERT_COOLDOWN_SECONDS):
+                    alert.send_component_alert(
+                        agent, f"{int(diff_sec)}초 넘게 생존 신호가 없습니다 (PC: {config.LW_NODE_NAME})"
+                    )
+            except Exception as e:
+                # 알림 실패가 관리자 화면 전체를 500으로 만들면 안 된다.
+                print(f"[status] 장비 정지 알림 실패: {agent} — {e}")
+    return result
+
+
 @admin_bp.route("/api/stats", methods=["GET"])
 @login_required
 def api_stats():
@@ -268,7 +356,8 @@ def api_status():
     # 아래 스레드에서는 g를 쓸 수 없으므로 여기서 먼저 꺼내둔다.
     role = g.admin["role"]
 
-    with ThreadPoolExecutor(max_workers=17) as executor:
+    # 동시 처리 한도 = 아래 조회 개수(20). 한도가 더 작으면 일부 조회가 앞 조회를 기다린다(guide46).
+    with ThreadPoolExecutor(max_workers=20) as executor:
         attempts_future = executor.submit(db.list_recent_attempts, attempts_page, config.ADMIN_PAGE_SIZE)
         lockouts_future = executor.submit(db.list_active_lockouts)
         # "현재 잠긴 IP / 계정" 카드의 계정 잠금 목록 — IP 잠금 목록과 같은 배치로 병렬 조회.
@@ -299,6 +388,13 @@ def api_status():
         # "관리자 계정 관리" 카드 — 권한 확인과 목록을 같은 배치로 미리 보낸다(권한이 없으면 목록은 버림).
         can_manage_admins_future = executor.submit(db.has_permission, role, "manage_admin_users")
         admin_users_future = executor.submit(db.list_admin_users)
+        # Track D 관제 카드(C2-3, 계약서 K10) — 최근 네트워크 경보·L4 차단 목록·장비 생존 신호.
+        # 장비 신호는 이 PC(LW_NODE_NAME)가 정해져 있을 때만 조회한다(Vercel에는 장비가 없다).
+        net_events_future = executor.submit(db.list_recent_network_events, 50)
+        net_blocks_future = executor.submit(db.list_network_blocks_for_dashboard)
+        agent_heartbeats_future = (
+            executor.submit(db.get_agent_heartbeats, config.LW_NODE_NAME) if config.LW_NODE_NAME else None
+        )
 
         attempts, attempts_count = attempts_future.result()
         recent_attempts = _attach_locations(attempts)  # 다른 future들이 도는 동안 함께 실행됨
@@ -319,6 +415,14 @@ def api_status():
         can_manage_admins = can_manage_admins_future.result()
         # 권한이 없으면 결과를 꺼내지 않는다 — 실패했더라도 그 관리자의 화면과는 무관하다.
         admin_users = admin_users_future.result() if can_manage_admins else None
+        network_events = [e for e in net_events_future.result() if _in_edge_subnet(e.get("src_ip"))]
+        network_blocks = [
+            _network_block_for_dashboard(b)
+            for b in net_blocks_future.result()
+            if _in_edge_subnet(b.get("ip_address"))
+        ]
+        agent_rows = agent_heartbeats_future.result() if agent_heartbeats_future else {}
+        agent_status = _build_agent_status(agent_rows, datetime.datetime.now(datetime.timezone.utc))
 
     response_data = {
             "recent_attempts": recent_attempts,
@@ -355,6 +459,10 @@ def api_status():
             "recovery_requests": recovery_requests,
             "ip_exemptions": ip_exemptions,
             "permissions": permissions,
+            # Track D 관제 카드(C2-3, 계약서 K10). network_events·network_blocks는 이 PC 대역만.
+            "network_events": network_events,
+            "network_blocks": network_blocks,
+            "agent_status": agent_status,
         }
 
     # "관리자 계정 관리" 카드는 super_admin(manage_admin_users 권한 보유자)에게만

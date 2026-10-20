@@ -148,3 +148,18 @@ def _stub_permanent_lock_defaults(request, monkeypatch):
 # Supabase에 접속하게 되면, 그 기본값(가짜)을 이 아래에 둔다. 위 기존 fixture는 고치지 않고,
 # 필요하면 이 구역에 autouse fixture를 새로 만든다(team-plan 01 3.2).
 # ============================================================================
+
+
+@pytest.fixture(autouse=True)  # [C2-3]
+def _stub_track_d_dashboard_queries(request, monkeypatch):  # [C2-3]
+    # /api/status·/api/stats가 새로 부르는 Track D DB 함수를 빈 값으로 바꾼다(실제 DB 접속 방지).  # [C2-3]
+    # 화면 API를 부를 수 있는 테스트(client fixture를 쓰는 테스트)에만 적용한다 — 모든 테스트에 적용하면  # [C2-3]
+    # 이 함수들을 직접 시험하는 C1-1·B1-1 단위 테스트와 db 연결 확인(test_scaffold)이 가짜를 시험하게 된다.  # [C2-3]
+    if "client" not in request.fixturenames:  # [C2-3]
+        return  # [C2-3]
+    import db  # [C2-3]
+    monkeypatch.setattr(db, "list_recent_network_events", lambda limit=50: [], raising=False)  # [C2-3]
+    monkeypatch.setattr(db, "list_network_blocks_for_dashboard", lambda: [], raising=False)  # [C2-3]
+    monkeypatch.setattr(db, "get_agent_heartbeats", lambda node: {}, raising=False)  # [C2-3]
+    monkeypatch.setattr(db, "count_network_events_by_category", lambda since_iso: [], raising=False)  # [C2-3]
+    monkeypatch.setattr(db, "try_acquire_cooldown", lambda key, seconds: False, raising=False)  # [C2-3]
