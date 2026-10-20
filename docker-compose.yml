@@ -62,8 +62,8 @@ services:
       - core
       - egress
 
-  # 이후 단계에서 실제 Suricata 설정으로 교체한다(A1-1 전까지는 대기용 껍데기 — eve.json을 만들지 않는다).
-    # Suricata IDS — gateway 네임스페이스의 edge 트래픽을 감시한다.
+  # Suricata IDS(A1-1) — gateway 네임스페이스의 edge 트래픽을 감시해 eve.json에 쓴다.
+  # 감시 인터페이스는 entrypoint.sh가 ${LW_EDGE_PREFIX}.10이 붙은 쪽으로 고른다(계약서 K1).
   sensor:
     image: jasonish/suricata:7.0.17
     network_mode: "service:gateway"
@@ -74,7 +74,7 @@ services:
       - NET_RAW
       - SYS_NICE
     environment:
-      SENSOR_IFACE: ${SENSOR_IFACE:-eth0}
+      SENSOR_IFACE: ${SENSOR_IFACE:-eth1}
       LW_EDGE_PREFIX: ${LW_EDGE_PREFIX}
     entrypoint:
       - /bin/sh

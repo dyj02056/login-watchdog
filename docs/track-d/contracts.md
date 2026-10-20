@@ -2,7 +2,7 @@
 
 # 02. 연동 계약서 — 역할끼리 주고받는 약속
 
-> **버전 v1.0 확정 (2026-10-12) · 10/13 보완(맨 아래 변경 기록)** — 통합 담당자가 현재 저장소 코드·역할별 요청서와 대조해 확정했다. 10/14 계획 확정 회의에서 세 사람의 동의를 받는다. 이후 바뀌는 내용은 맨 아래 변경 기록에 남긴다.
+> **버전 v1.0 확정 (2026-10-12) · 10/13·10/19·10/20 보완(맨 아래 변경 기록)** — 통합 담당자가 현재 저장소 코드·역할별 요청서와 대조해 확정했다. 10/14 계획 확정 회의에서 세 사람의 동의를 받는다. 이후 바뀌는 내용은 맨 아래 변경 기록에 남긴다.
 > **이 문서가 기준이다.** 함수 이름·인자·JSON 모양이 이 문서와 다르면 코드가 틀린 것이다.
 > 뼈대 PR(I0-1)에서 이 문서를 저장소의 `docs/track-d/contracts.md`로 복사한다. LLM(Codex)은 저장소 사본을 읽는다.
 > 바꾸려면 01의 8장 절차를 따른다. 바꾼 내용은 맨 아래 **변경 기록**에 남긴다.
@@ -60,7 +60,7 @@
 | 이름 | 예 | 뜻 |
 |---|---|---|
 | `LW_EDGE_PREFIX` | `172.28.13` | 사람별 공격 대역 앞 세 자리 (01의 4장 표) |
-| `SENSOR_IFACE` | `eth1` | Suricata·Scapy가 감시할 인터페이스. gateway 안에서 eth0=core(172.30), eth1=edge라 edge 쪽인 eth1 (2026-10-19 `ip -4 -o addr`로 확인) |
+| `SENSOR_IFACE` | `eth1`(PC마다 다름) | Suricata·Scapy가 감시할 gateway 안 **edge 쪽** 인터페이스. Docker는 네트워크를 붙이는 순서를 보장하지 않아 eth0/eth1 중 어느 쪽이 edge인지가 PC·컨테이너 재생성마다 다르다(10/19 한 PC는 eth1, 10/20 다른 PC는 eth0). 각 PC에서 `docker run --rm --network container:login-watchdog-gateway nicolaka/netshoot ip -br addr`로 `${LW_EDGE_PREFIX}.10`이 붙은 쪽(172.30이 **아닌** 쪽)을 넣는다. core 쪽을 넣으면 오류 없이 탐지가 0건이 된다. l4-detector는 지정한 이름에 edge 주소가 없으면 edge 주소가 붙은 쪽으로 스스로 바꾼다(`auto`도 가능) |
 | `LW_VICTIM_PASSWORD` | (사람마다 다름) | S4·S6에서 공격 상자(attacker-2)가 `victim_<역할>` 계정으로 로그인할 때 쓰는 테스트 계정 비밀번호. A2-1의 로그인 명령과 C3-1이 읽는다. **LLM에 붙여 넣지 않고** 이미지·compose·README에 값을 적지 않는다 |
 
 ---
@@ -70,7 +70,7 @@
 | 대상 | 주소 | 비고 |
 |---|---|---|
 | gateway(nginx) edge 쪽 | `${LW_EDGE_PREFIX}.10` | sensor·l4-detector·fw-agent가 이 네임스페이스를 공유 |
-| gateway core 쪽 | `172.30.0.10` (고정) | 앱의 `TRUSTED_PROXY_IPS` 값 |
+| gateway core 쪽 | `172.30.0.10` (고정, core 대역 `172.30.0.0/24`) | 앱의 `TRUSTED_PROXY_IPS` 값 |
 | attacker-1 / 2 / 3 | `${LW_EDGE_PREFIX}.101` / `.102` / `.103` | `profiles: [attack]` |
 | 내 브라우저(호스트) | `${LW_EDGE_PREFIX}.1` | 허용 목록에 넣는다 |
 | 앱 내부 주소 | `http://app:5000` | shipper·fw-agent가 사용 |
@@ -477,3 +477,4 @@ ctx = {
 | 2026-10-13 | K8·K11 | 쿨다운을 DB에 두는 이유를 "여러 워커"에서 "여러 스레드·여러 PC·Vercel"로 고침(app은 gunicorn 워커 1개 + 스레드 — 확장 계획서 2.2). K11의 쿨다운·생존 신호 표는 본 계획서 2.3 ⑥에도 반영됨 | — |
 | 2026-10-19 | K2 | gateway core 쪽 고정 주소 `172.29.0.10`→`172.30.0.10`(core 대역 `172.30.0.0/24`). Docker Desktop(WSL2)이 VM 내부 통신에 `172.29.0.0/24`를 써서 겹치면 엔진 연결이 끊겼다 | 통합 담당자 확인 |
 | 2026-10-19 | K1 | `SENSOR_IFACE` 예 `eth0`→`eth1`. gateway 안에서 eth0=core, eth1=edge로 확인(`ip -4 -o addr`). eth0이면 L4 탐지가 0건 | 통합 담당자 확인 |
+| 2026-10-20 | K1 | `SENSOR_IFACE`는 **PC마다 다르다**로 고침. 다른 PC(edge `172.28.11`)에서는 edge가 eth0이었다(eve.json `in_iface=eth0`). 각 PC에서 edge 주소가 붙은 쪽을 확인해 `.env`에 넣고, l4-detector는 edge 주소 기준으로 자동 보정한다. 10/19 저장소 사본에만 적었던 K1·K2 기록을 이 원본에도 옮겼다 | 통합 담당자 확인 |

@@ -1,9 +1,11 @@
 """Scapy로 TCP 패킷을 받아 l4.json에 경보를 기록한다.
 
 환경변수 기본값과 이유:
-- SENSOR_IFACE=eth1
-  gateway 네임스페이스에서 edge(공격이 들어오는 쪽) 인터페이스다. gateway는 core·edge 순으로
-  붙어 eth0=core(172.30), eth1=edge가 된다(10/19 ip addr로 확인). core는 탐지에서 빼므로 eth0이면 0건이 된다.
+- SENSOR_IFACE=eth1 (또는 auto)
+  gateway 네임스페이스에서 edge(공격이 들어오는 쪽) 인터페이스다. Docker가 네트워크를 붙이는
+  순서는 PC·재생성마다 달라 edge가 eth0일 때도 eth1일 때도 있다(10/19는 eth1, 10/20 다른 PC는 eth0).
+  그래서 시작할 때 LW_EDGE_PREFIX.10 주소가 붙은 인터페이스를 찾아, 지정한 이름에 그 주소가 없으면
+  그쪽으로 바꾼다. core는 탐지에서 빼므로 core를 보면 오류 없이 0건이 되기 때문이다.
 - L4_SYN_PER_SEC=100
   Suricata sid 9000001과 비슷한 수준으로 SYN Flood를 판단한다.
 - L4_DISTINCT_PORTS_10S=15
@@ -22,9 +24,9 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
-from scapy.all import IP, TCP, sniff
+from scapy.all import IP, TCP, get_if_addr, get_if_list, sniff
 
-from detector_core import L4Detector
+from detector_core import L4Detector, resolve_sensor_iface
 
 
 DEFAULT_SENSOR_IFACE = "eth1"
@@ -70,10 +72,6 @@ def write_events(output: TextIO, events: list[dict]) -> None:
 
 def run() -> None:
     """환경설정을 읽고 TCP 패킷 캡처를 시작한다."""
-    sensor_iface = os.environ.get(
-        "SENSOR_IFACE",
-        DEFAULT_SENSOR_IFACE,
-    )
     syn_threshold = read_positive_int(
         "L4_SYN_PER_SEC",
         DEFAULT_SYN_THRESHOLD,
@@ -94,6 +92,17 @@ def run() -> None:
             file=sys.stderr,
             flush=True,
         )
+
+    sensor_iface, iface_warning = resolve_sensor_iface(
+        os.environ.get("SENSOR_IFACE", DEFAULT_SENSOR_IFACE),
+        edge_prefix,
+        get_if_list,
+        get_if_addr,
+        DEFAULT_SENSOR_IFACE,
+    )
+
+    if iface_warning:
+        print(f"[WARN] {iface_warning}", file=sys.stderr, flush=True)
 
     detector = L4Detector(
         syn_threshold_per_sec=syn_threshold,

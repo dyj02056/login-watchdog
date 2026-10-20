@@ -61,6 +61,10 @@ class _FakeQuery:
         self.calls.append(("gte", args, kwargs))
         return self
 
+    def or_(self, *args, **kwargs):
+        self.calls.append(("or_", args, kwargs))
+        return self
+
     def is_(self, *args, **kwargs):
         self.calls.append(("is_", args, kwargs))
         return self
@@ -1024,7 +1028,15 @@ def test_is_idle_treats_naive_timestamp_as_utc():
     assert incidents_module._is_idle({"last_event_at": naive}) is True
 
 
-def test_record_incident_marks_stale_incident_idle_and_opens_new_one(monkeypatch):
+@pytest.fixture
+def incident_metadata_client(monkeypatch):
+    """기존 사건 흐름 테스트에서 추가된 앱 등급 갱신도 실제 DB로 연결되지 않게 한다."""
+    fake_client = _FakeQuery(rows=[{"app_severity_max": "CRITICAL", "matched_rules": []}])
+    monkeypatch.setattr(db, "get_client", lambda: fake_client)
+    return fake_client
+
+
+def test_record_incident_marks_stale_incident_idle_and_opens_new_one(monkeypatch, incident_metadata_client):
     import config
     from db import incidents as incidents_module
 
@@ -1032,6 +1044,8 @@ def test_record_incident_marks_stale_incident_idle_and_opens_new_one(monkeypatch
         "id": 5,
         "event_types": ["BRUTE_FORCE", "WEB_SCANNING"],
         "severity_max": "CRITICAL",
+        "app_severity_max": "CRITICAL",
+        "matched_rules": [],
         "escalated": True,
         "last_event_at": _iso_minutes_ago(config.INCIDENT_MERGE_IDLE_MINUTES + 10),
     }
@@ -1054,11 +1068,13 @@ def test_record_incident_marks_stale_incident_idle_and_opens_new_one(monkeypatch
         "id": 50,
         "event_types": ["BRUTE_FORCE", "WEB_SCANNING"],
         "severity_max": "CRITICAL",
+        "app_severity_max": "CRITICAL",
+        "matched_rules": [],
         "escalated": False,
     }
 
 
-def test_record_incident_still_merges_when_within_idle_window(monkeypatch):
+def test_record_incident_still_merges_when_within_idle_window(monkeypatch, incident_metadata_client):
     import config
     from db import incidents as incidents_module
 
@@ -1066,6 +1082,8 @@ def test_record_incident_still_merges_when_within_idle_window(monkeypatch):
         "id": 5,
         "event_types": ["BRUTE_FORCE"],
         "severity_max": "MEDIUM",
+        "app_severity_max": "MEDIUM",
+        "matched_rules": [],
         "escalated": True,
         "last_event_at": _iso_minutes_ago(config.INCIDENT_MERGE_IDLE_MINUTES - 5),
     }
@@ -1091,9 +1109,11 @@ def test_record_incident_still_merges_when_within_idle_window(monkeypatch):
 
     assert calls == [(5, ["BRUTE_FORCE", "WEB_SCANNING"], "CRITICAL")]
     assert result["escalated"] is True
+    assert result["app_severity_max"] == "CRITICAL"
+    assert result["matched_rules"] == []
 
 
-def test_record_incident_inserts_new_incident_when_none_open(monkeypatch):
+def test_record_incident_inserts_new_incident_when_none_open(monkeypatch, incident_metadata_client):
     from db import incidents as incidents_module
 
     # record_incident()는 db/incidents.py 안에서 get_open_incident을 이름으로
@@ -1123,14 +1143,22 @@ def test_record_incident_inserts_new_incident_when_none_open(monkeypatch):
         "id": 99,
         "event_types": ["BRUTE_FORCE", "WEB_SCANNING"],
         "severity_max": "CRITICAL",
+        "app_severity_max": "CRITICAL",
+        "matched_rules": [],
         "escalated": False,
     }
+    assert ("update", ({"app_severity_max": "CRITICAL"},), {}) in incident_metadata_client.calls
+    assert ("eq", ("id", 99), {}) in incident_metadata_client.calls
+    assert ("or_", ("app_severity_max.is.null,app_severity_max.in.(MEDIUM,HIGH)",), {}) in incident_metadata_client.calls
 
 
-def test_record_incident_merges_into_existing_open_incident(monkeypatch):
+def test_record_incident_merges_into_existing_open_incident(monkeypatch, incident_metadata_client):
     from db import incidents as incidents_module
 
-    existing = {"id": 5, "event_types": ["BRUTE_FORCE"], "severity_max": "MEDIUM", "escalated": False}
+    existing = {
+        "id": 5, "event_types": ["BRUTE_FORCE"], "severity_max": "MEDIUM",
+        "app_severity_max": "MEDIUM", "matched_rules": [], "escalated": False,
+    }
     monkeypatch.setattr(incidents_module, "get_open_incident", lambda ip: existing)
     monkeypatch.setattr(
         incidents_module,
@@ -1155,17 +1183,22 @@ def test_record_incident_merges_into_existing_open_incident(monkeypatch):
         "id": 5,
         "event_types": ["BRUTE_FORCE", "WEB_SCANNING"],
         "severity_max": "CRITICAL",
+        "app_severity_max": "CRITICAL",
+        "matched_rules": [],
         "escalated": False,
     }
 
 
-def test_record_incident_falls_back_to_merge_on_unique_violation(monkeypatch):
+def test_record_incident_falls_back_to_merge_on_unique_violation(monkeypatch, incident_metadata_client):
     # get_open_incident()로 확인했을 땐 없었지만(None), 그 확인과 삽입 사이의
     # 아주 짧은 틈에 동시 요청이 겹쳐 실제로는 이미 삽입돼 있던 경우(경쟁 조건)를
     # 흉내낸다 — 두 번째 get_open_incident() 호출에서는 그 사건을 찾아야 한다.
     from db import incidents as incidents_module
 
-    lookups = [None, {"id": 9, "event_types": ["WEB_SCANNING"], "severity_max": "MEDIUM", "escalated": False}]
+    lookups = [None, {
+        "id": 9, "event_types": ["WEB_SCANNING"], "severity_max": "MEDIUM",
+        "app_severity_max": "MEDIUM", "matched_rules": [], "escalated": False,
+    }]
     monkeypatch.setattr(incidents_module, "get_open_incident", lambda ip: lookups.pop(0))
 
     conflict = APIError({"code": "23505", "message": "duplicate key value violates unique constraint"})
@@ -1188,6 +1221,8 @@ def test_record_incident_falls_back_to_merge_on_unique_violation(monkeypatch):
         "id": 9,
         "event_types": ["BRUTE_FORCE", "WEB_SCANNING"],
         "severity_max": "CRITICAL",
+        "app_severity_max": "CRITICAL",
+        "matched_rules": [],
         "escalated": False,
     }
 

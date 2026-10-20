@@ -264,7 +264,8 @@ def incident_env(monkeypatch):
 
 def test_critical_incident_promotes_immediately(incident_env):
     lockdown.consider_incident_promotion(
-        "9.9.9.9", {"id": 3, "event_types": ["BRUTE_FORCE", "WEB_SCANNING"], "severity_max": "CRITICAL"}
+        "9.9.9.9", {"id": 3, "event_types": ["BRUTE_FORCE", "WEB_SCANNING"],
+                    "severity_max": "CRITICAL", "app_severity_max": "CRITICAL"}
     )
 
     assert incident_env == [("promote_ip", "9.9.9.9", "SIEM_CRITICAL", "EXEMPTION", {"incident_id": 3})]
@@ -274,7 +275,8 @@ def test_high_incident_goes_to_approval_queue_by_default(incident_env, monkeypat
     monkeypatch.setattr(config, "PERMANENT_LOCK_AUTO_ON_HIGH", False)
 
     lockdown.consider_incident_promotion(
-        "9.9.9.9", {"id": 3, "event_types": ["SIGNUP_RATE_LIMIT", "WEB_SCANNING"], "severity_max": "HIGH"}
+        "9.9.9.9", {"id": 3, "event_types": ["SIGNUP_RATE_LIMIT", "WEB_SCANNING"],
+                    "severity_max": "HIGH", "app_severity_max": "HIGH"}
     )
 
     kinds = [entry[0] for entry in incident_env]
@@ -286,7 +288,8 @@ def test_high_incident_promotes_when_auto_on_high_enabled(incident_env, monkeypa
     monkeypatch.setattr(config, "PERMANENT_LOCK_AUTO_ON_HIGH", True)
 
     lockdown.consider_incident_promotion(
-        "9.9.9.9", {"id": 3, "event_types": ["SIGNUP_RATE_LIMIT", "WEB_SCANNING"], "severity_max": "HIGH"}
+        "9.9.9.9", {"id": 3, "event_types": ["SIGNUP_RATE_LIMIT", "WEB_SCANNING"],
+                    "severity_max": "HIGH", "app_severity_max": "HIGH"}
     )
 
     assert incident_env == [("promote_ip", "9.9.9.9", "SIEM_HIGH", "EXEMPTION", {"incident_id": 3})]
@@ -296,14 +299,20 @@ def test_high_incident_is_not_queued_again_when_already_permanently_locked(incid
     monkeypatch.setattr(config, "PERMANENT_LOCK_AUTO_ON_HIGH", False)
     monkeypatch.setattr(db, "get_active_lockout", lambda ip: {"lock_type": "PERMANENT"})
 
-    lockdown.consider_incident_promotion("9.9.9.9", {"id": 3, "event_types": ["A", "B"], "severity_max": "HIGH"})
+    lockdown.consider_incident_promotion("9.9.9.9", {
+        "id": 3, "event_types": ["A", "B"], "severity_max": "HIGH", "app_severity_max": "HIGH",
+    })
 
     assert incident_env == []
 
 
 def test_medium_incident_and_allowlisted_ip_do_nothing(incident_env):
-    lockdown.consider_incident_promotion("9.9.9.9", {"id": 3, "event_types": ["A", "B"], "severity_max": "MEDIUM"})
-    lockdown.consider_incident_promotion("127.0.0.1", {"id": 4, "event_types": ["A", "B"], "severity_max": "CRITICAL"})
+    lockdown.consider_incident_promotion("9.9.9.9", {
+        "id": 3, "event_types": ["A", "B"], "severity_max": "MEDIUM", "app_severity_max": "MEDIUM",
+    })
+    lockdown.consider_incident_promotion("127.0.0.1", {
+        "id": 4, "event_types": ["A", "B"], "severity_max": "CRITICAL", "app_severity_max": "CRITICAL",
+    })
 
     assert incident_env == []
 
