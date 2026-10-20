@@ -274,7 +274,8 @@ def test_compose_passes_sensor_environment_and_volumes() -> None:
     sensor_block = sensor_compose_block()
 
     assert (
-        "SENSOR_IFACE: ${SENSOR_IFACE:-eth0}"
+        # [A1-1 보완] 계약서 K1의 compose 기본값은 eth1이다(10/19 eth0에서 변경).
+        "SENSOR_IFACE: ${SENSOR_IFACE:-eth1}"
         in sensor_block
     )
     assert (
@@ -302,3 +303,32 @@ def test_sensor_remains_enabled_by_default_after_a1_3() -> None:
     sensor_block = sensor_compose_block()
 
     assert "profiles:" not in sensor_block
+
+
+# --- [A1-1 보완] 인터페이스 자동 선택·줄바꿈 (계약서 K1, 2026-10-20) ---
+
+
+def test_entrypoint_picks_interface_by_edge_address() -> None:
+    """이름 대신 ${LW_EDGE_PREFIX}.10이 붙은 인터페이스를 고르고, 못 찾으면 eth1로 시작한다."""
+    entrypoint = read_text(ENTRYPOINT_PATH)
+
+    assert 'EDGE_IP="${LW_EDGE_PREFIX}.10"' in entrypoint
+    assert "ip -o -4 addr show" in entrypoint
+    assert 'FALLBACK_IFACE="eth1"' in entrypoint
+    # 비었거나 auto면 자동, 이름이 edge 쪽이 아니면 edge 쪽으로 바꾸고 경고한다.
+    assert '""|[Aa][Uu][Tt][Oo])' in entrypoint
+    assert "edge 주소(${EDGE_IP})가 없어" in entrypoint
+    # 인터페이스를 고른 뒤에 설정 치환이 일어나야 고른 값이 suricata.yaml에 들어간다.
+    assert entrypoint.index('EDGE_IFACE="$(find_edge_iface)"') < entrypoint.index("s|__SENSOR_IFACE__|")
+
+
+def test_entrypoint_has_lf_line_endings() -> None:
+    """CRLF면 컨테이너의 sh가 "set: -: invalid option"으로 바로 멈춘다."""
+    assert b"\r" not in ENTRYPOINT_PATH.read_bytes()
+
+
+def test_gitattributes_keeps_shell_scripts_lf() -> None:
+    """Windows의 core.autocrlf=true가 셸 스크립트를 CRLF로 꺼내지 않게 한다."""
+    gitattributes = read_text(PROJECT_ROOT / ".gitattributes")
+
+    assert "*.sh text eol=lf" in gitattributes

@@ -1,3 +1,7 @@
 # Next.js 빌드 결과는 생성 파일이다 — diff·언어 통계에서 접어 둔다.
 spa/** linguist-generated=true
 public/_next/** linguist-generated=true
+
+# 셸 스크립트는 컨테이너(Linux)에 그대로 마운트되므로 항상 LF로 꺼낸다. Windows의
+# core.autocrlf=true가 CRLF로 바꾸면 sh가 "set: -: invalid option"으로 바로 멈춘다(A1-1 센서).
+*.sh text eol=lf
