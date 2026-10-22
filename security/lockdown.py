@@ -245,6 +245,7 @@ def release(target_kind: str, target_value: str, actor: str, note: str) -> bool:
     푼 사람(actor)과 사유를 lock_history에 남기고 Slack에도 알린다.
     연관 보안 이벤트는 정리하지만, 연관 사건(security_incidents)은 닫지 않는다 —
     사건 해결은 관리자의 "검토 끝" 판단이라 별개다(guide32).
+    L4 차단도 함께 해제 요청(Track D, C2-2).
     """
     if target_kind == "ip":
         released = db.release_permanent_lockout(target_value)
@@ -258,6 +259,19 @@ def release(target_kind: str, target_value: str, actor: str, note: str) -> bool:
         return False
 
     db.mark_lock_released(target_kind, target_value, actor, note)
+    if target_kind == "ip":
+        # 앱 잠금만 풀고 정문(L4, fw-agent의 ipset) 차단을 남겨 두면 관리자가 풀어 준 IP가
+        # 여전히 접속하지 못한다. 그래서 같은 해제 흐름에서 L4 해제도 요청한다.
+        # netblock이 lockdown.is_ip_allowlisted를 쓰므로 파일 맨 위에서 import하면 순환 import가
+        # 되어, 필요할 때 함수 안에서 불러온다.
+        # False는 "L4 차단이 원래 없던 IP"라는 뜻이라 오류가 아니다. 예외가 나도 앱 잠금 해제는
+        # 이미 끝났으니 반환값·Slack 알림은 그대로 두고 한 줄만 남긴다.
+        try:
+            from security import netblock
+
+            netblock.request_unblock(target_value, actor)
+        except Exception as exc:
+            print(f"[lockdown] L4 차단 해제 요청 실패 (ip='{target_value}', actor='{actor}'): {exc}")
     alert.send_permanent_release_alert(target_kind, target_value, actor, note)
     return True
 
