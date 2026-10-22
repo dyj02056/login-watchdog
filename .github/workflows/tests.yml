@@ -68,3 +68,25 @@ jobs:
       - name: 빌드 결과가 커밋된 것과 같은지 확인
         continue-on-error: true
         run: git diff --exit-code --stat -- spa public/_next
+        
+
+  # 잘못된 자체 규칙이 main에 병합되어 Suricata 센서가 시작하지 못하는 사고를 막는다.
+  # Compose와 같은 고정 이미지로 local.rules의 설정·문법을 실제 Suricata가 검사한다.
+  # ET Open은 외부 네트워크와 규칙 갱신 상태에 따라 결과가 달라질 수 있으므로 CI에서 제외한다.
+  # 공개 규칙이 아니라 우리 팀이 관리하는 local.rules만 빠르고 재현 가능하게 검사한다.
+  suricata:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 저장소 코드 가져오기
+        uses: actions/checkout@v4
+
+      - name: Suricata 자체 규칙 문법 검사
+        run: |
+          docker run --rm \
+            --network none \
+            --entrypoint suricata \
+            --volume "$GITHUB_WORKSPACE/netwatch/suricata:/etc/suricata/custom:ro" \
+            jasonish/suricata:7.0.17 \
+            -T \
+            -c /etc/suricata/suricata.yaml \
+            -S /etc/suricata/custom/rules/local.rules
