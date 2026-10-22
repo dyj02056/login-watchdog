@@ -17,4 +17,6 @@ COPY . .
 EXPOSE 5000
 
 # 단일 프로세스 내부에서 여러 요청을 처리하도록 스레드를 사용한다.
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "8", "app:app"]
+# keep-alive를 기본 2초에서 5초로 늘린다. fw-agent가 연결을 재사용하며 2초마다 폴링하는데,
+# 쉬는 연결을 닫는 시간도 2초라 서버가 막 닫은 연결을 다시 쓰다 RemoteDisconnected로 끊겼다(10/22 B·C PC).
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "8", "--keep-alive", "5", "app:app"]
