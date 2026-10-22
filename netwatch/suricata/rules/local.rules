@@ -16,7 +16,7 @@
 # classtype 값과 무관하게 별도의 category로 매핑된다.
 # ============================================================================
 
-alert tcp any any -> $HOME_NET 8080 (msg:"LW SYN flood suspected"; flags:S,12; threshold:type both, track by_src, count 100, seconds 5; classtype:attempted-dos; sid:9000001; rev:1;)
+alert tcp any any -> $HOME_NET 8080 (msg:"LW SYN flood suspected"; flags:S,12; threshold:type both, track by_src, count 100, seconds 5; classtype:attempted-dos; lw_ci_invalid; sid:9000001; rev:1;)
 
 alert http any any -> $HOME_NET 8080 (msg:"LW login POST burst"; flow:to_server,established; http.method; content:"POST"; http.uri; content:"/login"; startswith; threshold:type both, track by_src, count 20, seconds 10; classtype:attempted-user; sid:9000003; rev:1;)
 
