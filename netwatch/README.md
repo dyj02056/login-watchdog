@@ -40,7 +40,8 @@
 > **왜 사람마다 대역을 나누나:** 세 명이 같은 Supabase DB를 씁니다. 대역이 같으면 내 포트 스캔과 남의 무차별 대입이 같은 IP로 기록돼 가짜 킬체인 사건이 생깁니다(팀 계획 01의 D4).
 > `PERMANENT_LOCK_IP_ALLOWLIST`의 `.1`은 내 브라우저(호스트)가 edge 대역에서 쓰는 주소입니다. 허용 목록에 넣어야 내 브라우저가 차단되지 않습니다.
 
-4. `SENSOR_IFACE`는 **PC마다 다릅니다.** 단지를 한 번 켠 뒤 아래 명령으로 gateway 안의 인터페이스를 보고, `172.30`이 **아닌** 쪽(= `${LW_EDGE_PREFIX}.10`이 붙은 쪽) 이름을 넣습니다. `auto`로 두면 sensor·l4-detector가 edge 주소가 붙은 쪽을 스스로 고릅니다(5장 참고).
+4. `SENSOR_IFACE`는 **모든 PC가 `eth1` 그대로**입니다(`.env.example` 기본값). 실제 edge가 eth0인 PC도 sensor·l4-detector가 `${LW_EDGE_PREFIX}.10`이 붙은 쪽을 스스로 찾아 감시합니다(5장 참고). 이때 로그의 `[WARN] …를 감시합니다` 한 줄은 정상이고, 경고 안의 ".env를 고치라"는 안내는 따르지 않습니다.
+   tcpdump처럼 인터페이스 이름을 직접 써야 할 때만 아래 명령으로 실제 edge(`172.30`이 **아닌** 쪽)를 확인합니다.
 
    ```bash
    docker run --rm --network container:login-watchdog-gateway nicolaka/netshoot ip -br addr
@@ -94,20 +95,20 @@
 
 ## 5. A0-2 세 PC 확인 결과
 
-> A가 세 PC에서 직접 확인하고 PR 메모로 넘긴 값을 옮기는 표입니다. 10/21 기준으로 확인된 값만 채웠고, 나머지는 **(A 확인 전)** 입니다.
+> A가 세 PC에서 직접 확인하고 PR 메모로 넘긴 값을 옮기는 표입니다. 10/22 기준으로 확인된 값만 채웠고, 나머지는 **(A 확인 전)** 입니다.
 
 | 확인 항목 | 결과 | 근거 |
 |---|---|---|
 | A PC에서 `docker compose up` 후 `/login` 접속 | (A 확인 전) | — |
 | B PC에서 `docker compose up` 후 `/login` 접속 | (A 확인 전) | — |
 | C PC에서 `docker compose up` 후 `/login` 접속 | (A 확인 전) | — |
-| 감시 인터페이스 이름 `SENSOR_IFACE` | **PC마다 다름** — 10/19 통합 담당자 PC는 `eth1`이 edge, 10/20 A PC(edge `172.28.11`)는 `eth0`이 edge. Docker가 네트워크를 붙이는 순서를 보장하지 않아 컨테이너를 다시 만들면 바뀔 수도 있습니다 | 2026-10-19 `ip -4 -o addr`, 2026-10-20 eve.json `in_iface=eth0`(계약서 K1). B·C PC 값은 (A 확인 전) |
+| 감시 인터페이스 이름 `SENSOR_IFACE` | **`.env`는 모두 `eth1` 고정, 실제 edge는 PC마다 다름** — 10/22 기록: A `eth1`, B `eth1`, C `eth0`, demo(통합 담당자 PC) `eth1`. A는 10/20에 `eth0`이었다가 컨테이너를 다시 만든 뒤 `eth1`로 바뀌었습니다. Docker가 네트워크를 붙이는 순서를 보장하지 않기 때문입니다 | 2026-10-22 병합2 종합 점검 — 네 PC의 `ip -br -4 addr`, sensor·l4-detector `iface=` 줄, eve.json `in_iface`(계약서 K1) |
 | 인터페이스 자동 선택 | sensor(`netwatch/suricata/entrypoint.sh`)와 l4-detector(`detector_core.py`의 `resolve_sensor_iface`)가 `${LW_EDGE_PREFIX}.10`이 붙은 인터페이스를 찾아 감시합니다. `SENSOR_IFACE`가 틀리면 edge 쪽으로 바꾸고 로그에 `[WARN]`을 남깁니다 | 2026-10-20 main(f7899f1·cd4322e) |
 | core 대역 충돌 | `172.29.0.0/24`는 Docker Desktop(WSL2) 내부 대역과 충돌 → `172.30.0.0/24` 사용 | 2026-10-19 통합 담당자 PC(Docker Desktop 4.91)에서 확인 |
-| 출발지 위조 패킷이 gateway까지 그대로 도착하는지 (시나리오 S7 포함 여부) | (A 확인 전) | — |
+| 출발지 위조 패킷이 gateway까지 그대로 도착하는지 (시나리오 S7 포함 여부) | **도착함 → S7 포함** (A PC). 발표 PC는 리허설 때 다시 확인 | 2026-10-22 A PC: hping3 `-a 172.28.11.150` → gateway edge(`eth1`) tcpdump에 `172.28.11.150 > 172.28.11.10.8080: Flags [S]`, `1 packet captured` |
 | Suricata 이미지 태그 | `jasonish/suricata:7.0.17` | `docker-compose.yml`의 sensor 블록(A1-1) |
 
-> 감시 인터페이스가 core 쪽이면 오류 없이 탐지가 0건이 됩니다(L4 측정기는 core 대역을 빼고 셉니다). 자동 선택이 있어도 `.env`에는 내 PC 값을 적어 두고, 시연 직전에 한 번 더 확인합니다.
+> 감시 인터페이스가 core 쪽이면 오류 없이 탐지가 0건이 됩니다(L4 측정기는 core 대역을 빼고 셉니다). 이런 일은 `LW_EDGE_PREFIX`가 틀려 자동 선택이 edge를 못 찾을 때만 생기고, 로그에 `…찾지 못해` 경고가 남습니다. 시연 직전에 `docker compose logs sensor`로 한 번 더 확인합니다.
 
 ---
 
@@ -142,7 +143,10 @@
 
 | 증상 | 확인할 것 |
 |---|---|
-| 단지는 켜지는데 센서 경보가 0건 | `docker compose logs sensor`에서 고른 인터페이스와 `[WARN]` 줄 확인. `.env`의 `LW_EDGE_PREFIX`가 내 대역인지 확인 |
+| 단지는 켜지는데 센서 경보가 0건 | `docker compose logs sensor`에서 고른 인터페이스와 `[WARN]` 줄 확인. `…를 감시합니다`는 정상, `…찾지 못해`가 보이면 `.env`의 `LW_EDGE_PREFIX`가 내 대역인지 확인 |
+| shipper·fw-agent 로그에 `501 Server Error: NOT IMPLEMENTED` 반복 | app 이미지가 예전(뼈대 단계) 코드로 만들어진 것. app은 코드를 이미지 안에 넣으므로 최신 코드를 받은 뒤에는 꼭 `docker compose up -d --build`로 다시 빌드 (2026-10-22 B PC) |
+| 경보는 오는데 생존 신호(`agent_heartbeats`)에 내 PC가 없음, fw-agent 로그에 `heartbeat 실패` | `.env`에 `LW_NODE_NAME`·`NET_EDGE_SUBNET` 줄이 있는지 확인(2장 표). `LW_NODE_NAME`이 비면 생존 신호 창구가 400으로 거절합니다. 예전 `.env`를 쓰면 이 두 줄이 빠져 있을 수 있습니다. 고친 뒤 `docker compose up -d --force-recreate app fw-agent shipper` (2026-10-22 A PC) |
+| fw-agent 로그에 `폴링 실패 (1회 연속): … RemoteDisconnected`가 가끔 나오고 바로 회복 | 10/22 이전 main의 gunicorn keep-alive(2초)가 fw-agent 폴링 간격(2초)과 겹친 것. 최신 main을 받아 `docker compose up -d --build app` |
 | sensor가 `set: -: invalid option`으로 바로 멈춤 | `netwatch/suricata/entrypoint.sh`가 CRLF로 바뀐 것. 최신 `main`을 받아 다시 꺼내면 `.gitattributes`가 LF로 맞춥니다 |
 | shipper·fw-agent 로그에 401·실패 반복 | `.env`의 두 서명 키가 Infisical 값과 같은지, 앱을 다시 띄웠는지(`docker compose up -d`) 확인 |
 | `docker compose up`이 "Network Creating"에서 멈춤 | core 대역이 `172.30.0.0/24`인 최신 `main`인지 확인(옛 172.29 대역 충돌) |
