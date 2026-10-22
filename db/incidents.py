@@ -106,15 +106,29 @@ def _update_incident(
     event_types: list[str],
     severity_max: str,
     matched_rules: list[str] | None = None,
-) -> None:
+) -> bool:
+    """사건 행을 갱신한다. matched_rules를 함께 쓰면 갱신된 행이 있을 때만 True.
+
+    matched_rules는 _merge_into_existing이 규칙 하나를 맨 뒤에 덧붙인 목록이다. 그 규칙이
+    아직 DB에 없을 때만 쓰도록 조건을 건다(.not_.contains) — 같은 IP의 SYN_FLOOD가 Suricata와
+    Scapy에서 거의 동시에 들어오면 두 요청이 모두 "아직 없음"을 읽는데, 이 조건 덕분에 한쪽만
+    규칙을 기록하고 플레이북도 한 번만 돈다(사건당 규칙당 1회, REST에는 트랜잭션이 없음).
+    """
     values = {
         "event_types": event_types,
         "severity_max": severity_max,
         "last_event_at": db._now_iso(),
     }
-    if matched_rules is not None:
-        values["matched_rules"] = matched_rules
-    db.get_client().table("security_incidents").update(values).eq("id", incident_id).execute()
+    query = db.get_client().table("security_incidents")
+    if matched_rules is None:
+        query.update(values).eq("id", incident_id).execute()
+        return True
+    values["matched_rules"] = matched_rules
+    res = (
+        query.update(values).eq("id", incident_id)
+        .not_.contains("matched_rules", [matched_rules[-1]]).execute()
+    )
+    return bool(res.data)
 
 
 def _merge_into_existing(
@@ -126,12 +140,19 @@ def _merge_into_existing(
     merged_types = sorted(set(existing["event_types"]) | set(event_types))
     merged_severity = _higher_severity(existing["severity_max"], severity)
     matched_rules = list(existing.get("matched_rules") or [])
+    rule_added = False
     if rule_id and rule_id not in matched_rules:
         matched_rules.append(rule_id)
-        _update_incident(existing["id"], merged_types, merged_severity, matched_rules)
+        # 반환값이 없는(None) 가짜 갱신 함수는 예전처럼 기록된 것으로 본다. False만 "다른 요청이
+        # 같은 규칙을 먼저 기록함"이다 — 그때는 유형·등급만 따로 갱신하고 플레이북은 맡기지 않는다.
+        rule_added = _update_incident(
+            existing["id"], merged_types, merged_severity, matched_rules
+        ) is not False
+        if not rule_added:
+            _update_incident(existing["id"], merged_types, merged_severity)
     else:
         _update_incident(existing["id"], merged_types, merged_severity)
-    return {
+    merged = {
         "id": existing["id"],
         "event_types": merged_types,
         "severity_max": merged_severity,
@@ -139,6 +160,10 @@ def _merge_into_existing(
         "matched_rules": matched_rules,
         "escalated": existing["escalated"],
     }
+    if rule_id:
+        # 규칙 없이 부르는 기존 호출부의 반환 모양은 그대로 두고, 교차 규칙 호출에만 알려 준다.
+        merged["rule_added"] = rule_added
+    return merged
 
 
 def record_incident(
@@ -155,6 +180,8 @@ def record_incident(
 
     전체 등급과 별개로 APP 출처만 앱 등급을 올린다. rule_id가 있으면 REST에서
     배열 원소만 추가할 수 없으므로 기존 matched_rules를 읽어 중복 없이 합쳐 쓴다.
+    이때 돌려주는 dict의 rule_added는 "이번 호출이 그 규칙을 처음 기록했는지"다 —
+    동시에 들어온 다른 요청이 먼저 기록했으면 False라서 호출한 쪽이 플레이북을 건너뛴다.
     새 행의 앱 등급은 우선 NULL로 두어 출처 확인 전 NET 등급으로 잠금이 걸리지 않게 한다.
 
     "열려있는지 확인" 후 "새로 연다" 사이의 아주 짧은 틈에 동시 요청 두 개가
@@ -190,6 +217,8 @@ def record_incident(
                 "matched_rules": [rule_id] if rule_id else [],
                 "escalated": False,
             }
+            if rule_id:
+                incident["rule_added"] = True
         except APIError as e:
             if e.code != "23505":
                 raise

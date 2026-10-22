@@ -305,3 +305,132 @@ def test_new_query_is_exported():
     assert name in network_events.__all__
     assert name in db.__all__
     assert getattr(db, name) is getattr(network_events, name)
+
+
+# --- [B2-1 보완] IDLE 사건 재실행 · 동시 요청 중복 실행 방지 ---------------------------
+
+
+def _ago_iso(minutes):
+    return (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+
+
+def test_idle_incident_with_rule_runs_again(monkeypatch):
+    # TTL 차단이 끝난 뒤 같은 IP가 다시 SYN Flood를 보내면 NET-01이 다시 돌아야 한다.
+    state = _install_rule_fakes(monkeypatch, [])
+    state["incident"] = {
+        "id": 41, "event_types": ["NET_SYN_FLOOD"], "severity_max": "HIGH",
+        "app_severity_max": None, "matched_rules": ["NET-01"], "escalated": False,
+        "last_event_at": _ago_iso(config.INCIDENT_MERGE_IDLE_MINUTES + 5),
+    }
+
+    correlate.check_cross_layer(IP, "NET_SYN_FLOOD")
+
+    assert [run[0] for run in state["runs"]] == ["NET_FLOOD_TTL"]
+
+
+def test_recent_incident_with_rule_is_still_skipped(monkeypatch):
+    state = _install_rule_fakes(monkeypatch, [])
+    state["incident"] = {
+        "id": 41, "event_types": ["NET_SYN_FLOOD"], "severity_max": "HIGH",
+        "app_severity_max": None, "matched_rules": ["NET-01"], "escalated": False,
+        "last_event_at": _ago_iso(1),
+    }
+
+    correlate.check_cross_layer(IP, "NET_SYN_FLOOD")
+
+    assert state["runs"] == []
+
+
+def test_rule_recorded_by_concurrent_request_skips_playbook(monkeypatch):
+    # 미리 읽을 때는 규칙이 없었지만 기록하는 순간 다른 요청이 먼저 썼다(rule_added False).
+    state = _install_rule_fakes(monkeypatch, [])
+    monkeypatch.setattr(
+        db,
+        "record_incident",
+        lambda ip, event_types, severity, source="APP", rule_id=None: {
+            "id": 41, "matched_rules": [rule_id], "rule_added": False,
+        },
+    )
+
+    correlate.check_cross_layer(IP, "NET_SYN_FLOOD")
+
+    assert state["runs"] == []
+
+
+def test_merge_reports_lost_rule_race_and_still_updates_types(monkeypatch):
+    existing = {
+        "id": 7, "event_types": ["NET_SYN_FLOOD"], "severity_max": "HIGH",
+        "app_severity_max": None, "matched_rules": [], "escalated": False,
+    }
+    monkeypatch.setattr(incidents, "get_open_incident", lambda ip: existing)
+    updates = []
+
+    def update(*args):
+        updates.append(args)
+        return False if len(args) == 4 else True  # 조건부 기록에서 졌다
+
+    monkeypatch.setattr(incidents, "_update_incident", update)
+
+    result = incidents.record_incident(
+        IP, ["NET_SYN_FLOOD"], "HIGH", source="NET", rule_id="NET-01"
+    )
+
+    assert result["rule_added"] is False
+    assert updates == [
+        (7, ["NET_SYN_FLOOD"], "HIGH", ["NET-01"]),
+        (7, ["NET_SYN_FLOOD"], "HIGH"),
+    ]
+
+
+def test_new_incident_reports_rule_added(monkeypatch):
+    monkeypatch.setattr(incidents, "get_open_incident", lambda ip: None)
+    monkeypatch.setattr(incidents, "_insert_incident", lambda *args: 8)
+
+    result = incidents.record_incident(
+        IP, ["NET_SYN_FLOOD"], "HIGH", source="NET", rule_id="NET-01"
+    )
+
+    assert result["rule_added"] is True
+
+
+class _UpdateQuery:
+    """update → eq → not_.contains → execute 체인을 기록하는 가짜 클라이언트."""
+
+    def __init__(self, data):
+        self.calls = []
+        self.data = data
+
+    def table(self, name):
+        self.calls.append(("table", name))
+        return self
+
+    @property
+    def not_(self):
+        self.calls.append(("not_",))
+        return self
+
+    def __getattr__(self, name):
+        def call(*args, **kwargs):
+            self.calls.append((name, args, kwargs))
+            return self
+        return call
+
+    def execute(self):
+        return type("Result", (), {"data": self.data})()
+
+
+def test_update_incident_writes_rule_only_if_absent(monkeypatch):
+    query = _UpdateQuery(data=[{"id": 7}])
+    monkeypatch.setattr(db, "get_client", lambda: query)
+
+    assert incidents._update_incident(7, ["NET_SYN_FLOOD"], "HIGH", ["NET-01"]) is True
+
+    assert ("eq", ("id", 7), {}) in query.calls
+    assert ("not_",) in query.calls
+    assert ("contains", ("matched_rules", ["NET-01"]), {}) in query.calls
+
+
+def test_update_incident_returns_false_when_rule_already_written(monkeypatch):
+    monkeypatch.setattr(db, "get_client", lambda: _UpdateQuery(data=[]))
+
+    assert incidents._update_incident(7, ["NET_SYN_FLOOD"], "HIGH", ["NET-01"]) is False

@@ -3,7 +3,7 @@
 [◀ 51단계](guide51_network_sensor.md) · [전체 목차](beginner-guide.md) · 53단계 ▶ (작성 예정)
 
 > [51단계](guide51_network_sensor.md)의 정문 CCTV가 본 것을 앱이 받아서 기존 보안 기록과 엮어 "같은 공격 흐름"인지 판단하는 과정을 다룹니다.
-> 이 문서는 통합일마다 머지된 부분을 절 단위로 더해 갑니다. 지금은 첫 절인 **서명 검사(B0-1)** 까지입니다. 경보 접수 창구·보안 기록·교차 규칙은 다음 절에서 다룹니다.
+> 이 문서는 통합일마다 머지된 부분을 절 단위로 더해 갑니다. 지금은 **서명 검사(B0-1)** 와 **경보 접수 창구·보안 기록 승격·앱 등급 분리(B1-1~B1-3)** 까지입니다(2026-10-22 main 기준). 교차 규칙(NET-01·CR-01·CR-02)은 다음 절에서 다룹니다.
 
 ## 비유 — 형사 사무실의 접수대
 
@@ -75,7 +75,81 @@ shipper와 fw-agent는 다른 컨테이너에서 돌아서 앱 코드를 import�
 
 ## 지금 상태
 
-서명 검사기를 쓰는 창구 4개는 2026-10-20 main 기준으로 모두 구현돼 있습니다. 경보 접수(`net-events`, B1-1)는 `network_events` 표에, 차단 창구(`blocks`·`blocks/ack`, C1-2)는 `network_blocks` 표에, 생존 신호(`heartbeat`, C1-2)는 `agent_heartbeats` 표에 씁니다. 네 창구 모두 서명이 없거나 틀리면 내용을 보기 전에 401로 돌려보냅니다. 경보 접수 이후의 흐름(보안 기록 승격·앱 등급 분리)은 다음 절에서 이어 씁니다.
+서명 검사기를 쓰는 창구 4개는 2026-10-20 main 기준으로 모두 구현돼 있습니다. 경보 접수(`net-events`, B1-1)는 `network_events` 표에, 차단 창구(`blocks`·`blocks/ack`, C1-2)는 `network_blocks` 표에, 생존 신호(`heartbeat`, C1-2)는 `agent_heartbeats` 표에 씁니다. 네 창구 모두 서명이 없거나 틀리면 내용을 보기 전에 401로 돌려보냅니다. 경보 접수 이후의 흐름은 아래 ② 절에서 이어 씁니다. 차단 창구(`blocks`·`heartbeat`)는 [54단계](guide54_l4_block_agent.md)에서 다룹니다.
+
+## ② 경보 접수 창구 — `POST /api/internal/net-events` (B1-1)
+
+배달원(shipper)이 CCTV 기록 한 건을 서류 한 장(JSON)으로 만들어 냅니다. 접수대는 아래 순서로 확인하고, 처음 걸린 곳에서 돌려보냅니다.
+
+| 순서 | 확인 | 걸리면 |
+|---|---|---|
+| 1 | 본문 크기가 `NET_INGEST_MAX_BODY_BYTES`(16KB) 이하인가 | `413` |
+| 2 | shipper 도장이 맞는가 (`verify_request({"shipper"})`) | `401` |
+| 3 | 본문이 JSON 객체인가 | `400 {"field": "body"}` |
+| 4 | 칸마다 계약서 K4 규칙을 지키는가 | `400 {"field": "<처음 틀린 칸>"}` |
+
+- **칸 검사(계약서 K4):** `event_id`는 64자 16진수, `sensor`·`layer`·`category`는 정해진 값만, `src_ip`는 실제 IP 주소, 시각은 `Z`로 끝나는 UTC, `packet_count`는 1~1,000만입니다. `True`처럼 정수로 착각되는 값도 거절합니다.
+- **정해진 칸만 저장합니다.** 본문에 `id`·`promoted` 같은 서버 관리 칸을 끼워 넣어도 무시합니다. 출발지 주소는 `normalize_ip()`로 정리해서 저장합니다.
+- **같은 서류 번호는 새로 저장하지 않습니다.** shipper는 같은 1분 창의 경보를 첫 건·창 끝 갱신·재시도 모두 같은 `event_id`로 보냅니다. 표의 유니크 제약이 두 번째 저장을 막고, 그때는 `packet_count`(더 클 때만)와 `last_seen_at`만 갱신합니다.
+- **보낸이별 한도:** 분당 `NET_INGEST_RATE_LIMIT_PER_MINUTE`(600)번입니다. shipper는 단지 안 주소 하나에서 모든 경보를 보내므로 IP가 아니라 보낸이 이름으로 셉니다. 이 창구가 한도에 걸려도 `HTTP_FLOOD`로 기록하지 않습니다. 센서 자신의 전송이 "HTTP 폭주"로 잡혀 상관분석을 더럽히면 안 되기 때문입니다.
+
+| 경우 | 응답 |
+|---|---|
+| 처음 저장 | `{"status": "stored", "promoted": true/false}` |
+| 같은 `event_id` 재전송·갱신 | `{"status": "updated", "promoted": false}` |
+| 재전송 중 승격 복구 | `{"status": "updated", "promoted": true}` — 처음 저장 직후 승격이 오류로 끊겼던 경보만 이번에 마저 올립니다 |
+
+저장된 경보는 `network_events` 표에 남고, 관리자 화면용 조회 함수(`list_recent_network_events`, `count_network_events_by_category`)도 이 표를 읽습니다.
+
+## ② 경보를 보안 기록으로 올리기 (B1-2)
+
+`network_events`는 센서가 본 **원본 기록**입니다. 그중 정해진 다섯 종류만 형사가 다루는 **보안 기록**(`security_events`)으로 올립니다(`security/net_ingest.py`의 `promote()`). 모든 경보를 올리면 화면이 잡음으로 덮이기 때문입니다.
+
+| 센서 분류(`category`) | 보안 이벤트 | 등급 | 증거 |
+|---|---|---|---|
+| `SYN_FLOOD` | `NET_SYN_FLOOD` | HIGH | 위조 가능 |
+| `PORT_SCAN` | `NET_PORT_SCAN` | MEDIUM | 위조 가능 |
+| `SCANNER_UA` | `NET_SCANNER_UA` | MEDIUM | 연결 완성 |
+| `WEB_ATTACK` | `NET_WEB_ATTACK` | HIGH | 연결 완성 |
+| `LOGIN_BURST` | `NET_LOGIN_BURST` | MEDIUM | 연결 완성 |
+| `OTHER` | 올리지 않음 | — | — |
+
+- **네트워크 경보는 최대 HIGH입니다.** CRITICAL은 "실제로 막았다"는 뜻으로만 씁니다(계획 P3). 그래서 CRITICAL 네트워크 이벤트는 정문 차단이 실제로 걸렸을 때 생기는 `NET_BLOCKED` 하나뿐입니다.
+- **출처를 남깁니다.** 올린 행은 `source='NET'`, `layer`(L3·L4·L7), `action='NET_ALERT'`, `count=packet_count`입니다. 앱이 직접 남긴 기록은 `source='APP'`입니다. 이 칸이 다음 절(앱 등급 분리)의 근거가 됩니다.
+- **HIGH는 기존 HIGH 이벤트와 같은 길로 올립니다.** 같은 IP·유형의 미해결 HIGH 이벤트가 있으면 새 행 대신 횟수만 올립니다(`insert_security_event_or_bump`). MEDIUM은 기존 `_record_event`로 올립니다. 어느 쪽이든 마지막에 상관분석(`check_and_correlate`)을 부르고, `source`를 끝까지 넘깁니다.
+- **원본에 "올렸음" 표시:** 승격이 끝나면 `network_events.promoted`를 true로 바꿉니다. 재전송 때 승격 복구는 이 값이 false인 행만 대상으로 합니다.
+
+**`NET_BLOCKED` 기록·해결 (계약서 K6)** — 집행관 쪽 창구([54단계](guide54_l4_block_agent.md))가 부르는 함수입니다.
+
+| 함수 | 언제 | 하는 일 |
+|---|---|---|
+| `record_net_blocked(ip, reason)` | fw-agent가 "막았음(APPLIED)"을 보고한 순간 | `NET_BLOCKED`(CRITICAL, `action='L4_BLOCKED'`, `layer='L4'`) 기록. 같은 IP에 해결 안 된 것이 이미 있으면 새로 만들지 않음 |
+| `resolve_net_blocked(ip)` | "풀었음(REMOVED)" 보고 또는 TTL 만료 | 그 IP의 미해결 `NET_BLOCKED`**만** 해결 처리(다른 이벤트는 건드리지 않음) |
+
+`reason`(왜 막았나)은 로그·알림용이고 이벤트 칸에는 넣지 않습니다.
+
+## ② 앱 등급 분리 — `app_severity_max` (B1-3)
+
+기존 영구 잠금 판단(T3·T4)은 "사건의 최고 등급이 CRITICAL/HIGH면 그 IP를 영구 잠금"이었습니다. 네트워크 경보가 같은 사건에 섞이면 두 가지 문제가 생깁니다.
+
+| 위험 | 예 | 막는 방법 |
+|---|---|---|
+| 위조된 경보로 영구 잠금 | 공격자가 남의 주소를 사칭해 SYN Flood(HIGH)를 보내면, 그 주소의 주인이 앱에서 영구 잠금됨 | 판단을 **앱 이벤트 등급만**으로 한다 |
+| 일부러 섞어 방어 끄기(V1) | 네트워크 경보를 섞어 판단 기준을 흐리게 만듦 | 앱 등급은 네트워크 경보와 상관없이 따로 유지된다 |
+
+그래서 사건(`security_incidents`)에 등급 칸이 두 개 있습니다.
+
+| 칸 | 올리는 이벤트 | 쓰는 곳 |
+|---|---|---|
+| `severity_max` | 앱 + 네트워크 전체 | 복합 공격 Slack 알림(기존 그대로) |
+| `app_severity_max` | `source='APP'`만 | **영구 잠금 판단(T3·T4)** — `consider_incident_promotion()` |
+
+- `record_incident(..., source=...)`가 두 칸을 함께 관리합니다. 네트워크 경보로 새 사건이 열리면 `app_severity_max`는 비워 두고(NULL), 앱 이벤트가 들어올 때만 올립니다.
+- 두 요청이 동시에 와도 앱 등급이 낮아지지 않게, "지금 값이 비었거나 더 낮을 때만" 바꾸는 조건부 UPDATE로 씁니다.
+- `consider_incident_promotion()`은 `app_severity_max`만 봅니다. 값이 없으면 전체 등급으로 대신하지 않고 그냥 건너뜁니다. 함수 인자는 바꾸지 않았습니다.
+- 마이그레이션(guide52 SQL)이 기존 사건의 `app_severity_max`를 `severity_max`로 채워 두었습니다. 기존 사건은 모두 앱 이벤트뿐이었으므로 판단 결과가 예전과 같습니다.
+
+결과적으로 네트워크 경보만으로는 앱 영구 잠금이 걸리지 않습니다. 네트워크 경보가 강한 조치로 이어지는 길은 **교차 규칙**뿐이고, 그것도 위조 가능한 증거면 짧은 정문 차단(TTL)까지만 갑니다(다음 절).
 
 ## 직접 확인해 보기
 
@@ -92,9 +166,38 @@ docker compose logs app | grep internal_hmac
 ```
 
 - 로그에는 거절 **이유만** 남고 키나 서명 값은 남지 않습니다.
-- 서명 없이 보낸 요청은 401로 끝나므로 Supabase의 어느 표에도 새 행이 생기지 않아야 합니다. 창구별 표(`network_events` 등)는 다음 절에서 다룹니다.
+- 서명 없이 보낸 요청은 401로 끝나므로 Supabase의 어느 표에도 새 행이 생기지 않아야 합니다.
+
+**② 절 확인 (B1-1~B1-3)**
+
+```bash
+# 접수 창구·승격·NET_BLOCKED·앱 등급 분리 테스트 (실제 DB는 건드리지 않음)
+pytest tests/track_d/test_b_ingest.py tests/track_d/test_b_net_ingest.py tests/track_d/test_b_app_severity.py -q
+```
+
+단지를 켜고 브라우저로 `/login`을 몇 번 연 뒤(shipper가 경보를 보내도록), Supabase SQL Editor에서 봅니다.
+
+```sql
+-- 원본 경보: 승격 대상이면 promoted가 true
+select observed_at, src_ip, layer, category, packet_count, promoted
+from network_events order by observed_at desc limit 10;
+
+-- 올린 보안 기록: source가 NET
+select detected_at, event_type, severity, ip_address, source, layer, count
+from security_events where source = 'NET' order by detected_at desc limit 10;
+
+-- 사건의 두 등급: 네트워크 경보만 있는 사건은 app_severity_max가 비어 있어야 한다
+select id, ip_address, event_types, severity_max, app_severity_max, status
+from security_incidents order by last_event_at desc limit 10;
+```
+
+- `OTHER` 경보는 `network_events`에만 있고 `security_events`에는 없어야 합니다.
+- `NET_BLOCKED` 기록·해결을 직접 보는 방법은 [54단계 "직접 확인해 보기"](guide54_l4_block_agent.md#직접-확인해-보기)의 수동 차단 SQL입니다.
 
 ## 이 단계에서 만들어지거나 바뀐 파일
 
 - 신규: [routes/internal/_hmac.py](../../routes/internal/_hmac.py), [tests/track_d/test_b_hmac.py](../../tests/track_d/test_b_hmac.py)
 - 뼈대(I0-1): [routes/internal/](../../routes/internal/) 창구 파일들, [tests/track_d/conftest.py](../../tests/track_d/conftest.py)의 `signed_headers`
+- B1-1: [routes/internal/ingest.py](../../routes/internal/ingest.py), [db/network_events.py](../../db/network_events.py), [tests/track_d/test_b_ingest.py](../../tests/track_d/test_b_ingest.py)
+- B1-2: [security/net_ingest.py](../../security/net_ingest.py), [security/soar/_events.py](../../security/soar/_events.py)(`source`·`layer` 인자), [db/security_events.py](../../db/security_events.py)(선택 인자), [tests/track_d/test_b_net_ingest.py](../../tests/track_d/test_b_net_ingest.py)
+- B1-3: [db/incidents.py](../../db/incidents.py)(`app_severity_max`), [security/lockdown.py](../../security/lockdown.py)의 `consider_incident_promotion()`, [tests/track_d/test_b_app_severity.py](../../tests/track_d/test_b_app_severity.py)
