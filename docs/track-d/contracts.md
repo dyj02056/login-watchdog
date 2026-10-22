@@ -60,7 +60,7 @@
 | 이름 | 예 | 뜻 |
 |---|---|---|
 | `LW_EDGE_PREFIX` | `172.28.13` | 사람별 공격 대역 앞 세 자리 (01의 4장 표) |
-| `SENSOR_IFACE` | `eth1`(PC마다 다름) | Suricata·Scapy가 감시할 gateway 안 **edge 쪽** 인터페이스. Docker는 네트워크를 붙이는 순서를 보장하지 않아 eth0/eth1 중 어느 쪽이 edge인지가 PC·컨테이너 재생성마다 다르다(10/19 한 PC는 eth1, 10/20 다른 PC는 eth0). 각 PC에서 `docker run --rm --network container:login-watchdog-gateway nicolaka/netshoot ip -br addr`로 `${LW_EDGE_PREFIX}.10`이 붙은 쪽(172.30이 **아닌** 쪽)을 넣는다. core 쪽을 넣으면 오류 없이 탐지가 0건이 된다. l4-detector는 지정한 이름에 edge 주소가 없으면 edge 주소가 붙은 쪽으로 스스로 바꾼다(`auto`도 가능) |
+| `SENSOR_IFACE` | `eth1`(모든 PC 고정) | Suricata·Scapy가 감시할 gateway 안 **edge 쪽** 인터페이스를 찾을 때 먼저 시도할 이름. Docker는 네트워크를 붙이는 순서를 보장하지 않아 eth0/eth1 중 어느 쪽이 edge인지가 PC·컨테이너 재생성마다 다르다(10/22 기록: A·B·demo는 eth1, C는 eth0. A는 10/20 eth0에서 바뀜). 그래서 `.env`는 모두 `eth1`로 두고, sensor(`entrypoint.sh`)와 l4-detector(`resolve_sensor_iface`)가 이 이름에 `${LW_EDGE_PREFIX}.10`이 없으면 edge 주소가 붙은 쪽으로 스스로 바꾼다. 이때 로그에 나오는 `[WARN] …를 감시합니다` 한 줄은 정상이고, 경고 안의 ".env를 고치라"는 안내는 따르지 않는다. 문제는 `LW_EDGE_PREFIX`가 틀려 `…찾지 못해` 경고가 날 때뿐이다(core 쪽을 감시하게 되어 오류 없이 탐지가 0건). tcpdump처럼 사람이 인터페이스를 직접 지정할 때는 `docker run --rm --network container:login-watchdog-gateway nicolaka/netshoot ip -br addr`로 실제 edge(172.30이 **아닌** 쪽)를 확인한다 |
 | `LW_VICTIM_PASSWORD` | (사람마다 다름) | S4·S6에서 공격 상자(attacker-2)가 `victim_<역할>` 계정으로 로그인할 때 쓰는 테스트 계정 비밀번호. A2-1의 로그인 명령과 C3-1이 읽는다. **LLM에 붙여 넣지 않고** 이미지·compose·README에 값을 적지 않는다 |
 
 ---
@@ -479,3 +479,4 @@ ctx = {
 | 2026-10-19 | K2 | gateway core 쪽 고정 주소 `172.29.0.10`→`172.30.0.10`(core 대역 `172.30.0.0/24`). Docker Desktop(WSL2)이 VM 내부 통신에 `172.29.0.0/24`를 써서 겹치면 엔진 연결이 끊겼다 | 통합 담당자 확인 |
 | 2026-10-19 | K1 | `SENSOR_IFACE` 예 `eth0`→`eth1`. gateway 안에서 eth0=core, eth1=edge로 확인(`ip -4 -o addr`). eth0이면 L4 탐지가 0건 | 통합 담당자 확인 |
 | 2026-10-20 | K1 | `SENSOR_IFACE`는 **PC마다 다르다**로 고침. 다른 PC(edge `172.28.11`)에서는 edge가 eth0이었다(eve.json `in_iface=eth0`). 각 PC에서 edge 주소가 붙은 쪽을 확인해 `.env`에 넣고, l4-detector는 edge 주소 기준으로 자동 보정한다. 10/19 저장소 사본에만 적었던 K1·K2 기록을 이 원본에도 옮겼다 | 통합 담당자 확인 |
+| 2026-10-22 | K1 | `SENSOR_IFACE`는 **모든 PC `eth1` 고정**, 실제 edge는 sensor·l4-detector가 자동 보정하는 방식으로 정함. 네 PC 점검 결과 실제 edge는 A·B·demo `eth1`, C `eth0`(C는 `[WARN]` 뒤 eth0을 감시하고 탐지 정상). A는 10/20 `eth0`에서 `eth1`로 바뀌어, 재생성마다 달라짐을 다시 확인 | 통합 담당자 확인(병합2 종합 점검) |
