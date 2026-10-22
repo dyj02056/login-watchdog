@@ -234,6 +234,9 @@ def test_correlate_forwards_net_source(monkeypatch):
     monkeypatch.setattr(db, "get_recent_distinct_event_types", lambda *a: ["NET_SYN_FLOOD", "NET_PORT_SCAN"])
     incident = {"id": 1, "severity_max": "HIGH", "escalated": True, "event_types": []}
     monkeypatch.setattr(db, "record_incident", lambda *a, **k: calls.append((a, k)) or incident)
+    # [B2-1 보완] 이 테스트는 사건 기록에 source가 넘어가는지만 본다. B2-1 이후 NET_SYN_FLOOD는
+    # NET-01 교차 규칙도 깨워 record_incident를 한 번 더 부르므로, 그 경로는 test_b_cross_layer가 본다.
+    monkeypatch.setattr(correlate, "check_cross_layer", lambda ip, event_type: None)
     _REAL_CORRELATE(IP, "NET_SYN_FLOOD", "HIGH", source="NET")
     assert calls == [((IP, ["NET_SYN_FLOOD", "NET_PORT_SCAN"], "HIGH"), {"source": "NET"})]
 

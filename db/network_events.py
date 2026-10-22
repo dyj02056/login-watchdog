@@ -12,6 +12,7 @@
 # ============================================================================
 
 from collections import Counter
+from datetime import datetime, timedelta, timezone
 
 from postgrest.exceptions import APIError
 
@@ -25,10 +26,28 @@ __all__ = [
     "mark_network_event_promoted",
     "resolve_net_blocked_events",
     "is_network_event_unpromoted",
+    "list_recent_security_events_for_correlation",
 ]
 
 _PAGE = 1000
 _MAX_ROWS = 20000
+
+
+def list_recent_security_events_for_correlation(ip: str, window_minutes: int) -> list[dict]:
+    """같은 IP의 교차 규칙 판단에 필요한 이벤트만 UTC 창 안에서 오래된 순으로 읽는다.
+
+    규칙 순서(CR-01)는 Python에서 판단하되, 창 밖 행은 DB가 먼저 거르게 해 오래된
+    보안 기록이 많아져도 불필요한 전송을 만들지 않는다.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=window_minutes)).isoformat()
+    return (
+        db.get_client().table("security_events")
+        .select("event_type,severity,path,detected_at,source,layer")
+        .eq("ip_address", ip)
+        .gte("detected_at", cutoff)
+        .order("detected_at")
+        .execute().data
+    )
 
 
 def mark_network_event_promoted(event_id: str) -> None:
