@@ -123,7 +123,15 @@ def check_cross_layer(ip: str, event_type: str) -> None:
                 continue
 
             existing = db.get_open_incident(ip)
-            if existing and rule["id"] in (existing.get("matched_rules") or []):
+            # 오래 조용했던 사건은 record_incident가 IDLE로 넘기고 새 사건을 연다. 여기서 그 옛
+            # 사건의 matched_rules를 보고 건너뛰면, 같은 IP의 SYN Flood가 TTL 차단이 끝난 몇 시간
+            # 뒤에 다시 와도 NET-01이 영영 다시 돌지 않는다(유형이 하나뿐이라 다른 경로로는 IDLE이
+            # 되지 않음). 그래서 IDLE 대상 사건은 "이미 실행함" 판단에서 뺀다.
+            if (
+                existing
+                and not db.incidents._is_idle(existing)
+                and rule["id"] in (existing.get("matched_rules") or [])
+            ):
                 continue
 
             event_types = sorted({row["event_type"] for row in matched})
@@ -135,6 +143,9 @@ def check_cross_layer(ip: str, event_type: str) -> None:
             incident = db.record_incident(
                 ip, event_types, severity, source="NET", rule_id=rule["id"]
             )
+            if not incident.get("rule_added", True):
+                # 동시에 들어온 다른 요청이 같은 사건에 이 규칙을 먼저 기록했다 — 그쪽이 실행한다.
+                continue
             ctx = {
                 "ip": ip,
                 "incident_id": incident["id"],
