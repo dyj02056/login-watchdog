@@ -360,8 +360,10 @@ ctx = {
 
 ```json
 {"agent": "fw-agent", "detail": {"poll_failures": 0, "ipset_size": 2}}
-{"agent": "shipper", "stalled": false, "detail": {"eve_bytes": 104857, "l4_bytes": 2048, "queue": 0}}
+{"agent": "shipper", "stalled": false, "detail": {"eve_bytes": 104857, "l4_bytes": 2048, "queue": 0, "stalled_seconds": 0}}
 ```
+
+- shipper의 `stalled`는 `eve.json`·`l4.json`이 **둘 다** `SHIPPER_STALL_SECONDS`(기본 120초) 넘게 늘지 않을 때 `true`다(A2-3). `detail.stalled_seconds`는 두 파일이 마지막으로 늘어난 뒤 흐른 초(정수). Suricata가 60초마다 eve에 `stats`를 써서, 공격이 없는 조용한 시간에는 `true`가 되지 않는다.
 
 - `agent`는 `X-LW-Sender`와 같아야 한다(다르면 400). `detail`은 JSON 객체, 직렬화 2KB 이하.
 - 보내는 주기: fw-agent **10초**, shipper **30초**. (정지 판단 기준 30초와 같으면 배지가 깜빡이므로 fw-agent는 10초. 본 계획서 2.6도 10/13에 맞췄다)
@@ -487,3 +489,4 @@ ctx = {
 | 2026-10-20 | K1 | `SENSOR_IFACE`는 **PC마다 다르다**로 고침. 다른 PC(edge `172.28.11`)에서는 edge가 eth0이었다(eve.json `in_iface=eth0`). 각 PC에서 edge 주소가 붙은 쪽을 확인해 `.env`에 넣고, l4-detector는 edge 주소 기준으로 자동 보정한다. 10/19 저장소 사본에만 적었던 K1·K2 기록을 이 원본에도 옮겼다 | 통합 담당자 확인 |
 | 2026-10-22 | K1 | `SENSOR_IFACE`는 **모든 PC `eth1` 고정**, 실제 edge는 sensor·l4-detector가 자동 보정하는 방식으로 정함. 네 PC 점검 결과 실제 edge는 A·B·demo `eth1`, C `eth0`(C는 `[WARN]` 뒤 eth0을 감시하고 탐지 정상). A는 10/20 `eth0`에서 `eth1`로 바뀌어, 재생성마다 달라짐을 다시 확인 | 통합 담당자 확인(병합2 종합 점검) |
 | 2026-10-23 | K8 | C2-1 보완: `bump_session_version` 재시도를 "1회"에서 "최대 3번, 다 지면 False"로 고침(요청서·`update_user_password`와 맞춤). 의심 로그인 메일이 `FAILED`면 쿨다운을 푸는 `db.release_cooldown` 추가. `send_playbook_alert`에 선택 인자 `priority="HIGH"` 추가 — 플레이북이 `ctx["priority"]`를 넘기는 한 줄(B, `security/playbooks.py`)은 아직 반영 전 | 통합 담당자 확인 |
+| 2026-10-23 | K9 | A2-3 보완: shipper heartbeat 예시에 `detail.stalled_seconds` 추가, `stalled` 판단 기준(두 파일 모두 `SHIPPER_STALL_SECONDS` 넘게 안 늘면) 명시. 조용할 때 오판하지 않도록 Suricata eve에 60초 `stats` 출력 추가, compose가 `SHIPPER_STALL_SECONDS`를 shipper에 넘김 | 통합 담당자 확인 |
