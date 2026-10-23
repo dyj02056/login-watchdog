@@ -71,6 +71,42 @@ export type Lockout = {
 
 export type Attempt = { id?: number; ip_address: string; username: string; success: boolean; attempted_at: string; location?: string | null };
 
+// ── Track D (계약서 K10) — 네트워크 계층 데이터. /api/status의 새 칸은 C2-3이 채운다.
+
+/** network_events 한 줄(최근 50건, 최신순) */
+export type NetworkEvent = {
+  id: number;
+  observed_at: string;
+  src_ip: string;
+  layer: "L3" | "L4" | "L7";
+  category: string;
+  signature: string | null;
+  packet_count: number;
+  promoted: boolean;
+};
+
+export type NetworkBlockStatus = "PENDING_APPLY" | "APPLIED" | "PENDING_REMOVE" | "REMOVED" | "FAILED";
+
+/** network_blocks 한 줄. expires_at이 null이면 영구 차단이다(CONNECTED 증거만 가능). */
+export type NetworkBlock = {
+  ip: string;
+  reason: string;
+  evidence: "SPOOFABLE" | "CONNECTED";
+  status: NetworkBlockStatus;
+  expires_at: string | null;
+  requested_by: string;
+  applied_at: string | null;
+  last_error: string | null;
+};
+
+export type AgentName = "fw-agent" | "shipper";
+
+/** 장비 하나의 생존 신호. last_seen_at이 null이면 한 번도 신호가 없었다. */
+export type AgentHeartbeat = { last_seen_at: string | null; stale: boolean; detail: Record<string, unknown> };
+
+/** 이 PC(LW_NODE_NAME)의 장비 상태. LW_NODE_NAME이 없는 환경(예: Vercel)은 빈 객체 {}다. */
+export type AgentStatus = Partial<Record<AgentName, AgentHeartbeat>>;
+
 export type Status = {
   recent_attempts: Attempt[];
   attempts_total_pages: number;
@@ -97,4 +133,8 @@ export type Status = {
   ip_exemptions: Record<string, unknown>[];
   permissions: string[];
   admin_users?: { id: number; username: string; role: string; created_at?: string }[];
+  // Track D(K10) — 선택 칸으로 둔다. C2-3이 머지되기 전 응답이나 Vercel 응답에도 화면이 깨지지 않게.
+  network_events?: NetworkEvent[];
+  network_blocks?: NetworkBlock[];
+  agent_status?: AgentStatus;
 };

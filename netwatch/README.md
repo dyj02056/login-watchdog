@@ -4,7 +4,7 @@
 > 처음 보는 사람이 1장부터 순서대로 따라 하면 `http://localhost:8080/login`이 열리도록 쓰는 것이 목표입니다.
 > 함수 이름·주소·데이터 모양의 기준은 [`docs/track-d/contracts.md`](../docs/track-d/contracts.md)(이하 계약서)입니다. 이 문서와 다르면 계약서가 맞습니다.
 >
-> - 이 문서는 통합 담당자가 통합일마다 머지된 부분을 절 단위로 더해 갑니다. 지금은 **단지 켜기·주소표·A0-2 확인 결과, 센서·shipper·fw-agent 상태 보기(6장)** 까지입니다(2026-10-20 main 기준). 공격 상자(attacker) 사용법은 다음 절에서 추가합니다.
+> - 이 문서는 통합 담당자가 통합일마다 머지된 부분을 절 단위로 더해 갑니다. 지금은 **단지 켜기·주소표·A0-2 확인 결과, 센서·shipper·fw-agent 상태 보기(6장), 공격 상자(7장)** 까지입니다(2026-10-23 main 기준).
 > - 명령의 정확성은 A(편승훈)가 확인합니다. 확인 전인 절은 제목 옆에 **(A 확인 전)** 을 붙였습니다.
 > - 키·비밀번호·`.env`의 실제 값은 이 문서에 적지 않습니다. 변수 **이름**만 적습니다.
 
@@ -64,7 +64,7 @@
 | 끄기 (컨테이너·네트워크 정리) | `docker compose down` |
 
 - 켠 뒤 브라우저에서 `http://localhost:8080/login`이 열리면 성공입니다(M0 완료 기준).
-- `docker compose ps`에서 기본으로 켜지는 서비스는 `gateway`, `app`, `mailpit`, `sensor`, `l4-detector`, `shipper`, `fw-agent`입니다. 공격 상자 `attacker-1~3`은 `attack` 프로필이라 기본으로 켜지지 않습니다(사용법은 이후 절에서 추가).
+- `docker compose ps`에서 기본으로 켜지는 서비스는 `gateway`, `app`, `mailpit`, `sensor`, `l4-detector`, `shipper`, `fw-agent`입니다. 공격 상자 `attacker-1~3`은 `attack` 프로필이라 기본으로 켜지지 않습니다(사용법은 7장).
 - 앱을 Docker 없이 직접 실행할 때 쓰던 `docker-compose.mailpit.yml`은 **함께 띄우지 않습니다.** 이 단지에 Mailpit이 이미 들어 있어 컨테이너 이름·8025 포트가 충돌합니다.
 
 ---
@@ -135,11 +135,57 @@
 - 센서 기록 파일(`eve.json`·`l4.json`)은 `eve` 볼륨 하나에 함께 있습니다. sensor·l4-detector가 쓰고 shipper는 읽기만 합니다.
 - shipper·fw-agent에는 `.env` 전체가 아니라 필요한 변수(서명 키, 앱 주소, 허용 목록)만 넘깁니다. 방화벽 권한(`NET_ADMIN`)이 있는 fw-agent에는 DB 키를 주지 않기 위해서입니다(계획 P6).
 - `.env`의 `NET_INGEST_SECRET`·`NET_AGENT_SECRET`이 비어 있거나 틀리면 앱이 401로 거절합니다. 이때 shipper 로그에 `HTTP 401로 거부됐습니다`가, fw-agent 로그에는 목록 받기·보고 실패가 반복해서 보입니다.
-- 공격 상자(attacker)로 경보를 일부러 만드는 방법은 다음 절에서 추가합니다.
+- 공격 상자(attacker)로 경보를 일부러 만드는 방법은 7장에 있습니다.
 
 ---
 
-## 7. 막혔을 때 (A 확인 전)
+## 7. 공격 상자로 경보 만들기 (attacker)
+
+> 단지가 탐지·차단을 제대로 하는지 보려면, 센서가 볼 수 있게 **edge 대역 안에서** 공격 트래픽을 흉내 내야 합니다. 이 일을 하는 것이 공격 상자 `lw-attacker` 이미지입니다. 대상은 늘 우리 gateway(`${LW_EDGE_PREFIX}.10:8080`) 하나로 고정돼 있고(`TARGET_URL`), 횟수·속도에 상한이 걸려 있습니다. 바깥 주소로는 쏠 수 없습니다.
+
+### 7.1 명령과 재현하는 경보
+
+각 명령은 결과를 JSON 한 줄로 출력합니다. `lw.py <명령>` 꼴로 부릅니다.
+
+| 명령 | 흉내 내는 것 | 남는 경보(sid / category) | 쓰이는 시나리오 |
+|---|---|---|---|
+| `scan` | gateway 포트 몇 개 훑기 | Scapy `PORT_SCAN`(9100002) | S4 1단계(정찰) |
+| `webscan` | 웹 경로 훑기 | — (앱 기록) | S4 2단계 |
+| `brute` | 로그인 반복 시도 | — (앱 잠금) | S4 3단계 |
+| `scanner-ua` | 스캐너 도구 이름을 User-Agent로 보내기 | Suricata `SCANNER_UA`(9000004) | S6 근거(L7 증거) |
+| `synflood` | gateway에 SYN 다발 보내기 | Suricata `SYN_FLOOD`(9000001)·Scapy(9100001) | S5 |
+| `httpflood` | 한 경로에 요청 몰아보내기 | 앱 `HTTP_FLOOD` | S5b(synflood와 동시) |
+
+> `category`·`sid`의 기준은 계약서 K4입니다. `scanner-ua`가 보내는 이름은 `netwatch/suricata/rules/local.rules`의 sid 9000004 목록과 같아야 합니다.
+
+### 7.2 고정 상자로 수동 실행 (시연용)
+
+`attacker-1~3`(`.101`·`.102`·`.103`)은 **눈으로 보는 시연**에 씁니다. `attack` 프로필로 한 번만 띄웁니다. 적은 횟수로 확인부터 합니다.
+
+```bash
+docker compose --profile attack run --rm attacker-2 scan
+docker compose --profile attack run --rm attacker-3 synflood --count 100
+```
+
+실행한 뒤 `docker compose logs sensor`(또는 shipper)에서 해당 경보가 올라오는지 봅니다.
+
+### 7.3 일회용 새 IP 실행 (측정·시나리오 점검용)
+
+같은 IP를 다시 쓰면 앞서 건 차단과 "사건당 규칙당 1회"에 막혀 재현이 되지 않습니다. 그래서 I2-2 측정과 C3-1 시나리오 점검은 **실행할 때마다 새 출발지 IP**로 일회용 컨테이너를 띄웁니다. edge 네트워크 이름은 `lw_edge`로 고정돼 있습니다.
+
+```bash
+docker run --rm --network lw_edge --ip ${LW_EDGE_PREFIX}.111 --cap-add NET_RAW \
+  -e TARGET_URL=http://${LW_EDGE_PREFIX}.10:8080 \
+  lw-attacker:latest synflood --count 3000
+```
+
+- `--ip`는 측정용 범위(`.150~.199`) 또는 아직 쓰지 않은 주소로 바꿉니다. 고정 상자(`.101~.103`)·내 브라우저(`.1`)와 겹치지 않게 합니다.
+- `login` 명령만 victim 계정이 필요합니다: `-e LW_VICTIM_PASSWORD=... --username victim_<역할>`을 더합니다. 비밀번호는 셸 기록에 남지 않게 환경 변수로만 넘기고, 이 문서·이미지에는 값을 적지 않습니다(victim 계정·비밀번호는 PC마다 다릅니다 — 팀 계획 01 4장).
+- 이미지가 없으면 먼저 빌드합니다: `docker compose build attacker-1`.
+
+---
+
+## 8. 막혔을 때 (A 확인 전)
 
 | 증상 | 확인할 것 |
 |---|---|
