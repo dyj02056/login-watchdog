@@ -179,6 +179,17 @@ def test_to_event_ignores_non_alert_eve_line() -> None:
     assert shipper.to_event(line, "suricata") is None
 
 
+def test_to_event_ignores_eve_stats_line() -> None:
+    """Suricata 생존 신호용 stats 행은 경보로 보내지 않는다."""
+    line = {
+        "timestamp": "2026-10-20T03:12:44.120Z",
+        "event_type": "stats",
+        "stats": {"uptime": 60},
+    }
+
+    assert shipper.to_event(line, "suricata") is None
+
+
 @pytest.mark.parametrize(
     ("category", "expected_id", "expected_count"),
     [
@@ -546,17 +557,25 @@ def test_heartbeat_body_contains_required_detail() -> None:
         eve_tailer=eve_tailer,
         l4_tailer=l4_tailer,
         event_sender=event_sender,
+        stalled=True,
+        stalled_seconds=125,
     )
 
     assert body == {
         "agent": "shipper",
-        "stalled": False,
+        "stalled": True,
         "detail": {
             "eve_bytes": 104857,
             "l4_bytes": 2048,
             "queue": 3,
+            "stalled_seconds": 125,
         },
     }
+
+    assert len(
+        json.dumps(body).encode("utf-8")
+    ) <= 2048
+
 
 def _compose_service_block(compose: str, name: str) -> str:
     """PyYAML 없이 compose 문자열에서 서비스 한 개의 블록만 잘라 낸다."""
@@ -605,3 +624,132 @@ def test_compose_has_no_stale_core_subnet() -> None:
         if "172.29." in line and not line.lstrip().startswith("#")
     ]
     assert config_lines == []
+
+
+def test_compose_passes_stall_seconds_to_shipper() -> None:
+    """.env의 SHIPPER_STALL_SECONDS가 shipper 컨테이너까지 전달돼야 한다(기본 120)."""
+    compose = (PROJECT_ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    block = _compose_service_block(compose, "shipper")
+
+    assert "SHIPPER_STALL_SECONDS: ${SHIPPER_STALL_SECONDS:-120}" in block
+
+
+class StallFakeClock:
+    """StallWatch 테스트용으로 직접 진행할 수 있는 시계."""
+
+    def __init__(self, now: float = 0.0) -> None:
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
+def test_stall_watch_is_stalled_after_threshold() -> None:
+    """두 파일이 기준 시간 동안 그대로면 정지로 판단한다."""
+    clock = StallFakeClock()
+    watch = shipper.StallWatch(
+        clock=clock,
+        threshold_seconds=120,
+    )
+
+    assert watch.observe(100, 20) == (False, 0)
+
+    clock.advance(120)
+
+    assert watch.observe(100, 20) == (True, 120)
+
+
+def test_stall_watch_recovers_when_either_file_grows() -> None:
+    """한 파일이라도 증가하면 정지 상태가 해제된다."""
+    clock = StallFakeClock()
+    watch = shipper.StallWatch(
+        clock=clock,
+        threshold_seconds=120,
+    )
+
+    watch.observe(100, 20)
+    clock.advance(120)
+
+    assert watch.observe(100, 20)[0] is True
+
+    clock.advance(1)
+
+    assert watch.observe(101, 20) == (False, 0)
+
+
+def test_stall_watch_recovers_after_truncation() -> None:
+    """로그 순환으로 파일이 작아지면 정상 상태로 돌아간다."""
+    clock = StallFakeClock()
+    watch = shipper.StallWatch(
+        clock=clock,
+        threshold_seconds=120,
+    )
+
+    watch.observe(1000, 200)
+    clock.advance(120)
+
+    assert watch.observe(1000, 200)[0] is True
+
+    clock.advance(1)
+
+    assert watch.observe(10, 200) == (False, 0)
+
+
+def test_stall_watch_uses_most_recent_file_growth() -> None:
+    """두 파일 중 한 파일이라도 최근에 증가했으면 정지가 아니다."""
+    clock = StallFakeClock()
+    watch = shipper.StallWatch(
+        clock=clock,
+        threshold_seconds=120,
+    )
+
+    watch.observe(100, 20)
+
+    clock.advance(100)
+    watch.observe(101, 20)
+
+    clock.advance(30)
+
+    stalled, stalled_seconds = watch.observe(101, 20)
+
+    assert stalled is False
+    assert stalled_seconds == 30
+
+
+def test_stall_watch_missing_files_become_stalled() -> None:
+    """센서가 처음부터 파일을 못 만들면(크기 0 그대로) 기준 시간 뒤 정지로 본다."""
+    clock = StallFakeClock()
+    watch = shipper.StallWatch(
+        clock=clock,
+        threshold_seconds=120,
+    )
+
+    # Tailer는 파일이 없으면 last_size를 0으로 둔다.
+    assert watch.observe(0, 0) == (False, 0)
+
+    clock.advance(119)
+    assert watch.observe(0, 0) == (False, 119)
+
+    clock.advance(1)
+    assert watch.observe(0, 0) == (True, 120)
+
+
+@pytest.mark.parametrize("value", ["abc", "0", "-5"])
+def test_main_rejects_invalid_stall_seconds(
+    value: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """SHIPPER_STALL_SECONDS가 숫자가 아니거나 0 이하면 시작하지 않고 2로 끝난다."""
+    exit_code = shipper.main(
+        environ={
+            "NET_INGEST_URL": "http://app:5000/api/internal/net-events",
+            "NET_INGEST_SECRET": "test-ingest-secret",
+            "SHIPPER_STALL_SECONDS": value,
+        },
+    )
+
+    assert exit_code == 2
+    assert "SHIPPER_STALL_SECONDS" in capsys.readouterr().err

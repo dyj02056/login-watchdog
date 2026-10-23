@@ -139,12 +139,79 @@ def test_suspicious_login_notice_sent_then_skipped(monkeypatch):
     assert second == mailer.SKIPPED == "SKIPPED"
     assert len(sent) == 1
     to_address, subject, body = sent[0]
-    assert subject == "[login-watchdog] 의심스러운 로그인이 차단되었습니다"
+    assert subject == "[로그인 워치독] 의심스러운 로그인이 차단되었습니다"
     assert "203.0.113.5" in body and "2026-10-23T01:02:03+00:00" in body
     assert "비밀번호" in body
     # 대소문자만 다른 주소도 같은 쿨다운 키를 쓴다
     assert cooldown_calls[0][0] == cooldown_calls[1][0] == "mail:suspicious:victim@example.com"
     assert cooldown_calls[0][1] == mailer.config.SUSPICIOUS_LOGIN_MAIL_COOLDOWN_SECONDS
+
+
+def _install_fake_mail(monkeypatch, send_result, release_raises=False):
+    """쿨다운은 항상 잡히고 _send_mail은 send_result를 돌려주게 바꾼다. release_cooldown 호출을 기록한다."""
+    released = []
+
+    def fake_release(key):
+        released.append(key)
+        if release_raises:
+            raise RuntimeError("db down")
+
+    monkeypatch.setattr(db, "try_acquire_cooldown", lambda key, seconds: True, raising=False)
+    monkeypatch.setattr(db, "release_cooldown", fake_release, raising=False)
+    monkeypatch.setattr(mailer, "_send_mail", lambda to, subject, body: send_result)
+    return released
+
+
+def test_suspicious_login_notice_failed_releases_cooldown(monkeypatch):
+    # 일시 장애로 못 보냈으면 쿨다운을 풀어 다음 탐지 때 다시 보낼 수 있어야 한다
+    released = _install_fake_mail(monkeypatch, mailer.FAILED)
+    result = mailer.send_suspicious_login_notice("Victim@Example.com", "203.0.113.5", "2026-10-23T01:02:03+00:00")
+    assert result == mailer.FAILED
+    assert released == ["mail:suspicious:victim@example.com"]
+
+
+def test_suspicious_login_notice_sent_or_refused_keeps_cooldown(monkeypatch):
+    for send_result in (mailer.SENT, mailer.REFUSED):
+        released = _install_fake_mail(monkeypatch, send_result)
+        assert mailer.send_suspicious_login_notice("victim@example.com", "203.0.113.5", "t") == send_result
+        assert released == []
+
+
+def test_suspicious_login_notice_release_error_keeps_failed(monkeypatch):
+    # 쿨다운 해제가 실패해도 예외 없이 발송 결과(FAILED)를 그대로 돌려준다
+    released = _install_fake_mail(monkeypatch, mailer.FAILED, release_raises=True)
+    assert mailer.send_suspicious_login_notice("victim@example.com", "203.0.113.5", "t") == mailer.FAILED
+    assert len(released) == 1
+
+
+# ---------------------------------------------------------------------------
+# db.release_cooldown
+# ---------------------------------------------------------------------------
+
+def test_release_cooldown_deletes_row_by_key(monkeypatch):
+    calls = []
+
+    class FakeCooldownTable:
+        def delete(self):
+            calls.append("delete")
+            return self
+
+        def eq(self, column, value):
+            calls.append((column, value))
+            return self
+
+        def execute(self):
+            calls.append("execute")
+            return DummyResponse([])
+
+    class FakeCooldownClient:
+        def table(self, name):
+            assert name == "notification_cooldowns"
+            return FakeCooldownTable()
+
+    monkeypatch.setattr(db, "get_client", lambda: FakeCooldownClient())
+    db.release_cooldown("mail:suspicious:victim@example.com")
+    assert calls == ["delete", ("key", "mail:suspicious:victim@example.com"), "execute"]
 
 
 # ---------------------------------------------------------------------------
@@ -185,3 +252,31 @@ def test_playbook_alert_without_failure_has_no_warning(monkeypatch):
 
     assert "일부 조치 실패" not in messages[0]
     assert "203.0.113.9" in messages[0]
+    # priority를 넘기지 않으면 지금처럼 [HIGH]
+    assert messages[0].split("\n")[0].startswith(":shield: [HIGH]")
+
+
+def test_playbook_alert_critical_priority_header(monkeypatch):
+    messages = []
+    monkeypatch.setattr(alert, "_send_slack_message", messages.append)
+
+    alert.send_playbook_alert(
+        "KILL_CHAIN", "203.0.113.5", ["CR-01"],
+        [{"step": "block_l4", "status": "FAILED", "error": "조치 미완료"}],
+        priority="CRITICAL",
+    )
+
+    lines = messages[0].split("\n")
+    # 실패 경고가 맨 앞, 그 다음 줄에 CRITICAL 머리말
+    assert lines[0].startswith("⚠ 일부 조치 실패")
+    assert lines[1].startswith(":rotating_light: [CRITICAL]")
+    assert "[HIGH]" not in messages[0]
+
+
+def test_playbook_alert_unknown_priority_falls_back_to_high(monkeypatch):
+    messages = []
+    monkeypatch.setattr(alert, "_send_slack_message", messages.append)
+
+    alert.send_playbook_alert("NET_FLOOD", "203.0.113.9", [], [], priority="LOW")
+
+    assert messages[0].startswith(":shield: [HIGH]")

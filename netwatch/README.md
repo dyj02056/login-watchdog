@@ -118,7 +118,7 @@
 
 | 서비스 | 하는 일 | 만든 작업 |
 |---|---|---|
-| `sensor` | Suricata. edge 쪽 통신을 보고 `eve.json`에 경보·흐름·HTTP 기록을 씁니다. ET Open 규칙은 처음 켤 때 한 번 받고(`suricata-rules` 볼륨), 못 받으면 `local.rules`만으로 시작합니다 | A1-1 |
+| `sensor` | Suricata. edge 쪽 통신을 보고 `eve.json`에 경보·흐름·HTTP 기록을 씁니다. 통신이 없어도 1분마다 통계(`stats`) 한 줄을 써서, shipper가 조용한 시간을 센서 정지로 오해하지 않게 합니다(A2-3). ET Open 규칙은 처음 켤 때 한 번 받고(`suricata-rules` 볼륨), 못 받으면 `local.rules`만으로 시작합니다 | A1-1 |
 | `l4-detector` | Scapy. 출발지별 SYN 비율·서로 다른 포트 수를 세어 `l4.json`에 씁니다 | A1-2 |
 | `shipper` | 두 파일을 읽어 서명(HMAC)을 붙여 앱 수집 창구로 보내고, 30초마다 생존 신호를 보냅니다 | A1-3 |
 | `fw-agent` | 앱 내부 API에서 차단 목록을 받아 gateway의 ipset `lw_block`에 넣고 빼고, 10초마다 생존 신호를 보냅니다 | C1-3 |
