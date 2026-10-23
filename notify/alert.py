@@ -346,3 +346,35 @@ def send_component_alert(component: str, message: str) -> None:
         f"상세 내용: {message}"
     )
     _send_slack_message(text)
+
+
+# 단계 상태별 표시 기호 — 사람이 한 줄씩 훑어보고 성공(✓)·실패(✗)·건너뜀(–)을 바로 구분하게 한다.
+_PLAYBOOK_STEP_MARKS = {"OK": "✓", "FAILED": "✗", "SKIPPED": "–"}
+
+
+def send_playbook_alert(playbook: str, ip: str, matched_rules: list[str], results: list[dict]) -> None:
+    """Track D 플레이북 실행 결과를 Slack에 알린다(계약서 K8, C2-1). results 항목은
+    {"step", "status"("OK"/"FAILED"/"SKIPPED"), "error"}다.
+
+    실패한 단계가 하나라도 있으면 첫 줄을 "⚠ 일부 조치 실패"로 시작한다(V6) — 다른 알림처럼
+    "조치 완료"만 보고 넘어가면, 예를 들어 L4 차단이 실패해 공격이 계속 들어오는데도 관리자는
+    막힌 줄로 믿게 된다. 그래서 실패 여부를 메시지 맨 앞에서 바로 보이게 한다.
+    SKIPPED는 실패가 아니다(쿨다운 안이라 메일을 안 보냈거나, 아직 실행 함수가 없는 선택 단계).
+    """
+    has_failure = any(r.get("status") == "FAILED" for r in results)
+    lines = []
+    if has_failure:
+        lines.append("⚠ 일부 조치 실패")
+    lines.append(f":shield: [HIGH] 로그인 워치독 플레이북 실행 알림: {playbook}")
+    lines.append(f"대상 IP: {ip}")
+    lines.append(f"일치한 규칙: {', '.join(matched_rules) if matched_rules else '-'}")
+    lines.append("단계별 결과:")
+    for r in results:
+        status = r.get("status")
+        mark = _PLAYBOOK_STEP_MARKS.get(status, "?")
+        line = f"{mark} {r.get('step')} ({status})"
+        # 실패 원인은 실패한 단계에만 붙인다 — 관리자가 무엇을 고쳐야 할지 바로 알 수 있게 한다.
+        if status == "FAILED" and r.get("error"):
+            line += f": {r['error']}"
+        lines.append(line)
+    _send_slack_message("\n".join(lines))

@@ -26,12 +26,16 @@ from email.message import EmailMessage
 from email.utils import formatdate, make_msgid, parseaddr
 
 import config
+import db
 from notify import alert
 from notify.alert import _safe_print
 
 SENT = "SENT"
 REFUSED = "REFUSED"
 FAILED = "FAILED"
+# SKIPPED — 쿨다운 안이라 일부러 보내지 않았다(Track D 의심 로그인 경고 메일, 계약서 K8).
+# 실패가 아니므로 FAILED와 구분한다 — 플레이북이 이 단계를 "조치 실패"로 알리지 않게 하기 위해서다.
+SKIPPED = "SKIPPED"
 
 # 실패 원인 분류 — 관리자가 "무엇을 고쳐야 하는지" 바로 알 수 있게 나눈다.
 FAIL_CONFIG = "CONFIG"    # MAIL_BACKEND/SMTP_HOST/PUBLIC_BASE_URL 등 설정 누락
@@ -207,6 +211,30 @@ def send_password_changed_notice(to_address: str) -> str:
         "본인이 변경한 것이 아니라면 즉시 관리자에게 알려주세요."
     )
     return _send_mail(to_address, "[로그인 워치독] 비밀번호가 변경되었습니다", body)
+
+
+def send_suspicious_login_notice(to_address: str, ip: str, at_iso: str) -> str:
+    """의심스러운 로그인이 차단됐다는 사실을 계정 이메일로 알린다(Track D CR-03, 계약서 K8).
+    반환: SENT / REFUSED / FAILED / SKIPPED.
+
+    같은 공격이 짧은 시간에 여러 번 탐지되면 플레이북도 여러 번 돌아 같은 경고가 메일함을
+    채운다. 그래서 같은 주소로는 SUSPICIOUS_LOGIN_MAIL_COOLDOWN_SECONDS에 한 번만 보내고,
+    그 안이면 보내지 않고 SKIPPED를 돌려준다. 쿨다운을 프로세스 메모리(_last_alert_at 방식)가
+    아니라 DB(db.try_acquire_cooldown)에 두는 이유는 여러 스레드·여러 PC·Vercel이 같은 주소를
+    함께 다루기 때문이다. 주소는 소문자로 맞춰 대소문자만 다른 주소가 쿨다운을 피하지 않게 한다.
+    """
+    if not db.try_acquire_cooldown(
+        f"mail:suspicious:{to_address.lower()}", config.SUSPICIOUS_LOGIN_MAIL_COOLDOWN_SECONDS
+    ):
+        return SKIPPED
+    body = (
+        "로그인 워치독 계정에서 의심스러운 로그인이 감지되어 차단되었습니다.\n\n"
+        f"차단된 로그인 IP: {ip}\n"
+        f"시각: {at_iso}\n\n"
+        "본인이 로그인한 것이 아니라면 즉시 로그인해 '내 프로필' 화면에서 비밀번호를 바꿔주세요"
+        f"{_profile_link_line()}"
+    )
+    return _send_mail(to_address, "[login-watchdog] 의심스러운 로그인이 차단되었습니다", body)
 
 
 # ============================================================================
