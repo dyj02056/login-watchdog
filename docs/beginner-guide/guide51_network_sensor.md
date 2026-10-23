@@ -3,7 +3,7 @@
 [◀ 50단계](guide50_demo_sample_logs.md) · [전체 목차](beginner-guide.md) · [52단계 ▶](guide52_net_ingest_correlation.md)
 
 > 지금까지 login-watchdog은 **앱 안에서** 로그인 실패·요청 수를 세어 공격을 찾았습니다(L7). 그런데 SYN Flood나 포트 스캔처럼 **앱까지 오지 않는 공격**은 앱이 볼 수 없습니다. Track D에서는 앱 앞에 "정문"을 세우고 정문을 지나는 통신을 지켜보는 센서를 붙입니다.
-> 이 문서는 통합일마다 머지된 부분을 절 단위로 더해 갑니다. 지금은 **연습용 단지·네트워크 3개·정문(nginx)** 까지입니다. Suricata·Scapy 센서와 배달원(shipper)은 다음 절에서 다룹니다.
+> 이 문서는 통합일마다 머지된 부분을 절 단위로 더해 갑니다. 지금은 **연습용 단지·네트워크 3개·정문(nginx)**, **정문 CCTV(Suricata·Scapy)와 배달원(shipper)**, **센서 정지 보고(A2-3)** 까지입니다(2026-10-23 main 기준).
 
 ## 비유 — 아파트 단지와 정문
 
@@ -13,8 +13,8 @@
 | 건물 | Docker 컨테이너 | `gateway`, `app`, `mailpit`, `sensor`, `l4-detector`, `shipper`, `fw-agent`, `attacker-1~3` |
 | 도로 | Docker 네트워크 `edge`·`core`·`egress` | 건물끼리 어떤 길로만 다닐 수 있는지 정합니다 |
 | **정문** | `gateway` (nginx) | 바깥에서 오는 모든 요청이 거치는 단 하나의 입구. `localhost:8080` |
-| 정문 CCTV | `sensor`(Suricata), `l4-detector`(Scapy) | 정문을 지나는 통신을 지켜봅니다 (다음 절) |
-| 배달원 | `shipper` | CCTV 기록을 앱에 전달합니다 (다음 절) |
+| 정문 CCTV | `sensor`(Suricata), `l4-detector`(Scapy) | 정문을 지나는 통신을 지켜봅니다 (아래 ③ 절) |
+| 배달원 | `shipper` | CCTV 기록을 앱에 전달하고, CCTV가 멈추면 알립니다 (아래 ③·④ 절) |
 | 정문 차단기 담당 | `fw-agent` | 앱이 "막아라"라고 적은 주소를 정문에서 실제로 막습니다 (54단계, 작성 예정) |
 
 > **왜 실제 서버가 아니라 Docker 단지인가:** 공격을 재현하려면 공격자·정문·앱이 모두 필요합니다. 실제 인터넷에서 하면 남의 서버를 건드릴 위험이 있고, Vercel에는 정문을 둘 수 없습니다. 그래서 내 PC 안에 작은 단지를 만들고, 공격도 단지 안에서만 일으킵니다. Vercel 배포본은 Track D 없이 그대로 동작합니다.
@@ -82,6 +82,102 @@ proxy_set_header X-Forwarded-For $remote_addr;
 
 `.dockerignore`가 `.env`, `tests/`, `docs/`, `web/`, `netwatch/`, 문서(`*.md`) 등을 빼므로 앱 이미지에 비밀값과 필요 없는 파일이 들어가지 않습니다. 비밀값은 실행할 때 `env_file: .env`로만 넣습니다.
 
+## ③ 정문 CCTV 두 대 — Suricata(`sensor`)와 Scapy(`l4-detector`) (A1-1·A1-2)
+
+정문에는 성격이 다른 CCTV 두 대가 달려 있습니다.
+
+| CCTV | 컨테이너 | 보는 방식 | 잘하는 것 |
+|---|---|---|---|
+| Suricata | `sensor` (`netwatch/suricata/`) | 통신 **내용**을 읽고 규칙과 맞춰 봅니다 | 로그인 요청 폭주, 스캐너 도구 이름 같은 HTTP(L7) 공격 |
+| Scapy | `l4-detector` (`netwatch/l4_detector/`) | 패킷 **개수**만 셉니다 | SYN Flood, 포트 스캔 같은 연결 단계(L4) 공격 |
+
+> **왜 두 대인가:** Suricata는 내용을 보는 데 강하지만, "한 주소가 10초 동안 서로 다른 포트를 몇 개 두드렸나"처럼 숫자를 세는 일은 우리가 원하는 기준대로 바꾸기 어렵습니다. Scapy 쪽은 우리가 직접 짠 짧은 코드라 기준(`L4_SYN_PER_SEC`, `L4_DISTINCT_PORTS_10S`)을 바로 고칠 수 있습니다. SYN Flood는 둘 다 잡으므로 한쪽이 놓쳐도 다른 쪽이 남깁니다.
+
+### 어디를 보나
+
+두 CCTV 모두 **정문(gateway) 안에 들어가** edge 쪽 인터페이스만 봅니다(`network_mode: "service:gateway"`). 그래서 공격자가 정문에 보낸 통신은 보이지만, 정문이 앱에 넘기는 core 쪽 통신은 보지 않습니다. 어느 인터페이스가 edge인지는 앞 절의 "edge 주소가 붙은 쪽" 규칙으로 고릅니다.
+
+- Scapy는 core 대역(`172.30.0.0/24`)과 정문 자신의 주소에서 온 패킷을 아예 세지 않습니다(`detector_core.py`의 `_is_excluded_source`). 정문·앱끼리의 정상 통신을 공격으로 세지 않기 위해서입니다.
+
+### 무엇을 잡나
+
+| CCTV | 번호(signature_id) | 경보 이름 | 기준 | 층 |
+|---|---|---|---|---|
+| Suricata | 9000001 | `SYN_FLOOD` | 같은 출발지에서 8080으로 SYN 100개 / 5초 | L4 |
+| Suricata | 9000003 | `LOGIN_BURST` | 같은 출발지에서 `/login` POST 20번 / 10초 | L7 |
+| Suricata | 9000004 | `SCANNER_UA` | User-Agent에 sqlmap·nikto·nmap·masscan·dirbuster·gobuster | L7 |
+| Scapy | 9100001 | `SYN_FLOOD` | 같은 출발지의 SYN이 1초 안에 100개 이상(기본값) | L4 |
+| Scapy | 9100002 | `PORT_SCAN` | 같은 출발지가 10초 안에 서로 다른 포트 15개 이상(기본값) | L4 |
+
+- 자체 규칙은 `netwatch/suricata/rules/local.rules`에 있습니다. 번호와 경보 이름의 짝은 계약서 K4가 기준이라 마음대로 바꾸지 않습니다.
+- Scapy는 같은 출발지·같은 경보를 10초에 한 번만 씁니다(`cooldown_seconds`). 공격이 이어지는 동안 같은 줄이 패킷마다 쌓이지 않게 하려는 것입니다.
+- 공개 규칙 묶음(ET Open)의 경보도 함께 나옵니다. 웹 공격 분류(`web-application-attack`)면 `WEB_ATTACK`, 그 밖은 `OTHER`로 넘깁니다.
+
+### Suricata가 켜질 때 하는 일 — `netwatch/suricata/entrypoint.sh`
+
+| 순서 | 하는 일 | 이유 |
+|---|---|---|
+| 1 | `suricata.yaml`의 `__HOME_NET__`·`__SENSOR_IFACE__`를 이 PC 값으로 바꿈 | 사람마다 edge 대역과 인터페이스 이름이 달라도 같은 설정 파일을 쓰려고 |
+| 2 | ET Open 규칙 파일이 **없을 때만** `suricata-update`로 받음 | 켤 때마다 인터넷에서 받으면 느리고, 시연장 네트워크가 막히면 센서가 못 켜집니다 |
+| 3 | 받기에 실패하면 빈 규칙 파일을 만들고 자체 규칙만으로 시작 | 공개 규칙이 없어도 우리 경보 세 가지는 동작하게 |
+
+> 이 파일은 줄바꿈이 **LF**여야 합니다. Windows에서 CRLF로 바뀌면 컨테이너가 시작하자마자 `set: -: invalid option`으로 멈춥니다. 저장소의 `.gitattributes`가 `*.sh`를 LF로 꺼내 줍니다.
+
+### 기록 파일
+
+| 파일 | 누가 쓰나 | 들어가는 줄 |
+|---|---|---|
+| `eve.json` | Suricata | 경보(`alert`), 연결 기록(`flow`), HTTP 요청(`http`), 1분마다 통계(`stats`, ④ 절) |
+| `l4.json` | Scapy | 경보 한 건에 한 줄(`src_ip`, `category`, `syn_per_sec`, `distinct_ports_10s`) |
+
+두 파일은 `eve` 볼륨 하나에 함께 있습니다. sensor·l4-detector가 쓰고, shipper는 **읽기 전용**으로 붙어 있어 기록을 고칠 수 없습니다.
+
+## ③ 배달원 — shipper (A1-3)
+
+CCTV는 기록만 남길 뿐 앱에 알려 주지 않습니다. 배달원(`netwatch/shipper/eve_shipper.py`)이 두 파일을 계속 읽다가, 경보 줄이 생기면 앱의 수집 창구(`/api/internal/net-events`, [52단계](guide52_net_ingest_correlation.md))로 보냅니다.
+
+| 단계 | 코드 | 하는 일 | 이유 |
+|---|---|---|---|
+| 읽기 | `Tailer` | 파일 **끝에서부터** 새로 붙은 완성된 줄만 읽습니다. 파일이 잘리거나 새로 만들어지면 처음부터 다시 읽습니다 | 켜기 전 기록을 한꺼번에 다시 보내지 않으려고. 리눅스가 지운 파일의 inode 번호를 새 파일에 다시 쓰는 경우도 잡아, 줄 중간부터 읽어 JSON이 깨지는 일을 막았습니다 |
+| 고르기·바꾸기 | `to_event` | 경보 줄만 골라 계약서 K4 모양(`sensor`, `layer`, `category`, `signature_id`, `src_ip` …)으로 바꿉니다. `flow`·`http`·`stats` 줄은 건너뜁니다 | 앱은 경보만 필요합니다 |
+| 묶기 | `Aggregator` | 같은 경보의 **첫 건은 바로** 보내고, 같은 1분 창 안에 더 오면 `packet_count`를 더해 두었다가 창이 끝날 때 **한 번 더**(갱신) 보냅니다 | 5초 안에 탐지·차단하려면 첫 건은 기다리면 안 되고, 공격 중 수천 줄을 하나하나 보내면 앱과 DB가 버티지 못합니다 |
+| 이름 붙이기 | `make_event_id` | `sha256(sensor\|src_ip\|category\|signature_id\|window_start)` | 첫 전송·갱신·재시도가 모두 같은 이름이라 앱이 두 번 저장하지 않습니다(멱등) |
+| 보내기 | `Sender` | 서명 헤더(`X-LW-Sender`·`X-LW-Timestamp`·`X-LW-Signature`, 계약서 K3)를 붙여 보냅니다 | 앱이 진짜 배달원이 보낸 것인지 확인합니다([52단계](guide52_net_ingest_correlation.md)) |
+| 다시 보내기 | `Sender._deliver` | 5xx나 연결 실패면 1·2·4·8초 쉬며 최대 5번. 4xx면 다시 보내지 않습니다 | 앱이 잠깐 바쁜 것은 기다리면 풀리지만, 서명이 틀린 것(401)은 몇 번을 보내도 같습니다 |
+| 생존 신호 | `heartbeat_body` | 30초마다 `/api/internal/heartbeat`에 파일 크기·대기열 길이를 보냅니다 | 앱이 "배달원이 살아 있나"를 압니다([54단계](guide54_l4_block_agent.md)의 장비 정지 감시) |
+
+- 보내기는 별도 작업 스레드가 맡고, 대기열은 1000개까지입니다. 가득 차면 새 경보를 버리고 로그에 `[WARN] … 대기열이 가득 차` 를 남깁니다. 앱이 오래 멈췄을 때 배달원 메모리가 끝없이 늘어나지 않게 하려는 것입니다.
+- 배달원은 **앱 코드를 import하지 않습니다.** 다른 컨테이너에서 돌기 때문에, 서명·event_id 규칙을 계약서대로 따로 구현했습니다. 받는 값도 서명 키(`NET_INGEST_SECRET`)·앱 주소·파일 경로·정지 기준뿐이고 `.env` 전체를 받지 않습니다.
+
+## ④ 센서 정지 보고 (A2-3)
+
+CCTV가 꺼져도 "경보가 없다"와 "CCTV가 꺼졌다"는 겉으로 똑같이 조용합니다. 공격자가 센서부터 무력화하면(대량 패킷, 디스크 가득 — 계획 V14) 관리자는 평화로운 줄 압니다. 그래서 배달원이 CCTV 기록 파일이 자라는지를 지켜봅니다.
+
+| 코드 | 하는 일 |
+|---|---|
+| `StallWatch.observe(eve_bytes, l4_bytes)` | 파일마다 마지막 크기와 마지막으로 바뀐 시각을 기억합니다. **두 파일 모두** `SHIPPER_STALL_SECONDS`(기본 120초) 넘게 그대로면 정지로 봅니다. 파일이 잘리거나 새로 만들어져 작아져도 "움직였다"로 봅니다 |
+| `heartbeat_body(..., stalled=, stalled_seconds=)` | 30초 생존 신호에 `"stalled": true/false`와 `detail.stalled_seconds`(마지막으로 늘어난 뒤 흐른 초)를 실어 보냅니다 |
+| 앱 `routes/internal/heartbeat.py` | `stalled: true`를 받으면 Slack으로 알립니다. 같은 PC·같은 장비는 `AGENT_ALERT_COOLDOWN_SECONDS`에 한 번만 보냅니다 |
+
+배달원 로그에는 상태가 **바뀔 때만** 한 줄씩 남습니다.
+
+```text
+[WARN] 두 센서 출력이 120초 동안 증가하지 않아 정지 상태로 판단합니다.
+[OK] 센서 출력 증가를 확인하여 정지 상태가 해제되었습니다.
+```
+
+### 조용할 때 "정지"로 오해하지 않게
+
+l4.json은 공격이 있을 때만 늘어나고, eve.json도 원래는 통신이 있을 때만 늘어났습니다. 그러면 아무도 접속하지 않는 2분 동안 센서가 멀쩡해도 "정지" 알림이 갑니다. 그래서 Suricata가 살아 있으면 통신이 없어도 **1분마다 통계 한 줄**(`stats`)을 eve.json에 쓰게 했습니다(`suricata.yaml`의 `stats: interval: 60`).
+
+| 값 | 기본 | 이유 |
+|---|---|---|
+| Suricata `stats` 간격 | 60초 | 정지 기준(120초)보다 충분히 짧고, 기록이 너무 빨리 쌓이지 않게 |
+| `SHIPPER_STALL_SECONDS` | 120초 | 통계 한 번이 늦어져도 오판하지 않게 그 두 배. **60초 이하로 낮추면 조용할 때 오판합니다** |
+
+- 정지 판단 기준은 `.env`의 `SHIPPER_STALL_SECONDS`로 바꾸고, `docker-compose.yml`이 이 값을 shipper에 넘깁니다. 숫자가 아니거나 0 이하면 배달원이 시작하지 않고 `[FAIL]`을 남깁니다.
+- 정지를 그 자리에서 따로 보내지 않고 30초 생존 신호에 실어 보냅니다. 알림을 너무 자주 보내지 않게 막는 쿨다운은 앱이 맡습니다.
+
 ## 직접 확인해 보기
 
 켜는 법과 `.env` 준비는 [`netwatch/README.md`](../../netwatch/README.md)를 따릅니다.
@@ -104,11 +200,38 @@ docker compose exec gateway ip -4 -o addr
 - 브라우저에서 `http://localhost:8080/login`이 열리면 성공입니다.
 - 이 절에서는 Supabase에 새로 볼 표가 없습니다. Track D 표는 [52단계](guide52_net_ingest_correlation.md)에서 다룹니다.
 
+### 센서·배달원 (③·④ 절)
+
+```bash
+# 자체 규칙·설정, L4 측정기, 인터페이스 자동 선택, 배달원(정지 판단 포함) 테스트
+pytest tests/track_d/test_a_suricata_rules.py tests/track_d/test_a_l4_detector.py tests/track_d/test_a_l4_iface.py tests/track_d/test_a_shipper.py -q
+
+# CCTV가 고른 인터페이스와 규칙 로딩
+docker compose logs sensor
+docker compose logs l4-detector
+
+# 배달원이 경보를 보내는지 (Ctrl+C로 빠져나옴)
+docker compose logs -f shipper
+
+# CCTV 기록 마지막 몇 줄 — 1분마다 "event_type":"stats" 줄이 보이면 Suricata가 살아 있는 것
+docker compose exec shipper tail -n 5 /var/log/suricata/eve.json
+```
+
+- 경보를 일부러 만들려면 [`netwatch/README.md`](../../netwatch/README.md) 7장의 공격 상자 명령(예: `scanner-ua`)을 씁니다. 몇 초 뒤 Supabase `network_events` 표에 새 행이 생기면 CCTV → 배달원 → 앱이 이어진 것입니다.
+- 배달원 생존 신호는 Supabase `agent_heartbeats` 표의 `agent = 'shipper'` 행에 PC 이름(`node`)별로 남습니다. `detail`의 `stalled`가 `false`, `stalled_seconds`가 120보다 작으면 정상입니다.
+- **정지 보고 확인(④):** 아무 접속 없이 3분 두어도 배달원 로그에 `[WARN] 두 센서 출력이 …` 줄이 **없어야** 합니다. 그다음 `docker compose stop sensor l4-detector`로 CCTV를 끄고 2분 넘게 기다리면 그 줄이 생기고 Slack 알림이 옵니다. `docker compose start sensor l4-detector`로 다시 켜면 `[OK] … 해제` 줄이 생깁니다.
+
 ## 이 단계에서 만들어지거나 바뀐 파일
 
 - 신규: [Dockerfile](../../Dockerfile), [.dockerignore](../../.dockerignore), [docker-compose.yml](../../docker-compose.yml), [netwatch/nginx/nginx.conf](../../netwatch/nginx/nginx.conf), [tests/track_d/test_a_compose.py](../../tests/track_d/test_a_compose.py)
 - 수정: [.env.example](../../.env.example)(Track D 구역 A 소구역)
+- 신규(③ CCTV, A1-1·A1-2): [netwatch/suricata/suricata.yaml](../../netwatch/suricata/suricata.yaml), [netwatch/suricata/entrypoint.sh](../../netwatch/suricata/entrypoint.sh), [netwatch/suricata/rules/local.rules](../../netwatch/suricata/rules/local.rules), [netwatch/l4_detector/detector_core.py](../../netwatch/l4_detector/detector_core.py), [netwatch/l4_detector/l4_detector.py](../../netwatch/l4_detector/l4_detector.py), [tests/track_d/test_a_suricata_rules.py](../../tests/track_d/test_a_suricata_rules.py), [tests/track_d/test_a_l4_detector.py](../../tests/track_d/test_a_l4_detector.py), [tests/track_d/test_a_l4_iface.py](../../tests/track_d/test_a_l4_iface.py)
+- 신규(③ 배달원, A1-3): [netwatch/shipper/eve_shipper.py](../../netwatch/shipper/eve_shipper.py), [tests/track_d/test_a_shipper.py](../../tests/track_d/test_a_shipper.py)
+- 수정(④ 정지 보고, A2-3): `eve_shipper.py`(`StallWatch`), `suricata.yaml`(`stats`), [docker-compose.yml](../../docker-compose.yml)·`.env.example`(`SHIPPER_STALL_SECONDS`)
 
 ## 알려진 제한
 
 - 정문은 `/api/internal/*`(센서·차단 프로그램 전용 창구)도 바깥에서 넘겨 줍니다. 서명(HMAC)이 없으면 앱이 401로 거절하므로 뚫리지는 않지만, 정문에서 경로 자체를 막을지는 검토 중입니다.
+- `eve.json`·`l4.json`은 지우거나 나누지 않고 계속 커집니다. 크기 제한·순환은 안정화 작업(A3-1)에서 다룹니다.
+- SYN Flood는 Suricata와 Scapy가 둘 다 잡으므로 같은 공격이 경보 두 줄로 들어옵니다. 둘은 `sensor`·`signature_id`가 달라 서로 덮어쓰지 않습니다.
+- 정지 보고는 **두 파일이 모두** 멈췄을 때만 울립니다. Suricata는 살아 있고 Scapy(`l4-detector`)만 멈춘 경우는 잡지 못합니다. 그 경우는 `docker compose ps`로 확인합니다.
