@@ -273,26 +273,32 @@ def request_unblock(ip: str, actor: str) -> bool:
 # db/users.py
 def bump_session_version(user_id: int) -> bool:
     """users.session_version을 조건부 UPDATE로 1 올린다(비밀번호 변경과 같은 방식).
-    경합으로 0행이면 1회 다시 읽어 재시도. 성공하면 True."""
+    경합으로 0행이면 다시 읽어 재시도(최대 3번). 성공하면 True, 회원이 없거나 3번 다 지면 False(예외 없음)."""
 
 # notify/mailer.py
 def send_suspicious_login_notice(to_address: str, ip: str, at_iso: str) -> str:
     """의심 로그인 경고 메일. 반환: mailer.SENT / REFUSED / FAILED / SKIPPED.
     (SKIPPED는 지금 mailer.py에 없는 값이다. C2-1이 SENT·REFUSED·FAILED 옆에 SKIPPED = "SKIPPED"를 추가한다.)
     같은 주소로 SUSPICIOUS_LOGIN_MAIL_COOLDOWN_SECONDS 안에 이미 보냈으면 보내지 않고 SKIPPED.
-    쿨다운은 db.try_acquire_cooldown(f"mail:suspicious:{to_address.lower()}", 초)로 판단(여러 스레드·여러 PC 공통)."""
+    쿨다운은 db.try_acquire_cooldown(f"mail:suspicious:{to_address.lower()}", 초)로 판단(여러 스레드·여러 PC 공통).
+    발송 결과가 FAILED면 db.release_cooldown(같은 키)로 쿨다운을 풀어 다음 탐지 때 다시 보낸다(REFUSED는 풀지 않음)."""
 
 # notify/alert.py
 def send_playbook_alert(playbook: str, ip: str, matched_rules: list[str],
-                        results: list[dict]) -> None:
+                        results: list[dict], priority: str = "HIGH") -> None:
     """플레이북 실행 결과를 Slack으로 알린다. results 항목:
     {"step": "block_l4_ttl", "status": "OK" | "FAILED" | "SKIPPED", "error": str | None}.
-    실패한 단계가 있으면 메시지 첫 줄에 '⚠ 일부 조치 실패'를 넣는다(V6)."""
+    실패한 단계가 있으면 메시지 첫 줄에 '⚠ 일부 조치 실패'를 넣는다(V6).
+    priority는 ctx["priority"]("CRITICAL" | "HIGH"). 넘기지 않거나 모르는 값이면 [HIGH]로 표시."""
 
 # db/agent_heartbeats.py (C)
 def try_acquire_cooldown(key: str, seconds: int) -> bool:
     """notification_cooldowns 표로 '지금 보내도 되는지'를 원자적으로 판단한다.
     마지막 전송이 seconds보다 오래됐거나 기록이 없으면 지금 시각으로 기록하고 True."""
+
+# db/agent_heartbeats.py (C)
+def release_cooldown(key: str) -> None:
+    """try_acquire_cooldown으로 잡은 쿨다운 기록(key 행)을 지운다. 전송이 일시 실패했을 때 호출부가 부른다."""
 ```
 
 **플레이북이 넘기는 `ctx` (B가 채움)**
@@ -482,3 +488,4 @@ ctx = {
 | 2026-10-19 | K1 | `SENSOR_IFACE` 예 `eth0`→`eth1`. gateway 안에서 eth0=core, eth1=edge로 확인(`ip -4 -o addr`). eth0이면 L4 탐지가 0건 | 통합 담당자 확인 |
 | 2026-10-20 | K1 | `SENSOR_IFACE`는 **PC마다 다르다**로 고침. 다른 PC(edge `172.28.11`)에서는 edge가 eth0이었다(eve.json `in_iface=eth0`). 각 PC에서 edge 주소가 붙은 쪽을 확인해 `.env`에 넣고, l4-detector는 edge 주소 기준으로 자동 보정한다. 10/19 저장소 사본에만 적었던 K1·K2 기록을 이 원본에도 옮겼다 | 통합 담당자 확인 |
 | 2026-10-22 | K1 | `SENSOR_IFACE`는 **모든 PC `eth1` 고정**, 실제 edge는 sensor·l4-detector가 자동 보정하는 방식으로 정함. 네 PC 점검 결과 실제 edge는 A·B·demo `eth1`, C `eth0`(C는 `[WARN]` 뒤 eth0을 감시하고 탐지 정상). A는 10/20 `eth0`에서 `eth1`로 바뀌어, 재생성마다 달라짐을 다시 확인 | 통합 담당자 확인(병합2 종합 점검) |
+| 2026-10-23 | K8 | C2-1 보완: `bump_session_version` 재시도를 "1회"에서 "최대 3번, 다 지면 False"로 고침(요청서·`update_user_password`와 맞춤). 의심 로그인 메일이 `FAILED`면 쿨다운을 푸는 `db.release_cooldown` 추가. `send_playbook_alert`에 선택 인자 `priority="HIGH"` 추가 — 플레이북이 `ctx["priority"]`를 넘기는 한 줄(B, `security/playbooks.py`)은 아직 반영 전 | 통합 담당자 확인 |
