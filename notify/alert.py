@@ -351,10 +351,19 @@ def send_component_alert(component: str, message: str) -> None:
 # 단계 상태별 표시 기호 — 사람이 한 줄씩 훑어보고 성공(✓)·실패(✗)·건너뜀(–)을 바로 구분하게 한다.
 _PLAYBOOK_STEP_MARKS = {"OK": "✓", "FAILED": "✗", "SKIPPED": "–"}
 
+# 우선순위별 머리말 — 다른 알림과 같은 이모지·등급 표기를 써서, 채널에서 CRITICAL을 바로 구분하게 한다.
+_PLAYBOOK_PRIORITY_HEADERS = {"CRITICAL": ":rotating_light: [CRITICAL]", "HIGH": ":shield: [HIGH]"}
 
-def send_playbook_alert(playbook: str, ip: str, matched_rules: list[str], results: list[dict]) -> None:
+
+def send_playbook_alert(
+    playbook: str, ip: str, matched_rules: list[str], results: list[dict], priority: str = "HIGH"
+) -> None:
     """Track D 플레이북 실행 결과를 Slack에 알린다(계약서 K8, C2-1). results 항목은
     {"step", "status"("OK"/"FAILED"/"SKIPPED"), "error"}다.
+
+    priority는 플레이북 ctx의 "priority"("CRITICAL"/"HIGH")를 그대로 받는다 — KILL_CHAIN 같은
+    CRITICAL 사건이 [HIGH]로 보여 덜 급해 보이지 않게 하기 위해서다. 기본값이 있는 선택 인자라
+    priority를 넘기지 않는 기존 호출은 지금처럼 [HIGH]로 보낸다. 모르는 값도 [HIGH]로 보낸다.
 
     실패한 단계가 하나라도 있으면 첫 줄을 "⚠ 일부 조치 실패"로 시작한다(V6) — 다른 알림처럼
     "조치 완료"만 보고 넘어가면, 예를 들어 L4 차단이 실패해 공격이 계속 들어오는데도 관리자는
@@ -365,7 +374,8 @@ def send_playbook_alert(playbook: str, ip: str, matched_rules: list[str], result
     lines = []
     if has_failure:
         lines.append("⚠ 일부 조치 실패")
-    lines.append(f":shield: [HIGH] 로그인 워치독 플레이북 실행 알림: {playbook}")
+    header = _PLAYBOOK_PRIORITY_HEADERS.get(priority, _PLAYBOOK_PRIORITY_HEADERS["HIGH"])
+    lines.append(f"{header} 로그인 워치독 플레이북 실행 알림: {playbook}")
     lines.append(f"대상 IP: {ip}")
     lines.append(f"일치한 규칙: {', '.join(matched_rules) if matched_rules else '-'}")
     lines.append("단계별 결과:")

@@ -222,10 +222,14 @@ def send_suspicious_login_notice(to_address: str, ip: str, at_iso: str) -> str:
     그 안이면 보내지 않고 SKIPPED를 돌려준다. 쿨다운을 프로세스 메모리(_last_alert_at 방식)가
     아니라 DB(db.try_acquire_cooldown)에 두는 이유는 여러 스레드·여러 PC·Vercel이 같은 주소를
     함께 다루기 때문이다. 주소는 소문자로 맞춰 대소문자만 다른 주소가 쿨다운을 피하지 않게 한다.
+
+    발송이 FAILED(SMTP 장애 등 일시적 실패)면 잡았던 쿨다운을 db.release_cooldown으로 푼다 —
+    아무 메일도 가지 않았는데 쿨다운 시간 내내 SKIPPED가 되면, 장애가 풀린 뒤 같은 공격이 다시
+    탐지돼도 피해자가 경고를 받지 못하기 때문이다. REFUSED(수신자 없음, 영구 거부)는 다시 보내도
+    결과가 같으므로 쿨다운을 그대로 둔다. 쿨다운 해제가 실패해도 발송 결과(FAILED)는 그대로 돌려준다.
     """
-    if not db.try_acquire_cooldown(
-        f"mail:suspicious:{to_address.lower()}", config.SUSPICIOUS_LOGIN_MAIL_COOLDOWN_SECONDS
-    ):
+    cooldown_key = f"mail:suspicious:{to_address.lower()}"
+    if not db.try_acquire_cooldown(cooldown_key, config.SUSPICIOUS_LOGIN_MAIL_COOLDOWN_SECONDS):
         return SKIPPED
     body = (
         "로그인 워치독 계정에서 의심스러운 로그인이 감지되어 차단되었습니다.\n\n"
@@ -234,7 +238,15 @@ def send_suspicious_login_notice(to_address: str, ip: str, at_iso: str) -> str:
         "본인이 로그인한 것이 아니라면 즉시 로그인해 '내 프로필' 화면에서 비밀번호를 바꿔주세요"
         f"{_profile_link_line()}"
     )
-    return _send_mail(to_address, "[login-watchdog] 의심스러운 로그인이 차단되었습니다", body)
+    # 제목 앞머리는 다른 메일과 같은 "[로그인 워치독]"으로 맞춘다 — 회원이 같은 곳에서 온 메일로 알아보게.
+    result = _send_mail(to_address, "[로그인 워치독] 의심스러운 로그인이 차단되었습니다", body)
+    if result == FAILED:
+        try:
+            db.release_cooldown(cooldown_key)
+        except Exception as exc:
+            # 예외 메시지에 DB 주소 등이 섞일 수 있어 종류만 남긴다.
+            _safe_print(f"[mailer] 경고: 의심 로그인 메일 쿨다운 해제 실패 ({type(exc).__name__})")
+    return result
 
 
 # ============================================================================
