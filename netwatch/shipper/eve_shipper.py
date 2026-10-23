@@ -41,6 +41,10 @@ DEFAULT_EVE_PATH = "/var/log/suricata/eve.json"
 DEFAULT_L4_PATH = "/var/log/suricata/l4.json"
 DEFAULT_APP_INTERNAL_URL = "http://app:5000"
 
+# 두 센서 파일이 모두 이 시간 동안 증가하지 않으면 정지로 판단한다.
+# 일시적으로 트래픽이 없는 상황을 오인하지 않도록 기본값은 120초다.
+DEFAULT_SHIPPER_STALL_SECONDS = 120
+
 HEARTBEAT_INTERVAL_SECONDS = 30
 POLL_INTERVAL_SECONDS = 0.2
 MAX_QUEUE_SIZE = 1000
@@ -340,6 +344,82 @@ class Tailer:
         return complete_lines
 
 
+class StallWatch:
+    """두 센서 출력 파일의 증가 여부로 센서 정지를 판단한다.
+
+    eve.json과 l4.json이 모두 threshold_seconds 동안 증가하지
+    않았을 때만 stalled가 된다.
+
+    파일 크기가 감소한 경우에는 로그 순환 또는 파일 재생성으로
+    간주하여 해당 파일이 다시 활동한 것으로 처리한다.
+    """
+
+    def __init__(
+        self,
+        clock: Callable[[], float] = time.time,
+        threshold_seconds: float = DEFAULT_SHIPPER_STALL_SECONDS,
+    ) -> None:
+        if threshold_seconds <= 0:
+            raise ValueError(
+                "threshold_seconds는 0보다 커야 합니다."
+            )
+
+        self.clock = clock
+        self.threshold_seconds = threshold_seconds
+
+        self._last_sizes: dict[str, int] = {}
+        self._last_change_times: dict[str, float] = {}
+
+        self.stalled = False
+        self.stalled_seconds = 0
+
+    def observe(
+        self,
+        eve_bytes: int,
+        l4_bytes: int,
+    ) -> tuple[bool, int]:
+        """현재 파일 크기를 반영하고 정지 상태와 정지 시간을 반환한다."""
+        now = self.clock()
+
+        current_sizes = {
+            "eve": max(0, int(eve_bytes)),
+            "l4": max(0, int(l4_bytes)),
+        }
+
+        for name, current_size in current_sizes.items():
+            previous_size = self._last_sizes.get(name)
+
+            # 첫 관찰, 파일 증가, 로그 순환·재생성에 따른 크기 감소를
+            # 모두 해당 센서 파일의 활동으로 처리한다.
+            if (
+                previous_size is None
+                or current_size != previous_size
+            ):
+                self._last_change_times[name] = now
+
+            self._last_sizes[name] = current_size
+
+        if len(self._last_change_times) < 2:
+            self.stalled = False
+            self.stalled_seconds = 0
+            return self.stalled, self.stalled_seconds
+
+        # 두 파일 중 더 최근에 바뀐 시각부터 두 파일 모두 멈춘 것이다.
+        most_recent_change = max(
+            self._last_change_times.values()
+        )
+
+        self.stalled_seconds = max(
+            0,
+            int(now - most_recent_change),
+        )
+        self.stalled = (
+            self.stalled_seconds >= self.threshold_seconds
+        )
+
+        return self.stalled, self.stalled_seconds
+
+
 class Aggregator:
     """첫 경보는 즉시 보내고 같은 60초 창의 추가분을 누적한다."""
 
@@ -624,15 +704,22 @@ def heartbeat_body(
     eve_tailer: Tailer,
     l4_tailer: Tailer,
     event_sender: Sender,
+    *,
+    stalled: bool = False,
+    stalled_seconds: int = 0,
 ) -> dict:
     """계약서 K9의 shipper heartbeat 본문을 만든다."""
     return {
         "agent": "shipper",
-        "stalled": False,
+        "stalled": stalled,
         "detail": {
             "eve_bytes": eve_tailer.last_size,
             "l4_bytes": l4_tailer.last_size,
             "queue": event_sender.queue_size,
+            "stalled_seconds": max(
+                0,
+                int(stalled_seconds),
+            ),
         },
     }
 
@@ -689,6 +776,26 @@ def main(
         "L4_PATH",
         DEFAULT_L4_PATH,
     )
+    try:
+        stall_seconds = float(
+            active_environ.get(
+                "SHIPPER_STALL_SECONDS",
+                str(DEFAULT_SHIPPER_STALL_SECONDS),
+            )
+        )
+    except ValueError:
+        print(
+            "[FAIL] SHIPPER_STALL_SECONDS는 숫자여야 합니다.",
+            file=sys.stderr,
+        )
+        return 2
+
+    if stall_seconds <= 0:
+        print(
+            "[FAIL] SHIPPER_STALL_SECONDS는 0보다 커야 합니다.",
+            file=sys.stderr,
+        )
+        return 2
 
     # requests는 컨테이너 실행 시에만 필요하다.
     import requests
@@ -696,6 +803,10 @@ def main(
     eve_tailer = Tailer(eve_path)
     l4_tailer = Tailer(l4_path)
     aggregator = Aggregator(clock)
+    stall_watch = StallWatch(
+        clock=clock,
+        threshold_seconds=stall_seconds,
+    )
 
     event_sender = Sender(
         ingest_url,
@@ -739,6 +850,28 @@ def main(
                     aggregator,
                     event_sender,
                 )
+                previous_stalled = stall_watch.stalled
+
+                stalled, stalled_seconds = stall_watch.observe(
+                    eve_bytes=eve_tailer.last_size,
+                    l4_bytes=l4_tailer.last_size,
+                )
+
+                if stalled != previous_stalled:
+                    if stalled:
+                        print(
+                            "[WARN] 두 센서 출력이 "
+                            f"{stalled_seconds}초 동안 증가하지 않아 "
+                            "정지 상태로 판단합니다.",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                    else:
+                        print(
+                            "[OK] 센서 출력 증가를 확인하여 "
+                            "정지 상태가 해제되었습니다.",
+                            flush=True,
+                        )
 
                 for body in aggregator.tick():
                     event_sender.send(body)
@@ -754,6 +887,10 @@ def main(
                             eve_tailer,
                             l4_tailer,
                             event_sender,
+                            stalled=stall_watch.stalled,
+                            stalled_seconds=(
+                                stall_watch.stalled_seconds
+                            ),
                         )
                     )
                     last_heartbeat = now
