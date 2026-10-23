@@ -57,7 +57,7 @@ export type Stats = {
     action: string;
     resolved: boolean;
   }[];
-  network_layer: unknown[];
+  network_layer: NetworkLayerStat[];
 };
 
 export type Lockout = {
@@ -84,6 +84,9 @@ export type NetworkEvent = {
   packet_count: number;
   promoted: boolean;
 };
+
+/** /api/stats의 network_layer 한 줄 — 최근 7일 네트워크 경보를 종류·계층별로 센 값(계약서 K10) */
+export type NetworkLayerStat = { category: string; layer: "L3" | "L4" | "L7"; count: number };
 
 export type NetworkBlockStatus = "PENDING_APPLY" | "APPLIED" | "PENDING_REMOVE" | "REMOVED" | "FAILED";
 

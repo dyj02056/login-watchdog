@@ -225,6 +225,22 @@ def test_suricata_config_writes_required_eve_types() -> None:
     assert "- http:" in config
 
 
+def test_suricata_config_writes_stats_as_liveness_signal() -> None:
+    """조용할 때도 eve.json이 커지도록 stats를 정지 기준(120초)보다 짧은 간격으로 기록해야 한다."""
+    config = read_text(SURICATA_CONFIG_PATH)
+
+    assert "- stats:" in config
+
+    stats_block = config.split("\nstats:\n", 1)[1].split("\n\n", 1)[0]
+    assert "enabled: yes" in stats_block
+
+    interval_line = next(
+        line for line in stats_block.splitlines()
+        if line.strip().startswith("interval:")
+    )
+    assert 0 < int(interval_line.split(":", 1)[1]) < 120
+
+
 def test_suricata_config_uses_runtime_placeholders() -> None:
     """PC별 대역과 인터페이스를 시작 시 치환해야 한다."""
     config = read_text(SURICATA_CONFIG_PATH)
