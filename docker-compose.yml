@@ -123,6 +123,8 @@ services:
       APP_INTERNAL_URL: ${APP_INTERNAL_URL:-http://app:5000}
       EVE_PATH: /var/log/suricata/eve.json
       L4_PATH: /var/log/suricata/l4.json
+      # 센서 정지 판단 기준(초, A2-3). 여기서 넘기지 않으면 .env에 적어도 컨테이너가 받지 못한다
+      SHIPPER_STALL_SECONDS: ${SHIPPER_STALL_SECONDS:-120}
     volumes:
       - eve:/var/log/suricata:ro
     networks:

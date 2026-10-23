@@ -354,8 +354,10 @@ ctx = {
 
 ```json
 {"agent": "fw-agent", "detail": {"poll_failures": 0, "ipset_size": 2}}
-{"agent": "shipper", "stalled": false, "detail": {"eve_bytes": 104857, "l4_bytes": 2048, "queue": 0}}
+{"agent": "shipper", "stalled": false, "detail": {"eve_bytes": 104857, "l4_bytes": 2048, "queue": 0, "stalled_seconds": 0}}
 ```
+
+- shipper의 `stalled`는 `eve.json`·`l4.json`이 **둘 다** `SHIPPER_STALL_SECONDS`(기본 120초) 넘게 늘지 않을 때 `true`다(A2-3). `detail.stalled_seconds`는 두 파일이 마지막으로 늘어난 뒤 흐른 초(정수). Suricata가 60초마다 eve에 `stats`를 써서, 공격이 없는 조용한 시간에는 `true`가 되지 않는다.
 
 - `agent`는 `X-LW-Sender`와 같아야 한다(다르면 400). `detail`은 JSON 객체, 직렬화 2KB 이하.
 - 보내는 주기: fw-agent **10초**, shipper **30초**. (정지 판단 기준 30초와 같으면 배지가 깜빡이므로 fw-agent는 10초. 본 계획서 2.6도 10/13에 맞췄다)

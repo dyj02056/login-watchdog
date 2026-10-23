@@ -3,6 +3,13 @@
 앱 코드를 import하지 않고 계약서 K3·K4 규칙을 독립적으로 구현한다.
 외부 requests 라이브러리는 main() 안에서만 import하여 순수 로직 테스트가
 requests 설치 없이도 실행되게 한다.
+
+센서 정지 판단(A2-3): eve.json과 l4.json이 둘 다 SHIPPER_STALL_SECONDS(기본 120초)
+넘게 늘지 않으면 heartbeat에 stalled=true를 담는다(앱이 Slack으로 알림).
+- 한 파일만 보면 공격이 없을 때 l4.json이 원래 안 늘어나므로 두 파일을 함께 본다.
+- 기본값을 120초로 둔 이유는 Suricata가 60초마다 stats를 쓰기 때문이다. 한 번 빠져도
+  정지로 오판하지 않게 그 두 배로 잡았다. 값을 60초 이하로 낮추면 조용할 때 오판한다.
+- 정지를 즉시 따로 보내지 않고 30초 heartbeat에 실어 보낸다. 알림 쿨다운은 앱이 맡는다.
 """
 
 from __future__ import annotations
