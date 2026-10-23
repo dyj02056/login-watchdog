@@ -1,7 +1,7 @@
 "use client";
 
 // OpsView — 화면 C "처리 작업대". 기존 관리자 대시보드의 모든 처리 기능을 세 묶음으로 나눠 담는다.
-//   대응: 잠금·AI 경보·L4 차단 목록(Track D)·보안 이벤트·연관 사건·영구 잠금·복구 요청·IP 예외
+//   대응: 잠금·AI 경보·네트워크 이벤트·L4 차단 목록(Track D)·보안 이벤트·연관 사건·영구 잠금·복구 요청·IP 예외
 //   기록: 로그인 시도·관리자 로그인 기록
 //   관리: 회원·게시글·댓글·관리자 계정
 // 5초마다 /api/status를 다시 받고(보이는 탭에서만), 쪽을 넘기면 그 표 하나만 다시 받는다.
@@ -10,6 +10,7 @@ import { AdminShell } from "../AdminShell";
 import { FeedbackProvider } from "../Feedback";
 import { ErrorState } from "../States";
 import { L4BlockCard } from "../net/L4BlockCard";
+import { NetworkEventsCard } from "../net/NetworkEventsCard";
 import { OpsProvider, useOps } from "./OpsContext";
 import { AdminLogSection, AdminUserSection, AttemptSection, CommentSection, PostSection, UserSection } from "./RecordSections";
 import {
@@ -70,6 +71,9 @@ function Board() {
         <div className={styles.cols}>
           <div className={styles.wide}>
             <AccessRequestSection />
+          </div>
+          <div className={styles.wide}>
+            <NetworkEventsCard />
           </div>
           <div className={styles.wide}>
             <L4BlockCard />

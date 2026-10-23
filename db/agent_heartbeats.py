@@ -21,6 +21,7 @@ __all__ = [
     "upsert_agent_heartbeat",
     "get_agent_heartbeats",
     "try_acquire_cooldown",
+    "release_cooldown",
 ]
 
 
@@ -74,3 +75,16 @@ def try_acquire_cooldown(key: str, seconds: int) -> bool:
         if getattr(e, "code", None) == "23505":
             return False
         raise
+
+
+def release_cooldown(key: str) -> None:
+    """try_acquire_cooldown()으로 잡은 쿨다운을 풀어, 다음 호출이 바로 True를 받게 한다.
+
+    쿨다운은 "보내기 전에" 잡아야 여러 스레드·PC가 같은 알림을 동시에 보내지 않는다. 그런데
+    그 뒤 실제 전송이 일시 장애로 실패하면, 아무것도 가지 않았는데 쿨다운 시간 내내 막힌다.
+    그래서 전송이 실패했을 때 호출부가 이 함수로 기록을 지운다.
+
+    행을 key로만 지우므로, 아주 드물게 그 사이 다른 쪽이 새로 잡은 쿨다운까지 지울 수 있다.
+    그 결과는 알림이 한 번 더 가는 것뿐이라, 알림이 아예 안 가는 쪽보다 낫다고 보고 받아들인다.
+    """
+    db.get_client().table("notification_cooldowns").delete().eq("key", key).execute()
