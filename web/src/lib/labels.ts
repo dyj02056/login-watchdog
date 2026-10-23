@@ -26,8 +26,22 @@ const ACTIONS: Record<string, string> = {
   REJECTED: "요청 거부",
 };
 
+// Track D 네트워크 경보 종류(계약서 K4·K10). network_events.category 값을 운영자가 읽는 말로 바꾼다.
+const NET_CATEGORIES: Record<string, string> = {
+  SYN_FLOOD: "SYN 플러드",
+  PORT_SCAN: "포트 스캔",
+  SCANNER_UA: "스캐너 UA",
+  WEB_ATTACK: "웹 공격",
+  LOGIN_BURST: "로그인 폭주",
+  OTHER: "기타",
+};
+
 export function eventTypeLabel(code: string): string {
   return EVENT_TYPES[code] ?? code;
+}
+
+export function netCategoryLabel(code: string): string {
+  return NET_CATEGORIES[code] ?? code;
 }
 
 export function actionLabel(code: string): string {
