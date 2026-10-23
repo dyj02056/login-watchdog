@@ -231,5 +231,28 @@ def bump_session_version(user_id: int) -> bool:
 
     기존 db/*.py 중 Track D 뼈대 PR이 새 함수 자리를 만든 유일한 곳이다 — 세션 번호를
     다루는 코드가 이 파일에 모여 있어서, 다른 모듈에 두면 같은 규칙이 두 군데로 갈라진다.
+
+    번호는 update_user_password()처럼 "읽은 값 그대로일 때만" 올린다(조건부 UPDATE) — 회원이
+    마침 비밀번호를 바꾸는 순간과 겹쳐도 번호가 한 번 덜 올라가 의심 세션이 살아남는 일이
+    없게, 경쟁에서 지면 다시 읽어서 최대 3번까지 시도한다.
+
+    update_user_password()와 달리 3번 다 지면 예외 대신 False를 돌려준다 — 플레이북의 한
+    단계라서, 예외로 멈추면 뒤의 메일·Slack 단계까지 사라진다. False면 호출부가 FAILED로 기록한다.
+
+    반환값: 실제로 번호를 올렸으면 True, 회원이 없거나(삭제됨) 경쟁에서 3번 다 졌으면 False.
     """
-    raise NotImplementedError("C2-1에서 구현 — 계약서 K8")
+    for _ in range(3):
+        current = get_user_session_version(user_id)
+        if current is None:
+            return False
+        res = (
+            db.get_client()
+            .table("users")
+            .update({"session_version": current + 1})
+            .eq("id", user_id)
+            .eq("session_version", current)
+            .execute()
+        )
+        if res.data:
+            return True
+    return False
