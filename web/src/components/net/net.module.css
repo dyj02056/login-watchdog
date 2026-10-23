@@ -1,0 +1,60 @@
+/* 네트워크 계층 카드(I2-1). 색은 기존 토큰만 쓴다 — 인라인 style은 CSP가 막는다. */
+
+.agentBar {
+  padding: var(--s-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.agents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.agent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--ink-1);
+}
+
+.agentName {
+  font-weight: 600;
+  color: var(--ink-0);
+}
+
+.agentSeen {
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+}
+
+.agentNote {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+
+.count {
+  font-size: var(--fs-xs);
+  color: var(--ink-1);
+}
+
+.mono {
+  font-size: var(--fs-xs);
+  color: var(--ink-1);
+}
+
+.muted {
+  color: var(--ink-2);
+  font-size: var(--fs-xs);
+}
+
+.error {
+  font-size: var(--fs-xs);
+  color: var(--sev-critical);
+}

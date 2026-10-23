@@ -4,8 +4,11 @@
 # 올리는 것: docs/feature-reference/02-layer-order/ 안의 .html 파일(목차 index.html + 32개 단원 흐름도)
 # 올리지 않는 것: 같은 폴더의 설명 문서(.md) — 흐름도 위쪽의 "설명 문서 보기" 링크만
 #                GitHub 저장소의 해당 .md 주소로 바꿔서 연결한다(저장소의 원본 파일은 건드리지 않는다).
+# 함께 올리는 것: docs/track-d/flowchart-guide.html(Track D 순서도 그림 해설) — 공유하기 쉬운 짧은 이름
+#                track-d.html 로 바꿔 올린다. 그림이 파일 안에 들어 있는 단독 파일이라 이 파일 하나만 복사하면 된다.
 #
 # 주소: https://dyj02056.github.io/login-watchdog/
+#       https://dyj02056.github.io/login-watchdog/track-d.html
 # 처음 한 번 저장소 Settings → Pages → Build and deployment → Source 를 "GitHub Actions" 로 바꿔야 한다.
 # ============================================================================
 
@@ -16,6 +19,7 @@ on:
     branches: ["main"]
     paths:
       - "docs/feature-reference/02-layer-order/*.html"
+      - "docs/track-d/flowchart-guide.html"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -42,10 +46,12 @@ jobs:
         run: |
           mkdir _site
           cp docs/feature-reference/02-layer-order/*.html _site/
+          cp docs/track-d/flowchart-guide.html _site/track-d.html
           touch _site/.nojekyll
           BLOB="https://github.com/${GITHUB_REPOSITORY}/blob/main/docs/feature-reference/02-layer-order"
           sed -i -E "s#\"mdFile\": \"([^\"]+\.md)\"#\"mdFile\": \"${BLOB}/\1\"#" _site/[0-9][0-9]-*.html
           test -f _site/index.html
+          test -f _site/track-d.html
 
       - uses: actions/configure-pages@v5
 
