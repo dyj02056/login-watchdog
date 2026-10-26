@@ -4,7 +4,7 @@
 > 처음 보는 사람이 1장부터 순서대로 따라 하면 `http://localhost:8080/login`이 열리도록 쓰는 것이 목표입니다.
 > 함수 이름·주소·데이터 모양의 기준은 [`docs/track-d/contracts.md`](../docs/track-d/contracts.md)(이하 계약서)입니다. 이 문서와 다르면 계약서가 맞습니다.
 >
-> - 이 문서는 통합 담당자가 통합일마다 머지된 부분을 절 단위로 더해 갑니다. 지금은 **단지 켜기·주소표·A0-2 확인 결과, 센서·shipper·fw-agent 상태 보기(6장), 공격 상자(7장)** 까지입니다(2026-10-23 main 기준).
+> - 이 문서는 통합 담당자가 통합일마다 머지된 부분을 절 단위로 더해 갑니다. 지금은 **단지 켜기·주소표·A0-2 확인 결과, 센서·shipper·fw-agent 상태 보기와 오래 켜 둘 때의 안정화(6장), 공격 상자·victim 계정(7장), 막혔을 때(8장), 시나리오 자동 점검(9장)** 까지입니다(2026-10-26 main 기준).
 > - 명령의 정확성은 A(편승훈)가 확인합니다. 확인 전인 절은 제목 옆에 **(A 확인 전)** 을 붙였습니다.
 > - 키·비밀번호·`.env`의 실제 값은 이 문서에 적지 않습니다. 변수 **이름**만 적습니다.
 
@@ -81,6 +81,17 @@
 | attacker-1 / 2 / 3 | `${LW_EDGE_PREFIX}.101` / `.102` / `.103` | `attack` 프로필 |
 | 앱 내부 주소 | `http://app:5000` | 단지 안의 shipper·fw-agent만 씁니다. 바깥에서는 열리지 않습니다 |
 
+**edge 대역 끝자리 나눔** (계약서 K2 밖의 운영 약속 — 같은 주소를 두 용도가 쓰면 차단·사건이 섞여 판정이 틀어집니다)
+
+| 끝자리 | 쓰는 곳 |
+|---|---|
+| `.1` / `.10` | 내 브라우저 / gateway |
+| `.2`~`.9` | 비워 둠 (Docker 자동 할당과 겹칠 수 있음) |
+| `.11`~`.99`, `.111`~`.139` | C3-1 시나리오 점검의 일회용 공격 상자(9장, `scripts/net/check_common.py`) |
+| `.101`~`.103` | 고정 공격 상자 attacker-1~3 (수동 시연) |
+| `.140` | S7 위조 출발지 전용 |
+| `.150`~`.199` | 5초 측정(`scripts/net/measure_*`)·수동 차단 예시 |
+
 **네트워크 3개**
 
 | 이름 | Docker 네트워크 이름 | 대역 | 붙어 있는 것 | 역할 |
@@ -137,6 +148,21 @@
 - `.env`의 `NET_INGEST_SECRET`·`NET_AGENT_SECRET`이 비어 있거나 틀리면 앱이 401로 거절합니다. 이때 shipper 로그에 `HTTP 401로 거부됐습니다`가, fw-agent 로그에는 목록 받기·보고 실패가 반복해서 보입니다.
 - 공격 상자(attacker)로 경보를 일부러 만드는 방법은 7장에 있습니다.
 
+### 6.1 오래 켜 둘 때 — 기록 크기 제한과 자동 재시작 (A3-1)
+
+리허설·발표처럼 단지를 몇 시간씩 켜 두면 센서 기록 파일이 계속 커지고, 프로그램 하나가 죽으면 경보가 끊깁니다. 이를 막는 설정입니다(A3-1, 2026-10-26 main `f2f39bb`).
+
+| 대상 | 설정 | 동작 |
+|---|---|---|
+| `eve.json` (Suricata) | `EVE_MAX_BYTES` (기본 `52428800` = 50MiB) | 30초마다 크기를 보고, 넘으면 **같은 파일을 비웁니다**(지우거나 이름을 바꾸지 않음). sensor 로그에 `[WARN] eve.json이 …바이트에 도달해 크기 제한(…)에 따라 비웠습니다.` |
+| `l4.json` (Scapy) | `L4_MAX_BYTES` (기본 `10485760` = 10MiB) | 쓰기 전에 크기를 보고 넘으면 비웁니다. l4-detector 로그에 `[WARN] l4.json이 크기 제한에 도달해 기존 내용을 비웠습니다` |
+| 모든 상시 서비스 | `restart: unless-stopped` | 예외로 종료돼도 Docker가 다시 띄웁니다(이번에 l4-detector에도 추가). `docker compose down`으로 끈 것은 다시 켜지 않습니다 |
+
+- **비워도 경보가 빠지지 않는 이유:** shipper는 0.2초마다 새 줄을 읽어 바로 보내므로 파일에 남은 줄은 이미 보낸 것입니다. 파일 크기가 줄면 shipper가 "처음부터 다시 쓰였다"로 알아채고 새 첫 줄부터 다시 읽습니다.
+- **재시작해도 중복 저장되지 않는 이유:** 같은 경보는 같은 서류 번호(`event_id`)로 오고, 앱 접수 창구가 이미 있는 번호를 새로 만들지 않습니다(guide52 ②).
+- 값을 바꾸려면 `.env`에 `EVE_MAX_BYTES`·`L4_MAX_BYTES`를 1 이상의 정수로 넣습니다. 0이나 글자를 넣으면 sensor가 `[FAIL] EVE_MAX_BYTES는 1 이상의 정수여야 합니다`로 멈춥니다.
+- A3-1 커밋(`3f02961`)에는 탐지 기준값(SYN 비율·포트 수 등) 변경이 없습니다. 정상 사용만으로 경보가 뜨는지(오탐) 확인한 결과는 A의 메모를 받으면 이 자리에 더합니다.
+
 ---
 
 ## 7. 공격 상자로 경보 만들기 (attacker)
@@ -156,6 +182,7 @@
 | `login` | victim 계정으로 올바른 비밀번호 로그인 1회(`--username` 필수, 비밀번호는 `LW_VICTIM_PASSWORD`) | — (앱 로그인 기록) | S6(scanner-ua 뒤 로그인 성공) |
 | `synflood` | gateway에 SYN 다발 보내기 | Suricata `SYN_FLOOD`(9000001)·Scapy(9100001) | S5 |
 | `httpflood` | 한 경로에 요청 몰아보내기 | 앱 `HTTP_FLOOD` | S5b(synflood와 동시) |
+| `probe` | gateway에 TCP 연결만 한 번 시도(`--timeout` 기본 3초), `reachable` 출력. HTTP를 보내지 않아 DB 흔적 없음 | — | S4 실제 접속 차단 확인 |
 
 > `category`·`sid`의 기준은 계약서 K4입니다. `scanner-ua`가 보내는 이름은 `netwatch/suricata/rules/local.rules`의 sid 9000004 목록과 같아야 합니다.
 
@@ -181,7 +208,7 @@ docker run --rm --network lw_edge --ip ${LW_EDGE_PREFIX}.111 --cap-add NET_RAW \
 ```
 
 - `--ip`는 측정용 범위(`.150~.199`) 또는 아직 쓰지 않은 주소로 바꿉니다. 고정 상자(`.101~.103`)·내 브라우저(`.1`)와 겹치지 않게 합니다.
-- `login` 명령만 victim 계정이 필요합니다: `-e LW_VICTIM_PASSWORD=... --username victim_<역할>`을 더합니다. 비밀번호는 셸 기록에 남지 않게 환경 변수로만 넘기고, 이 문서·이미지에는 값을 적지 않습니다(victim 계정·비밀번호는 PC마다 다릅니다 — 팀 계획 01 4장).
+- `login` 명령만 victim 계정이 필요합니다: `-e LW_VICTIM_PASSWORD=... --username victim_<역할>`을 더합니다. 비밀번호는 셸 기록에 남지 않게 환경 변수로만 넘기고, 이 문서·이미지에는 값을 적지 않습니다(victim 계정·비밀번호는 PC마다 다릅니다 — 팀 계획 01 4장). 계정 만들기와 환경 변수 설정은 7.4를 봅니다.
 - 이미지가 없으면 먼저 빌드합니다: `docker compose build attacker-1`.
 
 **S5b: SYN 폭주와 HTTP 폭주를 같은 IP에서 동시에**
@@ -206,6 +233,40 @@ docker rm -f lw-measure-${LW_EDGE_PREFIX}.151
 - `httpflood`의 `--path`는 몰아 보낼 경로(기본 `/`), `--requests`는 요청 수(기본 120, 최대 500)입니다. `synflood --count`는 기본 3000, 최대 5000입니다.
 - 5초 측정 스크립트(`scripts/net/measure_detect_to_block.py --scenario s5b`)는 위 1)~3)을 실행마다 새 IP로 자동으로 합니다. 손으로 해 본 IP는 `network_blocks`에 남으므로 스크립트가 알아서 건너뜁니다. 다만 같은 IP를 손으로 다시 쓰면 앞 차단 때문에 재현이 안 되니 실행마다 끝자리를 바꿉니다.
 
+### 7.4 victim 테스트 계정과 `LW_VICTIM_PASSWORD` (S6 `login`용)
+
+S6(의심 로그인 성공)는 공격 상자가 **올바른 비밀번호로** 로그인해야 재현됩니다. 그래서 사람마다 테스트 계정 `victim_<역할>`을 하나씩 만들어 두고, 그 비밀번호를 환경 변수 `LW_VICTIM_PASSWORD`로만 넘깁니다. **정해진 값은 없습니다. 가입할 때 본인이 정한 비밀번호가 곧 이 값입니다.** 계정을 사람마다 나누는 이유는 남의 시험 때문에 내 계정이 잠기거나 경고 메일이 섞이지 않게 하려는 것입니다(팀 계획 01 D5).
+
+**① 계정 만들기 (사람마다 처음 한 번)**
+
+1. 단지를 켠 상태(3장)에서 브라우저로 `http://localhost:8080/signup`을 엽니다.
+2. 아래처럼 가입합니다.
+
+   | 칸 | 넣을 것 |
+   |---|---|
+   | 아이디 | A `victim_a` / B `victim_b` / C `victim_c` |
+   | 이메일 | 실제로 받을 필요 없는 가짜 주소(예: `victim_<역할>@example.test`). 이메일은 중복될 수 없으니 사람마다 다르게 |
+   | 비밀번호 | 본인이 정하는 8자 이상. 이 문서·채팅·AI·`.env.example`에 적지 않습니다 |
+
+3. `http://localhost:8080/login`에서 그 계정으로 로그인되는지 한 번 확인합니다. 내 브라우저(`.1`)에는 네트워크 기록이 없어 CR-03이 걸리지 않으므로 정상 로그인되는 것이 맞습니다.
+
+- 이메일 인증은 하지 않아도 로그인됩니다.
+- DB는 세 명이 같이 쓰는 Supabase라, 한 번 만든 계정은 어느 PC에서든 그대로 쓸 수 있습니다.
+- Docker 앱은 메일을 모두 Mailpit(`http://localhost:8025`)으로 보내도록 고정돼 있습니다(`docker-compose.yml`의 app `SMTP_HOST: "mailpit"`). 그래서 S6의 경고 메일도 가짜 주소 그대로 Mailpit에서 확인합니다.
+- 실제로 쓰는 계정을 victim으로 쓰지 않습니다. S6가 돌면 그 계정의 기존 세션이 끊기고 경고 메일이 갑니다.
+
+**② 시험 직전에 환경 변수 넣기 (터미널을 열 때마다)**
+
+PowerShell에서 아래처럼 입력하면 값이 명령 기록에 남지 않습니다.
+
+```powershell
+$env:LW_VICTIM_PASSWORD = Read-Host "victim 비밀번호"
+```
+
+- 넣은 값은 **그 터미널 창에서만** 유효합니다. `docker run ... -e LW_VICTIM_PASSWORD=$env:LW_VICTIM_PASSWORD`나 C3-1 `run_all`을 실행할 같은 창에서 넣습니다.
+- 값이 없으면 `login` 명령은 `"ok": false, "error": "no_password"`로 끝나고, C3-1은 S6를 SKIP합니다.
+- 시연 대역 PC에서 C3-1을 돌릴 때는 `victim_c`를 쓰므로, 그 계정 주인(C)이 직접 입력하는 것이 가장 간단합니다. 다른 사람이 대신 돌려야 하면 비밀번호는 팀 비밀값 보관소(Infisical)로 넘기고 단체방에 평문으로 보내지 않습니다.
+
 ---
 
 ## 8. 막혔을 때 (A 확인 전)
@@ -222,3 +283,45 @@ docker rm -f lw-measure-${LW_EDGE_PREFIX}.151
 | `localhost:8025`가 안 열림 | `docker-compose.mailpit.yml`을 따로 띄워 두지 않았는지 확인(이름·포트 충돌) |
 | 모든 로그인이 같은 IP로 기록되거나 바로 잠김 | `docker-compose.yml`의 app에 `TRUST_FORWARDED_FOR: "true"`가 있는 최신 `main`인지 확인 |
 | 대역 관련 오류·남의 기록이 내 사건에 섞임 | `.env`의 `LW_EDGE_PREFIX`·`NET_EDGE_SUBNET`이 2장 표의 내 값과 같은지 확인 |
+| 공격 상자 `login`이 `"error":"ValueError"`, `"status":null`로 끝남 · `brute`를 해도 gateway 로그에 `POST /login`이 없음 | 옛 공격 상자 이미지입니다. 앱의 `/login`은 Next.js 화면이라 HTML에 CSRF 입력칸이 없고, 10/26 이후 공격 상자는 `X-Requested-With: login-watchdog-spa` 헤더로 토큰을 다시 받습니다(`81be35a`). 최신 `main`을 받아 `docker compose build attacker-1` (2026-10-26 시연 PC) |
+| 앱 로그에 `SMTP AUTH extension not supported by server` · S6가 `notify_owner_email 단계가 FAILED` | `.env`의 배포용 Gmail 계정 때문에 앱이 Mailpit에 로그인을 시도한 것입니다. app에 `SMTP_USER: ""`·`SMTP_PASSWORD: ""`가 있는 최신 `docker-compose.yml`인지 확인하고 `docker compose up -d app` (`1f2bb72`, 2026-10-26 시연 PC). `.env`는 고치지 않습니다 |
+| S6가 `notify_owner_email 단계 기록 없음`으로 FAIL · 같은 IP가 다음 회차 S4에 다시 쓰임 | victim 비밀번호가 틀린 것입니다(CR-03은 로그인이 **성공**해야 판단). Supabase `login_attempts`에서 그 IP의 `success`가 `false`인지 봅니다. 한/영 키·앞뒤 공백을 확인하고 같은 창에서 7.4 ②를 다시 합니다. 틀린 채로 계속 돌리면 victim 계정이 잠길 수 있습니다(실패 8회 초과) |
+| S6 비고가 `경고 메일은 받는 주소 쿨다운으로 생략(SKIPPED, 정상)` | **정상입니다.** 같은 victim 주소로는 1시간에 경고 메일 1통만 보냅니다 |
+| 시나리오 점검이 `점검용 IP(…)를 모두 썼음 — SKIP` | 한 번 쓴 IP는 다시 쓰지 않습니다. 점검 범위는 `.111~.139`, `.11~.99`입니다(`cb58cfc`). 다 쓰면 공용 DB를 직접 지우지 말고 통합 담당자에게 알립니다 |
+| PowerShell에서 `scenario-results.md`·`measurements.md`의 한글이 깨져 보임 | 파일은 정상입니다. `Get-Content <파일> -Encoding UTF8`로 봅니다 |
+
+---
+
+## 9. 시나리오 자동 점검 (C3-1)
+
+시연 시나리오(S4·S5·S5b·S6·S8, S7)를 실행한 뒤 기대 결과가 DB·응답·메일에 실제로 생겼는지 확인해 PASS/FAIL을 냅니다. 스크립트는 내 PC에서 돌고(앱과 같은 `.env`로 Supabase를 **읽기만** 함), 공격은 7.3의 일회용 공격 상자로 보냅니다.
+
+**준비** — 3장으로 단지를 켜고, 공격 상자 이미지를 최신으로 만들고(`docker compose build attacker-1`), S6까지 보려면 같은 창에서 7.4 ②로 `LW_VICTIM_PASSWORD`를 넣습니다.
+
+```powershell
+# 결과 표를 비우고 처음부터 (선택 — 지난 기록을 남기려면 건너뜀)
+git restore docs/track-d/scenario-results.md
+
+# 전체 시나리오 3회 연속
+.\venv\Scripts\python.exe -m scripts.net.run_all --repeat 3
+
+# 결과 보기 (한글이 깨지지 않게 UTF8 지정)
+Get-Content docs\track-d\scenario-results.md -Tail 20 -Encoding UTF8
+```
+
+| 시나리오 | PASS 조건 |
+|---|---|
+| S4 킬체인 | 사건에 `CR-01`, IP 영구 잠금(관리자만 해제), 영구 L4 차단(`CONNECTED`)이 **적용됨**(`APPLIED`·`applied_at`), `probe`로 대상 IP는 막히고 다른 새 IP는 연결됨. `--with-release`면 영구 해제 → `REMOVED` → 대상 IP 재접속까지 |
+| S5 SYN 폭주 | TTL L4 차단, 앱 잠금 없음, 미해결 `NET_BLOCKED` |
+| S5b 다계층 폭주 | 사건에 `CR-02`, TTL L4 차단 (7.3의 자리 잡기 방식으로 같은 IP 동시 공격) |
+| S6 의심 로그인 성공 | `login`이 `success:false`, 플레이북 `SUSPICIOUS_SUCCESS_LOGIN` 실행, 경고 메일 1통(1시간 안 재실행은 SKIPPED가 정상) |
+| S7 위조 출발지 | 이 README에 재현 명령이 없어 SKIP |
+| S8 XFF 위조 | 위조 헤더(`1.2.3.4`)가 아니라 실제 출발지가 기록됨 |
+
+- 실행마다 **새 출발지 IP**를 씁니다(`.111~.139` 다음 `.11~.99`). 차단·사건이 한 번이라도 남은 IP는 건너뜁니다.
+- S6만 다시 볼 때는 `.\venv\Scripts\python.exe -m scripts.net.check_s6`(IP를 하나만 씀).
+- 2026-10-26 시연 대역 PC 결과: **S4·S5·S5b·S6·S8 3회 연속 PASS, S7 SKIP** (`baad60d`, [docs/track-d/scenario-results.md](../docs/track-d/scenario-results.md)).
+- 2026-10-26 강사 피드백 반영 후(S4 판정 강화): **S4·S5·S5b·S8 3회 연속 PASS**, S6은 `LW_VICTIM_PASSWORD` 없이 돌려 SKIP, `check_s4 --with-release` PASS. fw-agent를 멈추고 돌리면 S4가 FAIL(`PENDING_APPLY`)로 바뀌는 것도 확인했습니다([guide56](../docs/beginner-guide/guide56_feedback_hardening.md)).
+- S4 해제 후 재접속까지 볼 때: `.\venv\Scripts\python.exe -m scripts.net.run_all --with-release`(또는 `-m scripts.net.check_s4 --with-release`). 해제는 관리자 "영구 해제"와 같은 경로라 DB를 바꿉니다.
+- `lw.py`·nginx 설정을 바꾼 뒤에는 공격 상자 이미지를 다시 만들고(`docker compose build attacker-1`), gateway를 다시 띄울 때는 `docker compose up -d --force-recreate gateway sensor l4-detector fw-agent`로 **네 개를 함께** 띄웁니다. gateway만 재시작하면 그 네트워크를 함께 쓰는 셋이 앱 주소를 찾지 못합니다.
+- 시나리오를 여러 번 돌리면 L4 차단·IP 영구 잠금이 쌓입니다. 처리 작업대의 두 카드는 10줄씩 쪽으로 나뉩니다.

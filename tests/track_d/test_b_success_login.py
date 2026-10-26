@@ -214,8 +214,22 @@ def test_db_query_uses_ip_net_source_connected_types_and_utc_window(monkeypatch)
     assert calls["in_"] == ("event_type", ["NET_WEB_ATTACK", "NET_SCANNER_UA"])
     assert ("eq", ("ip_address", IP), {}) in query.calls
     cutoff = datetime.fromisoformat(calls["gte"][1])
-    upper = datetime.fromisoformat(calls["lte"][1])
-    assert upper - cutoff == timedelta(minutes=config.NET_SUCCESS_LOGIN_LOOKBACK_MINUTES)
+    expected = datetime.now(timezone.utc) - timedelta(minutes=config.NET_SUCCESS_LOGIN_LOOKBACK_MINUTES)
+    assert abs(cutoff - expected) < timedelta(seconds=5)
     assert cutoff.tzinfo == timezone.utc
+    # 위쪽 끝을 앱 시계로 자르면 DB 시계가 앞선 PC에서 방금 들어온 증거가 빠진다.
+    assert "lte" not in calls
     assert "list_recent_connected_net_events_for_login" in network_events.__all__
     assert db.list_recent_connected_net_events_for_login is network_events.list_recent_connected_net_events_for_login
+
+
+def test_evidence_stamped_ahead_of_app_clock_still_counts(monkeypatch):
+    # DB 시계가 앱보다 몇 초 앞서 detected_at이 "미래"로 보여도 근거로 센다.
+    query = NetworkQuery([{
+        "ip_address": IP, "source": "NET", "event_type": "NET_SCANNER_UA",
+        "detected_at": (datetime.now(timezone.utc) + timedelta(seconds=5)).isoformat(),
+        "severity": "MEDIUM",
+    }])
+    monkeypatch.setattr(db, "get_client", lambda: query)
+    rows = network_events.list_recent_connected_net_events_for_login(IP, 30)
+    assert [row["event_type"] for row in rows] == ["NET_SCANNER_UA"]

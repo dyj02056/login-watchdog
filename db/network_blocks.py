@@ -1,7 +1,7 @@
 # ============================================================================
 # db/network_blocks.py — network_blocks 표: L4 차단 요청·상태 전이 (계약서 K7·K9·K11)
 #
-# 담당: 역할 C (C1-1부터). Track D 뼈대 PR(I0-1)이 만든 빈 모듈이다.
+# 담당: 역할 C. Track D 뼈대 PR(I0-1)이 빈 모듈로 만들고, C1-1~C2-1에서 함수를 채웠다.
 #
 # 새 DB 함수는 이 파일에 만들고, 이름을 아래 __all__ 목록에 추가한다. 그러면
 # db/__init__.py가 "from .network_blocks import *"로 자동으로 다시 내보내므로, 다른 파일에서
@@ -43,15 +43,25 @@ def insert_network_block(row: dict) -> bool:
         raise
 
 
-def update_network_block_if_status(ip: str, from_statuses: list[str], fields: dict) -> bool:
-    res = (
+def update_network_block_if_status(
+    ip: str, from_statuses: list[str], fields: dict, expected_version: int | None = None,
+) -> bool:
+    """상태가 from_statuses 중 하나일 때만 바꾼다. expected_version을 주면 version도 같아야 바꾼다.
+
+    상태만으로는 "60초 차단 요청"과 그 사이 바뀐 "영구 차단 요청"이 둘 다 PENDING_APPLY라 구분되지
+    않는다. 요청마다 올리는 version(guide56)을 함께 조건에 걸어, 늦게 온 옛 요청의 ACK가 새 요청을
+    완료시키지 못하게 한다(10/26 강사 피드백 4).
+    """
+    query = (
         db.get_client()
         .table("network_blocks")
         .update(fields)
         .eq("ip_address", ip)
         .in_("status", from_statuses)
-        .execute()
     )
+    if expected_version is not None:
+        query = query.eq("version", expected_version)
+    res = query.execute()
     return bool(res.data)
 
 

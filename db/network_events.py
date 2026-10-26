@@ -55,15 +55,17 @@ def list_recent_connected_net_events_for_login(ip: str, window_minutes: int) -> 
     """의심 로그인 판단에 쓸 연결 완성 NET 증거만 UTC 창 안에서 읽는다.
 
     SYN·포트 스캔은 출발지를 위조할 수 있으므로 DB 조회 단계부터 제외한다.
+    창의 위쪽 끝(앱의 현재 시각)은 걸지 않는다 — detected_at은 DB 시계(now())로 찍히는데
+    앱 컨테이너 시계가 DB보다 조금만 늦어도 방금 들어온 스캐너 경보가 "미래 기록"으로 빠져
+    CR-03이 맞지 않기 때문이다(list_recent_security_events_for_correlation과 같은 방식).
     """
-    now = datetime.now(timezone.utc)
-    cutoff = (now - timedelta(minutes=window_minutes)).isoformat()
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=window_minutes)).isoformat()
     return (
         db.get_client().table("security_events")
         .select("event_type,severity,detected_at")
         .eq("ip_address", ip).eq("source", "NET")
         .in_("event_type", ["NET_WEB_ATTACK", "NET_SCANNER_UA"])
-        .gte("detected_at", cutoff).lte("detected_at", now.isoformat())
+        .gte("detected_at", cutoff)
         .order("detected_at", desc=True).limit(1).execute().data
     )
 

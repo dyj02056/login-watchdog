@@ -6,8 +6,10 @@
 // 이 카드는 그 장부를 읽어 보여 주는 창이다. 해제 버튼은 선택 과제(01 공통 규칙 7.6)라 이번 범위 밖이다.
 import { formatShortDateTime } from "@/lib/format";
 import type { NetworkBlock, NetworkBlockStatus } from "@/lib/types";
+import { useClientPages } from "@/lib/useClientPages";
 import { Pill } from "../Badge";
 import { DataTable } from "../DataTable";
+import { Pagination } from "../Pagination";
 import { Panel } from "../Panel";
 import { Skeleton } from "../States";
 import { useOps } from "../ops/OpsContext";
@@ -51,11 +53,16 @@ export function remainingText(expiresAt: string | null, now: number): string {
   return `${seconds}초`;
 }
 
+// 한 쪽에 보여 줄 줄 수. 시나리오 점검을 몇 번 돌리면 차단이 수십 건 쌓여 카드가 끝없이 길어지므로 쪽으로 나눈다.
+const PAGE_SIZE = 10;
+
 export function L4BlockCard() {
   const { status } = useOps();
   const rows = status?.network_blocks ?? [];
   const now = Date.now();
+  // "차단 중" 건수는 지금 쪽이 아니라 전체 목록에서 센다.
   const active = rows.filter((r) => r.status === "APPLIED").length;
+  const { pageRows, page, totalPages, setPage } = useClientPages(rows, PAGE_SIZE);
 
   return (
     <Panel title="L4 차단 목록 (정문 방화벽)" meta={status ? <span className={`${styles.count} num`}>차단 중 {active}건</span> : null} flush>
@@ -68,7 +75,7 @@ export function L4BlockCard() {
           </div>
           <DataTable<NetworkBlock>
             caption="gateway에서 L4로 막고 있거나 막으려는 IP 목록"
-            rows={rows}
+            rows={pageRows}
             rowKey={(r) => r.ip}
             empty={{ title: "현재 L4 차단 없음", hint: "네트워크 경보로 차단이 요청되면 여기에 나타납니다. 최근 24시간 안에 해제된 차단도 함께 보입니다." }}
             columns={[
@@ -88,6 +95,7 @@ export function L4BlockCard() {
               },
             ]}
           />
+          <Pagination page={page} total={totalPages} onChange={setPage} label="L4 차단 목록 쪽 이동" />
         </>
       )}
     </Panel>

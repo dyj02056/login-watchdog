@@ -27,6 +27,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import math
 import os
 import subprocess
 import sys
@@ -258,14 +259,19 @@ class AgentClient:
         headers = sign_headers(self.secret, b"")
         resp = self.session.get(f"{self.base_url}/api/internal/blocks", headers=headers, timeout=3)
         resp.raise_for_status()
-        blocks = resp.json().get("blocks", [])
+        data = resp.json()
         # 응답이 이상한 모양이면 루프가 죽지 않도록 빈 목록 대신 예외로 올린다 — 빈 목록을
         # 돌려주면 다음 reconcile이 '막을 게 없다'고 판단해 기존 차단을 모두 지워 버린다.
+        # "blocks" 칸이 아예 없는 응답도 같다: 기본값 []로 받으면 정상적인 '막을 것 없음'과 구분되지
+        # 않으므로(10/26 강사 피드백), 칸이 있고 목록일 때만 받아들인다. 진짜 빈 목록은 "blocks": [] 로 온다.
+        if not isinstance(data, dict) or "blocks" not in data:
+            raise ValueError("blocks 응답에 blocks 칸이 없음")
+        blocks = data["blocks"]
         if not isinstance(blocks, list):
             raise ValueError("blocks 응답이 목록이 아님")
         return blocks
 
-    def ack(self, ip: str, status: str, error: str | None = None) -> dict[str, Any]:
+    def ack(self, ip: str, status: str, error: str | None = None, version: int | None = None) -> dict[str, Any]:
         """K9 ② POST /api/internal/blocks/ack — 반영 결과를 보고한다.
 
         본문은 {"ip", "status", "error"} 세 칸을 항상 보낸다(error는 성공이면 null).
@@ -273,10 +279,11 @@ class AgentClient:
         """
         if error is not None:
             error = error[:_MAX_ERROR_LEN]
-        return self._post_json(
-            "/api/internal/blocks/ack",
-            {"ip": ip, "status": status, "error": error},
-        )
+        payload: dict[str, Any] = {"ip": ip, "status": status, "error": error}
+        # 목록에서 받은 요청 번호를 그대로 돌려준다(guide56). 앱은 같은 번호의 요청일 때만 상태를 바꾼다.
+        if version is not None:
+            payload["version"] = version
+        return self._post_json("/api/internal/blocks/ack", payload)
 
     def heartbeat(self, detail: dict[str, Any]) -> dict[str, Any]:
         """K9 ③ POST /api/internal/heartbeat — 생존 신호. 10초마다 보낸다.
@@ -355,17 +362,19 @@ def _is_ip_allowlisted(ip: str, allowlist: list[str]) -> bool:
     return False
 
 
-def _safe_ack(client: Any, ip: str, status: str, error: str | None = None) -> bool:
+def _safe_ack(client: Any, ip: str, status: str, error: str | None = None, version: int | None = None) -> bool:
     """ack를 보내고 성공 여부만 돌려준다. 실패해도 예외를 올리지 않는다.
 
     ack 실패(앱이 잠깐 멈춤 등)는 다음 폴링에서 같은 상태를 다시 받아 재시도하면 되므로,
     한 IP의 보고 실패 때문에 같은 목록의 다른 IP 처리가 멈추면 안 된다.
     """
     try:
+        # version이 없을 때는 예전 모양 그대로 부른다(옛 앱·테스트용 가짜 클라이언트와 호환).
+        extra = {} if version is None else {"version": version}
         if error is None:
-            client.ack(ip, status)
+            client.ack(ip, status, **extra)
         else:
-            client.ack(ip, status, error)
+            client.ack(ip, status, error, **extra)
         return True
     except Exception as e:
         print(f"[fw-agent] ack {status} 전송 실패 ({ip}): {e}")
@@ -405,27 +414,31 @@ def process_blocks(
             continue
 
         ttl_ok, ttl = _parse_ttl(block.get("ttl_seconds"))
+        # 요청 번호(guide56). 정수가 아니면 없는 것으로 보고 예전처럼 ack한다.
+        version = block.get("version")
+        if isinstance(version, bool) or not isinstance(version, int):
+            version = None
 
         if _is_ip_allowlisted(ip, allowlist):
             # 허용 목록 IP는 어떤 상태로 와도 막지 않는다. PENDING_APPLY만 FAILED로 알려
             # 앱의 장부가 '대기 중'으로 계속 남지 않게 한다. reconcile이 집합에서도 지운다.
             if status == _STATUS_PENDING_APPLY:
-                _safe_ack(client, ip, "FAILED", "allowlisted")
+                _safe_ack(client, ip, "FAILED", "allowlisted", version=version)
             continue
 
         if status == _STATUS_PENDING_APPLY:
             if not ttl_ok:
-                _safe_ack(client, ip, "FAILED", f"invalid ttl_seconds: {block.get('ttl_seconds')!r}")
+                _safe_ack(client, ip, "FAILED", f"invalid ttl_seconds: {block.get('ttl_seconds')!r}", version=version)
                 continue
             try:
                 backend.add(ip, ttl)
             except Exception as e:
                 err_msg = str(e)
                 print(f"[fw-agent] add 차단 실패 ({ip}): {err_msg}")
-                _safe_ack(client, ip, "FAILED", err_msg)
+                _safe_ack(client, ip, "FAILED", err_msg, version=version)
                 continue
             desired[ip] = ttl
-            _safe_ack(client, ip, "APPLIED")
+            _safe_ack(client, ip, "APPLIED", version=version)
 
         elif status == _STATUS_PENDING_REMOVE:
             try:
@@ -433,9 +446,9 @@ def process_blocks(
             except Exception as e:
                 err_msg = str(e)
                 print(f"[fw-agent] remove 해제 실패 ({ip}): {err_msg}")
-                _safe_ack(client, ip, "FAILED", err_msg)
+                _safe_ack(client, ip, "FAILED", err_msg, version=version)
                 continue
-            _safe_ack(client, ip, "REMOVED")
+            _safe_ack(client, ip, "REMOVED", version=version)
 
         elif status == _STATUS_APPLIED:
             if not ttl_ok:
@@ -455,6 +468,8 @@ def reconcile(
     desired: dict[str, int | None] | None,
     backend: FirewallBackend,
     allowlist: list[str] | None = None,
+    received_at: float | None = None,
+    now: float | None = None,
 ) -> None:
     """실제 ipset과 원하는 상태(desired)를 전부 비교해 어긋난 것(drift)을 바로잡는다.
 
@@ -465,6 +480,13 @@ def reconcile(
     desired가 None이면(아직 한 번도 목록을 받지 못함) 아무것도 하지 않는다. 시작 직후 앱이
     응답하지 않을 때 빈 desired로 비교하면 재시작 전부터 있던 차단을 전부 지워 버리기 때문이다
     ("앱이 응답하지 않으면 마지막 상태 유지" — 요청서 C1-3 7번).
+
+    received_at(목록을 받은 time.monotonic() 시각)을 주면 TTL을 "남은 초"가 아니라 "언제까지"로 본다.
+    앱이 멈춰 목록이 오래 갱신되지 않는 동안 커널이 TTL 항목을 정상적으로 지웠는데, 옛 목록의 남은 초로
+    다시 넣으면 10초 차단이 60초마다 끝없이 되살아난다(10/26 강사 피드백 2). 그래서 다시 넣을 때는
+    "받은 시각 + 남은 초 - 지금"을 쓰고, 이미 지난 차단은 넣지 않고 desired에서도 뺀다.
+    monotonic 시계를 쓰는 이유: PC 시계가 바뀌어도 경과 시간이 흔들리지 않는다.
+    received_at 없이 부르면 예전처럼 받은 남은 초를 그대로 쓴다.
     """
     if desired is None:
         print("[fw-agent] reconcile 건너뜀: 아직 앱에서 목록을 받지 못함")
@@ -480,12 +502,25 @@ def reconcile(
             except Exception as e:
                 print(f"[fw-agent] reconcile remove 실패 ({ip}): {e}")
 
-    for ip, ttl in desired.items():
-        if not _is_ip_allowlisted(ip, allowlist) and ip not in current_ips:
-            try:
-                backend.add(ip, ttl)
-            except Exception as e:
-                print(f"[fw-agent] reconcile add 실패 ({ip}): {e}")
+    if received_at is not None:
+        elapsed = (time.monotonic() if now is None else now) - received_at
+    else:
+        elapsed = 0.0
+
+    for ip, ttl in list(desired.items()):
+        if _is_ip_allowlisted(ip, allowlist) or ip in current_ips:
+            continue
+        if ttl is not None and received_at is not None:
+            remaining = math.ceil(ttl - elapsed)
+            if remaining <= 0:
+                # 정해진 시각이 지난 TTL 차단 — 커널이 지운 것이 맞으므로 다시 넣지 않는다.
+                del desired[ip]
+                continue
+            ttl = remaining
+        try:
+            backend.add(ip, ttl)
+        except Exception as e:
+            print(f"[fw-agent] reconcile add 실패 ({ip}): {e}")
 
 
 def _int_env(name: str, default: int) -> int:
@@ -538,6 +573,8 @@ def main() -> None:
     poll_failures = 0
     # None = 아직 목록을 한 번도 받지 못함(reconcile 금지). 받은 뒤에는 마지막으로 받은 상태를 유지한다.
     desired_ips: dict[str, int | None] | None = None
+    # desired_ips를 받은 시각(monotonic). reconcile이 남은 초를 "언제까지"로 바꿔 계산하는 기준이다.
+    desired_received_at: float | None = None
     last_reconcile = 0.0
     last_heartbeat = 0.0
 
@@ -549,6 +586,7 @@ def main() -> None:
             # 1. Poll & Process
             try:
                 blocks = client.get_blocks()
+                desired_received_at = time.monotonic()
                 desired_ips = process_blocks(blocks, backend, client, allowlist)
                 poll_failures = 0
             except Exception as e:
@@ -560,7 +598,7 @@ def main() -> None:
             # 2. Reconcile
             if now - last_reconcile >= reconcile_interval:
                 try:
-                    reconcile(desired_ips, backend, allowlist)
+                    reconcile(desired_ips, backend, allowlist, received_at=desired_received_at)
                 except Exception as e:
                     print(f"[fw-agent] reconcile 실패: {e}")
                 last_reconcile = now

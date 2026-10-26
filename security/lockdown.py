@@ -276,6 +276,45 @@ def release(target_kind: str, target_value: str, actor: str, note: str) -> bool:
     return True
 
 
+def ensure_l4_released(ip: str, actor: str) -> str:
+    """IP의 L4(정문 ipset) 차단이 해제됐거나 해제 요청된 상태인지 확인하고, 아니면 다시 요청한다.
+
+    release()는 앱 잠금(L7)을 먼저 풀고 L4 해제 실패는 로그만 남긴다. 그러면 화면은 "해제됨"인데
+    사용자는 여전히 정문에서 막히고, 다시 해제를 눌러도 L7이 이미 풀려 release()가 False로 끝나
+    L4까지 가지 않는다(10/26 강사 피드백 5). 그래서 관리자 해제 API·운영 스크립트가 release() 뒤에
+    이 함수를 따로 불러 L4 결과를 확인하고, 남은 단계만 이어서 처리한다. 상태만 보고 필요할 때만
+    요청하므로 몇 번 불러도 안전하다(멱등).
+
+    돌려주는 값:
+      "NONE"      — L4 차단이 원래 없거나(행 없음) 적용 실패(FAILED)로 실제로 막혀 있지 않음
+      "REQUESTED" — 해제 요청됨(PENDING_REMOVE). fw-agent가 2초 안에 ipset에서 뺀다
+      "REMOVED"   — 이미 해제 완료
+      "FAILED"    — 해제 요청을 기록하지 못함(DB 오류 등). 같은 해제를 다시 실행하면 이어서 처리한다
+    """
+    # netblock이 이 모듈의 is_ip_allowlisted를 쓰므로 위에서 import하면 순환 import가 된다(release와 같음).
+    from security import netblock
+
+    try:
+        row = db.get_network_block(ip)
+        status = row.get("status") if row else None
+        if status is None or status == "FAILED":
+            return "NONE"
+        if status == "REMOVED":
+            return "REMOVED"
+        if status == "PENDING_REMOVE":
+            return "REQUESTED"
+        if netblock.request_unblock(ip, actor):
+            return "REQUESTED"
+        # 조건부 UPDATE가 안 맞음 = 그 사이 다른 요청이 상태를 바꿨다. 다시 읽어 결과를 정한다.
+        row = db.get_network_block(ip)
+        if row and row.get("status") in ("PENDING_REMOVE", "REMOVED"):
+            return "REQUESTED" if row["status"] == "PENDING_REMOVE" else "REMOVED"
+        return "FAILED"
+    except Exception as exc:
+        print(f"[lockdown] L4 해제 확인 실패 (ip='{ip}', actor='{actor}'): {type(exc).__name__}")
+        return "FAILED"
+
+
 def apply_recovery(recovery_request: dict, username: str) -> bool:
     """이메일 인증이 끝난 복구 요청을 실제 조치로 반영한다. 실제로 반영됐을 때만 True.
 

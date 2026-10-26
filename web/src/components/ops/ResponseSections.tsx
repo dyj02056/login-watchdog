@@ -5,9 +5,11 @@
 import { useState } from "react";
 import { formatDateTime, formatShortDateTime } from "@/lib/format";
 import { actionLabel, eventTypeLabel } from "@/lib/labels";
+import { useClientPages } from "@/lib/useClientPages";
 import { SeverityBadge, Pill } from "../Badge";
 import { DataTable } from "../DataTable";
 import { useFeedback } from "../Feedback";
+import { Pagination } from "../Pagination";
 import { Panel } from "../Panel";
 import { Skeleton } from "../States";
 import { post, useOps } from "./OpsContext";
@@ -239,6 +241,9 @@ const RECOVERABLE: Record<string, string> = {
   ADMIN_ONLY: "관리자만 해제",
 };
 
+// 영구 잠금 한 쪽 줄 수. 킬체인(CR-01) 시험·시연마다 IP 영구 잠금이 하나씩 쌓이므로 쪽으로 나눈다.
+const PERMANENT_PAGE_SIZE = 10;
+
 export function PermanentLockSection() {
   const { status, can, run } = useOps();
   const { confirm } = useFeedback();
@@ -247,6 +252,7 @@ export function PermanentLockSection() {
   const [reason, setReason] = useState("");
 
   const locks = status?.permanent_locks ?? [];
+  const { pageRows, page, totalPages, setPage } = useClientPages(locks, PERMANENT_PAGE_SIZE);
 
   async function promote(event: React.FormEvent) {
     event.preventDefault();
@@ -265,9 +271,10 @@ export function PermanentLockSection() {
       {status === null ? (
         <Skeleton lines={3} />
       ) : (
+        <>
         <DataTable
           caption="영구 잠금된 IP와 계정"
-          rows={locks}
+          rows={pageRows}
           rowKey={(r) => `${r.kind}:${r.target}`}
           empty={{ title: "영구 잠금된 IP·계정이 없습니다." }}
           columns={[
@@ -308,6 +315,8 @@ export function PermanentLockSection() {
             },
           ]}
         />
+        <Pagination page={page} total={totalPages} onChange={setPage} label="영구 잠금 쪽 이동" />
+        </>
       )}
       {can("promote_permanent_lock") ? (
         <form className={styles.formRow} onSubmit={promote}>

@@ -3,7 +3,7 @@
 [◀ 50단계](guide50_demo_sample_logs.md) · [전체 목차](beginner-guide.md) · [52단계 ▶](guide52_net_ingest_correlation.md)
 
 > 지금까지 login-watchdog은 **앱 안에서** 로그인 실패·요청 수를 세어 공격을 찾았습니다(L7). 그런데 SYN Flood나 포트 스캔처럼 **앱까지 오지 않는 공격**은 앱이 볼 수 없습니다. Track D에서는 앱 앞에 "정문"을 세우고 정문을 지나는 통신을 지켜보는 센서를 붙입니다.
-> 이 문서는 통합일마다 머지된 부분을 절 단위로 더해 갑니다. 지금은 **연습용 단지·네트워크 3개·정문(nginx)**, **정문 CCTV(Suricata·Scapy)와 배달원(shipper)**, **센서 정지 보고(A2-3)** 까지입니다(2026-10-23 main 기준).
+> 이 문서는 통합일마다 머지된 부분을 절 단위로 더해 갑니다. 지금은 **연습용 단지·네트워크 3개·정문(nginx)**, **정문 CCTV(Suricata·Scapy)와 배달원(shipper)**, **센서 정지 보고(A2-3)**, **기록 크기 제한·자동 재시작(A3-1)** 까지입니다(2026-10-26 main 기준).
 
 ## 비유 — 아파트 단지와 정문
 
@@ -54,6 +54,8 @@ proxy_set_header X-Forwarded-For $remote_addr;
 |---|---|---|
 | 이어 붙이기 (nginx 흔한 기본 예시 `$proxy_add_x_forwarded_for`) | `1.2.3.4, 172.28.11.101` | 앱이 맨 앞 값을 믿으면 공격자가 주소를 마음대로 바꿉니다 |
 | **덮어쓰기 (우리 설정)** | `172.28.11.101` | 정문이 실제로 연결된 주소만 남습니다 |
+
+**내부 창구는 정문에서 끊습니다(10/26 보완).** `location ^~ /api/internal/ { return 404; }` — 센서·차단 프로그램 전용 창구는 shipper·fw-agent가 core 망에서 `app:5000`으로 바로 부르므로, 바깥(공격 상자가 있는 edge)에서 정문을 거쳐 올 일이 없습니다. 서명 없이도 이 주소를 두드려 수집 한도를 갉아먹는 일을 입구에서 막습니다([56단계](guide56_feedback_hardening.md) ①).
 
 앱이 이 쪽지를 믿으려면 두 가지가 함께 켜져 있어야 합니다(`docker-compose.yml`의 app 블록).
 
@@ -143,7 +145,7 @@ CCTV는 기록만 남길 뿐 앱에 알려 주지 않습니다. 배달원(`netwa
 | 묶기 | `Aggregator` | 같은 경보의 **첫 건은 바로** 보내고, 같은 1분 창 안에 더 오면 `packet_count`를 더해 두었다가 창이 끝날 때 **한 번 더**(갱신) 보냅니다 | 5초 안에 탐지·차단하려면 첫 건은 기다리면 안 되고, 공격 중 수천 줄을 하나하나 보내면 앱과 DB가 버티지 못합니다 |
 | 이름 붙이기 | `make_event_id` | `sha256(sensor\|src_ip\|category\|signature_id\|window_start)` | 첫 전송·갱신·재시도가 모두 같은 이름이라 앱이 두 번 저장하지 않습니다(멱등) |
 | 보내기 | `Sender` | 서명 헤더(`X-LW-Sender`·`X-LW-Timestamp`·`X-LW-Signature`, 계약서 K3)를 붙여 보냅니다 | 앱이 진짜 배달원이 보낸 것인지 확인합니다([52단계](guide52_net_ingest_correlation.md)) |
-| 다시 보내기 | `Sender._deliver` | 5xx나 연결 실패면 1·2·4·8초 쉬며 최대 5번. 4xx면 다시 보내지 않습니다 | 앱이 잠깐 바쁜 것은 기다리면 풀리지만, 서명이 틀린 것(401)은 몇 번을 보내도 같습니다 |
+| 다시 보내기 | `Sender._deliver` | 5xx·429(한도 초과)나 연결 실패면 1·2·4·8초 쉬며 최대 5번(429에 `Retry-After`가 있으면 그 값, 최대 60초). 그 밖의 4xx면 다시 보내지 않습니다 | 앱이 잠깐 바쁜 것은 기다리면 풀리지만, 서명이 틀린 것(401)은 몇 번을 보내도 같습니다. 429를 예전처럼 버리면 한도에 걸린 공격 경보가 영영 앱에 닿지 않습니다(10/26 보완, [56단계](guide56_feedback_hardening.md) ①) |
 | 생존 신호 | `heartbeat_body` | 30초마다 `/api/internal/heartbeat`에 파일 크기·대기열 길이를 보냅니다 | 앱이 "배달원이 살아 있나"를 압니다([54단계](guide54_l4_block_agent.md)의 장비 정지 감시) |
 
 - 보내기는 별도 작업 스레드가 맡고, 대기열은 1000개까지입니다. 가득 차면 새 경보를 버리고 로그에 `[WARN] … 대기열이 가득 차` 를 남깁니다. 앱이 오래 멈췄을 때 배달원 메모리가 끝없이 늘어나지 않게 하려는 것입니다.
@@ -177,6 +179,20 @@ l4.json은 공격이 있을 때만 늘어나고, eve.json도 원래는 통신이
 
 - 정지 판단 기준은 `.env`의 `SHIPPER_STALL_SECONDS`로 바꾸고, `docker-compose.yml`이 이 값을 shipper에 넘깁니다. 숫자가 아니거나 0 이하면 배달원이 시작하지 않고 `[FAIL]`을 남깁니다.
 - 정지를 그 자리에서 따로 보내지 않고 30초 생존 신호에 실어 보냅니다. 알림을 너무 자주 보내지 않게 막는 쿨다운은 앱이 맡습니다.
+
+## ⑤ 오래 켜 둘 때 — 기록 크기 제한과 자동 재시작 (A3-1)
+
+CCTV 녹화 테이프가 끝없이 길어지면 언젠가 창고(디스크)가 가득 찹니다. 그런데 이 테이프는 배달원이 0.2초마다 새로 찍힌 부분을 가져가 이미 앱에 넘긴 상태입니다. 그래서 일정 길이가 넘으면 **같은 테이프를 처음으로 감아 다시 씁니다.**
+
+| 기록 파일 | 설정(기본값) | 넘으면 |
+|---|---|---|
+| `eve.json` (Suricata) | `EVE_MAX_BYTES` (50MiB) | `entrypoint.sh`가 30초마다 크기를 보고 같은 파일을 비움. 로그 `[WARN] eve.json이 …바이트에 도달해 크기 제한(…)에 따라 비웠습니다.` |
+| `l4.json` (Scapy) | `L4_MAX_BYTES` (10MiB) | 쓰기 직전에 `truncate_output_if_oversized()`가 비움. 로그 `[WARN] l4.json이 크기 제한에 도달해 기존 내용을 비웠습니다` |
+
+- **지우지 않고 "비우는" 이유:** 파일을 지우거나 이름을 바꾸면 배달원이 붙잡고 있던 파일과 새 파일이 달라져 새 기록을 놓칠 수 있습니다. 같은 파일의 길이만 0으로 만들면, 배달원은 "크기가 줄었다 = 처음부터 다시 쓰였다"로 알아채고 새 첫 줄부터 다시 읽습니다(④의 정지 보고도 "작아짐"을 움직임으로 봅니다).
+- **재시작:** 상시 서비스는 모두 `restart: unless-stopped`입니다(A3-1에서 `l4-detector`에도 추가). 예외로 죽어도 Docker가 다시 띄우고, 같은 경보는 같은 `event_id`로 오므로 앱에 두 번 저장되지 않습니다([52단계 ②](guide52_net_ingest_correlation.md)).
+- 값은 `.env`에 1 이상의 정수로 바꿀 수 있습니다. 0이나 글자를 넣으면 sensor가 `[FAIL] EVE_MAX_BYTES는 1 이상의 정수여야 합니다`로 시작하지 않습니다.
+- A3-1 커밋에는 탐지 기준값(SYN 비율·포트 수·Suricata 규칙) 변경이 없습니다.
 
 ## 직접 확인해 보기
 
@@ -228,10 +244,11 @@ docker compose exec shipper tail -n 5 /var/log/suricata/eve.json
 - 신규(③ CCTV, A1-1·A1-2): [netwatch/suricata/suricata.yaml](../../netwatch/suricata/suricata.yaml), [netwatch/suricata/entrypoint.sh](../../netwatch/suricata/entrypoint.sh), [netwatch/suricata/rules/local.rules](../../netwatch/suricata/rules/local.rules), [netwatch/l4_detector/detector_core.py](../../netwatch/l4_detector/detector_core.py), [netwatch/l4_detector/l4_detector.py](../../netwatch/l4_detector/l4_detector.py), [tests/track_d/test_a_suricata_rules.py](../../tests/track_d/test_a_suricata_rules.py), [tests/track_d/test_a_l4_detector.py](../../tests/track_d/test_a_l4_detector.py), [tests/track_d/test_a_l4_iface.py](../../tests/track_d/test_a_l4_iface.py)
 - 신규(③ 배달원, A1-3): [netwatch/shipper/eve_shipper.py](../../netwatch/shipper/eve_shipper.py), [tests/track_d/test_a_shipper.py](../../tests/track_d/test_a_shipper.py)
 - 수정(④ 정지 보고, A2-3): `eve_shipper.py`(`StallWatch`), `suricata.yaml`(`stats`), [docker-compose.yml](../../docker-compose.yml)·`.env.example`(`SHIPPER_STALL_SECONDS`)
+- 수정(⑤ 안정화, A3-1): `entrypoint.sh`(`EVE_MAX_BYTES`), `detector_core.py`(`truncate_output_if_oversized`)·`l4_detector.py`(`L4_MAX_BYTES`), `docker-compose.yml`(두 값 전달·`l4-detector` 재시작), 테스트 `test_a_l4_detector.py`·`test_a_shipper.py`·`test_a_suricata_rules.py`
 
 ## 알려진 제한
 
 - 정문은 `/api/internal/*`(센서·차단 프로그램 전용 창구)도 바깥에서 넘겨 줍니다. 서명(HMAC)이 없으면 앱이 401로 거절하므로 뚫리지는 않지만, 정문에서 경로 자체를 막을지는 검토 중입니다.
-- `eve.json`·`l4.json`은 지우거나 나누지 않고 계속 커집니다. 크기 제한·순환은 안정화 작업(A3-1)에서 다룹니다.
+- `eve.json`·`l4.json`은 크기 제한(50MiB·10MiB)에 닿으면 비워집니다(⑤). 비우기 직전 0.2초 안에 쓰인 줄은 배달원이 아직 못 가져갔다면 빠질 수 있습니다.
 - SYN Flood는 Suricata와 Scapy가 둘 다 잡으므로 같은 공격이 경보 두 줄로 들어옵니다. 둘은 `sensor`·`signature_id`가 달라 서로 덮어쓰지 않습니다.
 - 정지 보고는 **두 파일이 모두** 멈췄을 때만 울립니다. Suricata는 살아 있고 Scapy(`l4-detector`)만 멈춘 경우는 잡지 못합니다. 그 경우는 `docker compose ps`로 확인합니다.

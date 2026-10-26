@@ -3,7 +3,7 @@
 [◀ 51단계](guide51_network_sensor.md) · [전체 목차](beginner-guide.md) · [53단계 ▶](guide53_playbook_engine.md)
 
 > [51단계](guide51_network_sensor.md)의 정문 CCTV가 본 것을 앱이 받아서 기존 보안 기록과 엮어 "같은 공격 흐름"인지 판단하는 과정을 다룹니다.
-> 이 문서는 통합일마다 머지된 부분을 절 단위로 더해 갑니다. 지금은 **서명 검사(B0-1)**, **경보 접수 창구·보안 기록 승격·앱 등급 분리(B1-1~B1-3)**, **교차 규칙 NET-01·CR-01·CR-02(B2-1)** 까지입니다(2026-10-26 main 기준). 로그인 성공 규칙(CR-03, B3-1)은 머지된 뒤 절을 더합니다. 규칙이 맞은 뒤 실행되는 대응 절차(플레이북)는 [53단계](guide53_playbook_engine.md)에서 다룹니다.
+> 이 문서는 통합일마다 머지된 부분을 절 단위로 더해 갑니다. 지금은 **서명 검사(B0-1)**, **경보 접수 창구·보안 기록 승격·앱 등급 분리(B1-1~B1-3)**, **교차 규칙 NET-01·CR-01·CR-02(B2-1)**, **의심 로그인 성공 규칙 CR-03(B3-1)** 까지입니다(2026-10-26 main 기준). 규칙이 맞은 뒤 실행되는 대응 절차(플레이북)는 [53단계](guide53_playbook_engine.md)에서 다룹니다.
 
 ## 비유 — 형사 사무실의 접수대
 
@@ -91,7 +91,7 @@ shipper와 fw-agent는 다른 컨테이너에서 돌아서 앱 코드를 import�
 - **칸 검사(계약서 K4):** `event_id`는 64자 16진수, `sensor`·`layer`·`category`는 정해진 값만, `src_ip`는 실제 IP 주소, 시각은 `Z`로 끝나는 UTC, `packet_count`는 1~1,000만입니다. `True`처럼 정수로 착각되는 값도 거절합니다.
 - **정해진 칸만 저장합니다.** 본문에 `id`·`promoted` 같은 서버 관리 칸을 끼워 넣어도 무시합니다. 출발지 주소는 `normalize_ip()`로 정리해서 저장합니다.
 - **같은 서류 번호는 새로 저장하지 않습니다.** shipper는 같은 1분 창의 경보를 첫 건·창 끝 갱신·재시도 모두 같은 `event_id`로 보냅니다. 표의 유니크 제약이 두 번째 저장을 막고, 그때는 `packet_count`(더 클 때만)와 `last_seen_at`만 갱신합니다.
-- **보낸이별 한도:** 분당 `NET_INGEST_RATE_LIMIT_PER_MINUTE`(600)번입니다. shipper는 단지 안 주소 하나에서 모든 경보를 보내므로 IP가 아니라 보낸이 이름으로 셉니다. 이 창구가 한도에 걸려도 `HTTP_FLOOD`로 기록하지 않습니다. 센서 자신의 전송이 "HTTP 폭주"로 잡혀 상관분석을 더럽히면 안 되기 때문입니다.
+- **보낸이별 한도:** 분당 `NET_INGEST_RATE_LIMIT_PER_MINUTE`(600)번입니다. shipper는 단지 안 주소 하나에서 모든 경보를 보내므로 IP가 아니라 보낸이 이름으로 셉니다. 한도를 넘었는지는 서명 검사 전에 보지만, **1회 차감은 서명이 맞은 요청만** 합니다 — 헤더만 `shipper`로 적은 위조 요청이 정상 센서의 몫을 써 버리지 않게 하려는 것입니다(10/26 보완, [56단계](guide56_feedback_hardening.md) ①). 이 창구가 한도에 걸려도 `HTTP_FLOOD`로 기록하지 않습니다. 센서 자신의 전송이 "HTTP 폭주"로 잡혀 상관분석을 더럽히면 안 되기 때문입니다.
 
 | 경우 | 응답 |
 |---|---|
@@ -167,7 +167,7 @@ shipper와 fw-agent는 다른 컨테이너에서 돌아서 앱 코드를 import�
 
 - 창 길이는 설정값입니다: `NET_CORRELATION_WINDOW_MINUTES`(15, CR-01), `NET_FLOOD_WINDOW_MINUTES`(5, CR-02).
 - 시각 비교는 PC 시계가 아니라 DB에 남은 `detected_at`(UTC)으로 합니다. 창 안의 이벤트는 `db.list_recent_security_events_for_correlation(ip, 창)`이 읽어 옵니다.
-- 로그인 성공 규칙 CR-03과 선택 과제 CR-04~06은 이 목록에 아직 없습니다.
+- 로그인 성공 규칙 CR-03은 이벤트가 아니라 **로그인 성공 순간**에 검사하므로 이 목록에 없고 따로 동작합니다(아래 ⑤ 절). 선택 과제 CR-04~06은 넣지 않았습니다.
 
 ### 규칙마다 "왜 이렇게 정했나"
 
@@ -189,11 +189,11 @@ CR02_EXCLUDED_FLOOD_PATHS = {"/recovery/verify", "/recovery/request", "/email/co
 
 | 순서 | 하는 일 | 이유 |
 |---|---|---|
-| 1 | 그 IP의 열린 사건(`security_incidents`)에 이 규칙이 이미 기록돼 있으면 **건너뜀** | **사건당 규칙당 1번만** 실행합니다. SYN 경보가 몇 초 간격으로 계속 와도 차단·Slack이 반복되지 않게 합니다 |
+| 1 | 그 IP의 열린 사건(`security_incidents`)에 이 규칙이 이미 기록돼 있으면 **건너뜀** — 단, 그 규칙의 플레이북 단계 중 마지막 결과가 `FAILED`인 조치(차단·잠금·세션 끊기)는 **그 단계만** 다시 실행(10/26 보완) | **사건당 규칙당 1번만** 실행합니다. SYN 경보가 몇 초 간격으로 계속 와도 차단·Slack이 반복되지 않게 합니다. "규칙에 해당함"과 "조치 완료"는 다르므로, 일시적 오류로 못 한 조치는 다음 경보 때 이어서 합니다([56단계](guide56_feedback_hardening.md) ③) |
 | 2 | 규칙에 쓰인 이벤트 유형으로 사건을 **열거나 합치고** `matched_rules`에 규칙 ID를 넣음 (`db.record_incident(..., source="NET", rule_id=...)`) | 규칙 창(5~15분)이 사건 창보다 길어 사건이 아직 없을 수 있습니다. 규칙 기록은 NET 출처로 넣어 앱 등급(`app_severity_max`)을 올리지 않습니다 |
 | 3 | 플레이북 실행: `playbooks.run(플레이북, "incident:<사건 id>:<규칙 ID>", ctx)` | 판단은 여기까지. 실제 조치는 [53단계](guide53_playbook_engine.md)의 절차서가 C의 조치 함수를 불러 합니다 |
 
-- **동시에 들어온 두 요청:** `matched_rules`를 합칠 때도 조건부 UPDATE를 씁니다. 두 요청이 같은 규칙을 동시에 넣으려 하면 먼저 넣은 쪽만 `rule_added=True`가 되고, 그쪽만 플레이북을 실행합니다.
+- **동시에 들어온 두 요청:** `matched_rules`는 DB 함수 `append_matched_rule()`(guide56 SQL)로 규칙 하나를 원자적으로 덧붙입니다. 두 요청이 같은 규칙을 동시에 넣으려 하면 먼저 넣은 쪽만 `rule_added=True`가 되고, 그쪽만 플레이북을 실행합니다. 서로 다른 규칙(NET-01과 CR-02)이 동시에 와도 둘 다 남습니다 — 예전의 조건부 UPDATE는 읽은 목록 전체를 다시 써서 한쪽 규칙이 지워질 수 있었습니다(10/26 보완, [56단계](guide56_feedback_hardening.md)). 함수가 없는 DB에서는 예전 방식으로 돌아갑니다.
 - **오래 조용했던 사건:** 사건이 IDLE(오래 새 이벤트 없음)로 넘어간 뒤 같은 IP가 다시 공격하면 새 사건이 열리고 규칙도 다시 실행됩니다. 1시간 차단이 끝난 몇 시간 뒤의 SYN 폭주를 그냥 지나치지 않게 하려는 것입니다.
 
 ### 기존 상관분석과의 관계 (함정 하나)
@@ -221,6 +221,63 @@ if event_type != "NET_BLOCKED":
 | S5b (SYN + HTTP 폭주) | NET-01 → 몇 초 뒤 CR-02 | `['NET-01', 'CR-02']` |
 
 - S5b에서는 SYN 경보가 먼저 와서 NET-01이 먼저 맞고, HTTP 폭주 기록이 쌓인 뒤 CR-02가 맞습니다. 두 규칙이 각각 한 번씩 플레이북을 실행하므로 같은 IP에 Slack 알림이 두 번 갑니다.
+
+## ⑤ 의심 로그인 성공 — CR-03 (B3-1)
+
+지금까지의 규칙은 공격이 "실패"하는 동안 잡는 것이었습니다. 그런데 공격자가 비밀번호를 이미 손에 넣었다면 첫 시도에 로그인이 **성공**해 버립니다. 실패 기록이 하나도 없으니 기존 잠금(T1~T4)으로는 막을 수 없습니다.
+
+형사의 판단은 이렇습니다. **"조금 전까지 웹 공격 도구로 문을 두드리던 주소에서 갑자기 비밀번호가 맞았다면, 그건 주인이 아니라 비밀번호를 훔친 사람일 가능성이 높다."** 그래서 로그인이 성공한 순간 그 주소의 최근 네트워크 기록을 보고, 수상하면 **회원 세션을 만들기 전에** 멈춥니다.
+
+### 조건과 증거
+
+| 항목 | 값 | 이유 |
+|---|---|---|
+| 검사 시점 | 비밀번호가 맞은 직후, 세션을 만들기 **전** (`routes/auth.py`의 `login_submit()` 성공 분기) | 세션이 한 번 만들어지면 공격자가 이미 안에 들어온 것이라 늦습니다 |
+| 근거로 세는 기록 | 같은 IP의 `NET_WEB_ATTACK` 또는 `NET_SCANNER_UA` (`source = 'NET'`) | 웹 공격·스캐너 요청은 연결을 끝까지 맺어야 생기므로 **주소를 속일 수 없습니다** |
+| 근거로 세지 않는 기록 | `NET_SYN_FLOOD`·`NET_PORT_SCAN` | 출발지를 위조할 수 있습니다. 이걸 세면 남의 주소를 사칭한 SYN 몇 개로 그 주소의 정상 회원 로그인을 막을 수 있습니다(계획 P2) |
+| 창(시간 범위) | 최근 30분 (`NET_SUCCESS_LOGIN_LOOKBACK_MINUTES`) | 정찰 뒤 비밀번호를 대입해 보는 데 걸리는 시간을 넉넉히 덮습니다 |
+| 창의 위쪽 끝 | 걸지 않음 | 기록 시각(`detected_at`)은 DB 시계로 찍힙니다. 앱 시계로 "지금까지"를 자르면, 앱 컨테이너 시계가 조금만 늦어도 방금 들어온 경보가 "미래 기록"으로 빠져 규칙이 맞지 않습니다(B3-1 보완) |
+
+이 조회는 `db.list_recent_connected_net_events_for_login(ip, 창)`이 하고, 판단은 `correlate.check_success_login(ip, username)`이 합니다.
+
+### 맞으면 일어나는 일
+
+| 순서 | 하는 일 | 이유 |
+|---|---|---|
+| 1 | 세션을 만들지 않고 화면에는 **실패와 같은 문구**("아이디 또는 비밀번호가 올바르지 않습니다.")만 보여 줌 | 공격자가 "비밀번호는 맞았는데 탐지에 걸렸다"는 사실을 알면 다른 주소로 바꿔 다시 옵니다. 일부러 구별할 수 없게 합니다 |
+| 2 | 그 IP의 열린 사건에 `CR-03`이 이미 있으면 플레이북은 건너뛰고 막기만 함. 단, 이 계정의 세션 끊기는 계정마다 한 번 실행(`incident:<id>:CR-03:user:<계정 id>`, 10/26 보완) | **사건당 규칙당 1번** — 공격자가 같은 비밀번호로 계속 눌러도 메일·Slack이 반복되지 않습니다. 같은 IP에서 두 번째 계정이 들어와도 그 계정의 기존 세션은 끊어야 합니다([56단계](guide56_feedback_hardening.md)) |
+| 3 | 사건을 열거나 합치고 `matched_rules`에 `CR-03` 추가 (`record_incident(..., source="NET", rule_id="CR-03")`) | 다른 교차 규칙과 같은 방식입니다. NET 출처라 앱 등급(`app_severity_max`)을 올리지 않습니다 |
+| 4 | 플레이북 `SUSPICIOUS_SUCCESS_LOGIN` 실행: 세션 무효화 → 주인에게 경고 메일 → Slack | 이 계정의 **다른 세션도 모두 끊고**(이미 들어와 있던 공격자 포함) 진짜 주인에게 비밀번호를 바꾸라고 알립니다([54단계](guide54_l4_block_agent.md) 조치 도구) |
+
+- 플레이북에 넘기는 값(`ctx`)에는 다른 규칙과 달리 `user_id`·`username`·`user_email`까지 채웁니다. 세션 무효화와 경고 메일이 "누구의" 계정인지 알아야 하기 때문입니다.
+- **검사 오류로 정상 로그인을 막지 않습니다.** DB 조회 등에서 예외가 나면 한 줄 로그(`[의심 로그인 검사 오류] …`)만 남기고 로그인을 그대로 진행합니다.
+- 경고 메일의 반복 방지는 C의 메일 함수가 **받는 주소 기준 1시간 쿨다운**으로 따로 지킵니다. 사건이 달라도 같은 주인에게 한 시간에 한 통만 갑니다.
+
+```python
+# routes/auth.py — login_submit()의 성공 분기 맨 앞 (세션을 쓰기 전)
+from security import correlate
+if correlate.check_success_login(ip, username):
+    flash("아이디 또는 비밀번호가 올바르지 않습니다.")
+    return _login_form()
+```
+
+### 알려진 제한
+
+- **로그인 기록에는 "성공"으로 남습니다.** `db.log_attempt(..., success=True)`가 이 검사보다 먼저 실행되기 때문입니다(요청문이 `login_submit()`의 다른 줄은 바꾸지 않기로 정함). 처리 작업대의 로그인 기록을 볼 때 CR-03 사건과 함께 봐야 합니다.
+- **내 브라우저에서는 재현되지 않습니다.** 내 PC 주소(`.1`)에는 네트워크 경보가 없어 규칙이 맞지 않습니다. 시험할 때는 공격 상자(일회용 새 IP)에서 `scanner-ua` → `login` 순서로 보냅니다([netwatch/README.md](../../netwatch/README.md) 7.3·7.4).
+- 공격 상자 입장에서는 "비밀번호 틀림"과 "CR-03이 막음"이 똑같이 실패로 보입니다. 시험이 이상하면 `login_attempts`에서 그 IP의 `success` 값을 먼저 봅니다(`false`면 비밀번호가 틀린 것).
+
+### 실제로 돌려 본 결과 (2026-10-26, 시연 대역 PC)
+
+C3-1 시나리오 점검(S6)을 3회 연속 돌렸습니다(결과: [docs/track-d/scenario-results.md](../track-d/scenario-results.md)). 실행마다 새 IP라 사건도 실행마다 새로 열립니다.
+
+| 확인 | 결과 |
+|---|---|
+| 공격 상자 `login` 출력 | `success: false` — 세션 없음 |
+| 사건의 `matched_rules` | `['CR-03']` |
+| 플레이북 단계 (`playbook_runs`) | `invalidate_sessions` OK → `notify_owner_email` → `notify_slack` OK |
+| 경고 메일 | 그날 첫 실행(15:14 KST)에서 OK, Mailpit에 1통. 이후 1시간 안의 실행은 SKIPPED(받는 주소 쿨다운, 정상) |
+| 같은 IP로 한 번 더 로그인 | 막히고, 메일 수는 늘지 않음 |
 
 ## 직접 확인해 보기
 
@@ -290,6 +347,25 @@ from playbook_runs where trigger_ref like 'incident:%:NET-01' order by ran_at de
 - `matched_rules`에 `NET-01`이 한 번만 있어야 합니다. 같은 사건에 다시 SYN 폭주를 보내도 늘지 않습니다.
 - 고정 공격 상자는 같은 주소라 한 번 막히면 차단이 풀릴 때까지(약 1시간) 다시 재현되지 않습니다. 여러 번 볼 때는 [netwatch/README.md](../../netwatch/README.md) 7.3의 "일회용 새 IP 실행"을 씁니다.
 
+**⑤ 절 확인 (B3-1 CR-03)**
+
+```bash
+# 근거 있음 → 세션 없음·같은 문구, 위조 가능 유형만 → 정상 로그인, 창 밖, 사건당 1회, 검사 오류 시 정상 로그인
+pytest tests/track_d/test_b_success_login.py -q
+
+# 단지에서 S6를 자동으로 재현·채점 (victim 계정과 LW_VICTIM_PASSWORD 필요 — README 7.4)
+python -m scripts.net.check_s6
+```
+
+```sql
+-- CR-03 사건과 그 플레이북 단계
+select id, ip_address, matched_rules, status from security_incidents
+where 'CR-03' = any(matched_rules) order by last_event_at desc limit 3;
+
+select step, status, error, ran_at from playbook_runs
+where playbook = 'SUSPICIOUS_SUCCESS_LOGIN' order by ran_at desc limit 6;
+```
+
 ## 이 단계에서 만들어지거나 바뀐 파일
 
 - 신규: [routes/internal/_hmac.py](../../routes/internal/_hmac.py), [tests/track_d/test_b_hmac.py](../../tests/track_d/test_b_hmac.py)
@@ -298,3 +374,4 @@ from playbook_runs where trigger_ref like 'incident:%:NET-01' order by ran_at de
 - B1-2: [security/net_ingest.py](../../security/net_ingest.py), [security/soar/_events.py](../../security/soar/_events.py)(`source`·`layer` 인자), [db/security_events.py](../../db/security_events.py)(선택 인자), [tests/track_d/test_b_net_ingest.py](../../tests/track_d/test_b_net_ingest.py)
 - B1-3: [db/incidents.py](../../db/incidents.py)(`app_severity_max`), [security/lockdown.py](../../security/lockdown.py)의 `consider_incident_promotion()`, [tests/track_d/test_b_app_severity.py](../../tests/track_d/test_b_app_severity.py)
 - B2-1: [security/correlate.py](../../security/correlate.py)(`CROSS_LAYER_RULES`, `check_cross_layer`), [db/incidents.py](../../db/incidents.py)(`record_incident`의 `rule_id` 선택 인자), [db/network_events.py](../../db/network_events.py)(`list_recent_security_events_for_correlation`), [tests/track_d/test_b_cross_layer.py](../../tests/track_d/test_b_cross_layer.py)
+- B3-1: [security/correlate.py](../../security/correlate.py)(`check_success_login`), [routes/auth.py](../../routes/auth.py)(`login_submit()` 성공 분기 몇 줄), [db/network_events.py](../../db/network_events.py)(`list_recent_connected_net_events_for_login`), [tests/track_d/test_b_success_login.py](../../tests/track_d/test_b_success_login.py)
