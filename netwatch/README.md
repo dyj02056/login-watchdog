@@ -181,7 +181,7 @@ docker run --rm --network lw_edge --ip ${LW_EDGE_PREFIX}.111 --cap-add NET_RAW \
 ```
 
 - `--ip`는 측정용 범위(`.150~.199`) 또는 아직 쓰지 않은 주소로 바꿉니다. 고정 상자(`.101~.103`)·내 브라우저(`.1`)와 겹치지 않게 합니다.
-- `login` 명령만 victim 계정이 필요합니다: `-e LW_VICTIM_PASSWORD=... --username victim_<역할>`을 더합니다. 비밀번호는 셸 기록에 남지 않게 환경 변수로만 넘기고, 이 문서·이미지에는 값을 적지 않습니다(victim 계정·비밀번호는 PC마다 다릅니다 — 팀 계획 01 4장).
+- `login` 명령만 victim 계정이 필요합니다: `-e LW_VICTIM_PASSWORD=... --username victim_<역할>`을 더합니다. 비밀번호는 셸 기록에 남지 않게 환경 변수로만 넘기고, 이 문서·이미지에는 값을 적지 않습니다(victim 계정·비밀번호는 PC마다 다릅니다 — 팀 계획 01 4장). 계정 만들기와 환경 변수 설정은 7.4를 봅니다.
 - 이미지가 없으면 먼저 빌드합니다: `docker compose build attacker-1`.
 
 **S5b: SYN 폭주와 HTTP 폭주를 같은 IP에서 동시에**
@@ -205,6 +205,40 @@ docker rm -f lw-measure-${LW_EDGE_PREFIX}.151
 
 - `httpflood`의 `--path`는 몰아 보낼 경로(기본 `/`), `--requests`는 요청 수(기본 120, 최대 500)입니다. `synflood --count`는 기본 3000, 최대 5000입니다.
 - 5초 측정 스크립트(`scripts/net/measure_detect_to_block.py --scenario s5b`)는 위 1)~3)을 실행마다 새 IP로 자동으로 합니다. 손으로 해 본 IP는 `network_blocks`에 남으므로 스크립트가 알아서 건너뜁니다. 다만 같은 IP를 손으로 다시 쓰면 앞 차단 때문에 재현이 안 되니 실행마다 끝자리를 바꿉니다.
+
+### 7.4 victim 테스트 계정과 `LW_VICTIM_PASSWORD` (S6 `login`용)
+
+S6(의심 로그인 성공)는 공격 상자가 **올바른 비밀번호로** 로그인해야 재현됩니다. 그래서 사람마다 테스트 계정 `victim_<역할>`을 하나씩 만들어 두고, 그 비밀번호를 환경 변수 `LW_VICTIM_PASSWORD`로만 넘깁니다. **정해진 값은 없습니다. 가입할 때 본인이 정한 비밀번호가 곧 이 값입니다.** 계정을 사람마다 나누는 이유는 남의 시험 때문에 내 계정이 잠기거나 경고 메일이 섞이지 않게 하려는 것입니다(팀 계획 01 D5).
+
+**① 계정 만들기 (사람마다 처음 한 번)**
+
+1. 단지를 켠 상태(3장)에서 브라우저로 `http://localhost:8080/signup`을 엽니다.
+2. 아래처럼 가입합니다.
+
+   | 칸 | 넣을 것 |
+   |---|---|
+   | 아이디 | A `victim_a` / B `victim_b` / C `victim_c` |
+   | 이메일 | 실제로 받을 필요 없는 가짜 주소(예: `victim_<역할>@example.test`). 이메일은 중복될 수 없으니 사람마다 다르게 |
+   | 비밀번호 | 본인이 정하는 8자 이상. 이 문서·채팅·AI·`.env.example`에 적지 않습니다 |
+
+3. `http://localhost:8080/login`에서 그 계정으로 로그인되는지 한 번 확인합니다. 내 브라우저(`.1`)에는 네트워크 기록이 없어 CR-03이 걸리지 않으므로 정상 로그인되는 것이 맞습니다.
+
+- 이메일 인증은 하지 않아도 로그인됩니다.
+- DB는 세 명이 같이 쓰는 Supabase라, 한 번 만든 계정은 어느 PC에서든 그대로 쓸 수 있습니다.
+- Docker 앱은 메일을 모두 Mailpit(`http://localhost:8025`)으로 보내도록 고정돼 있습니다(`docker-compose.yml`의 app `SMTP_HOST: "mailpit"`). 그래서 S6의 경고 메일도 가짜 주소 그대로 Mailpit에서 확인합니다.
+- 실제로 쓰는 계정을 victim으로 쓰지 않습니다. S6가 돌면 그 계정의 기존 세션이 끊기고 경고 메일이 갑니다.
+
+**② 시험 직전에 환경 변수 넣기 (터미널을 열 때마다)**
+
+PowerShell에서 아래처럼 입력하면 값이 명령 기록에 남지 않습니다.
+
+```powershell
+$env:LW_VICTIM_PASSWORD = Read-Host "victim 비밀번호"
+```
+
+- 넣은 값은 **그 터미널 창에서만** 유효합니다. `docker run ... -e LW_VICTIM_PASSWORD=$env:LW_VICTIM_PASSWORD`나 C3-1 `run_all`을 실행할 같은 창에서 넣습니다.
+- 값이 없으면 `login` 명령은 `"ok": false, "error": "no_password"`로 끝나고, C3-1은 S6를 SKIP합니다.
+- 시연 대역 PC에서 C3-1을 돌릴 때는 `victim_c`를 쓰므로, 그 계정 주인(C)이 직접 입력하는 것이 가장 간단합니다. 다른 사람이 대신 돌려야 하면 비밀번호는 팀 비밀값 보관소(Infisical)로 넘기고 단체방에 평문으로 보내지 않습니다.
 
 ---
 
