@@ -3,7 +3,7 @@
 [◀ 53단계](guide53_playbook_engine.md) · [전체 목차](beginner-guide.md) · 55단계 ▶ (작성 예정)
 
 > [52단계](guide52_net_ingest_correlation.md)에서 앱(형사)이 "이 주소는 막아야 한다"고 판단하면, 실제로 정문에서 그 주소의 통신을 끊는 일은 누가 할까요? 이 문서는 **판단 이후 실제로 막히기까지**를 다룹니다.
-> 통합일마다 머지된 부분을 절 단위로 더해 갑니다. 지금은 **차단 요청 함수·장부(C0-2·C1-1)**, **차단 목록 창구·fw-agent(C1-2·C1-3)**, **M1 수동 차단 확인 결과**, **조치 도구 3개·잠금 해제 연동(C2-1·C2-2)** 까지입니다(2026-10-26 main 기준). 이 조치들을 어떤 순서로 부르는지는 [53단계](guide53_playbook_engine.md)의 플레이북이 정합니다.
+> 통합일마다 머지된 부분을 절 단위로 더해 갑니다. 지금은 **차단 요청 함수·장부(C0-2·C1-1)**, **차단 목록 창구·fw-agent(C1-2·C1-3)**, **M1 수동 차단 확인 결과**, **조치 도구 3개·잠금 해제 연동(C2-1·C2-2)**, **S6에서 조치 도구가 실제로 돈 결과** 까지입니다(2026-10-26 main 기준). 이 조치들을 어떤 순서로 부르는지는 [53단계](guide53_playbook_engine.md)의 플레이북이 정합니다.
 
 ## 비유 — 법원 장부와 집행관
 
@@ -168,6 +168,7 @@ request_unblock() 또는 SQL ─▶ PENDING_REMOVE ─▶ ipset del ─▶ ack R
 - 발송이 **`FAILED`**(메일 서버 일시 장애)면 잡았던 쿨다운을 `db.release_cooldown(키)`로 풉니다. 아무 메일도 가지 않았는데 1시간 동안 `SKIPPED`가 되면, 장애가 풀린 뒤 같은 공격이 다시 탐지돼도 피해자가 경고를 못 받기 때문입니다.
 - **`REFUSED`**(받는 주소가 없음 등 영구 거부)는 다시 보내도 결과가 같으므로 쿨다운을 그대로 둡니다.
 - Docker 단지에서는 메일이 실제로 나가지 않고 Mailpit(`http://localhost:8025`)에 잡힙니다.
+- Mailpit은 로그인(SMTP 인증)을 지원하지 않습니다. `.env`에 배포용 Gmail 계정(`SMTP_USER`·`SMTP_PASSWORD`)이 남아 있으면 메일 함수가 로그인을 시도해 **모든 메일이 `FAILED`** 가 됩니다. 그래서 `docker-compose.yml`의 app이 두 값을 빈 값으로 덮어씁니다(2026-10-26 통합 보완 `1f2bb72`). `FAILED`라서 쿨다운은 풀린 채로 남으므로, 고친 뒤 첫 발송은 바로 나갑니다.
 
 ### Slack 결과 보고 — 실패를 맨 앞에 (계획 V6)
 
@@ -185,6 +186,21 @@ request_unblock() 또는 SQL ─▶ PENDING_REMOVE ─▶ ipset del ─▶ ack R
 - "조치 완료"만 보고 넘어가면, 정문 차단이 실패해 공격이 계속 들어오는데도 관리자는 막힌 줄로 믿게 됩니다. 그래서 실패 여부를 첫 줄에서 바로 보이게 했습니다.
 - 실패 원인은 **실패한 단계에만** 붙입니다. `SKIPPED`는 실패가 아닙니다(쿨다운 안이라 메일을 안 보냈거나 선택 과제 단계).
 - 알림 함수는 우선순위(`priority`, `CRITICAL`이면 머리말 `[CRITICAL]`)를 받을 수 있지만, 지금은 플레이북이 넘기지 않아 모두 `[HIGH]`로 보입니다([53단계 "알려진 제한"](guide53_playbook_engine.md#알려진-제한)).
+
+### 실제로 돌려 본 결과 — S6 의심 로그인 성공 (2026-10-26, 시연 대역 PC)
+
+세 도구는 의심 로그인 성공(CR-03, [52단계 ⑤](guide52_net_ingest_correlation.md))이 맞았을 때 플레이북 `SUSPICIOUS_SUCCESS_LOGIN`이 차례로 부릅니다. C3-1 시나리오 점검으로 S6를 재현해 `playbook_runs`에 남은 단계 결과를 봤습니다(점검 결과: [docs/track-d/scenario-results.md](../track-d/scenario-results.md), 3회 연속 PASS).
+
+| 실행 (KST) | 사건 | `invalidate_sessions` | `notify_owner_email` | `notify_slack` |
+|---|---|---|---|---|
+| 15:14 | `incident:56:CR-03` | OK | **OK** — Mailpit에 경고 메일 1통 | OK |
+| 15:15 | `incident:60:CR-03` | OK | SKIPPED(조치 미실행) — 받는 주소 쿨다운 | OK |
+| 15:40·15:41·15:42 (합격 3회) | `incident:76·81·85:CR-03` | OK | SKIPPED — 쿨다운(15:14 발송 뒤 1시간 안) | OK |
+
+- **세션 끊기**는 매번 OK였습니다. victim 계정이 브라우저에 로그인해 있었다면 이때 모두 로그아웃됩니다.
+- **경고 메일**은 실행마다 새 IP·새 사건이었지만, 쿨다운은 사건이 아니라 **받는 주소** 기준이라 첫 1통 뒤에는 SKIPPED였습니다. 의도한 동작입니다(위 "1시간에 한 통만").
+- 같은 IP로 로그인을 한 번 더 보내도 같은 사건이라 플레이북이 다시 돌지 않았고, Mailpit의 메일 수도 늘지 않았습니다.
+- 처음 시도에서는 메일 단계가 `FAILED`였습니다. 원인은 Mailpit SMTP 인증 문제였고, 위 "경고 메일" 절의 마지막 줄대로 고쳤습니다.
 
 ## ④ 잠금을 풀면 정문 차단도 함께 풀기 (C2-2)
 
@@ -245,7 +261,7 @@ pytest tests/track_d/test_c_actions.py tests/track_d/test_c_release_unblock.py -
 ```
 
 - **Slack 보고:** 단지에서 SYN 폭주를 한 번 재현하면([52단계 "직접 확인해 보기"](guide52_net_ingest_correlation.md#직접-확인해-보기)) 팀 Slack 채널에 `[HIGH] … 플레이북 실행 알림: NET_FLOOD_TTL`이 옵니다. 알림의 IP 셋째 자리(11/12/13/0)로 어느 PC인지 구분합니다.
-- **경고 메일 쿨다운:** Supabase에서 쿨다운 기록을 봅니다. 의심 로그인 성공(CR-03)이 머지돼 S6를 돌린 뒤에만 줄이 생깁니다.
+- **경고 메일 쿨다운:** Supabase에서 쿨다운 기록을 봅니다. S6(`python -m scripts.net.check_s6`, [netwatch/README.md](../../netwatch/README.md) 9장)를 돌려 경고 메일이 한 번 나간 뒤에 줄이 생깁니다.
 
 ```sql
 select key, last_sent_at from notification_cooldowns
@@ -266,4 +282,5 @@ select ip_address, status, removed_at from network_blocks where ip_address = '<�
 - C1-3: [netwatch/fw_agent/](../../netwatch/fw_agent/)
 - C2-1: [db/users.py](../../db/users.py)(`bump_session_version`), [notify/mailer.py](../../notify/mailer.py)(`send_suspicious_login_notice`, `SKIPPED`), [notify/alert.py](../../notify/alert.py)(`send_playbook_alert`), [db/agent_heartbeats.py](../../db/agent_heartbeats.py)(`try_acquire_cooldown`, `release_cooldown`)
 - C2-2: [security/lockdown.py](../../security/lockdown.py)의 `release()`
+- 통합 보완(10/26): [docker-compose.yml](../../docker-compose.yml)의 app `SMTP_USER`·`SMTP_PASSWORD` 빈 값, [tests/track_d/test_i_compose_mail.py](../../tests/track_d/test_i_compose_mail.py)
 - 테스트: [tests/track_d/](../../tests/track_d/)의 `test_c_netblock.py`, `test_c_db_blocks.py`, `test_c_internal_api.py`, `test_c_fw_agent.py`, `test_c_actions.py`, `test_c_release_unblock.py`
