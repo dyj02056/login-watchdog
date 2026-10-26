@@ -74,6 +74,64 @@ def test_summarize_median_max_and_missing():
     assert mc.summarize([None]) == {"median": None, "max": None, "missing": 1}
 
 
+# ── T1 기준(첫 block_l4_ttl) ──
+
+def test_first_block_run_at_picks_earliest_ok_block_step():
+    # 10/26 S5b 예행: NET-01(33.897)이 먼저, CR-02(36.115)가 뒤에 같은 IP를 다시 막았다. T1은 앞쪽이어야 한다
+    runs = [
+        {"step": "block_l4_ttl", "status": "OK", "ran_at": "2026-10-26T01:04:36.115268+00:00"},
+        {"step": "block_l4_ttl", "status": "OK", "ran_at": "2026-10-26T01:04:33.897303+00:00"},
+    ]
+    assert mc.first_block_run_at(runs) == "2026-10-26T01:04:33.897303+00:00"
+
+
+def test_first_block_run_at_ignores_failed_and_other_steps():
+    runs = [
+        {"step": "block_l4_ttl", "status": "FAILED", "ran_at": "2026-10-26T01:04:33.0Z"},
+        {"step": "notify_slack", "status": "OK", "ran_at": "2026-10-26T01:04:33.5Z"},
+        {"step": "block_l4_ttl", "status": "SKIPPED", "ran_at": "2026-10-26T01:04:33.6Z"},
+        {"step": "block_l4_ttl", "status": "OK", "ran_at": "2026-10-26T01:04:34.0Z"},
+    ]
+    assert mc.first_block_run_at(runs) == "2026-10-26T01:04:34.0Z"
+
+
+def test_first_block_run_at_compares_times_not_strings():
+    # "Z"와 "+00:00", 소수점 자릿수가 섞여도 시각으로 비교해야 한다(문자열 비교면 순서가 틀어진다)
+    runs = [
+        {"step": "block_l4_ttl", "status": "OK", "ran_at": "2026-10-26T01:04:33.9+00:00"},
+        {"step": "block_l4_ttl", "status": "OK", "ran_at": "2026-10-26T01:04:33.12Z"},
+    ]
+    assert mc.first_block_run_at(runs) == "2026-10-26T01:04:33.12Z"
+
+
+@pytest.mark.parametrize("runs", [[], [{"step": "block_l4_ttl", "status": "OK", "ran_at": None}]])
+def test_first_block_run_at_none_without_usable_record(runs):
+    assert mc.first_block_run_at(runs) is None
+
+
+def test_choose_t1_prefers_playbook_run_over_overwritten_requested_at():
+    t1, note = mc.choose_t1("2026-10-26T01:04:33.897303+00:00", "2026-10-26T01:04:35.919536+00:00")
+    assert t1 == "2026-10-26T01:04:33.897303+00:00" and note is None
+
+
+def test_choose_t1_falls_back_to_requested_at_and_says_so():
+    t1, note = mc.choose_t1(None, "2026-10-26T01:03:00.256096+00:00")
+    assert t1 == "2026-10-26T01:03:00.256096+00:00"
+    assert "requested_at" in note
+
+
+def test_choose_t1_none_when_nothing_recorded():
+    assert mc.choose_t1(None, None) == (None, None)
+
+
+def test_s5b_rehearsal_recomputed_with_first_block_run():
+    # 10/26 S5b 예행 기록을 새 기준으로 다시 계산: T0→T1이 목표 안으로 들어오고 전체는 그대로다
+    t0 = "2026-10-26T01:04:32.519+00:00"
+    t1, _ = mc.choose_t1("2026-10-26T01:04:33.897303+00:00", "2026-10-26T01:04:35.919536+00:00")
+    got = mc.compute_intervals(t0, t1, "2026-10-26T01:04:36.322824+00:00")
+    assert got == {"t0_t1": 1378, "t1_t2": 2426, "t0_t2": 3804}
+
+
 # ── 기다리기 ──
 
 def test_wait_until_returns_value_without_real_sleep():
@@ -145,11 +203,47 @@ def test_attack_commands_filled_from_readme_oneshot_form():
     for cmds in mc.ATTACK_COMMANDS.values():
         for cmd in cmds:
             assert cmd[:3] == ["docker", "run", "--rm"]
-            assert "lw-attacker:latest" in cmd and "{ip}" in cmd
+            # S5b는 --ip 대신 container:lw-measure-{ip}로 IP를 잡으므로 "{ip}"가 칸 안에 들어 있으면 된다
+            assert "lw-attacker:latest" in cmd and any("{ip}" in part for part in cmd)
     # S5는 synflood 하나, S5b는 CR-02(다계층 폭주)를 묶으려고 같은 IP에서 synflood + httpflood 둘
     subcmd = lambda c: c[c.index("lw-attacker:latest") + 1]
     assert [subcmd(c) for c in mc.ATTACK_COMMANDS["s5"]] == ["synflood"]
     assert {subcmd(c) for c in mc.ATTACK_COMMANDS["s5b"]} == {"synflood", "httpflood"}
+
+
+def test_s5b_attacks_share_one_ip_through_anchor_container():
+    # 같은 네트워크에서 두 컨테이너가 같은 --ip를 잡으면 두 번째가 "Address already in use"로 죽는다(10/26 확인).
+    # 그래서 S5b 공격 두 개는 --ip를 직접 잡지 않고, 자리 잡기 컨테이너의 네트워크를 함께 쓴다.
+    for cmd in mc.ATTACK_COMMANDS["s5b"]:
+        assert "--ip" not in cmd
+        assert cmd[cmd.index("--network") + 1] == "container:lw-measure-{ip}"
+        assert "NET_RAW" in cmd  # synflood는 raw 소켓이 필요하다
+    # 자리 잡기 컨테이너가 그 IP를 쥐고, 이름이 공격 쪽이 가리키는 이름과 같아야 한다
+    anchor = mc.ANCHOR_COMMAND
+    assert anchor[anchor.index("--ip") + 1] == "{ip}"
+    assert anchor[anchor.index("--network") + 1] == "lw_edge"
+    assert "container:" + anchor[anchor.index("--name") + 1] == "container:lw-measure-{ip}"
+    assert "-d" in anchor and "--rm" in anchor
+    assert mc.ANCHOR_REMOVE == ["docker", "rm", "-f", "lw-measure-{ip}"]
+
+
+def test_needs_anchor_only_for_shared_network_commands():
+    assert mc.needs_anchor(mc.ATTACK_COMMANDS["s5b"]) is True
+    assert mc.needs_anchor(mc.ATTACK_COMMANDS["s5"]) is False
+
+
+def test_each_measure_run_holds_its_ip_only_once():
+    # 한 실행에서 --ip로 IP를 잡는 컨테이너는 정확히 하나여야 한다(S5: 공격 자체, S5b: 자리 잡기)
+    def ip_holders(cmds):
+        return sum(cmd.count("--ip") for cmd in cmds)
+    assert ip_holders(mc.ATTACK_COMMANDS["s5"]) == 1
+    assert ip_holders([mc.ANCHOR_COMMAND] + mc.ATTACK_COMMANDS["s5b"]) == 1
+
+
+def test_fill_command_names_anchor_per_ip():
+    got = mc.fill_command(mc.ATTACK_COMMANDS["s5b"][1], "172.28.0.152", "172.28.0")
+    assert "container:lw-measure-172.28.0.152" in got
+    assert "TARGET_URL=http://172.28.0.10:8080" in got
 
 
 def test_fill_command_replaces_placeholders_without_shell():

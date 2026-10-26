@@ -753,3 +753,19 @@ def test_main_rejects_invalid_stall_seconds(
 
     assert exit_code == 2
     assert "SHIPPER_STALL_SECONDS" in capsys.readouterr().err
+
+def test_compose_restarts_shipper_unless_stopped() -> None:
+    """shipper는 예외 종료 후 자동으로 다시 시작해야 한다."""
+    compose = (
+        PROJECT_ROOT / "docker-compose.yml"
+    ).read_text(encoding="utf-8")
+
+    shipper_block = compose.split(
+        "  shipper:",
+        1,
+    )[1].split(
+        "\n  fw-agent:",
+        1,
+    )[0]
+
+    assert "restart: unless-stopped" in shipper_block

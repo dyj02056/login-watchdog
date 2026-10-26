@@ -2,7 +2,7 @@
 
 # 02. 연동 계약서 — 역할끼리 주고받는 약속
 
-> **버전 v1.0 확정 (2026-10-12) · 10/13·10/19·10/20 보완(맨 아래 변경 기록)** — 통합 담당자가 현재 저장소 코드·역할별 요청서와 대조해 확정했다. 10/14 계획 확정 회의에서 세 사람의 동의를 받는다. 이후 바뀌는 내용은 맨 아래 변경 기록에 남긴다.
+> **버전 v1.0 확정 (2026-10-12) · 10/13·10/19·10/20·10/22·10/23·10/26 보완(맨 아래 변경 기록)** — 통합 담당자가 현재 저장소 코드·역할별 요청서와 대조해 확정했다. 10/14 계획 확정 회의에서 세 사람의 동의를 받는다. 이후 바뀌는 내용은 맨 아래 변경 기록에 남긴다.
 > **이 문서가 기준이다.** 함수 이름·인자·JSON 모양이 이 문서와 다르면 코드가 틀린 것이다.
 > 뼈대 PR(I0-1)에서 이 문서를 저장소의 `docs/track-d/contracts.md`로 복사한다. LLM(Codex)은 저장소 사본을 읽는다.
 > 바꾸려면 01의 8장 절차를 따른다. 바꾼 내용은 맨 아래 **변경 기록**에 남긴다.
@@ -61,7 +61,9 @@
 |---|---|---|
 | `LW_EDGE_PREFIX` | `172.28.13` | 사람별 공격 대역 앞 세 자리 (01의 4장 표) |
 | `SENSOR_IFACE` | `eth1`(모든 PC 고정) | Suricata·Scapy가 감시할 gateway 안 **edge 쪽** 인터페이스를 찾을 때 먼저 시도할 이름. Docker는 네트워크를 붙이는 순서를 보장하지 않아 eth0/eth1 중 어느 쪽이 edge인지가 PC·컨테이너 재생성마다 다르다(10/22 기록: A·B·demo는 eth1, C는 eth0. A는 10/20 eth0에서 바뀜). 그래서 `.env`는 모두 `eth1`로 두고, sensor(`entrypoint.sh`)와 l4-detector(`resolve_sensor_iface`)가 이 이름에 `${LW_EDGE_PREFIX}.10`이 없으면 edge 주소가 붙은 쪽으로 스스로 바꾼다. 이때 로그에 나오는 `[WARN] …를 감시합니다` 한 줄은 정상이고, 경고 안의 ".env를 고치라"는 안내는 따르지 않는다. 문제는 `LW_EDGE_PREFIX`가 틀려 `…찾지 못해` 경고가 날 때뿐이다(core 쪽을 감시하게 되어 오류 없이 탐지가 0건). tcpdump처럼 사람이 인터페이스를 직접 지정할 때는 `docker run --rm --network container:login-watchdog-gateway nicolaka/netshoot ip -br addr`로 실제 edge(172.30이 **아닌** 쪽)를 확인한다 |
-| `LW_VICTIM_PASSWORD` | (사람마다 다름) | S4·S6에서 공격 상자(attacker-2)가 `victim_<역할>` 계정으로 로그인할 때 쓰는 테스트 계정 비밀번호. A2-1의 로그인 명령과 C3-1이 읽는다. **LLM에 붙여 넣지 않고** 이미지·compose·README에 값을 적지 않는다 |
+| `SHIPPER_STALL_SECONDS` | `120` | shipper가 "센서 멈춤"으로 보는 기준(초). `eve.json`·`l4.json`이 **둘 다** 이 시간 넘게 안 늘면 heartbeat에 `stalled=true`(K9 ③). Suricata가 60초마다 `stats`를 쓰므로 60보다 충분히 커야 조용할 때 오판하지 않는다. `config.py`에는 없고 compose가 shipper 컨테이너에 넘긴다(A2-3) |
+| `NET_INGEST_URL`, `APP_INTERNAL_URL` | 비워 둠 | compose가 shipper에 넘기는 앱 주소. 비우면 `http://app:5000/api/internal/net-events`, `http://app:5000`을 쓴다. 보통 바꾸지 않는다 |
+| `LW_VICTIM_PASSWORD` | (사람마다 다름) | S4·S6에서 공격 상자(`docker run --ip`로 띄우는 일회용 컨테이너)가 `victim_<역할>` 계정으로 로그인할 때 쓰는 테스트 계정 비밀번호. A2-1의 로그인 명령과 C3-1이 읽는다. **`.env.example`에는 이름도 넣지 않고** 각자 환경 변수로만 넘긴다. **LLM에 붙여 넣지 않고** 이미지·compose·README에 값을 적지 않는다 |
 
 ---
 
@@ -243,7 +245,8 @@ def request_block(ip: str, reason: str, evidence: str,
     """network_blocks에 '막아라'를 기록한다(실제 차단은 fw-agent). 실제로 바뀌었을 때만 True.
 
     거부(False): 허용 목록 IP(lockdown.is_ip_allowlisted), IP 형식 오류, IPv6,
-                 '/'가 들어간 대역, evidence가 'SPOOFABLE'/'CONNECTED'가 아님.
+                 '/'가 들어간 대역, evidence가 'SPOOFABLE'/'CONNECTED'가 아님,
+                 reason이 K12 값(NET_FLOOD·KILL_CHAIN·ADMIN_MANUAL)이 아님, ttl_seconds가 0 이하.
     TTL 계산:
       - evidence='SPOOFABLE': ttl_seconds가 None이면
         NET_BLOCK_DEFAULT_TTL_SECONDS × 2^(최근 NET_BLOCK_REPEAT_DAYS일 이 IP 차단 횟수),
@@ -490,3 +493,4 @@ ctx = {
 | 2026-10-22 | K1 | `SENSOR_IFACE`는 **모든 PC `eth1` 고정**, 실제 edge는 sensor·l4-detector가 자동 보정하는 방식으로 정함. 네 PC 점검 결과 실제 edge는 A·B·demo `eth1`, C `eth0`(C는 `[WARN]` 뒤 eth0을 감시하고 탐지 정상). A는 10/20 `eth0`에서 `eth1`로 바뀌어, 재생성마다 달라짐을 다시 확인 | 통합 담당자 확인(병합2 종합 점검) |
 | 2026-10-23 | K8 | C2-1 보완: `bump_session_version` 재시도를 "1회"에서 "최대 3번, 다 지면 False"로 고침(요청서·`update_user_password`와 맞춤). 의심 로그인 메일이 `FAILED`면 쿨다운을 푸는 `db.release_cooldown` 추가. `send_playbook_alert`에 선택 인자 `priority="HIGH"` 추가 — 플레이북이 `ctx["priority"]`를 넘기는 한 줄(B, `security/playbooks.py`)은 아직 반영 전 | 통합 담당자 확인 |
 | 2026-10-23 | K9 | A2-3 보완: shipper heartbeat 예시에 `detail.stalled_seconds` 추가, `stalled` 판단 기준(두 파일 모두 `SHIPPER_STALL_SECONDS` 넘게 안 늘면) 명시. 조용할 때 오판하지 않도록 Suricata eve에 60초 `stats` 출력 추가, compose가 `SHIPPER_STALL_SECONDS`를 shipper에 넘김 | 통합 담당자 확인 |
+| 2026-10-26 | K1·K7 | 문서 점검 보완: K1 `.env` 전용 값 표에 `SHIPPER_STALL_SECONDS`·`NET_INGEST_URL`·`APP_INTERNAL_URL` 추가, `LW_VICTIM_PASSWORD`는 일회용 공격 컨테이너가 쓰고 `.env.example`에 이름을 넣지 않는다고 명시. K7 거부 조건에 코드가 이미 하던 "reason이 K12 값이 아님"·"ttl_seconds ≤ 0" 추가. 10/23 K8·K9 보완분이 원본에 없던 것을 원본(02)에도 반영 | 통합 담당자 확인 |
