@@ -1,9 +1,9 @@
 # 52단계 — 경보 수집과 교차 상관분석 (서명 검사)
 
-[◀ 51단계](guide51_network_sensor.md) · [전체 목차](beginner-guide.md) · 53단계 ▶ (작성 예정)
+[◀ 51단계](guide51_network_sensor.md) · [전체 목차](beginner-guide.md) · [53단계 ▶](guide53_playbook_engine.md)
 
 > [51단계](guide51_network_sensor.md)의 정문 CCTV가 본 것을 앱이 받아서 기존 보안 기록과 엮어 "같은 공격 흐름"인지 판단하는 과정을 다룹니다.
-> 이 문서는 통합일마다 머지된 부분을 절 단위로 더해 갑니다. 지금은 **서명 검사(B0-1)** 와 **경보 접수 창구·보안 기록 승격·앱 등급 분리(B1-1~B1-3)** 까지입니다(2026-10-22 main 기준). 교차 규칙(NET-01·CR-01·CR-02)은 다음 절에서 다룹니다.
+> 이 문서는 통합일마다 머지된 부분을 절 단위로 더해 갑니다. 지금은 **서명 검사(B0-1)**, **경보 접수 창구·보안 기록 승격·앱 등급 분리(B1-1~B1-3)**, **교차 규칙 NET-01·CR-01·CR-02(B2-1)** 까지입니다(2026-10-26 main 기준). 로그인 성공 규칙(CR-03, B3-1)은 머지된 뒤 절을 더합니다. 규칙이 맞은 뒤 실행되는 대응 절차(플레이북)는 [53단계](guide53_playbook_engine.md)에서 다룹니다.
 
 ## 비유 — 형사 사무실의 접수대
 
@@ -151,6 +151,77 @@ shipper와 fw-agent는 다른 컨테이너에서 돌아서 앱 코드를 import�
 
 결과적으로 네트워크 경보만으로는 앱 영구 잠금이 걸리지 않습니다. 네트워크 경보가 강한 조치로 이어지는 길은 **교차 규칙**뿐이고, 그것도 위조 가능한 증거면 짧은 정문 차단(TTL)까지만 갑니다(다음 절).
 
+## ④ 교차 규칙 — 네트워크 경보와 앱 기록을 엮어 보기 (B2-1)
+
+지금까지는 경보 한 건 한 건을 기록만 했습니다. 형사의 진짜 일은 **흩어진 기록을 엮어 "같은 사람이 벌인 하나의 흐름"인지 판단**하는 것입니다. 예를 들어 "15분 전에 문을 하나씩 두드려 보던(포트 스캔) 사람이 지금 비밀번호를 찍고 있다(무차별 대입)"면, 두 기록을 따로 볼 때보다 훨씬 위험합니다.
+
+이 판단을 하는 곳이 `security/correlate.py`의 `check_cross_layer(ip, event_type)`이고, 규칙 목록은 같은 파일의 `CROSS_LAYER_RULES`입니다.
+
+### 규칙 세 개 (필수, 계약서 K12)
+
+| 규칙 | 쉬운 말 | 조건 (같은 IP) | 창(시간 범위) | 증거 | 맞으면 실행할 절차(플레이북) |
+|---|---|---|---|---|---|
+| **NET-01** | SYN 폭주 단독 | `NET_SYN_FLOOD`가 들어옴 | 즉시 | 위조 가능 | `NET_FLOOD_TTL` — 짧은 정문 차단 + Slack |
+| **CR-01** | 정찰 → 침투 (킬체인) | `NET_PORT_SCAN` 또는 `NET_SCANNER_UA`가 **먼저**, 그 **뒤에** `WEB_SCANNING`·`BRUTE_FORCE`·`PASSWORD_SPRAYING` | 15분, 순서 있음 | 연결 완성 | `KILL_CHAIN` — 앱 영구 잠금 + 영구 정문 차단 + Slack |
+| **CR-02** | 네트워크·앱 동시 폭주 | `NET_SYN_FLOOD` + `HTTP_FLOOD`(전역 한도 초과만) | 5분 | 위조 가능으로 취급 | `NET_FLOOD` — 짧은 정문 차단 + Slack |
+
+- 창 길이는 설정값입니다: `NET_CORRELATION_WINDOW_MINUTES`(15, CR-01), `NET_FLOOD_WINDOW_MINUTES`(5, CR-02).
+- 시각 비교는 PC 시계가 아니라 DB에 남은 `detected_at`(UTC)으로 합니다. 창 안의 이벤트는 `db.list_recent_security_events_for_correlation(ip, 창)`이 읽어 옵니다.
+- 로그인 성공 규칙 CR-03과 선택 과제 CR-04~06은 이 목록에 아직 없습니다.
+
+### 규칙마다 "왜 이렇게 정했나"
+
+| 규칙 | 이유 |
+|---|---|
+| NET-01 | SYN 폭주는 출발지 주소를 속일 수 있는 공격입니다. 남의 주소를 사칭해 그 주인을 영원히 막는 일이 없도록 **시간 제한 정문 차단까지만** 합니다(계획 P2). 앱 잠금은 걸지 않습니다 |
+| CR-01 | 뒤에 오는 앱 공격(웹 스캔·무차별 대입)은 연결을 끝까지 맺어야 생기는 기록이라 주소를 속일 수 없습니다. 그래서 이 규칙만 **영구 조치**까지 갑니다. 순서를 보는 이유는 "정찰 → 침투"라는 공격 단계 모양일 때만 킬체인으로 보기 위해서입니다(`_match_ordered_rule`) |
+| CR-02 | `HTTP_FLOOD`는 연결 완성 증거지만, 같은 NAT 뒤의 정상 사용자까지 막힐 수 있어 영구가 아니라 **시간 제한 차단**만 합니다. 영구 차단은 관리자 승인으로 정했습니다(선택 과제) |
+
+**CR-02가 세지 않는 `HTTP_FLOOD`:** 앱은 복구·이메일 확인·비밀번호 찾기 화면의 좁은 한도를 넘겨도 같은 `HTTP_FLOOD`로 기록합니다. 그 기록까지 세면 정상 사용자가 복구 화면을 여러 번 눌렀을 때 "다계층 폭주"로 잘못 판단합니다. 그래서 그 경로들을 상수로 두고 뺍니다.
+
+```python
+# security/correlate.py — app.py의 라우트별 limiter.limit을 바꾸면 여기도 바꾼다.
+CR02_EXCLUDED_FLOOD_PATHS = {"/recovery/verify", "/recovery/request", "/email/confirm",
+                             "/password/forgot", "/password/reset"}
+```
+
+### 규칙이 맞으면 일어나는 일
+
+| 순서 | 하는 일 | 이유 |
+|---|---|---|
+| 1 | 그 IP의 열린 사건(`security_incidents`)에 이 규칙이 이미 기록돼 있으면 **건너뜀** | **사건당 규칙당 1번만** 실행합니다. SYN 경보가 몇 초 간격으로 계속 와도 차단·Slack이 반복되지 않게 합니다 |
+| 2 | 규칙에 쓰인 이벤트 유형으로 사건을 **열거나 합치고** `matched_rules`에 규칙 ID를 넣음 (`db.record_incident(..., source="NET", rule_id=...)`) | 규칙 창(5~15분)이 사건 창보다 길어 사건이 아직 없을 수 있습니다. 규칙 기록은 NET 출처로 넣어 앱 등급(`app_severity_max`)을 올리지 않습니다 |
+| 3 | 플레이북 실행: `playbooks.run(플레이북, "incident:<사건 id>:<규칙 ID>", ctx)` | 판단은 여기까지. 실제 조치는 [53단계](guide53_playbook_engine.md)의 절차서가 C의 조치 함수를 불러 합니다 |
+
+- **동시에 들어온 두 요청:** `matched_rules`를 합칠 때도 조건부 UPDATE를 씁니다. 두 요청이 같은 규칙을 동시에 넣으려 하면 먼저 넣은 쪽만 `rule_added=True`가 되고, 그쪽만 플레이북을 실행합니다.
+- **오래 조용했던 사건:** 사건이 IDLE(오래 새 이벤트 없음)로 넘어간 뒤 같은 IP가 다시 공격하면 새 사건이 열리고 규칙도 다시 실행됩니다. 1시간 차단이 끝난 몇 시간 뒤의 SYN 폭주를 그냥 지나치지 않게 하려는 것입니다.
+
+### 기존 상관분석과의 관계 (함정 하나)
+
+기존 `check_and_correlate()`는 "서로 다른 이벤트 유형이 2개 이상"일 때만 사건 처리를 했습니다. 그 조건 뒤에 규칙 검사를 붙이면 SYN 폭주 하나만 들어온 경우(유형 1개)는 영영 검사되지 않아 NET-01이 동작하지 않습니다. 그래서 **기존 사건 처리만 "2개 이상" 조건 안에 두고, 교차 규칙은 유형 수와 상관없이 항상** 부릅니다. 단 `NET_BLOCKED`(차단했다는 결과 기록)는 규칙의 입력으로 쓰지 않습니다. 결과가 다시 원인이 되어 규칙이 돌고 도는 일을 막기 위해서입니다.
+
+```python
+# security/correlate.py — check_and_correlate()의 끝부분
+if event_type != "NET_BLOCKED":
+    try:
+        check_cross_layer(ip, event_type)
+    except Exception as error:
+        print(f"[교차 규칙 오류] {type(error).__name__}")
+```
+
+규칙 검사에서 오류가 나도 **원래 이벤트 기록과 기존 사건 처리는 실패하지 않습니다.** 오류 종류만 한 줄 남기고 넘어갑니다.
+
+### 실제로 돌려 본 결과 (2026-10-26, 시연 대역 PC)
+
+5초 측정(결과: [docs/track-d/measurements.md](../track-d/measurements.md)) 때 SYN 폭주(S5)와 SYN + HTTP 폭주(S5b)를 3번씩 재현했습니다.
+
+| 시나리오 | 맞은 규칙 | 사건의 `matched_rules` |
+|---|---|---|
+| S5 (SYN 폭주 단독) | NET-01 | `['NET-01']` |
+| S5b (SYN + HTTP 폭주) | NET-01 → 몇 초 뒤 CR-02 | `['NET-01', 'CR-02']` |
+
+- S5b에서는 SYN 경보가 먼저 와서 NET-01이 먼저 맞고, HTTP 폭주 기록이 쌓인 뒤 CR-02가 맞습니다. 두 규칙이 각각 한 번씩 플레이북을 실행하므로 같은 IP에 Slack 알림이 두 번 갑니다.
+
 ## 직접 확인해 보기
 
 ```bash
@@ -194,6 +265,31 @@ from security_incidents order by last_event_at desc limit 10;
 - `OTHER` 경보는 `network_events`에만 있고 `security_events`에는 없어야 합니다.
 - `NET_BLOCKED` 기록·해결을 직접 보는 방법은 [54단계 "직접 확인해 보기"](guide54_l4_block_agent.md#직접-확인해-보기)의 수동 차단 SQL입니다.
 
+**④ 절 확인 (B2-1 교차 규칙)**
+
+```bash
+# 규칙별 맞음/안 맞음, 순서, 창 밖, 라우트별 한도 경로 제외, 사건당 1회 테스트
+pytest tests/track_d/test_b_cross_layer.py -q
+
+# 단지에서 NET-01을 직접 일으키기: 고정 공격 상자로 SYN 폭주를 조금 보낸다
+docker compose --profile attack run --rm attacker-3 synflood --count 300
+```
+
+몇 초 뒤 Supabase SQL Editor에서 봅니다. 주소는 자기 PC 대역의 `.103`(attacker-3)으로 바꿉니다.
+
+```sql
+-- 사건에 규칙 ID가 붙었는지 (NET-01)
+select id, ip_address, event_types, matched_rules, status, last_event_at
+from security_incidents where ip_address = '172.28.0.103' order by last_event_at desc limit 3;
+
+-- 규칙이 실행한 플레이북 단계 (53단계)
+select playbook, step, status, error, ran_at, trigger_ref
+from playbook_runs where trigger_ref like 'incident:%:NET-01' order by ran_at desc limit 5;
+```
+
+- `matched_rules`에 `NET-01`이 한 번만 있어야 합니다. 같은 사건에 다시 SYN 폭주를 보내도 늘지 않습니다.
+- 고정 공격 상자는 같은 주소라 한 번 막히면 차단이 풀릴 때까지(약 1시간) 다시 재현되지 않습니다. 여러 번 볼 때는 [netwatch/README.md](../../netwatch/README.md) 7.3의 "일회용 새 IP 실행"을 씁니다.
+
 ## 이 단계에서 만들어지거나 바뀐 파일
 
 - 신규: [routes/internal/_hmac.py](../../routes/internal/_hmac.py), [tests/track_d/test_b_hmac.py](../../tests/track_d/test_b_hmac.py)
@@ -201,3 +297,4 @@ from security_incidents order by last_event_at desc limit 10;
 - B1-1: [routes/internal/ingest.py](../../routes/internal/ingest.py), [db/network_events.py](../../db/network_events.py), [tests/track_d/test_b_ingest.py](../../tests/track_d/test_b_ingest.py)
 - B1-2: [security/net_ingest.py](../../security/net_ingest.py), [security/soar/_events.py](../../security/soar/_events.py)(`source`·`layer` 인자), [db/security_events.py](../../db/security_events.py)(선택 인자), [tests/track_d/test_b_net_ingest.py](../../tests/track_d/test_b_net_ingest.py)
 - B1-3: [db/incidents.py](../../db/incidents.py)(`app_severity_max`), [security/lockdown.py](../../security/lockdown.py)의 `consider_incident_promotion()`, [tests/track_d/test_b_app_severity.py](../../tests/track_d/test_b_app_severity.py)
+- B2-1: [security/correlate.py](../../security/correlate.py)(`CROSS_LAYER_RULES`, `check_cross_layer`), [db/incidents.py](../../db/incidents.py)(`record_incident`의 `rule_id` 선택 인자), [db/network_events.py](../../db/network_events.py)(`list_recent_security_events_for_correlation`), [tests/track_d/test_b_cross_layer.py](../../tests/track_d/test_b_cross_layer.py)

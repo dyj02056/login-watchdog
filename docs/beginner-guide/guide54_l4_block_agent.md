@@ -1,9 +1,9 @@
 # 54단계 — L4 차단과 집행관 (차단 장부·fw-agent)
 
-◀ 53단계 (작성 예정) · [전체 목차](beginner-guide.md) · 55단계 ▶ (작성 예정)
+[◀ 53단계](guide53_playbook_engine.md) · [전체 목차](beginner-guide.md) · 55단계 ▶ (작성 예정)
 
 > [52단계](guide52_net_ingest_correlation.md)에서 앱(형사)이 "이 주소는 막아야 한다"고 판단하면, 실제로 정문에서 그 주소의 통신을 끊는 일은 누가 할까요? 이 문서는 **판단 이후 실제로 막히기까지**를 다룹니다.
-> 통합일마다 머지된 부분을 절 단위로 더해 갑니다. 지금은 **차단 요청 함수·장부(C0-2·C1-1)** 와 **차단 목록 창구·fw-agent(C1-2·C1-3)**, 그리고 **M1 수동 차단 확인 결과**까지입니다(2026-10-22 main 기준). 조치 도구 3개·해제 연동(C2-1·C2-2)은 다음 절에서 다룹니다.
+> 통합일마다 머지된 부분을 절 단위로 더해 갑니다. 지금은 **차단 요청 함수·장부(C0-2·C1-1)**, **차단 목록 창구·fw-agent(C1-2·C1-3)**, **M1 수동 차단 확인 결과**, **조치 도구 3개·잠금 해제 연동(C2-1·C2-2)** 까지입니다(2026-10-26 main 기준). 이 조치들을 어떤 순서로 부르는지는 [53단계](guide53_playbook_engine.md)의 플레이북이 정합니다.
 
 ## 비유 — 법원 장부와 집행관
 
@@ -139,6 +139,68 @@ request_unblock() 또는 SQL ─▶ PENDING_REMOVE ─▶ ipset del ─▶ ack R
 - ipset의 남은 시간(388초)은 10분 차단을 넣고 3분쯤 지나 조회한 값과 맞습니다. 장부의 `expires_at`이 방화벽 timeout으로 제대로 옮겨졌습니다.
 - 해제 때 새 줄이 생기지 않고 같은 `NET_BLOCKED` 줄이 해결 처리됐습니다.
 
+## ④ 조치 도구 3개 (C2-1, 계약서 K8)
+
+정문 차단 말고도 집행관이 하는 일이 세 가지 더 있습니다. 모두 [53단계](guide53_playbook_engine.md)의 플레이북이 이름으로 찾아 부르는 함수이고, 주로 **의심 로그인 성공(CR-03)** 과 **모든 플레이북의 마지막 보고**에 쓰입니다.
+
+| 도구 | 함수 | 쉬운 말 | 결과 |
+|---|---|---|---|
+| 세션 끊기 | `db.bump_session_version(user_id)` | 그 회원의 "세션 세대 번호"를 1 올려, 이미 로그인해 있던 모든 기기를 로그아웃시킴 | 올렸으면 `True`, 회원이 없거나 경쟁에서 3번 다 지면 `False` |
+| 경고 메일 | `mailer.send_suspicious_login_notice(주소, ip, 시각)` | "의심스러운 로그인이 차단되었습니다" 메일을 계정 주인에게 보냄 | `SENT`·`REFUSED`·`FAILED`·`SKIPPED` |
+| Slack 결과 보고 | `alert.send_playbook_alert(플레이북, ip, 규칙들, 단계 결과)` | 플레이북이 무엇을 했는지 단계별로 관리자 Slack에 보고 | 없음 |
+
+### 세션 끊기 — 비밀번호 변경과 같은 방식
+
+로그인 세션에는 회원의 "세대 번호"(`users.session_version`)가 함께 들어 있고, 요청마다 DB의 번호와 비교합니다. 번호를 1 올리면 그 전에 만들어진 세션은 모두 "옛 세대"가 되어 바로 끊깁니다. 비밀번호를 바꿨을 때 다른 기기를 로그아웃시키는 것과 같은 원리이고, **비밀번호 자체는 바꾸지 않습니다.**
+
+- 번호는 "읽은 값 그대로일 때만" 올립니다(조건부 UPDATE). 회원이 마침 비밀번호를 바꾸는 순간과 겹쳐 번호가 한 번 덜 올라가면 의심 세션이 살아남기 때문에, 경쟁에서 지면 다시 읽어 **최대 3번** 시도합니다.
+- 3번 다 지면 예외 대신 `False`를 돌려줍니다. 플레이북의 한 단계라서, 예외로 멈추면 뒤의 메일·Slack 단계까지 사라지기 때문입니다. 플레이북은 이 `False`를 `FAILED`로 기록합니다.
+
+### 경고 메일 — 1시간에 한 통만 (메일 폭탄 방지, 계획 V3)
+
+공격자가 같은 계정으로 로그인 성공을 여러 번 일으키면 플레이북도 여러 번 돌아 피해자 메일함이 경고로 가득 찰 수 있습니다. 그래서 같은 주소로는 `SUSPICIOUS_LOGIN_MAIL_COOLDOWN_SECONDS`(3600초)에 **한 통만** 보내고, 그 안이면 보내지 않고 `SKIPPED`를 돌려줍니다.
+
+| 쿨다운을 어디에 두나 | 이유 |
+|---|---|
+| DB의 `notification_cooldowns` 표 (`db.try_acquire_cooldown(키, 초)`) | 앱의 여러 스레드, 같은 DB를 쓰는 세 PC, Vercel이 같은 주소를 함께 다룹니다. 프로그램 메모리에 두면 서로의 기록을 모릅니다 |
+| 키 `mail:suspicious:<주소 소문자>` | 대소문자만 다른 주소로 쿨다운을 피하지 못하게 |
+
+- 발송이 **`FAILED`**(메일 서버 일시 장애)면 잡았던 쿨다운을 `db.release_cooldown(키)`로 풉니다. 아무 메일도 가지 않았는데 1시간 동안 `SKIPPED`가 되면, 장애가 풀린 뒤 같은 공격이 다시 탐지돼도 피해자가 경고를 못 받기 때문입니다.
+- **`REFUSED`**(받는 주소가 없음 등 영구 거부)는 다시 보내도 결과가 같으므로 쿨다운을 그대로 둡니다.
+- Docker 단지에서는 메일이 실제로 나가지 않고 Mailpit(`http://localhost:8025`)에 잡힙니다.
+
+### Slack 결과 보고 — 실패를 맨 앞에 (계획 V6)
+
+```text
+⚠ 일부 조치 실패                       ← 실패한 단계가 하나라도 있을 때만
+[HIGH] 로그인 워치독 플레이북 실행 알림: NET_FLOOD_TTL
+대상 IP: 172.28.0.152
+일치한 규칙: NET-01
+단계별 결과:
+✓ block_l4_ttl (OK)
+```
+
+단계 표시는 `✓` 성공, `✗` 실패, `–` 건너뜀입니다.
+
+- "조치 완료"만 보고 넘어가면, 정문 차단이 실패해 공격이 계속 들어오는데도 관리자는 막힌 줄로 믿게 됩니다. 그래서 실패 여부를 첫 줄에서 바로 보이게 했습니다.
+- 실패 원인은 **실패한 단계에만** 붙입니다. `SKIPPED`는 실패가 아닙니다(쿨다운 안이라 메일을 안 보냈거나 선택 과제 단계).
+- 알림 함수는 우선순위(`priority`, `CRITICAL`이면 머리말 `[CRITICAL]`)를 받을 수 있지만, 지금은 플레이북이 넘기지 않아 모두 `[HIGH]`로 보입니다([53단계 "알려진 제한"](guide53_playbook_engine.md#알려진-제한)).
+
+## ④ 잠금을 풀면 정문 차단도 함께 풀기 (C2-2)
+
+관리자가 대시보드에서 어떤 IP의 **영구 잠금을 풀면**(`security/lockdown.py`의 `release()`), 그 IP의 정문 차단도 함께 "풀어 달라"(`netblock.request_unblock()`)로 바꿉니다.
+
+| 해제 전 | `release("ip", 주소, ...)` 이후 |
+|---|---|
+| 앱 잠금(L7) + 정문 차단(L4, ipset) | 앱 잠금 해제 → 장부를 `PENDING_REMOVE`로 → fw-agent가 2초 안에 ipset에서 빼고 `REMOVED` 보고 |
+
+- **왜 필요한가:** 앱 잠금만 풀고 정문 차단을 남겨 두면, 관리자가 풀어 준 IP가 여전히 사이트에 접속하지 못합니다. 관리자는 "풀었는데 왜 안 되지?"를 알 방법이 없습니다.
+- **정문 해제가 실패해도 앱 잠금 해제 결과는 바뀌지 않습니다.** 앱 잠금은 이미 풀렸으므로, 정문 쪽 오류는 한 줄 로그만 남기고 해제 성공(`True`)과 Slack 알림은 그대로 둡니다.
+- **정문 차단이 원래 없던 IP**면 `request_unblock()`이 `False`를 돌려주는데, 이것은 오류가 아닙니다. 대부분의 앱 잠금은 정문 차단 없이 걸리기 때문입니다.
+- 계정 잠금(`target_kind="account"`) 해제는 정문 차단과 관계가 없어 이 연동을 하지 않습니다.
+- `netblock`은 허용 목록 확인에 `lockdown`을 쓰므로, `lockdown`이 파일 맨 위에서 `netblock`을 불러오면 서로를 불러오는 고리(순환 import)가 생깁니다. 그래서 `release()` 안에서 필요할 때만 불러옵니다.
+- `security/lockdown.py`는 B(`consider_incident_promotion()`)와 C(`release()`)가 함께 고치는 유일한 파일이라, B1-3이 먼저 머지된 뒤 C가 `release()` 안만 고쳤습니다.
+
 ## 직접 확인해 보기
 
 ```bash
@@ -175,10 +237,33 @@ where ip_address = '172.28.13.150' and status in ('PENDING_APPLY', 'APPLIED');
 - `APPLIED`인데 `NET_BLOCKED`가 안 생기면 앱 컨테이너가 옛 코드로 빌드된 것일 수 있습니다. `docker compose up -d --build` 후 다시 해 봅니다.
 - 생존 신호는 Supabase `agent_heartbeats` 표에서 `fw-agent` 줄의 `last_seen_at`이 10초마다 바뀌는지로 봅니다.
 
+**④ 절 확인 (C2-1·C2-2)**
+
+```bash
+# 세션 끊기·경고 메일 쿨다운·Slack 보고 테스트, 잠금 해제 → 정문 해제 연동 테스트
+pytest tests/track_d/test_c_actions.py tests/track_d/test_c_release_unblock.py -q
+```
+
+- **Slack 보고:** 단지에서 SYN 폭주를 한 번 재현하면([52단계 "직접 확인해 보기"](guide52_net_ingest_correlation.md#직접-확인해-보기)) 팀 Slack 채널에 `[HIGH] … 플레이북 실행 알림: NET_FLOOD_TTL`이 옵니다. 알림의 IP 셋째 자리(11/12/13/0)로 어느 PC인지 구분합니다.
+- **경고 메일 쿨다운:** Supabase에서 쿨다운 기록을 봅니다. 의심 로그인 성공(CR-03)이 머지돼 S6를 돌린 뒤에만 줄이 생깁니다.
+
+```sql
+select key, last_sent_at from notification_cooldowns
+where key like 'mail:suspicious:%' order by last_sent_at desc limit 5;
+```
+
+- **잠금 해제 연동:** 영구 잠금과 정문 차단이 함께 걸린 IP(예: 킬체인 S4)를 관리자 화면 처리 작업대의 "영구 잠금"에서 해제한 뒤, 장부가 `REMOVED`가 되는지 봅니다.
+
+```sql
+select ip_address, status, removed_at from network_blocks where ip_address = '<해제한 IP>';
+```
+
 ## 이 단계에서 만들어지거나 바뀐 파일
 
 - C0-2: [security/netblock.py](../../security/netblock.py)
 - C1-1: [db/network_blocks.py](../../db/network_blocks.py), [db/agent_heartbeats.py](../../db/agent_heartbeats.py)
 - C1-2: [routes/internal/blocks.py](../../routes/internal/blocks.py), [routes/internal/heartbeat.py](../../routes/internal/heartbeat.py)
 - C1-3: [netwatch/fw_agent/](../../netwatch/fw_agent/)
-- 테스트: [tests/track_d/](../../tests/track_d/)의 `test_c_netblock.py`, `test_c_db_blocks.py`, `test_c_internal_api.py`, `test_c_fw_agent.py`
+- C2-1: [db/users.py](../../db/users.py)(`bump_session_version`), [notify/mailer.py](../../notify/mailer.py)(`send_suspicious_login_notice`, `SKIPPED`), [notify/alert.py](../../notify/alert.py)(`send_playbook_alert`), [db/agent_heartbeats.py](../../db/agent_heartbeats.py)(`try_acquire_cooldown`, `release_cooldown`)
+- C2-2: [security/lockdown.py](../../security/lockdown.py)의 `release()`
+- 테스트: [tests/track_d/](../../tests/track_d/)의 `test_c_netblock.py`, `test_c_db_blocks.py`, `test_c_internal_api.py`, `test_c_fw_agent.py`, `test_c_actions.py`, `test_c_release_unblock.py`
