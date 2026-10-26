@@ -484,7 +484,8 @@ def command_login(
         status = int(post_response.status_code)
         redirect = post_response.headers.get("Location")
         # Location은 상대 경로("/dashboard")나 절대 URL로 올 수 있어 경로만 비교한다.
-        # "/login"으로 되돌아가는 302(잠금·CR-03 안내 등)는 성공이 아니다.
+        # "/login"으로 되돌아가는 302(잠금 안내 등)와, 로그인 화면을 다시 주는 200(비밀번호 틀림·CR-03 차단 —
+        # 둘은 일부러 같은 화면이다)은 성공이 아니다.
         redirect_path = (
             urlparse(redirect).path.rstrip("/") if redirect else ""
         )

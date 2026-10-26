@@ -60,6 +60,13 @@
 49. [49단계 — scripts/ 정리와 시뮬레이션 일괄 점검](guide49_scripts_reorganization.md)
 50. [50단계 — 7일치 샘플 로그 만들기 (대시보드 시연용)](guide50_demo_sample_logs.md)
 
+**Track D — 네트워크 계층 탐지·차단** (로컬 Docker 단지. 따라 하는 순서는 [netwatch/README.md](../../netwatch/README.md))
+
+51. [51단계 — 네트워크 센서 (Docker 단지·정문·CCTV)](guide51_network_sensor.md)
+52. [52단계 — 경보 수집과 교차 상관분석 (서명 검사·NET-01·CR-01~03)](guide52_net_ingest_correlation.md)
+53. [53단계 — 플레이북 엔진과 기록 보존](guide53_playbook_engine.md)
+54. [54단계 — L4 차단과 집행관 (차단 장부·fw-agent·조치 도구)](guide54_l4_block_agent.md)
+
 **단계 사이의 리팩터링 기록** (기능 변화 없이 파일 구조만 바꾼 작업)
 
 - [2026-09-15 — `app.py` / `db.py` / `dashboard.js` 파일 분리](../refactor/2026-09-15-file-split.md) — `routes/` Blueprint, `db/` 패키지, `public/js/dashboard/` ES 모듈로

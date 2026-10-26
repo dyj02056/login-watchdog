@@ -9,12 +9,12 @@
 # 모든 함수는 여러 번 불려도 결과가 같고(멱등), 허용 목록·주소 형식을 스스로 검사한다 —
 # 판단하는 쪽(플레이북)이 잘못된 주소를 넘겨도 여기서 한 번 더 막는다.
 #
-# import 규칙(계약서 K7): config, db, security.lockdown만 쓴다. lockdown은 나중에(C2-2)
-# release() 안에서 함수 안 import로 이 파일을 부르므로, 여기서 lockdown을 모듈째 import해도
+# import 규칙(계약서 K7): config, db, security.lockdown만 쓴다. lockdown은 release() 안에서(C2-2)
+# 함수 안 import로 이 파일을 부르므로, 여기서 lockdown을 모듈째 import해도
 # 순환이 생기지 않는다. lockdown.is_ip_allowlisted(...)처럼 모듈 이름을 거쳐 부르는 것은
 # 테스트에서 monkeypatch로 바꿔 끼울 수 있게 하기 위해서다.
 #
-# 사용하는 DB 함수(C1-1에서 db/network_blocks.py에 만든다):
+# 사용하는 DB 함수(C1-1에서 db/network_blocks.py에 만들었다):
 #   db.get_network_block / db.insert_network_block / db.update_network_block_if_status /
 #   db.count_recent_net_blocked_events
 # ============================================================================

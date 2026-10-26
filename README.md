@@ -2,13 +2,13 @@
 
 같은 IP에서 짧은 시간 안에 로그인을 반복해서 틀리면 자동으로 감지해 IP를 잠그고, Slack으로 알림을 보내고, 관리자가 대시보드에서 실시간으로 확인·해제할 수 있는 브루트포스 방어 데모 프로젝트입니다.
 
-원래는 애플리케이션 계층(L7) 공격 — 브루트포스, 가입/게시글/댓글 도배, 웹 스캐닝, 미인증 API 호출, 클릭재킹, 봇 트래픽, SSRF, 오픈 리다이렉트 등 — 을 위험등급(CRITICAL/HIGH/MEDIUM/LOW)별로 탐지·대응하는 데 집중했습니다. 이제는 그 기반 위에서 **네트워크(L3)/전송(L4) 계층 공격**까지 관찰·대응 범위를 넓히는 것을 다음 목표로 하고 있습니다(SYN Flood, 포트 스캐닝 등 — 현재는 미구현, [알려진 제한사항](#알려진-제한사항) 참고).
+원래는 애플리케이션 계층(L7) 공격 — 브루트포스, 가입/게시글/댓글 도배, 웹 스캐닝, 미인증 API 호출, 클릭재킹, 봇 트래픽, SSRF, 오픈 리다이렉트 등 — 을 위험등급(CRITICAL/HIGH/MEDIUM/LOW)별로 탐지·대응하는 데 집중했습니다. 그 기반 위에서 **Track D(네트워크 L3/전송 L4 계층 탐지·차단)** 로 범위를 넓혔습니다. 앱 앞에 정문(nginx)과 센서(Suricata·Scapy)를 둔 Docker 단지에서 SYN Flood·포트 스캔·스캐너 요청을 탐지하고, 앱 기록과 엮어 판단한 뒤(교차 규칙) 정문에서 L4로 막습니다. 이 부분은 로컬 Docker에서만 동작합니다 — 켜는 방법은 [netwatch/README.md](netwatch/README.md) 참고.
 
 **배포 주소**: https://login-watchdog.vercel.app (Vercel — 회원가입/로그인/관리자 대시보드까지 실제 스모크 테스트로 검증됨)
 
 ## 주요 기능
 
-- **Next.js 관제 화면** — 모든 화면(관리자 3개 + 로그인·가입·회원·게시판·복구)이 Next.js(React) 정적 빌드로 그려지고, 기존처럼 `python app.py`가 서빙합니다. 관리자는 벽 모니터형 관제 보드 3개 — **위협 현황**(`/admin/dashboard`, 시간대별 추이·7일 로그량·공격자 히트맵·공격 흐름도·신규 공격자·잠금 현황·미처리 이벤트·연관 사건 표), **공격 상세**(`/admin/attack`, Top 5·국가별 흐름·실시간 이벤트), **처리 작업대**(`/admin/ops`, 기존 처리 기능 전부)를 씁니다. L3/L4 공격은 아직 수집하지 않아 "수집 전" 빈 상태로 표시합니다. 표의 시각은 날짜까지 보여주고(칸이 넉넉하면 `2026-10-09 15:30:12`, 좁으면 `10-09 15:30`, 로그인 시도·보안 이벤트·해결 시각은 초 포함), 좁은 화면에서도 차트 라벨이 겹치거나 잘리지 않게 맞췄습니다. 존재하지 않는 주소는 기본 영어 화면 대신 전용 404 화면(로그인·회원가입 링크)을 404 상태로 보여주며, 404 기록·Web Scanning 탐지는 그대로입니다. 구조·개발 방법·표시 규칙은 [guide48_nextjs_dashboard.md](docs/beginner-guide/guide48_nextjs_dashboard.md) 참고
+- **Next.js 관제 화면** — 모든 화면(관리자 3개 + 로그인·가입·회원·게시판·복구)이 Next.js(React) 정적 빌드로 그려지고, 기존처럼 `python app.py`가 서빙합니다. 관리자는 벽 모니터형 관제 보드 3개 — **위협 현황**(`/admin/dashboard`, 시간대별 추이·7일 로그량·공격자 히트맵·공격 흐름도·신규 공격자·잠금 현황·미처리 이벤트·연관 사건 표), **공격 상세**(`/admin/attack`, Top 5·국가별 흐름·실시간 이벤트), **처리 작업대**(`/admin/ops`, 기존 처리 기능 전부)를 씁니다. Track D 단지에서는 처리 작업대에 네트워크 이벤트·L4 차단 목록·장비 상태 배지가, 공격 상세에 L3/L4 유형별 건수가 나타납니다(네트워크 기록이 없는 배포 환경에서는 "수집 전" 빈 상태). 표의 시각은 날짜까지 보여주고(칸이 넉넉하면 `2026-10-09 15:30:12`, 좁으면 `10-09 15:30`, 로그인 시도·보안 이벤트·해결 시각은 초 포함), 좁은 화면에서도 차트 라벨이 겹치거나 잘리지 않게 맞췄습니다. 존재하지 않는 주소는 기본 영어 화면 대신 전용 404 화면(로그인·회원가입 링크)을 404 상태로 보여주며, 404 기록·Web Scanning 탐지는 그대로입니다. 구조·개발 방법·표시 규칙은 [guide48_nextjs_dashboard.md](docs/beginner-guide/guide48_nextjs_dashboard.md) 참고
 - **회원가입 / 로그인** — Supabase에 저장된 실제 계정으로 로그인하는 감시 대상 화면 (`/signup`, `/login`)
 - **브루트포스 탐지 + 자동 잠금** — 같은 IP가 60초 안에 5회 초과 로그인 실패 시 해당 IP를 5분간 자동 잠금
 - **Slack 알림** — 잠금이 발생하는 순간 Slack 채널에 시각·IP·실패 횟수·조치 내용을 전송 (웹훅 미설정 시 콘솔 로그로 자동 대체)
@@ -36,6 +36,7 @@
 - **보이지 않는 탭은 폴링하지 않음** — 관리자 대시보드(5초마다 `/api/status`, 요청 한 번에 DB 조회 약 21번)와 게시글 새 댓글 확인은 공용 부품 `public/js/polling.js`로 돕니다. 탭이 숨겨지면(다른 탭·창 최소화) 멈추고, 다시 보이면 즉시 한 번 갱신한 뒤 재개합니다. 응답을 받은 뒤에 다음 요청을 예약해서 서버가 느려도 요청이 겹치지 않습니다. 자세한 내용은 [guide45_visible_tab_polling.md](docs/beginner-guide/guide45_visible_tab_polling.md) 참고
 - **대시보드 즉시 반응** — 페이지 버튼을 누르면 응답을 기다리지 않고 번호가 바로 바뀌고 표가 "불러오는 중"으로 흐려지며, 그 표 하나만 서버에 요청합니다(`/api/status?only=<표>`, DB 조회 약 21번 → 1~2번). 해제·삭제 같은 처리 버튼은 누르는 즉시 "처리 중…"으로 바뀌어 두 번 눌리지 않습니다. 전체 갱신은 조회를 한 번에 보내고 만료된 잠금 정리는 15초에 한 번만 해서(`ADMIN_STATUS_RELEASE_INTERVAL_SECONDS`) 더 빨라졌습니다. 자세한 내용은 [guide46_dashboard_responsiveness.md](docs/beginner-guide/guide46_dashboard_responsiveness.md) 참고
 - **IPv6는 /64 대역 단위** — IPv6 사용자는 /64 대역 안에서 주소를 거의 공짜로 바꿀 수 있어서, 요청 IP를 한 곳(`helpers.get_request_ip`)에서 대역 키(예: `2001:db8:1:2::/64`)로 정규화합니다. 로그인 실패 집계·IP 잠금·요청 제한·보안 이벤트가 모두 대역 단위로 동작합니다(IPv4는 그대로). 현재 배포 주소에는 IPv6 입구가 없어 운영에는 IPv6가 들어오지 않으며, 호스팅 변경·자체 서버 운영에 대비한 것입니다. 자세한 내용은 [guide42_ipv6_prefix.md](docs/beginner-guide/guide42_ipv6_prefix.md) 참고
+- **Track D — 네트워크 계층 탐지·차단 (로컬 Docker 단지)** — `docker compose up`으로 정문(nginx)·센서(Suricata, Scapy L4 측정기)·배달원(shipper)·차단 프로그램(fw-agent)·앱·Mailpit을 함께 띄웁니다. 센서 경보는 서명(HMAC)을 붙여 앱 내부 창구(`/api/internal/net-events`)로 들어오고, 앱은 앱 기록과 엮어 교차 규칙으로 판단합니다 — **NET-01**(SYN 폭주 단독 → 시간 제한 L4 차단), **CR-01**(정찰 → 침투 킬체인 → IP 영구 잠금 + 영구 L4 차단), **CR-02**(SYN + HTTP 동시 폭주 → 시간 제한 L4 차단), **CR-03**(웹 공격·스캐너 기록이 있는 주소의 로그인 **성공**을 세션 전에 막고 기존 세션 끊기·주인에게 경고 메일). 출발지를 속일 수 있는 증거(SYN·포트 스캔)는 영구 조치에 쓰지 않습니다. 조치는 플레이북(`security/playbooks.py`)이 단계별로 실행·기록하고, 실제 차단은 fw-agent가 gateway의 ipset에 넣고 뺍니다. 탐지 → L4 차단 중앙값 약 2.6~3.2초(목표 5초, [measurements.md](docs/track-d/measurements.md)), 시연 시나리오 S4·S5·S5b·S6·S8 3회 연속 통과([scenario-results.md](docs/track-d/scenario-results.md)). 실행 방법은 [netwatch/README.md](netwatch/README.md), 설명은 [guide51](docs/beginner-guide/guide51_network_sensor.md)~[guide54](docs/beginner-guide/guide54_l4_block_agent.md) 참고
 - **임계값 튜닝 리포트** — `scripts/management/tune_thresholds.py`로 최근 N일간 CRITICAL(IP/계정 잠금) 이벤트 중 관리자가 자동 만료를 기다리지 않고 훨씬 빨리 수동 해제한 비율을 event_type별로 집계. 오탐(너무 예민한 임계값) 여부를 점검하는 완전한 읽기 전용 도구. 자세한 내용은 [docs/beginner-guide/guide30_threshold_tuning.md](docs/beginner-guide/guide30_threshold_tuning.md) 참고
 
 ## 기술 스택
@@ -50,6 +51,7 @@
 | IP 위치 | ip-api.com (결과는 Supabase `ip_locations`에 캐시) |
 | 인증 | Flask 세션 + `werkzeug.security` (비밀번호 해시) |
 | 프런트엔드 | Next.js(React, TypeScript) 정적 내보내기 + Apache ECharts — 소스는 `web/`, 빌드 결과는 `spa/`·`public/_next/`. 빌드가 없으면 예전 Jinja 화면(`templates/`)으로 자동 폴백 |
+| 네트워크 계층 (Track D, 로컬 Docker) | Docker Compose · nginx(정문) · Suricata 7(시그니처 IDS) · Scapy(L4 측정기) · iptables + ipset(L4 차단, fw-agent) · gunicorn(앱 컨테이너) · Mailpit(메일 확인) |
 | 테스트 | pytest |
 
 ## 시작하기 (Getting Started)
@@ -69,7 +71,7 @@ pip install -r requirements.txt
 
 ### 3. Supabase 프로젝트 준비
 1. [supabase.com](https://supabase.com)에서 프로젝트 생성
-2. **SQL Editor**에서 [docs/schema.sql](docs/schema.sql) 내용 전체 실행 (테이블 30개 생성 — 표별 설명은 [docs/feature-reference/db-schema-guide.md](docs/feature-reference/db-schema-guide.md), 관계도는 [ERD.svg](docs/feature-reference/ERD.svg)). 영구 잠금 기능(guide33)을 쓰려면 기존 DB에는 [docs/migrations/guide33_permanent_lock.sql](docs/migrations/guide33_permanent_lock.sql)을, 비밀번호 변경 기능(guide35)을 쓰려면 [docs/migrations/guide35_password_change.sql](docs/migrations/guide35_password_change.sql)을 **추가로** 실행해야 합니다(`schema.sql` 맨 아래에도 같은 내용이 들어 있고, 여러 번 실행해도 안전합니다). 특히 guide35 SQL은 **새 코드를 배포하기 전에** 실행해야 합니다 — 없으면 회원 화면 전체가 오류가 납니다. 관리자 계정 단위 잠금(guide38)을 쓰려면 [docs/migrations/guide38_admin_account_lockout.sql](docs/migrations/guide38_admin_account_lockout.sql)도 **배포 전에** 실행해야 합니다 — 없으면 `/admin/login`과 대시보드가 오류가 납니다. 이메일 인증(guide40)은 [docs/migrations/guide40_email_verification.sql](docs/migrations/guide40_email_verification.sql)을 **배포 전에** 실행해야 합니다 — 없으면 회원가입과 회원 화면이 오류가 납니다. 로그 자동 정리(guide44)는 [docs/migrations/guide44_log_retention.sql](docs/migrations/guide44_log_retention.sql)을 실행한 뒤 [docs/migrations/guide47_daily_log_summary.sql](docs/migrations/guide47_daily_log_summary.sql)까지 실행하면 켜집니다(앱 코드와 무관해서 언제 실행해도 됩니다)
+2. **SQL Editor**에서 [docs/schema.sql](docs/schema.sql) 내용 전체 실행 (테이블 35개 생성 — 표별 설명은 [docs/feature-reference/db-schema-guide.md](docs/feature-reference/db-schema-guide.md), 관계도는 [ERD.svg](docs/feature-reference/ERD.svg)). 영구 잠금 기능(guide33)을 쓰려면 기존 DB에는 [docs/migrations/guide33_permanent_lock.sql](docs/migrations/guide33_permanent_lock.sql)을, 비밀번호 변경 기능(guide35)을 쓰려면 [docs/migrations/guide35_password_change.sql](docs/migrations/guide35_password_change.sql)을 **추가로** 실행해야 합니다(`schema.sql` 맨 아래에도 같은 내용이 들어 있고, 여러 번 실행해도 안전합니다). 특히 guide35 SQL은 **새 코드를 배포하기 전에** 실행해야 합니다 — 없으면 회원 화면 전체가 오류가 납니다. 관리자 계정 단위 잠금(guide38)을 쓰려면 [docs/migrations/guide38_admin_account_lockout.sql](docs/migrations/guide38_admin_account_lockout.sql)도 **배포 전에** 실행해야 합니다 — 없으면 `/admin/login`과 대시보드가 오류가 납니다. 이메일 인증(guide40)은 [docs/migrations/guide40_email_verification.sql](docs/migrations/guide40_email_verification.sql)을 **배포 전에** 실행해야 합니다 — 없으면 회원가입과 회원 화면이 오류가 납니다. 로그 자동 정리(guide44)는 [docs/migrations/guide44_log_retention.sql](docs/migrations/guide44_log_retention.sql)을 실행한 뒤 [docs/migrations/guide47_daily_log_summary.sql](docs/migrations/guide47_daily_log_summary.sql)까지 실행하면 켜집니다(앱 코드와 무관해서 언제 실행해도 됩니다). Track D(로컬 Docker 단지)를 쓰려면 [docs/migrations/guide52_track_d.sql](docs/migrations/guide52_track_d.sql)(표 5개·칸 추가)과 [guide53_track_d_retention.sql](docs/migrations/guide53_track_d_retention.sql)(보존 기간)을 차례로 실행합니다 — 둘 다 추가만 하므로 Track D를 쓰지 않는 배포 앱에도 영향이 없습니다
 3. **Project Settings → API**에서 `Project URL`과 `service_role` key 확인
 
 ### 4. 환경변수 설정
@@ -212,7 +214,7 @@ npm run build   # 빌드 후 spa/ 와 public/_next/ 를 갱신
 ```bash
 pytest tests/
 ```
-실제 Supabase에 접속하지 않고 가짜 데이터(monkeypatch)로 판정 로직만 검증하므로 몇 초 안에 끝납니다. 현재 총 728개 테스트가 모두 통과합니다.
+실제 Supabase에 접속하지 않고 가짜 데이터(monkeypatch)로 판정 로직만 검증하므로 몇 초 안에 끝납니다. 현재 총 1,270개 테스트가 모두 통과합니다(Track D 테스트는 `tests/track_d/`, 2026-10-26 기준). Docker 단지에서 실제로 공격을 재현해 확인하는 점검은 아래 "Track D 점검 스크립트"를 씁니다.
 
 ## 유지보수 스크립트
 
@@ -242,6 +244,13 @@ GET 11회를 보내 재현할 수 있습니다. [실행 조건과 알림 확인 
 | `scripts/demo/demo_data.py` | 위 세 스크립트가 같이 쓰는 재료(나라별 IP 대역, 가짜 회원 이름, 시각 이동 규칙) |
 | `scripts/demo/memory_supabase.py` | 메모리에 사는 가짜 Supabase(`MemoryClient`). 표를 리스트로 들고 있어 insert한 행을 기억하고 조건으로 걸러 세므로 "5번 틀리면 잠금" 같은 탐지가 진짜처럼 동작합니다. `check_simulations.py`가 씀 |
 | `scripts/demo/check_simulations.py` | 시뮬레이션 전체를 한 번에 점검. 메모리 DB(`memory_supabase.py`)를 붙인 서버를 127.0.0.1:5000에 띄워 시뮬레이션을 실행하고, 서버가 기대한 보안 이벤트를 실제로 기록했는지 대조한다(진짜 Supabase·Slack·메일 미접속). `python scripts/demo/check_simulations.py [이름 일부]` |
+
+**Track D 점검 스크립트** (`scripts/net/`, Docker 단지를 켠 뒤 내 PC에서 실행 — 공격은 일회용 공격 상자 컨테이너로 보내고 DB는 읽기만 함, 자세한 내용은 [netwatch/README.md](netwatch/README.md) 7·9장)
+
+| 스크립트 | 역할 |
+|---|---|
+| `scripts/net/run_all.py` | 시연 시나리오 S4·S5·S5b·S6·S8(S7)을 `--repeat N`번 돌려 기대 결과가 DB·응답·메일에 생겼는지 PASS/FAIL로 채점하고 `docs/track-d/scenario-results.md`에 덧붙임. 시나리오 하나만은 `check_s4.py`~`check_s8.py` |
+| `scripts/net/measure_detect_to_block.py` | SYN 폭주를 탐지한 뒤 정문에서 L4로 막기까지 걸린 시간을 DB 시각으로 재 `docs/track-d/measurements.md`에 기록(`--scenario s5\|s5b --repeat 3`) |
 
 `bruteforce_sim.py`의 `--ip` 옵션: 로컬 환경에서는 팀원 전원이 다 같은 `127.0.0.1`로 접속하게 되어 "서로 다른 공격자 IP에서 왔다"는 상황을 재현할 수 없다. `--ip 1.2.3.4`를 주면 그 값을 `X-Forwarded-For` 헤더에 실어 보내는데, 이 헤더는 대상 서버의 `.env`에서 `TRUST_FORWARDED_FOR=true`로 켜뒀을 때만 실제 접속 IP처럼 반영된다(운영 환경 기본값인 `false`에서는 서버가 헤더를 무시하고 진짜 접속 IP를 그대로 씀 — 배포 사이트에서 이 옵션이 안전하게 아무 효과가 없는 이유).
 ```bash
@@ -284,8 +293,11 @@ login-watchdog/
 ├── config.py                      # 임계값·윈도우·잠금시간·입력 형식 규칙 등 상수
 ├── security/                      # 보안 엔진: 탐지 → 상관분석 → 대응
 │   ├── detector.py                #   "수상한가?" 판정 (임계값 비교, 잠금 상태 조회)
-│   ├── correlate.py               #   같은 IP의 서로 다른 이벤트를 사건으로 묶기 (SIEM)
-│   ├── lockdown.py                #   영구 잠금 승격·해제·이메일 복구 반영
+│   ├── correlate.py               #   같은 IP의 서로 다른 이벤트를 사건으로 묶기 (SIEM) + Track D 교차 규칙 NET-01·CR-01~03
+│   ├── lockdown.py                #   영구 잠금 승격·해제·이메일 복구 반영 (해제 시 L4 차단도 해제 요청)
+│   ├── net_ingest.py              #   Track D: 네트워크 경보 → 보안 이벤트 승격, NET_BLOCKED 기록·해결
+│   ├── netblock.py                #   Track D: L4 차단·해제 요청을 network_blocks 장부에 기록(TTL 계산, 허용 목록 거부)
+│   ├── playbooks.py               #   Track D: 규칙별 대응 절차(플레이북) 실행·단계 기록
 │   └── soar/                      #   판정 결과를 실제 조치로 실행 (SOAR) — 함수는 __init__.py가 재내보내기
 │       ├── lockouts.py            #     enforce_*(잠금 집행), try_release_expired_*/manual_release_*(해제)
 │       ├── observe.py             #     notify_*(알림 + 기록만), record_rejection(HIGH 거부 기록)
@@ -304,6 +316,7 @@ login-watchdog/
 │   ├── request_utils.py           #   get_request_ip, 허니팟, 위치 붙이기, 아이디 가리기
 │   ├── device.py                  #   hash_secret, 기기 쿠키
 │   ├── timing.py                  #   응답 시간 고정(계정 존재 여부 노출 방지)
+│   ├── spa.py                     #   Next.js 정적 화면 서빙 + 기존 라우트 응답을 JSON 봉투로 바꾸는 어댑터
 │   └── hooks.py                   #   모든 요청에 걸리는 훅(보안 헤더, 404 기록 + 404 화면 연결, 반복 접근·매크로 관찰)
 ├── routes/                        # Blueprint — 실제 화면 라우트
 │   ├── auth.py                    #   auth_bp: /signup, /login
@@ -317,7 +330,12 @@ login-watchdog/
 │   ├── member.py                  #   member_bp: /dashboard/* (프로필, 비밀번호 변경)
 │   ├── email.py                   #   email_bp: /email/confirm (이메일 인증 링크)
 │   ├── password.py                #   password_bp: /password/* (비밀번호 찾기)
-│   └── recovery.py                #   recovery_bp: /recovery/* (영구 잠금 이메일 인증 복구)
+│   ├── recovery.py                #   recovery_bp: /recovery/* (영구 잠금 이메일 인증 복구)
+│   └── internal/                  #   Track D 내부 창구 /api/internal/* (HMAC 서명 필수, CSRF 제외)
+│       ├── _hmac.py               #     보낸이별 키로 서명·시각 검사
+│       ├── ingest.py              #     POST net-events — shipper가 보낸 센서 경보 접수
+│       ├── blocks.py              #     GET blocks / POST blocks/ack — fw-agent의 차단 목록·결과 보고
+│       └── heartbeat.py           #     POST heartbeat — shipper·fw-agent 생존 신호
 ├── db/                            # Supabase 연동 — 표 묶음별 패키지, 호출부는 db.함수명()으로 사용
 │   ├── __init__.py                #   하위 모듈 함수를 전부 다시 내보내기(re-export)
 │   ├── _client.py                 #   get_client(), _now_iso() — Supabase 연결(HTTP/1.1 + 조회 1회 재시도)
@@ -340,7 +358,19 @@ login-watchdog/
 │   ├── incidents.py               #   security_incidents (SIEM 상관분석)
 │   ├── access_requests.py         #   access_requests (AI 조기 경보 승인 대기)
 │   ├── email_tokens.py            #   email_tokens (이메일 인증·변경·비밀번호 재설정 링크)
-│   └── api_access_log.py          #   api_access_log (매크로/봇 탐지)
+│   ├── api_access_log.py          #   api_access_log (매크로/봇 탐지)
+│   ├── network_events.py          #   Track D: network_events (센서 경보 원본) + 교차 규칙용 조회
+│   ├── network_blocks.py          #   Track D: network_blocks (L4 차단 장부)
+│   ├── agent_heartbeats.py        #   Track D: agent_heartbeats (장비 생존 신호), notification_cooldowns (알림 쿨다운)
+│   └── playbook_runs.py           #   Track D: playbook_runs (플레이북 단계 기록)
+├── netwatch/                      # Track D Docker 단지 구성품 — 실행 안내는 netwatch/README.md
+│   ├── nginx/                     #   정문(gateway) 설정 — X-Forwarded-For를 실제 출발지로 덮어씀
+│   ├── suricata/                  #   센서(시그니처 IDS) 설정·우리 규칙(local.rules)
+│   ├── l4_detector/               #   Scapy L4 측정기(SYN 비율·포트 수)
+│   ├── shipper/                   #   센서 기록을 서명해 앱으로 보내는 배달원
+│   ├── fw_agent/                  #   차단 목록을 받아 ipset에 넣고 빼는 차단 프로그램
+│   └── attacker/                  #   연습용 공격 상자(lw.py: scan·webscan·brute·scanner-ua·login·synflood·httpflood)
+├── docker-compose.yml, Dockerfile # Track D 단지 정의(edge·core·egress 네트워크, 서비스 7개 + 공격 상자) / 앱 컨테이너(gunicorn)
 ├── web/                           # Next.js(React, TypeScript) 화면 소스 — src/app(화면 주소), src/components, src/lib(api·폴링), src/styles. `npm run build`가 spa/·public/_next/를 만든다 (web/README.md, guide48)
 ├── spa/                           # Next.js 빌드 결과 HTML(화면 껍데기) — Flask가 helpers/spa.py로 서빙, 저장소에 커밋
 ├── templates/                     # 예전 Jinja2 화면 — spa/가 없거나 SPA_ENABLED=false일 때 폴백 (admin_dashboard/ — 대시보드 표 조각)
@@ -350,12 +380,14 @@ login-watchdog/
 ├── scripts/                       # 터미널 도구 — 위 "유지보수 스크립트" 참고
 │   ├── simulation/                #   공격 시뮬레이터: critical/(브루트포스·분산·관리자·영구 잠금·사건화) · high/(도배·HTTP 플러딩·복구 폭주) · medium/(웹 스캐닝·허니팟·매크로 등), _sim_common.py(공용 부품)
 │   ├── management/                #   운영 도구: unlock_ip/unlock_account, create_admin, daily_report, tune_thresholds, delete_security_events, send_test_mail
-│   └── demo/                      #   generate_demo_logs.py(7일치 샘플 로그 생성) + demo_server.py(그 로그로 화면 확인) + load_demo_to_supabase.py(선택: 실제 DB 적재), check_simulations.py + memory_supabase.py(시뮬레이션 일괄 점검)
+│   ├── demo/                      #   generate_demo_logs.py(7일치 샘플 로그 생성) + demo_server.py(그 로그로 화면 확인) + load_demo_to_supabase.py(선택: 실제 DB 적재), check_simulations.py + memory_supabase.py(시뮬레이션 일괄 점검)
+│   └── net/                       #   Track D 점검: run_all.py·check_s*.py(시나리오 채점), measure_detect_to_block.py(탐지→차단 시간)
 ├── docs/schema.sql                # Supabase 테이블 정의
-├── docs/migrations/               # 기존 DB에 추가로 실행할 SQL (guide33 영구 잠금, guide35 비밀번호 변경, guide38 관리자 계정 잠금, guide40 이메일 인증, guide44 로그 자동 정리, guide47 일별 요약)
-├── .github/workflows/             # tests.yml(push/PR마다 pytest + Next.js 타입 검사·빌드 결과 일치 확인), supabase-keep-alive.yml(무료 Supabase가 멈추지 않게 매일 호출)
+├── docs/migrations/               # 기존 DB에 추가로 실행할 SQL (guide33 영구 잠금, guide35 비밀번호 변경, guide38 관리자 계정 잠금, guide40 이메일 인증, guide44 로그 자동 정리, guide47 일별 요약, guide52 Track D 표·칸, guide53 Track D 보존)
+├── docs/track-d/                  # Track D 연동 계약서(contracts.md), 탐지→차단 측정 결과, 시나리오 점검 결과, 순서도 해설
+├── .github/workflows/             # tests.yml(push/PR마다 pytest + Next.js 타입 검사·빌드 결과 일치 확인 + Suricata 규칙 검사), supabase-keep-alive.yml(무료 Supabase가 멈추지 않게 매일 호출), pages.yml(순서도 해설 GitHub Pages)
 ├── vercel.json                    # Vercel 설정 — spa/ 포함, _next 정적 파일 장기 캐시
-├── docker-compose.mailpit.yml     # 개발용 가짜 메일 서버(Mailpit) — 실제 발송 없이 메일 흐름 확인
+├── docker-compose.mailpit.yml     # 개발용 가짜 메일 서버(Mailpit) — 앱을 Docker 없이 실행할 때만 (Track D 단지에는 Mailpit이 이미 들어 있음)
 ├── docs/beginner-guide/           # 비전공자용 단계별 구현 해설서 (단계별 파일로 분리)
 ├── docs/board-comment/            # 게시판·댓글 기능 설계 문서(분석 → 결정 → 계획 → 결과)
 ├── docs/scenario.md, vpn-demo-guide.md, web-scanning-demo.md # 시연 대본 · VPN으로 서로 다른 IP를 쓰는 시연 · 웹 스캐닝 재현
@@ -367,9 +399,11 @@ login-watchdog/
 
 - [PRODUCT.md](PRODUCT.md) — 관제 화면(Next.js)의 사용자·톤·디자인 원칙. [web/README.md](web/README.md)는 화면 소스를 빌드하는 방법
 - [plan.md](plan.md) — 각 파일을 왜 이렇게 설계했는지에 대한 상세 근거
-- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide50_demo_sample_logs.md` 파일로 나뉘어 있고, 이 파일 안의 목차에서 바로 이동할 수 있습니다.
+- [docs/beginner-guide/beginner-guide.md](docs/beginner-guide/beginner-guide.md) — 개발 지식이 없어도 이해할 수 있도록 각 구현 단계를 코드와 함께 풀어쓴 해설서. 단계별로 `guide01_setup.md` ~ `guide54_l4_block_agent.md` 파일로 나뉘어 있고(51~54단계가 Track D), 이 파일 안의 목차에서 바로 이동할 수 있습니다.
+- [netwatch/README.md](netwatch/README.md) — Track D Docker 단지를 켜고 공격 상자로 경보를 만들고 시나리오를 점검하는 순서(막혔을 때 표 포함)
+- [docs/track-d/contracts.md](docs/track-d/contracts.md) — Track D 연동 계약서(함수 이름·주소·데이터 모양의 기준). 결과는 [measurements.md](docs/track-d/measurements.md)(탐지→차단 시간), [scenario-results.md](docs/track-d/scenario-results.md)(시나리오 점검)
 - [docs/feature-reference/01-feature-order.md](docs/feature-reference/01-feature-order.md) · [02-layer-order.md](docs/feature-reference/02-layer-order.md) — 기능별로 "어떤 코드가 어떤 순서로 실행되는지"를 실제 코드·줄번호와 함께 따라가는 가이드(기능 순서 / 계층 순서)
-- [docs/feature-reference/db-schema-guide.md](docs/feature-reference/db-schema-guide.md) · [ERD.svg](docs/feature-reference/ERD.svg) — 테이블 30개의 쓰임새와 관계도
+- [docs/feature-reference/db-schema-guide.md](docs/feature-reference/db-schema-guide.md) · [ERD.svg](docs/feature-reference/ERD.svg) — 테이블 35개(Track D 5개 포함)의 쓰임새와 관계도(ERD에는 Track D 표가 아직 없음)
 - [docs/architecture-map.html](docs/architecture-map.html) — 폴더·파일이 탐지 → 대응 → 알림 파이프라인의 어느 단계를 맡는지 색으로 묶은 지도
 - [docs/scenario.md](docs/scenario.md) — 발표·시연 대본(공격 → 탐지 → 대응 → 복구 순서)
 - [docs/board-comment/](docs/board-comment) — 게시판·댓글 기능을 왜 이렇게 설계했는지(구현 전 분석 → 모호한 질문 11개 결정 → 구현 계획 → 결과 보고) 순서대로 기록한 문서 4종
@@ -383,7 +417,7 @@ login-watchdog/
 - **자동 해제는 "정시"가 아니라 "다음 요청 시"** — 백그라운드 타이머 없이, `/login` 요청이나 대시보드 폴링이 들어올 때 만료된 잠금을 정리합니다. 한동안 요청이 없으면 5분이 지나도 실제 해제가 늦어질 수 있습니다.
 - **`TRUST_FORWARDED_FOR`는 데모 전용** — 켜두면 요청 헤더의 IP를 신뢰합니다(형식이 올바른 IP인지는 검증하지만, 그 값 자체가 진짜 요청자의 IP인지는 확인할 수 없습니다). 운영 환경에서 켜두면 공격자가 헤더에 임의의(형식은 유효한) IP를 넣는 것만으로 IP 잠금을 우회할 수 있어 위험합니다.
 - **동시 실행 시 경쟁 조건(race condition) 가능성** — 여러 사람이 동시에 같은 IP로 브루트포스를 시뮬레이션하면 Slack 알림이 중복 발송되거나 잠금 처리가 겹칠 수 있습니다. 시연 시 한 명만 시뮬레이션 실행을 권장합니다.
-- **Next.js 빌드 결과를 함께 커밋해야 함** — Vercel의 파이썬 빌드는 `npm`을 돌리지 않아서, `web/`을 고치면 `npm run build`로 만든 `spa/`·`public/_next/`를 같이 커밋해야 배포에 반영됩니다(CI `web` 작업이 최신 여부를 점검). 문제가 생기면 `SPA_ENABLED=false`로 예전 Jinja 화면으로 되돌릴 수 있습니다. 위협 현황·공격 상세의 L3/L4 영역은 수집 전이라 빈 상태로 표시됩니다.
+- **Next.js 빌드 결과를 함께 커밋해야 함** — Vercel의 파이썬 빌드는 `npm`을 돌리지 않아서, `web/`을 고치면 `npm run build`로 만든 `spa/`·`public/_next/`를 같이 커밋해야 배포에 반영됩니다(CI `web` 작업이 최신 여부를 점검). 문제가 생기면 `SPA_ENABLED=false`로 예전 Jinja 화면으로 되돌릴 수 있습니다. 공격 상세의 L3/L4 영역은 네트워크 기록이 있을 때(Track D 단지)만 채워지고, 그 밖에는 "수집 전" 빈 상태입니다.
 - **대시보드는 실시간이 아니라 폴링 방식** — 웹소켓 기반 실시간 스트리밍이 아니라 일정 주기(기본 5초, `ADMIN_DASHBOARD_POLL_MS`)로 새로고침합니다. 최대 그 주기만큼 화면이 실제 상태보다 늦게 보일 수 있습니다. 원래는 Supabase 무료 쿼터 보호를 위해 10초로 늘렸었지만, 공격 대응 상황을 더 빠르게 확인할 수 있도록 5초로 다시 줄였습니다 — 오래 켜두는 환경에서 쿼터가 걱정되면 `.env`에서 다시 늘릴 수 있습니다. 주기 조절 방법은 [docs/beginner-guide/guide09_quota.md](docs/beginner-guide/guide09_quota.md)를 참고하세요. 탭이 안 보일 때는 갱신하지 않습니다(guide45). 만료된 잠금이 대시보드에서 풀린 것으로 보이기까지는 최대 15초(`ADMIN_STATUS_RELEASE_INTERVAL_SECONDS`)가 더 걸릴 수 있습니다 — 실제 차단 해제는 로그인 요청마다 따로 처리되므로 늦어지지 않습니다(guide46).
 - **계정 단위 잠금 해제는 관리자 수동 또는 5분 자동** — 대시보드 "현재 잠긴 IP / 계정" 카드의 "즉시 해제"(임시 잠금)나 `scripts/management/unlock_account.py`로 풀 수 있습니다. 영구 잠금은 이 버튼으로 풀리지 않고 "영구 잠금" 카드의 "영구 해제"(super_admin) 또는 회원 본인의 이메일 인증으로 풉니다.
 - **대시보드 화면은 일부만 역할을 반영** — "관리자 계정 관리" 카드는 서버가 role에 따라 데이터를 아예 보내지 않고, 영구 잠금·복구 요청·IP 예외 카드는 `/api/status`가 내려주는 권한 목록(`permissions`)에 따라 버튼을 숨깁니다(guide33). 그 외 기존 버튼(회원 삭제, 게시글·댓글 삭제, 회원가입 토글, IP 해제 등)은 역할과 무관하게 보이고, 권한이 없는 역할이 눌러도 서버가 403으로 막을 뿐 화면에 "권한 없음" 안내는 뜨지 않습니다.
@@ -392,7 +426,8 @@ login-watchdog/
 - **관리자 계정 잠금은 허용 목록 IP에서는 적용되지 않음** — 공격자가 일부러 틀려 관리자를 못 들어오게 만드는 것을 막기 위한 의도된 예외입니다(guide38). 그래서 `PERMANENT_LOCK_IP_ALLOWLIST`에는 실제 관리자 PC만 넣어야 하며, 허용 목록에 넣은 IP가 뚫리면 그 IP에서는 IP 잠금만 남습니다. 관리자 계정 잠금은 5분 임시 잠금뿐이라, 천천히 계속 시도하는 공격은 5분마다 다시 잠기며 그때마다 Slack 알림이 갑니다.
 - **관리자 로그인 IP가 영구 잠금되면** 그 IP에서는 관리자 로그인도 막히고 이메일 복구도 없습니다. 다른 관리자/다른 IP로 로그인해 대시보드에서 풀거나, 터미널에서 `python scripts/management/unlock_ip.py --ip <IP> --permanent`로 풀어야 합니다.
 - **DB 연결 끊김은 조회만 자동 재시도** — 서버리스에서 쉬던 연결이 끊겨 가끔 500이 나던 문제를 HTTP/1.1 연결과 조회(GET) 1회 재시도로 막았습니다(guide36). 기록·수정 요청은 두 번 기록될 위험 때문에 재시도하지 않아서, 그 순간 연결이 끊기면 드물게 오류가 날 수 있습니다.
-- **L3/L4(네트워크/전송 계층) 공격 대응은 아직 없음** — 현재 방어 로직은 전부 HTTP 요청(L7) 내용을 근거로 판단합니다. SYN Flood, 포트 스캐닝처럼 그보다 아래 계층에서 발생하는 공격은 별도의 관찰 지점(리버스 프록시/방화벽 등) 설계가 필요하며, 이 프로젝트의 다음 확장 목표입니다.
+- **L3/L4(네트워크/전송 계층) 대응은 로컬 Docker 단지에서만** — Track D는 정문·센서·방화벽을 직접 띄워야 해서 `docker compose`로 켠 단지 안에서만 동작합니다. Vercel 배포에는 Track D 값을 넣지 않으며, 그때는 기존 L7 방어만 동작합니다. 단지 안에서도 SYN·포트 스캔처럼 출발지를 위조할 수 있는 경보는 짧은 시간 제한 차단까지만 하고 영구 조치에 쓰지 않습니다. CR-02 반복 시 영구 L4 차단(관리자 승인), CR-04~06, LLM 사후 요약은 선택 과제로 남겨 두었습니다.
+- **CR-03으로 막힌 로그인도 로그인 기록에는 "성공"으로 남음** — 비밀번호 확인 직후 기록하고 그다음에 의심 여부를 보기 때문입니다. 처리 작업대에서 볼 때는 같은 IP의 CR-03 사건과 함께 봐야 합니다(guide52).
 - **`python app.py`는 개발용 서버** — Flask 내장 서버는 Flask가 공식적으로 "운영 배포에 쓰지 말라"고 명시하는 개발용입니다(디버그 모드는 `FLASK_DEBUG=true`일 때만 켜짐). Vercel 배포는 `app` 객체를 서버리스로 직접 실행하므로 해당 없고, 그 외 곳에 운영 배포하려면 gunicorn 같은 프로덕션 WSGI 서버를 써야 합니다(예: `gunicorn app:app`).
 - **회원가입 응답은 아직 가입 여부를 알려줌** — "이미 사용 중인 아이디 또는 이메일입니다"로 가입된 아이디·이메일을 확인할 수 있습니다. 숨기려면 가입 확인 메일 방식으로 바꿔야 해서 남겨 두었습니다(가입은 IP당 빈도 제한이 있음, guide39). 로그인 잠금 문구와 복구 코드 화면은 가입 여부를 드러내지 않습니다.
 - **복구 코드는 요청한 기기에서만** — PC에서 복구를 요청하고 휴대폰 브라우저에 6자리 코드를 넣으면 거절됩니다. 이 경우 휴대폰에서는 메일의 링크를 누르면 됩니다(guide39).

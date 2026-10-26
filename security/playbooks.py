@@ -120,7 +120,7 @@ _ARGUMENTS = {name: globals()[f"_{name}"] for name in ACTIONS}
 def run(playbook: str, trigger_ref: str, ctx: dict) -> list[dict]:
     """단계별 결과를 반환하고 기록 실패도 격리하여 이미 수행한 차단을 보존한다.
 
-    조치 함수를 호출 시점에 찾아 monkeypatch와 아직 없는 C 함수를 지원한다.
+    조치 함수를 호출 시점에 찾아 monkeypatch를 지원하고, 실행 함수가 없는 단계(선택 과제 llm_postmortem)는 SKIPPED로 남긴다.
     예외 메시지에 비밀값이 섞일 수 있으므로 기록에는 예외 종류만 남긴다.
     """
     results = []
