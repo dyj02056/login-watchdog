@@ -28,7 +28,7 @@ def run(ctx) -> cc.CheckResult:
     client, prefix = ctx.client, ctx.prefix
     ip = cc.choose_fresh_ip(client, prefix)
     if ip is None:
-        return cc.CheckResult(SCENARIO, "SKIP", "점검용 IP(.111~.139)를 모두 썼음 — 오래된 차단·사건 정리 후 재시도", None)
+        return cc.CheckResult(SCENARIO, "SKIP", f"점검용 IP({cc.CHECK_IP_LABEL})를 모두 썼음 — 오래된 차단·사건 정리 후 재시도", None)
 
     print(f"  [{SCENARIO}] 출발지 {ip} — 정찰·웹스캔·무차별 대입(같은 IP)")
     # 세 단계를 순서대로 같은 IP로 보낸다. 각 컨테이너는 --rm으로 끝나며 IP를 놓으므로 다음 단계가 같은 --ip를 쓸 수 있다.

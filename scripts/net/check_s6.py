@@ -49,7 +49,7 @@ def run(ctx) -> cc.CheckResult:
 
     ip = cc.choose_fresh_ip(client, prefix)
     if ip is None:
-        return cc.CheckResult(SCENARIO, "SKIP", "점검용 IP(.111~.139)를 모두 썼음 — 오래된 차단·사건 정리 후 재시도", None)
+        return cc.CheckResult(SCENARIO, "SKIP", f"점검용 IP({cc.CHECK_IP_LABEL})를 모두 썼음 — 오래된 차단·사건 정리 후 재시도", None)
 
     print(f"  [{SCENARIO}] 출발지 {ip} — 스캐너 UA → (근거 대기) → victim 로그인")
     cc.run_oneshot(cc.SCANNER_UA, ip, prefix)

@@ -39,13 +39,23 @@ RESULTS = ROOT / "docs" / "track-d" / "scenario-results.md"
 # 단지에서 함께 켜져 있어야 하는 서비스(README 3장). 상태만 보여 주고, 멈추지는 않는다.
 REQUIRED_SERVICES = ("gateway", "app", "mailpit", "sensor", "l4-detector", "shipper", "fw-agent")
 
-# 이 점검이 쓰는 새 출발지 IP 범위(.111~.139). 다른 용도와 겹치지 않게 범위를 나눠 둔다:
+# 이 점검이 쓰는 새 출발지 IP 범위(.111~.139, 그다음 .11~.99). 다른 용도와 겹치지 않게 범위를 나눠 둔다:
 #   .1 내 브라우저 / .10 gateway / .101~.103 고정 상자 / .140 S7 위조 전용 /
 #   .150~.199 통합 담당자의 5초 측정(measure_*)·M1 수동 차단 예시.
 # 같은 IP를 다시 쓰면 앞 시나리오의 차단과 "사건당 규칙당 1회"에 막혀 재현이 안 되므로
 # network_blocks와 security_incidents(닫힌 사건 포함)에 아직 없는 주소만 고른다.
+# .111~.139(29개)는 10/26 하루 세 번 실행에 바닥났다. 공용 DB의 기록을 지우지 않고 리허설·발표까지
+# 다시 돌릴 수 있게 비어 있던 .11~.99를 더했다(.2~.9는 Docker 자동 할당과 겹칠 수 있어 비워 둔다).
+# 앞 범위를 먼저 써서 기존 실행 기록과 같은 주소부터 이어 간다.
+CHECK_IP_RANGES = ((111, 139), (11, 99))
+CHECK_IP_LABEL = ".111~.139·.11~.99"
 CHECK_IP_START = 111
 CHECK_IP_END = 139
+# 점검 범위가 다른 용도와 겹치면 측정·시연 차단과 판정이 섞이므로 불러올 때 바로 막는다.
+_RESERVED_IPS = {1, 10, 101, 102, 103, 140, *range(150, 200)}
+assert not any(
+    last in _RESERVED_IPS for start, end in CHECK_IP_RANGES for last in range(start, end + 1)
+), "점검용 IP 범위가 예약 주소와 겹칩니다"
 
 # S6 login이 쓰는 테스트 계정. 시연 대역 PC에서 C3-1을 돌릴 때는 victim_c를 쓴다(README 7.4).
 VICTIM_USERNAME = "victim_c"
@@ -130,14 +140,16 @@ def get_reader():
     return db.get_client()
 
 
-def choose_fresh_ip(client, prefix: str, start: int = CHECK_IP_START, end: int = CHECK_IP_END) -> str | None:
+def choose_fresh_ip(client, prefix: str, start: int | None = None, end: int | None = None) -> str | None:
     """점검 범위에서 아직 쓰지 않은 새 출발지 IP 하나. 다 썼으면 None.
 
     network_blocks에 한 번이라도 오른 IP, 그리고 사건이 한 번이라도 있었던 IP(닫힌 사건 포함)는 피한다.
     차단·열린 사건이 남아 있으면 앞 실행에 막혀 같은 재현이 다시 일어나지 않고, 닫힌 사건의 IP라도 다시 쓰면
     그 IP로 남은 옛 경고 메일·playbook_runs·NET_SCANNER_UA가 이번 판정에 섞이기 때문이다.
-    그만큼 범위(.111~.139)가 빨리 떨어지므로, 다 쓰면 None을 돌려주고 시나리오는 SKIP한다(정리 후 재시도).
+    그만큼 범위가 빨리 떨어지므로, 다 쓰면 None을 돌려주고 시나리오는 SKIP한다(정리 후 재시도).
+    start·end를 주면 그 한 구간만, 안 주면 CHECK_IP_RANGES를 앞에서부터 차례로 본다.
     """
+    ranges = ((start, end),) if start is not None and end is not None else CHECK_IP_RANGES
     blocked = client.table("network_blocks").select("ip_address").like("ip_address", f"{prefix}.%").execute().data or []
     used = {row["ip_address"] for row in blocked}
     incidents = (
@@ -149,10 +161,11 @@ def choose_fresh_ip(client, prefix: str, start: int = CHECK_IP_START, end: int =
         or []
     )
     used |= {row["ip_address"] for row in incidents}
-    for last in range(start, end + 1):
-        ip = f"{prefix}.{last}"
-        if ip not in used:
-            return ip
+    for range_start, range_end in ranges:
+        for last in range(range_start, range_end + 1):
+            ip = f"{prefix}.{last}"
+            if ip not in used:
+                return ip
     return None
 
 
