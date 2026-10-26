@@ -12,6 +12,8 @@
 #   LW_EDGE_PREFIX: edge 대역의 앞 세 자리(기본값: 172.28.0)
 #   SENSOR_IFACE: gateway 네임스페이스의 edge 인터페이스(기본값: 자동 — 비었거나 auto면
 #                 ${LW_EDGE_PREFIX}.10이 붙은 인터페이스를 찾는다)
+#   EVE_MAX_BYTES: eve.json 최대 크기(기본 50MiB). 초과하면 같은 파일을 비워
+#                  shipper가 크기 감소를 감지하고 처음부터 다시 읽게 한다.
 #
 # 줄바꿈 주의: 이 파일은 LF여야 한다. CRLF면 컨테이너의 sh가 "set: -: invalid option"으로
 # 바로 멈춘다. 저장소 루트 .gitattributes의 "*.sh text eol=lf"가 Windows에서도 LF로 꺼내 준다.
@@ -24,6 +26,10 @@ RUNTIME_CONFIG="/tmp/login-watchdog-suricata.yaml"
 ET_RULE_DIR="/var/lib/suricata/rules"
 ET_RULE_FILE="${ET_RULE_DIR}/suricata.rules"
 
+EVE_LOG_FILE="/var/log/suricata/eve.json"
+EVE_MAX_BYTES="${EVE_MAX_BYTES:-52428800}"
+EVE_SIZE_CHECK_SECONDS=30
+
 LW_EDGE_PREFIX="${LW_EDGE_PREFIX:-172.28.0}"
 REQUESTED_IFACE="${SENSOR_IFACE:-}"
 # edge 주소를 끝내 못 찾았을 때 쓰는 마지막 대안. compose 기본값과 같은 eth1(계약서 K1).
@@ -32,6 +38,18 @@ EDGE_IP="${LW_EDGE_PREFIX}.10"
 
 # HOME_NET은 gateway 한 주소만 지정하지 않고 edge·core 대역 전체를 사용한다.
 HOME_NET="[${LW_EDGE_PREFIX}.0/24,172.30.0.0/24]"
+
+case "${EVE_MAX_BYTES}" in
+    ''|*[!0-9]*)
+        echo "[FAIL] EVE_MAX_BYTES는 1 이상의 정수여야 합니다: ${EVE_MAX_BYTES}" >&2
+        exit 2
+        ;;
+esac
+
+if [ "${EVE_MAX_BYTES}" -le 0 ]; then
+    echo "[FAIL] EVE_MAX_BYTES는 1 이상의 정수여야 합니다: ${EVE_MAX_BYTES}" >&2
+    exit 2
+fi
 
 # ---------------------------------------------------------------------------
 # 감시 인터페이스 고르기 (계약서 K1, 2026-10-20)
@@ -109,6 +127,37 @@ if [ ! -e "${ET_RULE_FILE}" ]; then
     echo "[WARN] ET Open 규칙 파일이 없어 local.rules만 사용합니다." >&2
     : > "${ET_RULE_FILE}"
 fi
+
+# EVE는 shipper가 0.2초마다 읽어 내부 API로 전달하므로, 전송 완료된 원본 파일을
+# 계속 무한히 보관할 필요가 없다. 크기 제한을 넘으면 같은 inode의 파일을 비운다.
+# Tailer는 크기 감소를 로그 순환으로 감지하여 이후 새 줄을 처음부터 다시 읽는다.
+monitor_eve_size() {
+    while sleep "${EVE_SIZE_CHECK_SECONDS}"; do
+        if [ ! -f "${EVE_LOG_FILE}" ]; then
+            continue
+        fi
+
+        CURRENT_SIZE="$(
+            wc -c < "${EVE_LOG_FILE}" 2>/dev/null \
+                | tr -d '[:space:]'
+        )"
+
+        case "${CURRENT_SIZE}" in
+            ''|*[!0-9]*)
+                continue
+                ;;
+        esac
+
+        if [ "${CURRENT_SIZE}" -ge "${EVE_MAX_BYTES}" ]; then
+            : > "${EVE_LOG_FILE}"
+
+            echo "[WARN] eve.json이 ${CURRENT_SIZE}바이트에 도달해 " \
+                 "크기 제한(${EVE_MAX_BYTES}바이트)에 따라 비웠습니다." >&2
+        fi
+    done
+}
+
+monitor_eve_size &
 
 echo "[*] Suricata를 시작합니다."
 

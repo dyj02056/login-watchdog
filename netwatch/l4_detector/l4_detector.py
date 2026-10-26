@@ -12,6 +12,9 @@
   정상적인 단일 서비스 접근과 여러 포트를 탐색하는 동작을 구분한다.
 - L4_OUTPUT=/var/log/suricata/l4.json
   Suricata 로그와 같은 볼륨을 shipper가 함께 tail할 수 있게 한다.
+- L4_MAX_BYTES=10485760
+  l4.json이 무한히 커지지 않도록 10MiB에 도달하면 기존 내용을 비운다.
+  shipper는 파일 크기 감소를 감지하고 새로 기록되는 첫 줄부터 다시 읽는다.
 - LW_EDGE_PREFIX
   gateway 자신의 .10 주소를 탐지 대상에서 제외하는 데 사용한다.
 """
@@ -26,13 +29,18 @@ from typing import TextIO
 
 from scapy.all import IP, TCP, get_if_addr, get_if_list, sniff
 
-from detector_core import L4Detector, resolve_sensor_iface
+from detector_core import (
+    L4Detector,
+    resolve_sensor_iface,
+    truncate_output_if_oversized,
+)
 
 
 DEFAULT_SENSOR_IFACE = "eth1"
 DEFAULT_SYN_THRESHOLD = 100
 DEFAULT_DISTINCT_PORTS_THRESHOLD = 15
 DEFAULT_OUTPUT = "/var/log/suricata/l4.json"
+DEFAULT_MAX_OUTPUT_BYTES = 10 * 1024 * 1024
 DEFAULT_WINDOW_SECONDS = 10
 DEFAULT_COOLDOWN_SECONDS = 10
 
@@ -80,6 +88,10 @@ def run() -> None:
         "L4_DISTINCT_PORTS_10S",
         DEFAULT_DISTINCT_PORTS_THRESHOLD,
     )
+    max_output_bytes = read_positive_int(
+        "L4_MAX_BYTES",
+        DEFAULT_MAX_OUTPUT_BYTES,
+    )
     output_path = Path(
         os.environ.get("L4_OUTPUT", DEFAULT_OUTPUT)
     )
@@ -124,7 +136,7 @@ def run() -> None:
     )
 
     with output_path.open(
-        "a",
+        "a+",
         encoding="utf-8",
         buffering=1,
     ) as output:
@@ -143,6 +155,21 @@ def run() -> None:
                 dst_port=dst_port,
                 flags=flags,
             )
+
+            if not events:
+                return
+
+            if truncate_output_if_oversized(
+                output,
+                max_output_bytes,
+            ):
+                print(
+                    "[WARN] l4.json이 크기 제한에 도달해 "
+                    "기존 내용을 비웠습니다: "
+                    f"limit={max_output_bytes} bytes",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
             write_events(output, events)
 

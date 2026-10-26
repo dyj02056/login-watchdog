@@ -76,6 +76,8 @@ services:
     environment:
       SENSOR_IFACE: ${SENSOR_IFACE:-eth1}
       LW_EDGE_PREFIX: ${LW_EDGE_PREFIX}
+      # shipper로 전송된 EVE 로그가 무한히 커지지 않게 50MiB에서 비운다.
+      EVE_MAX_BYTES: ${EVE_MAX_BYTES:-52428800}
     entrypoint:
       - /bin/sh
       - /etc/suricata/custom/entrypoint.sh
@@ -103,9 +105,12 @@ services:
     environment:
       SENSOR_IFACE: ${SENSOR_IFACE:-eth1}
       LW_EDGE_PREFIX: ${LW_EDGE_PREFIX}
+      # Scapy JSON Lines 로그가 무한히 커지지 않게 10MiB에서 비운다.
+      L4_MAX_BYTES: ${L4_MAX_BYTES:-10485760}
     volumes:
       # Suricata eve.json과 같은 볼륨에 l4.json을 써서 shipper가 두 파일을 함께 읽게 한다.
       - eve:/var/log/suricata
+    restart: unless-stopped
 
   # eve.json·l4.json을 읽어 앱 수집 창구로 보내는 배달원 shipper(A1-3).
   shipper:
