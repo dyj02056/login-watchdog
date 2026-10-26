@@ -248,6 +248,13 @@ def login_submit():
     db.log_attempt(ip, username, success)
 
     if success:
+        # Track D CR-03 — 웹 공격·스캐너 기록이 있는 IP라면 비밀번호가 맞아도 세션을 만들기 전에
+        # 멈춘다(세션 무효화·주인 경고 메일은 플레이북이 한다). 화면에는 실패와 같은 문구만 보여
+        # 공격자가 "비밀번호는 맞았는데 탐지에 걸렸다"는 사실을 알아채지 못하게 한다.
+        from security import correlate
+        if correlate.check_success_login(ip, username):
+            flash("아이디 또는 비밀번호가 올바르지 않습니다.")
+            return _login_form()
         # 관리자 세션("admin_username")과는 완전히 다른 키("username")를 쓴다 —
         # 그래야 같은 브라우저에서 관리자 세션이 있더라도 서로 섞이지 않는다.
         # user_id도 같이 저장해두는 이유는 member_login_required 문지기 뒤에서
