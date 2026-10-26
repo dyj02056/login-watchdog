@@ -15,6 +15,7 @@ import ipaddress
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 from html.parser import HTMLParser
@@ -583,6 +584,42 @@ def command_httpflood(
     return result, exit_code
 
 
+def command_probe(
+    target_host: str,
+    target_port: int,
+    target_url: str,
+    timeout_seconds: float,
+    *,
+    connect: Callable[..., object] | None = None,
+) -> tuple[dict, int]:
+    """gateway에 TCP 연결만 한 번 시도해 L4 차단 여부를 본다(S4 실제 적용 확인).
+
+    HTTP 요청을 보내지 않는 이유: L7 잠금 상태여도 앱은 403 응답을 주므로 HTTP 결과로는 L4 차단과
+    구분할 수 없다. ipset DROP은 SYN 자체를 버리므로 "연결이 시간 안에 안 됨"이 L4 차단의 증거다.
+    요청을 앱까지 보내지 않으니 DB에 흔적(사건·경보)이 남지 않아, 대조용 정상 IP로 써도 다음 점검에
+    섞이지 않는다. 막혔을 때도 판정 자체는 성공이므로 종료 코드는 항상 0이다.
+    """
+    if connect is None:
+        connect = socket.create_connection
+
+    reachable = False
+    error_name: str | None = None
+    try:
+        conn = connect((target_host, target_port), timeout=timeout_seconds)
+        reachable = True
+        close = getattr(conn, "close", None)
+        if callable(close):
+            close()
+    except OSError as error:  # 시간 초과·연결 거부 모두 "닿지 않음"으로 본다.
+        error_name = type(error).__name__
+
+    result = base_result("probe", target_url)
+    result.update({"ok": True, "reachable": reachable})
+    if error_name:
+        result["error_kind"] = error_name
+    return result, 0
+
+
 def create_parser() -> argparse.ArgumentParser:
     """공격 재현 명령행 인자를 정의한다."""
     parser = argparse.ArgumentParser(
@@ -635,6 +672,13 @@ def create_parser() -> argparse.ArgumentParser:
         "--requests",
         type=bounded_int(1, MAX_HTTP_REQUESTS),
         default=120,
+    )
+
+    probe = subparsers.add_parser("probe")
+    probe.add_argument(
+        "--timeout",
+        type=bounded_int(1, 10),
+        default=3,
     )
 
     return parser
@@ -726,6 +770,13 @@ def main(
             args.requests,
             active_runner,
             active_stderr,
+        )
+    elif args.command == "probe":
+        result, exit_code = command_probe(
+            target_host,
+            target_port,
+            target_url,
+            args.timeout,
         )
     else:  # argparse의 required=True 때문에 도달하지 않는다.
         parser.error("알 수 없는 명령입니다.")

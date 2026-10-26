@@ -43,15 +43,25 @@ def insert_network_block(row: dict) -> bool:
         raise
 
 
-def update_network_block_if_status(ip: str, from_statuses: list[str], fields: dict) -> bool:
-    res = (
+def update_network_block_if_status(
+    ip: str, from_statuses: list[str], fields: dict, expected_version: int | None = None,
+) -> bool:
+    """상태가 from_statuses 중 하나일 때만 바꾼다. expected_version을 주면 version도 같아야 바꾼다.
+
+    상태만으로는 "60초 차단 요청"과 그 사이 바뀐 "영구 차단 요청"이 둘 다 PENDING_APPLY라 구분되지
+    않는다. 요청마다 올리는 version(guide56)을 함께 조건에 걸어, 늦게 온 옛 요청의 ACK가 새 요청을
+    완료시키지 못하게 한다(10/26 강사 피드백 4).
+    """
+    query = (
         db.get_client()
         .table("network_blocks")
         .update(fields)
         .eq("ip_address", ip)
         .in_("status", from_statuses)
-        .execute()
     )
+    if expected_version is not None:
+        query = query.eq("version", expected_version)
+    res = query.execute()
     return bool(res.data)
 
 

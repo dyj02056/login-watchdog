@@ -98,6 +98,13 @@ BRUTE = _ONESHOT + ["brute", "--attempts", "6"]
 SCANNER_UA = _ONESHOT + ["scanner-ua"]
 LOGIN = list(_LOGIN)
 SYNFLOOD = _ONESHOT + ["synflood", "--count", "3000"]
+# S4 실제 적용 확인: gateway에 TCP 연결만 시도한다(HTTP를 보내지 않아 DB에 흔적이 남지 않음).
+# --cap-add NET_RAW가 필요 없지만 _ONESHOT 형식을 그대로 쓴다. 시간 제한은 lw.py probe 기본값(3초).
+PROBE = _ONESHOT + ["probe"]
+# S4 --with-release: 대시보드 "영구 해제"와 같은 경로(lockdown.release)를 운영 스크립트로 부른다.
+# 앱 컨테이너 안에서 돌려야 DB 접속 정보가 있다. 비밀값은 argv에 들어가지 않는다.
+RELEASE_IP = ["docker", "compose", "exec", "-T", "app", "python", "-m", "scripts.management.unlock_ip",
+              "--ip", "{ip}", "--permanent", "--note", "S4 자동 점검 해제 확인"]
 S5B_ANCHOR = list(_ANCHOR)
 S5B_ANCHOR_REMOVE = list(_ANCHOR_REMOVE)
 S5B_SYNFLOOD = _SHARED + ["synflood", "--count", "3000"]
@@ -290,6 +297,14 @@ def run_oneshot(template: list[str], ip: str, prefix: str, timeout: int = 180,
     cmd = fill(template, ip, prefix)
     return subprocess.run(cmd, cwd=ROOT, capture_output=capture, text=True,
                           encoding="utf-8", errors="replace", timeout=timeout)
+
+
+def probe_reachable(ip: str, prefix: str) -> bool | None:
+    """ip에서 gateway로 TCP 연결이 되는지. 공격 상자 출력(JSON)을 못 읽으면 None(판정 불가)."""
+    result = parse_json_line(run_oneshot(PROBE, ip, prefix, timeout=60, capture=True))
+    if result is None or not isinstance(result.get("reachable"), bool):
+        return None
+    return result["reachable"]
 
 
 def parse_json_line(completed: subprocess.CompletedProcess) -> dict | None:

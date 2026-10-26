@@ -82,7 +82,7 @@ login-watchdog/
 │   ├── agent_heartbeats.py        #   Track D: agent_heartbeats (장비 생존 신호), notification_cooldowns (알림 쿨다운)
 │   └── playbook_runs.py           #   Track D: playbook_runs (플레이북 단계 기록)
 ├── netwatch/                      # Track D Docker 단지 구성품 — 실행 안내는 netwatch/README.md
-│   ├── nginx/                     #   정문(gateway) 설정 — X-Forwarded-For를 실제 출발지로 덮어씀
+│   ├── nginx/                     #   정문(gateway) 설정 — X-Forwarded-For를 실제 출발지로 덮어씀, 바깥에서 /api/internal/은 404
 │   ├── suricata/                  #   센서(시그니처 IDS) 설정·우리 규칙(local.rules)
 │   ├── l4_detector/               #   Scapy L4 측정기(SYN 비율·포트 수)
 │   ├── shipper/                   #   센서 기록을 서명해 앱으로 보내는 배달원
@@ -101,7 +101,7 @@ login-watchdog/
 │   ├── demo/                      #   generate_demo_logs.py(7일치 샘플 로그 생성) + demo_server.py(그 로그로 화면 확인) + load_demo_to_supabase.py(선택: 실제 DB 적재), check_simulations.py + memory_supabase.py(시뮬레이션 일괄 점검)
 │   └── net/                       #   Track D 점검: run_all.py·check_s*.py(시나리오 채점), measure_detect_to_block.py(탐지→차단 시간)
 ├── docs/schema.sql                # Supabase 테이블 정의
-├── docs/migrations/               # 기존 DB에 추가로 실행할 SQL (guide33 영구 잠금, guide35 비밀번호 변경, guide38 관리자 계정 잠금, guide40 이메일 인증, guide44 로그 자동 정리, guide47 일별 요약, guide52 Track D 표·칸, guide53 Track D 보존)
+├── docs/migrations/               # 기존 DB에 추가로 실행할 SQL (guide33 영구 잠금, guide35 비밀번호 변경, guide38 관리자 계정 잠금, guide40 이메일 인증, guide44 로그 자동 정리, guide47 일별 요약, guide52 Track D 표·칸, guide53 Track D 보존, guide56 Track D 예외 상황 보완)
 ├── docs/track-d/                  # Track D 연동 계약서(contracts.md), 탐지→차단 측정 결과, 시나리오 점검 결과, 순서도 해설
 ├── .github/workflows/             # tests.yml(push/PR마다 pytest + Next.js 타입 검사·빌드 결과 일치 확인 + Suricata 규칙 검사), supabase-keep-alive.yml(무료 Supabase가 멈추지 않게 매일 호출), pages.yml(순서도 해설 GitHub Pages)
 ├── vercel.json                    # Vercel 설정 — spa/ 포함, _next 정적 파일 장기 캐시

@@ -66,6 +66,8 @@
 52. [52단계 — 경보 수집과 교차 상관분석 (서명 검사·NET-01·CR-01~03)](guide52_net_ingest_correlation.md)
 53. [53단계 — 플레이북 엔진과 기록 보존](guide53_playbook_engine.md)
 54. [54단계 — L4 차단과 집행관 (차단 장부·fw-agent·조치 도구)](guide54_l4_block_agent.md)
+55. 55단계 — 관제 화면·시연 (작성 예정, I3-2)
+56. [56단계 — 예외 상황 보완 (10/26 강사 피드백 반영)](guide56_feedback_hardening.md)
 
 **단계 사이의 리팩터링 기록** (기능 변화 없이 파일 구조만 바꾼 작업)
 

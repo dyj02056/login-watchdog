@@ -148,14 +148,18 @@ def test_contract_stubs_exist():
 def test_ingest_endpoint_has_its_own_rate_limit(client, monkeypatch):
     # 경보 수집 창구는 전역 한도에서 빠지는 대신 보낸이별 한도(NET_INGEST_RATE_LIMIT_PER_MINUTE)를 쓴다.
     # 한도를 넘기면 HTTP_FLOOD로 기록하지 않고 JSON 429만 돌려준다.
+    # 10/26 강사 피드백 1: 서명이 틀린 요청(401)은 한도를 쓰지 않는다. 그래서 서명 검사를 통과한 것처럼
+    # 바꿔 형식 오류(400)로 600회를 채운 뒤 601번째가 429인지 본다.
+    from routes.internal import ingest
     from security import soar
 
     recorded = []
     monkeypatch.setattr(soar, "record_rejection", lambda *a, **k: recorded.append(a))
+    monkeypatch.setattr(ingest, "verify_request", lambda senders: "shipper")
     statuses = [
         client.post("/api/internal/net-events", json={}, headers={"X-LW-Sender": "shipper"}).status_code
         for _ in range(601)
     ]
-    assert statuses[:600] == [401] * 600
+    assert statuses[:600] == [400] * 600
     assert statuses[600] == 429
     assert recorded == []

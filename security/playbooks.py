@@ -117,14 +117,24 @@ def _llm_postmortem(playbook, ctx, results):
 _ARGUMENTS = {name: globals()[f"_{name}"] for name in ACTIONS}
 
 
-def run(playbook: str, trigger_ref: str, ctx: dict) -> list[dict]:
+# 실패했을 때 다음 경보에서 다시 실행해도 되는 단계. 차단·잠금·세션 끊기는 멱등(이미 됐으면 False → SKIPPED)
+# 이라 다시 불러도 안전하다. 알림(메일·Slack)은 일부러 뺐다 — 다시 돌리면 같은 경고가 반복 발송된다.
+RETRYABLE_STEPS = frozenset({
+    "lock_ip_permanent", "lock_account_permanent", "block_l4", "block_l4_ttl", "invalidate_sessions",
+})
+
+
+def run(playbook: str, trigger_ref: str, ctx: dict, only_steps: list[str] | None = None) -> list[dict]:
     """단계별 결과를 반환하고 기록 실패도 격리하여 이미 수행한 차단을 보존한다.
 
     조치 함수를 호출 시점에 찾아 monkeypatch를 지원하고, 실행 함수가 없는 단계(선택 과제 llm_postmortem)는 SKIPPED로 남긴다.
     예외 메시지에 비밀값이 섞일 수 있으므로 기록에는 예외 종류만 남긴다.
+    only_steps를 주면 그 단계만 원래 순서대로 실행한다 — 실패한 단계만 이어서 처리할 때 쓴다(강사 피드백 3).
     """
     results = []
     for step in PLAYBOOKS.get(playbook, []):
+        if only_steps is not None and step not in only_steps:
+            continue
         status, error = "OK", None
         try:
             args, kwargs = _ARGUMENTS[step](playbook, ctx, results)

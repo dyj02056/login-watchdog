@@ -148,10 +148,29 @@ def api_permanent_locks_release():
     if not note:
         return jsonify({"success": False, "error": "해제 사유(note)를 입력해야 합니다."}), 400
 
-    released = lockdown.release(kind, value, f"admin:{session['admin_username']}", note)
-    if not released:
+    actor = f"admin:{session['admin_username']}"
+    released = lockdown.release(kind, value, actor, note)
+    if kind != "ip":
+        if not released:
+            return jsonify({"success": False, "error": "영구 잠금 상태가 아닌 대상입니다."}), 404
+        return jsonify({"success": True})
+
+    # IP는 앱 잠금(L7)과 정문 차단(L4) 두 단계다. release()가 L4 해제 실패를 삼키므로 결과를 따로 확인하고,
+    # L7이 이미 풀린 재시도여도 남은 L4 해제는 이어서 한다(10/26 강사 피드백 5). 응답 모양은 예전과 같은
+    # {"success": true}를 기본으로 두고, 알릴 것이 있을 때만 l7·l4 칸을 붙인다.
+    l4 = lockdown.ensure_l4_released(value, actor)
+    if l4 == "FAILED":
+        error = ("앱 잠금은 해제됐지만 네트워크(L4) 차단 해제 요청이 실패했습니다. 잠시 뒤 같은 해제를 다시 실행하세요."
+                 if released else "네트워크(L4) 차단 해제 요청이 실패했습니다. 잠시 뒤 다시 실행하세요.")
+        return jsonify({"success": False, "l7": "RELEASED" if released else "NOT_LOCKED", "l4": l4, "error": error}), 502
+    if not released and l4 != "REQUESTED":
         return jsonify({"success": False, "error": "영구 잠금 상태가 아닌 대상입니다."}), 404
-    return jsonify({"success": True})
+    body = {"success": True}
+    if not released:
+        body["l7"] = "NOT_LOCKED"
+    if l4 != "NONE":
+        body["l4"] = l4
+    return jsonify(body)
 
 
 @admin_bp.route("/api/ip-exemptions/revoke", methods=["POST"])

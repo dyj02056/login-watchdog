@@ -278,7 +278,7 @@ Track D 이벤트 종류: `NET_SYN_FLOOD`·`NET_WEB_ATTACK`(HIGH), `NET_PORT_SCA
 | `escalated` | 참/거짓 | "복합 공격 발생" 알림을 이미 한 번 보냈는지 (중복 알림 방지용 표시) |
 | `resolved_at` | 날짜/시각 (없을 수 있음) | 관리자가 "해결"을 누른 시각. 예전에 잠금 해제로 자동 종료된 사건은 비어 있음 |
 | `resolved_by` | 글자 (없을 수 있음) | "해결"을 누른 관리자 아이디 (로그인 세션 기준) |
-| `matched_rules` | 글자 목록 | 이 사건에서 맞은 Track D 교차 규칙 ID (예: `["NET-01", "CR-02"]`). 규칙당 한 번만 플레이북을 실행하는 데 쓴다. guide52 |
+| `matched_rules` | 글자 목록 | 이 사건에서 맞은 Track D 교차 규칙 ID (예: `["NET-01", "CR-02"]`). 규칙당 한 번만 플레이북을 실행하는 데 쓴다. "규칙에 해당함"만 뜻하고, 조치가 실제로 됐는지는 `playbook_runs`를 본다. 규칙은 DB 함수 `append_matched_rule()`로 원자적으로 덧붙인다(guide56). guide52 |
 | `app_severity_max` | 글자 (없을 수 있음) | **앱 이벤트(`source=APP`)만의** 최고 등급. 영구 잠금(T3/T4) 판단은 이 값만 본다 — 위조 가능한 네트워크 경보가 섞여 앱 영구 잠금이 걸리지 않게. 네트워크 경보만 있는 사건은 비어 있음 |
 
 ---
@@ -481,7 +481,7 @@ IP가 영구 잠금되어도, 이메일 인증을 마친 **그 회원이 그 기
 
 ---
 
-> **31~35번은 Track D 표입니다** ([docs/migrations/guide52_track_d.sql](../migrations/guide52_track_d.sql)로 추가, 보존 기간은 [guide53_track_d_retention.sql](../migrations/guide53_track_d_retention.sql)). 로컬 Docker 단지(`netwatch/README.md`)에서만 채워집니다. 함수 이름·값의 기준은 [docs/track-d/contracts.md](../track-d/contracts.md)입니다.
+> **31~35번은 Track D 표입니다** ([docs/migrations/guide52_track_d.sql](../migrations/guide52_track_d.sql)로 추가, 보존 기간은 [guide53_track_d_retention.sql](../migrations/guide53_track_d_retention.sql), 요청 번호 칸·규칙 덧붙이기 함수는 [guide56_track_d_hardening.sql](../migrations/guide56_track_d_hardening.sql)). 로컬 Docker 단지(`netwatch/README.md`)에서만 채워집니다. 함수 이름·값의 기준은 [docs/track-d/contracts.md](../track-d/contracts.md)입니다.
 
 ## 31. `network_events` — 정문 CCTV(센서)가 본 경보 원본 (guide52)
 
@@ -519,6 +519,7 @@ Suricata·Scapy 센서가 남긴 경보를 배달원(shipper)이 서명해 보�
 | `requested_by` | 글자 | 누가 요청했는지 (예: `playbook:NET_FLOOD`, `admin:<아이디>`) |
 | `requested_at`, `applied_at`, `removed_at` | 날짜/시각 | 요청·적용·해제 시각 |
 | `last_error` | 글자 (없을 수 있음) | fw-agent가 보고한 마지막 오류 |
+| `version` | 숫자 (기본 0) | 요청 번호. 차단·강화·해제 요청마다 1씩 오르고, fw-agent의 ACK에 같은 번호가 있어야 상태를 바꾼다 — 늦게 온 옛 요청의 완료 응답이 새 요청을 완료시키지 못하게(guide56) |
 
 보존: `REMOVED`·`FAILED` 줄만 **30일** 뒤 지웁니다. 지금 걸려 있는 차단은 지우지 않습니다.
 
@@ -557,7 +558,7 @@ shipper(30초)·fw-agent(10초)가 "살아 있다"를 보내면 PC(`node`)별로
 | 컬럼 | 값 종류 | 설명 |
 |---|---|---|
 | `playbook` | 글자 | 플레이북 이름 (`NET_FLOOD_TTL`, `KILL_CHAIN`, `NET_FLOOD`, `SUSPICIOUS_SUCCESS_LOGIN`) |
-| `trigger_ref` | 글자 | 무엇 때문에 돌았는지 — `incident:<사건 id>:<규칙 ID>` |
+| `trigger_ref` | 글자 | 무엇 때문에 돌았는지 — `incident:<사건 id>:<규칙 ID>`. CR-03의 계정별 세션 끊기는 `incident:<사건 id>:CR-03:user:<계정 id>`(guide56) |
 | `step` | 글자 | 단계 이름 (예: `block_l4_ttl`, `invalidate_sessions`, `notify_owner_email`, `notify_slack`) |
 | `status` | 글자 | `OK` / `FAILED` / `SKIPPED` |
 | `error` | 글자 (없을 수 있음) | 실패·건너뜀 이유 (예외 종류만, 비밀값은 남기지 않음) |

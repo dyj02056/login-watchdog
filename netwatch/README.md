@@ -182,6 +182,7 @@
 | `login` | victim 계정으로 올바른 비밀번호 로그인 1회(`--username` 필수, 비밀번호는 `LW_VICTIM_PASSWORD`) | — (앱 로그인 기록) | S6(scanner-ua 뒤 로그인 성공) |
 | `synflood` | gateway에 SYN 다발 보내기 | Suricata `SYN_FLOOD`(9000001)·Scapy(9100001) | S5 |
 | `httpflood` | 한 경로에 요청 몰아보내기 | 앱 `HTTP_FLOOD` | S5b(synflood와 동시) |
+| `probe` | gateway에 TCP 연결만 한 번 시도(`--timeout` 기본 3초), `reachable` 출력. HTTP를 보내지 않아 DB 흔적 없음 | — | S4 실제 접속 차단 확인 |
 
 > `category`·`sid`의 기준은 계약서 K4입니다. `scanner-ua`가 보내는 이름은 `netwatch/suricata/rules/local.rules`의 sid 9000004 목록과 같아야 합니다.
 
@@ -310,7 +311,7 @@ Get-Content docs\track-d\scenario-results.md -Tail 20 -Encoding UTF8
 
 | 시나리오 | PASS 조건 |
 |---|---|
-| S4 킬체인 | 사건에 `CR-01`, IP 영구 잠금(관리자만 해제), 영구 L4 차단(`CONNECTED`) |
+| S4 킬체인 | 사건에 `CR-01`, IP 영구 잠금(관리자만 해제), 영구 L4 차단(`CONNECTED`)이 **적용됨**(`APPLIED`·`applied_at`), `probe`로 대상 IP는 막히고 다른 새 IP는 연결됨. `--with-release`면 영구 해제 → `REMOVED` → 대상 IP 재접속까지 |
 | S5 SYN 폭주 | TTL L4 차단, 앱 잠금 없음, 미해결 `NET_BLOCKED` |
 | S5b 다계층 폭주 | 사건에 `CR-02`, TTL L4 차단 (7.3의 자리 잡기 방식으로 같은 IP 동시 공격) |
 | S6 의심 로그인 성공 | `login`이 `success:false`, 플레이북 `SUSPICIOUS_SUCCESS_LOGIN` 실행, 경고 메일 1통(1시간 안 재실행은 SKIPPED가 정상) |
@@ -320,4 +321,7 @@ Get-Content docs\track-d\scenario-results.md -Tail 20 -Encoding UTF8
 - 실행마다 **새 출발지 IP**를 씁니다(`.111~.139` 다음 `.11~.99`). 차단·사건이 한 번이라도 남은 IP는 건너뜁니다.
 - S6만 다시 볼 때는 `.\venv\Scripts\python.exe -m scripts.net.check_s6`(IP를 하나만 씀).
 - 2026-10-26 시연 대역 PC 결과: **S4·S5·S5b·S6·S8 3회 연속 PASS, S7 SKIP** (`baad60d`, [docs/track-d/scenario-results.md](../docs/track-d/scenario-results.md)).
+- 2026-10-26 강사 피드백 반영 후(S4 판정 강화): **S4·S5·S5b·S8 3회 연속 PASS**, S6은 `LW_VICTIM_PASSWORD` 없이 돌려 SKIP, `check_s4 --with-release` PASS. fw-agent를 멈추고 돌리면 S4가 FAIL(`PENDING_APPLY`)로 바뀌는 것도 확인했습니다([guide56](../docs/beginner-guide/guide56_feedback_hardening.md)).
+- S4 해제 후 재접속까지 볼 때: `.\venv\Scripts\python.exe -m scripts.net.run_all --with-release`(또는 `-m scripts.net.check_s4 --with-release`). 해제는 관리자 "영구 해제"와 같은 경로라 DB를 바꿉니다.
+- `lw.py`·nginx 설정을 바꾼 뒤에는 공격 상자 이미지를 다시 만들고(`docker compose build attacker-1`), gateway를 다시 띄울 때는 `docker compose up -d --force-recreate gateway sensor l4-detector fw-agent`로 **네 개를 함께** 띄웁니다. gateway만 재시작하면 그 네트워크를 함께 쓰는 셋이 앱 주소를 찾지 못합니다.
 - 시나리오를 여러 번 돌리면 L4 차단·IP 영구 잠금이 쌓입니다. 처리 작업대의 두 카드는 10줄씩 쪽으로 나뉩니다.

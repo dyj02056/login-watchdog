@@ -11,7 +11,7 @@ GET 11회를 보내 재현할 수 있습니다. [실행 조건과 알림 확인 
 |---|---|
 | `scripts/simulation/critical/bruteforce_sim.py` | `/login`에 일부러 틀린 비밀번호를 반복 제출해, 설정된 횟수(기본 5회 초과)에서 실제로 IP가 잠기는지 검증하는 시뮬레이터. 팀이 소유한 로컬 서버만 대상으로 하며, 그 외 주소는 `--i-know-what-im-doing` 없이는 거부됨. `--ip`로 가짜 공격자 IP를 지정하거나, Vercel 프리뷰 배포처럼 Vercel Authentication이 걸린 주소를 대상으로 할 때는 `--bypass-secret`으로 우회할 수도 있음(아래 참고) |
 | `scripts/management/daily_report.py` | 최근 N시간(기본 24시간, `--hours`) 또는 지정 기간(`--start`/`--end`)의 로그인 시도·잠금 현황을 텍스트로 요약(`--output`으로 파일 저장). `--ai`를 붙이면 Groq가 쓴 AI 보안 총평을 덧붙임 |
-| `scripts/management/unlock_ip.py` | 지금 잠겨있는 IP를 조회하거나 즉시 해제. `/admin/login`도 `/login`과 같은 IP 기준 잠금을 공유하므로, 브루트포스 시뮬레이션 도중 관리자 계정 IP까지 함께 잠기면 대시보드의 "즉시 해제" 버튼조차 쓸 수 없는 상황이 생기는데(로그인 자체가 막혀서), 이때 서버·로그인 없이 터미널에서 바로 풀 때 사용. 영구 잠금은 `--permanent`를 붙여야만 풀리고(`--note`로 해제 사유 기록), 없으면 건너뜀 |
+| `scripts/management/unlock_ip.py` | 지금 잠겨있는 IP를 조회하거나 즉시 해제. `/admin/login`도 `/login`과 같은 IP 기준 잠금을 공유하므로, 브루트포스 시뮬레이션 도중 관리자 계정 IP까지 함께 잠기면 대시보드의 "즉시 해제" 버튼조차 쓸 수 없는 상황이 생기는데(로그인 자체가 막혀서), 이때 서버·로그인 없이 터미널에서 바로 풀 때 사용. 영구 잠금은 `--permanent`를 붙여야만 풀리고(`--note`로 해제 사유 기록), 없으면 건너뜀. `--permanent`일 때 앱 잠금이 이미 풀려 있어도 남은 L4(정문) 차단 해제는 이어서 요청함(guide56) |
 | `scripts/management/unlock_account.py` | 잠긴 계정(분산 브루트포스 대응 계정 잠금)을 조회하거나 즉시 해제. 영구 잠금은 `unlock_ip.py`와 같이 `--permanent`가 있어야 풀림 |
 | `scripts/management/send_test_mail.py` | 지금 메일 설정(SMTP)으로 테스트 메일 한 통을 보내 접속·인증·발송이 되는지 확인. 실패하면 원인(`CONFIG`/`AUTH`/`CONNECT`/`OTHER`)과 고칠 곳을 알려주며, 비밀번호는 출력하지 않음 |
 | `scripts/management/create_admin.py` | `security_viewer`/`security_admin`/`super_admin` 역할을 가진 새 관리자 계정을 생성. 대시보드 "관리자 계정 관리" 카드는 `super_admin`이 `security_viewer`/`security_admin`만 만들 수 있는 것과 달리, 이 스크립트는 터미널 접근 자체가 신뢰된 작업이라는 전제로 `super_admin`도 만들 수 있음(예: 최초 팀원 온보딩) |
@@ -33,7 +33,7 @@ GET 11회를 보내 재현할 수 있습니다. [실행 조건과 알림 확인 
 
 | 스크립트 | 역할 |
 |---|---|
-| `scripts/net/run_all.py` | 시연 시나리오 S4·S5·S5b·S6·S8(S7)을 `--repeat N`번 돌려 기대 결과가 DB·응답·메일에 생겼는지 PASS/FAIL로 채점하고 `docs/track-d/scenario-results.md`에 덧붙임. 시나리오 하나만은 `check_s4.py`~`check_s8.py` |
+| `scripts/net/run_all.py` | 시연 시나리오 S4·S5·S5b·S6·S8(S7)을 `--repeat N`번 돌려 기대 결과가 DB·응답·메일에 생겼는지 PASS/FAIL로 채점하고 `docs/track-d/scenario-results.md`에 덧붙임. 시나리오 하나만은 `check_s4.py`~`check_s8.py`. S4는 차단 적용(`APPLIED`·`applied_at`)과 실제 접속 차단(대상 IP 막힘·다른 IP 열림)까지 보고, `--with-release`를 주면 영구 해제 후 재접속까지 확인(해제는 DB를 바꿈, guide56) |
 | `scripts/net/measure_detect_to_block.py` | SYN 폭주를 탐지한 뒤 정문에서 L4로 막기까지 걸린 시간을 DB 시각으로 재 `docs/track-d/measurements.md`에 기록(`--scenario s5\|s5b --repeat 3`) |
 
 `bruteforce_sim.py`의 `--ip` 옵션: 로컬 환경에서는 팀원 전원이 다 같은 `127.0.0.1`로 접속하게 되어 "서로 다른 공격자 IP에서 왔다"는 상황을 재현할 수 없다. `--ip 1.2.3.4`를 주면 그 값을 `X-Forwarded-For` 헤더에 실어 보내는데, 이 헤더는 대상 서버의 `.env`에서 `TRUST_FORWARDED_FOR=true`로 켜뒀을 때만 실제 접속 IP처럼 반영된다(운영 환경 기본값인 `false`에서는 서버가 헤더를 무시하고 진짜 접속 IP를 그대로 씀 — 배포 사이트에서 이 옵션이 안전하게 아무 효과가 없는 이유).
