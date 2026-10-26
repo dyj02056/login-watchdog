@@ -11,10 +11,11 @@ Docker gateway 자신과 core 네트워크에서 발생한 패킷은 센서 내�
 from __future__ import annotations
 
 import ipaddress
+import os
 import time
 from collections import deque
 from datetime import datetime, timezone
-from typing import Callable
+from typing import Callable, TextIO
 
 
 SYN_FLAG = 0x02
@@ -24,6 +25,36 @@ SYN_WINDOW_SECONDS = 1.0
 # 예전 172.29.0.0/24는 Docker Desktop(WSL2) 내부 대역과 겹쳐 172.30으로 옮겼다(A0-1 보완).
 CORE_NETWORK = ipaddress.ip_network("172.30.0.0/24")
 
+def truncate_output_if_oversized(
+    output: TextIO,
+    max_bytes: int,
+) -> bool:
+    """출력 파일이 크기 제한 이상이면 같은 파일을 비운다.
+
+    파일을 삭제하거나 이름을 바꾸지 않고 길이만 0으로 만든다.
+    따라서 shipper의 Tailer는 파일 크기 감소를 감지한 뒤 새로 기록되는
+    첫 줄부터 다시 읽을 수 있다.
+
+    반환값:
+        파일을 비웠으면 True
+        제한보다 작아서 유지했으면 False
+    """
+    if max_bytes <= 0:
+        raise ValueError("max_bytes는 1 이상이어야 합니다.")
+
+    # 버퍼에 남아 있는 내용을 실제 파일에 먼저 반영한다.
+    output.flush()
+
+    current_size = os.fstat(output.fileno()).st_size
+
+    if current_size < max_bytes:
+        return False
+
+    output.seek(0)
+    output.truncate(0)
+    output.flush()
+
+    return True
 
 def utc_timestamp(timestamp: float) -> str:
     """유닉스 시각을 밀리초 단위 UTC ISO 8601 문자열로 바꾼다."""

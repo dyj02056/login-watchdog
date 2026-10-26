@@ -5,9 +5,12 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
+import pytest
 
-
-from netwatch.l4_detector.detector_core import L4Detector
+from netwatch.l4_detector.detector_core import (
+    L4Detector,
+    truncate_output_if_oversized,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -64,6 +67,75 @@ def test_syn_threshold_emits_syn_flood() -> None:
     assert events[0]["category"] == "SYN_FLOOD"
     assert events[0]["syn_per_sec"] == 3
 
+def test_output_under_limit_is_not_truncated(
+    tmp_path,
+) -> None:
+    """제한보다 작은 l4.json은 기존 내용을 유지한다."""
+    output_path = tmp_path / "l4.json"
+    output_path.write_text(
+        "1234",
+        encoding="utf-8",
+    )
+
+    with output_path.open(
+        "a+",
+        encoding="utf-8",
+    ) as output:
+        truncated = truncate_output_if_oversized(
+            output,
+            max_bytes=10,
+        )
+
+    assert truncated is False
+    assert output_path.read_text(encoding="utf-8") == "1234"
+
+
+def test_output_at_limit_is_truncated_before_new_event(
+    tmp_path,
+) -> None:
+    """제한에 도달한 l4.json을 비운 뒤 새 이벤트를 기록할 수 있다."""
+    output_path = tmp_path / "l4.json"
+    output_path.write_text(
+        "1234567890",
+        encoding="utf-8",
+    )
+
+    with output_path.open(
+        "a+",
+        encoding="utf-8",
+    ) as output:
+        truncated = truncate_output_if_oversized(
+            output,
+            max_bytes=10,
+        )
+
+        output.write('{"new":1}\n')
+        output.flush()
+
+    assert truncated is True
+    assert output_path.read_text(
+        encoding="utf-8"
+    ) == '{"new":1}\n'
+
+def test_output_size_limit_must_be_positive(
+    tmp_path,
+) -> None:
+    """파일 크기 제한은 1바이트 이상이어야 한다."""
+    output_path = tmp_path / "l4.json"
+    output_path.write_text("", encoding="utf-8")
+
+    with output_path.open(
+        "a+",
+        encoding="utf-8",
+    ) as output:
+        with pytest.raises(
+            ValueError,
+            match="max_bytes는 1 이상",
+        ):
+            truncate_output_if_oversized(
+                output,
+                max_bytes=0,
+            )
 
 def test_syn_below_threshold_emits_nothing() -> None:
     """최근 1초의 SYN 수가 기준보다 작으면 경보를 내지 않는다."""
@@ -226,6 +298,11 @@ def test_compose_passes_l4_detector_environment() -> None:
     assert "environment:" in l4_block
     assert "SENSOR_IFACE: ${SENSOR_IFACE:-eth1}" in l4_block
     assert "LW_EDGE_PREFIX: ${LW_EDGE_PREFIX}" in l4_block
+    assert (
+        "L4_MAX_BYTES: ${L4_MAX_BYTES:-10485760}"
+        in l4_block
+    )
+    assert "restart: unless-stopped" in l4_block
     # l4.json을 shipper와 공유하는 eve 볼륨(최상위 volumes에 선언)
     assert "- eve:/var/log/suricata" in l4_block
     assert "\nvolumes:\n" in compose

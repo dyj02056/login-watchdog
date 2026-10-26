@@ -267,6 +267,17 @@ def test_entrypoint_uses_af_packet_interface() -> None:
 
     assert '--af-packet="${SENSOR_IFACE}"' in entrypoint
 
+def test_entrypoint_limits_eve_log_size() -> None:
+    """eve.json이 설정된 크기 이상이면 같은 파일을 비워야 한다."""
+    entrypoint = read_text(ENTRYPOINT_PATH)
+
+    assert (
+        'EVE_MAX_BYTES="${EVE_MAX_BYTES:-52428800}"'
+        in entrypoint
+    )
+    assert 'wc -c < "${EVE_LOG_FILE}"' in entrypoint
+    assert ': > "${EVE_LOG_FILE}"' in entrypoint
+    assert "monitor_eve_size &" in entrypoint
 
 def test_compose_uses_fixed_suricata_image_tag() -> None:
     """sensor 이미지는 latest가 아닌 검증된 버전으로 고정한다."""
@@ -298,6 +309,12 @@ def test_compose_passes_sensor_environment_and_volumes() -> None:
         "LW_EDGE_PREFIX: ${LW_EDGE_PREFIX}"
         in sensor_block
     )
+    assert (
+        "EVE_MAX_BYTES: ${EVE_MAX_BYTES:-52428800}"
+        in sensor_block
+    )
+    assert "restart: unless-stopped" in sensor_block
+
     assert (
         "./netwatch/suricata:"
         "/etc/suricata/custom:ro"
@@ -348,3 +365,4 @@ def test_gitattributes_keeps_shell_scripts_lf() -> None:
     gitattributes = read_text(PROJECT_ROOT / ".gitattributes")
 
     assert "*.sh text eol=lf" in gitattributes
+
