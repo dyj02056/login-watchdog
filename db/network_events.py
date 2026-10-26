@@ -27,6 +27,7 @@ __all__ = [
     "resolve_net_blocked_events",
     "is_network_event_unpromoted",
     "list_recent_security_events_for_correlation",
+    "list_recent_connected_net_events_for_login",
 ]
 
 _PAGE = 1000
@@ -47,6 +48,23 @@ def list_recent_security_events_for_correlation(ip: str, window_minutes: int) ->
         .gte("detected_at", cutoff)
         .order("detected_at")
         .execute().data
+    )
+
+
+def list_recent_connected_net_events_for_login(ip: str, window_minutes: int) -> list[dict]:
+    """의심 로그인 판단에 쓸 연결 완성 NET 증거만 UTC 창 안에서 읽는다.
+
+    SYN·포트 스캔은 출발지를 위조할 수 있으므로 DB 조회 단계부터 제외한다.
+    """
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(minutes=window_minutes)).isoformat()
+    return (
+        db.get_client().table("security_events")
+        .select("event_type,severity,detected_at")
+        .eq("ip_address", ip).eq("source", "NET")
+        .in_("event_type", ["NET_WEB_ATTACK", "NET_SCANNER_UA"])
+        .gte("detected_at", cutoff).lte("detected_at", now.isoformat())
+        .order("detected_at", desc=True).limit(1).execute().data
     )
 
 

@@ -164,6 +164,53 @@ def check_cross_layer(ip: str, event_type: str) -> None:
         print(f"[교차 규칙 오류] {type(error).__name__}")
 
 
+def check_success_login(ip: str, username: str) -> bool:
+    """연결이 확인된 NET 경보 뒤의 로그인 성공을 막고 CR-03을 사건당 한 번 실행한다.
+
+    조회나 기록이 실패하면 검사 오류 때문에 정상 로그인을 막지 않는다.
+    """
+    try:
+        evidence = db.list_recent_connected_net_events_for_login(
+            ip, config.NET_SUCCESS_LOGIN_LOOKBACK_MINUTES
+        )
+        if not evidence:
+            return False
+
+        existing = db.get_open_incident(ip)
+        if (
+            existing
+            and not db.incidents._is_idle(existing)
+            and "CR-03" in (existing.get("matched_rules") or [])
+        ):
+            return True
+
+        user = db.get_user_by_username(username)
+        event = evidence[0]
+        incident = db.record_incident(
+            ip, [event["event_type"]], event.get("severity") or "MEDIUM",
+            source="NET", rule_id="CR-03",
+        )
+        if incident.get("rule_added", True):
+            ctx = {
+                "ip": ip,
+                "incident_id": incident["id"],
+                "rule_id": "CR-03",
+                "priority": "HIGH",
+                "matched_rules": incident.get("matched_rules") or [],
+                "evidence": "CONNECTED",
+                "username": username,
+                "user_id": user["id"],
+                "user_email": user.get("email"),
+            }
+            playbooks.run(
+                "SUSPICIOUS_SUCCESS_LOGIN", f"incident:{incident['id']}:CR-03", ctx
+            )
+        return True
+    except Exception as error:
+        print(f"[의심 로그인 검사 오류] {type(error).__name__}")
+        return False
+
+
 def _match_cross_layer_rule(ip: str, event_type: str, rule: dict) -> list[dict]:
     """현재 이벤트와 관련된 규칙만 조회해 매칭에 실제로 쓰인 행을 돌려준다."""
     if rule.get("single"):
