@@ -8,7 +8,8 @@
 DB에 남은 시각 세 개를 읽어 구간을 잰다.
 
   T0 network_events.observed_at   (그 IP의 첫 SYN_FLOOD — 센서가 본 시각)
-  T1 network_blocks.requested_at  (앱이 "막아라"를 적은 시각)
+  T1 playbook_runs.ran_at         (그 IP 사건의 첫 block_l4_ttl 성공 — 앱이 처음 "막아라"를 적은 시각.
+                                   network_blocks.requested_at은 뒤 플레이북이 덮어쓸 수 있어 기록이 없을 때만 씀)
   T2 network_blocks.applied_at    (fw-agent가 "막았음"을 보고한 시각)
   T3 security_events NET_BLOCKED detected_at (확인용 — 구간에는 쓰지 않음)
 
@@ -51,7 +52,9 @@ def preflight(prefix: str | None) -> None:
     """시작 전 확인 목록을 출력한다. 값은 보여 주지 않는다(이름과 있음/없음만)."""
     print("── 시작 전 확인 ──")
     try:
-        out = subprocess.run(["docker", "compose", "ps", "--format", "json"], cwd=ROOT, capture_output=True, text=True, timeout=20)
+        # docker 출력은 UTF-8이다. text=True만 쓰면 한국어 Windows에서 cp949로 읽다 깨져 stdout이 None이 된다(10/26 예행)
+        out = subprocess.run(["docker", "compose", "ps", "--format", "json"], cwd=ROOT, capture_output=True,
+                             text=True, encoding="utf-8", errors="replace", timeout=20)
         # docker compose 버전에 따라 JSON 배열 하나 또는 한 줄에 하나씩 나온다
         text = out.stdout.strip()
         rows = json.loads(text) if text.startswith("[") else [json.loads(line) for line in text.splitlines() if line.strip()]
@@ -93,6 +96,23 @@ def block_row(client, ip: str) -> dict | None:
     return rows[0] if rows else None
 
 
+def block_runs(client, ip: str) -> list[dict]:
+    """그 IP 사건들의 playbook_runs 중 block_l4_ttl 단계(T1 후보). 실행마다 새 IP라 이 IP의 사건은 이번 실행 것뿐이다."""
+    incidents = client.table("security_incidents").select("id").eq("ip_address", ip).execute().data or []
+    runs: list[dict] = []
+    for incident in incidents:
+        runs += (
+            client.table("playbook_runs")
+            .select("step, status, ran_at")
+            .like("trigger_ref", f"incident:{incident['id']}:%")
+            .eq("step", "block_l4_ttl")
+            .execute()
+            .data
+            or []
+        )
+    return runs
+
+
 def net_blocked_at(client, ip: str, since_iso: str) -> str | None:
     rows = (
         client.table("security_events")
@@ -122,6 +142,10 @@ def has_cr02(client, ip: str) -> bool:
     return bool(rows) and "CR-02" in (rows[0].get("matched_rules") or [])
 
 
+class _AnchorFailed(Exception):
+    """S5b 자리 잡기 컨테이너를 못 띄웠을 때 공격 단계를 건너뛰는 신호(결과는 '못 잰 실행'으로 남김)."""
+
+
 def run_once(client, scenario: str, prefix: str, commands: list[list[str]], used: set[str]) -> tuple[str, dict, dict, str] | None:
     """한 번 재현하고 잰다. 쓸 IP가 없으면 None."""
     ip = mc.choose_fresh_ip(prefix, used)
@@ -130,23 +154,49 @@ def run_once(client, scenario: str, prefix: str, commands: list[list[str]], used
         return None
     used.add(ip)
     since = (datetime.now(timezone.utc) - timedelta(seconds=SINCE_SLACK_SECONDS)).isoformat()
-    print(f"  [{scenario.upper()}] 출발지 {ip} — 공격 시작")
-    # 시나리오의 명령을 동시에 띄운다(S5b는 SYN 폭주 + HTTP 폭주). 셸을 거치지 않는다.
-    procs = [subprocess.Popen(mc.fill_command(cmd, ip, prefix), cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) for cmd in commands]
-
-    t0 = mc.wait_until(lambda: first_syn_flood(client, ip, since), timeout=WAIT_SECONDS)
-    row = mc.wait_until(lambda: (r := block_row(client, ip)) and r.get("applied_at") and r, timeout=WAIT_SECONDS) or block_row(client, ip) or {}
-    t3 = mc.wait_until(lambda: net_blocked_at(client, ip, since), timeout=10)
-
-    for proc in procs:
-        try:
-            proc.wait(timeout=120)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-
-    intervals = mc.compute_intervals(t0, row.get("requested_at"), row.get("applied_at"))
-    verdict = mc.judge(intervals)
+    anchored = mc.needs_anchor(commands)
     notes = []
+    t0, row, t3 = None, {}, None
+    try:
+        if anchored:
+            # S5b: 같은 IP를 두 공격이 함께 쓰도록 자리 잡기 컨테이너부터 띄운다(measure_common 주석 참고).
+            # 앞 실행이 끊겨 같은 이름이 남아 있으면 먼저 지운다. -d는 컨테이너가 시작된 뒤 돌아오므로 바로 이어 붙일 수 있다.
+            subprocess.run(mc.fill_command(mc.ANCHOR_REMOVE, ip, prefix), cwd=ROOT, capture_output=True, timeout=30)
+            anchor = subprocess.run(mc.fill_command(mc.ANCHOR_COMMAND, ip, prefix), cwd=ROOT, capture_output=True,
+                                    text=True, encoding="utf-8", errors="replace", timeout=60)
+            if anchor.returncode != 0:
+                # 공격을 띄우지 않고 "못 잰 실행"으로 남긴다. docker 오류 첫 줄만 비고에 적는다(비밀값이 나올 자리가 아님).
+                reason = (anchor.stderr.strip().splitlines() or ["원인 불명"])[0][:120]
+                notes.append(f"자리 잡기 컨테이너 실패: {reason}")
+                raise _AnchorFailed
+        print(f"  [{scenario.upper()}] 출발지 {ip} — 공격 시작")
+        # 시나리오의 명령을 동시에 띄운다(S5b는 SYN 폭주 + HTTP 폭주). 셸을 거치지 않는다.
+        procs = [subprocess.Popen(mc.fill_command(cmd, ip, prefix), cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) for cmd in commands]
+
+        t0 = mc.wait_until(lambda: first_syn_flood(client, ip, since), timeout=WAIT_SECONDS)
+        row = mc.wait_until(lambda: (r := block_row(client, ip)) and r.get("applied_at") and r, timeout=WAIT_SECONDS) or block_row(client, ip) or {}
+        t3 = mc.wait_until(lambda: net_blocked_at(client, ip, since), timeout=10)
+
+        for proc in procs:
+            try:
+                proc.wait(timeout=120)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            if proc.returncode not in (0, None):
+                # 공격 컨테이너가 바로 죽으면(예: 네트워크를 못 잡음) 출력이 버려져 아무도 모른다 → 비고에 남긴다
+                notes.append(f"공격 컨테이너 종료 코드 {proc.returncode}")
+    except _AnchorFailed:
+        pass
+    finally:
+        if anchored:
+            subprocess.run(mc.fill_command(mc.ANCHOR_REMOVE, ip, prefix), cwd=ROOT, capture_output=True, timeout=30)
+
+    # T1은 덮어써지지 않는 playbook_runs의 첫 block_l4_ttl 시각으로 잰다(measure_common.first_block_run_at 설명)
+    t1, t1_note = mc.choose_t1(mc.first_block_run_at(block_runs(client, ip)) if row else None, row.get("requested_at"))
+    if t1_note:
+        notes.append(t1_note)
+    intervals = mc.compute_intervals(t0, t1, row.get("applied_at"))
+    verdict = mc.judge(intervals)
     if t0 is None:
         notes.append("SYN_FLOOD 경보 없음")
     if not row:

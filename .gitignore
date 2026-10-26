@@ -6,3 +6,8 @@ venv/
 
 # 샘플 로그 생성 결과(scripts/demo/generate_demo_logs.py)
 scripts/demo/output/
+
+# 개인 작업용 계획서와 요청서는 저장소에 포함하지 않는다.
+/plan-excerpt (1).md
+/Codex-요청서 (1).md
+/설명서 (1).md
