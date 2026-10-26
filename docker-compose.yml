@@ -40,6 +40,11 @@ services:
       SMTP_STARTTLS: "false"
       # .env에 배포용 Gmail 값(SMTP_USE_SSL=true)이 남아 있어도 SSL 없는 Mailpit(1025)으로 보내게 고정한다.
       SMTP_USE_SSL: "false"
+      # .env에 배포용 Gmail 계정(SMTP_USER·SMTP_PASSWORD)이 남아 있으면 mailer가 로그인을 시도하는데, Mailpit은
+      # 인증을 지원하지 않아 모든 메일이 "SMTP AUTH extension not supported"로 실패한다(10/26 C3-1 S6 FAIL).
+      # 그래서 단지 안에서는 계정을 비워 로그인 없이 보내게 고정한다. .env의 값은 Vercel용이라 그대로 둔다.
+      SMTP_USER: ""
+      SMTP_PASSWORD: ""
     expose:
       - "5000"
     depends_on:
