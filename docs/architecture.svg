@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 1360" width="820" height="1360" font-family="Pretendard, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif">
+<defs>
+<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker>
+<marker id="ah-s" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10,0 L0,5 L10,10 z" fill="#64748b"/></marker>
+<style>.halo{paint-order:stroke;stroke:#ffffff;stroke-width:4px;stroke-linejoin:round}</style>
+</defs>
+<rect width="820" height="1360" rx="18" fill="#ffffff"/>
+<text x="40" y="52" font-size="22" font-weight="800" fill="#0f172a">login-watchdog 구조</text>
+<text x="40" y="76" font-size="13" fill="#475569">요청이 들어와 탐지 → 판단 → 대응으로 이어지는 흐름 (위에서 아래로)</text>
+<g stroke="#2563eb" stroke-width="1.2" stroke-linejoin="round" stroke-opacity="0.55"><path d="M346,150 L410,182 L410,196 L346,164 Z" fill="#bfdbfe"/><path d="M410,182 L474,150 L474,164 L410,196 Z" fill="#93c5fd"/><path d="M410,118 L474,150 L410,182 L346,150 Z" fill="#dbeafe"/></g>
+<circle cx="410" cy="147" r="15" fill="#fff" stroke="#2563eb" stroke-width="1.5"/><g transform="translate(401,138) scale(0.75)" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1"/></g>
+<text x="492" y="148" text-anchor="start" font-size="14" font-weight="700" fill="#0f172a" class="halo">사용자 · 공격자</text>
+<text x="492" y="165" text-anchor="start" font-size="11.5" fill="#475569" class="halo">브라우저 (회원 · 관리자 포함)</text>
+<g stroke="#64748b" stroke-width="1.5" stroke-linejoin="round" stroke-opacity="0.55"><path d="M70,430 L410,600 L410,620 L70,450 Z" fill="#e2e8f0"/><path d="M410,600 L750,430 L750,450 L410,620 Z" fill="#cbd5e1"/><path d="M410,260 L750,430 L410,600 L70,430 Z" fill="#f1f5f9"/></g>
+<text x="36" y="296" text-anchor="start" font-size="16" font-weight="800" fill="#475569">Track D · 로컬 Docker 단지</text>
+<text x="36" y="315" text-anchor="start" font-size="12" fill="#475569">L3/L4 탐지 · 차단 (docker compose up)</text>
+<line x1="287" y1="408" x2="368" y2="368" stroke="#64748b" stroke-width="1.8" stroke-dasharray="6 5" marker-end="url(#ah)"/>
+<text x="322" y="380" text-anchor="middle" font-size="11.5" font-weight="600" fill="#334155" class="halo">트래픽 복사</text>
+<line x1="452" y1="368" x2="533" y2="408" stroke="#64748b" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="372" y1="492" x2="290" y2="452" stroke="#64748b" stroke-width="1.8" marker-end="url(#ah)"/>
+<text x="300" y="492" text-anchor="end" font-size="11.5" font-weight="600" fill="#334155" class="halo">L4 차단</text>
+<g stroke="#0e7490" stroke-width="1.2" stroke-linejoin="round" stroke-opacity="0.55"><path d="M202,430 L250,454 L250,466 L202,442 Z" fill="#a5f3fc"/><path d="M250,454 L298,430 L298,442 L250,466 Z" fill="#67e8f9"/><path d="M250,406 L298,430 L250,454 L202,430 Z" fill="#cffafe"/></g>
+<circle cx="250" cy="427" r="15" fill="#fff" stroke="#0e7490" stroke-width="1.5"/><g transform="translate(241,418) scale(0.75)" fill="none" stroke="#0e7490" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></g>
+<g stroke="#0e7490" stroke-width="1.2" stroke-linejoin="round" stroke-opacity="0.55"><path d="M362,350 L410,374 L410,386 L362,362 Z" fill="#a5f3fc"/><path d="M410,374 L458,350 L458,362 L410,386 Z" fill="#67e8f9"/><path d="M410,326 L458,350 L410,374 L362,350 Z" fill="#cffafe"/></g>
+<circle cx="410" cy="347" r="15" fill="#fff" stroke="#0e7490" stroke-width="1.5"/><g transform="translate(401,338) scale(0.75)" fill="none" stroke="#0e7490" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></g>
+<g stroke="#0e7490" stroke-width="1.2" stroke-linejoin="round" stroke-opacity="0.55"><path d="M522,430 L570,454 L570,466 L522,442 Z" fill="#a5f3fc"/><path d="M570,454 L618,430 L618,442 L570,466 Z" fill="#67e8f9"/><path d="M570,406 L618,430 L570,454 L522,430 Z" fill="#cffafe"/></g>
+<circle cx="570" cy="427" r="15" fill="#fff" stroke="#0e7490" stroke-width="1.5"/><g transform="translate(561,418) scale(0.75)" fill="none" stroke="#0e7490" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></g>
+<g stroke="#0e7490" stroke-width="1.2" stroke-linejoin="round" stroke-opacity="0.55"><path d="M362,510 L410,534 L410,546 L362,522 Z" fill="#a5f3fc"/><path d="M410,534 L458,510 L458,522 L410,546 Z" fill="#67e8f9"/><path d="M410,486 L458,510 L410,534 L362,510 Z" fill="#cffafe"/></g>
+<circle cx="410" cy="507" r="15" fill="#fff" stroke="#0e7490" stroke-width="1.5"/><g transform="translate(401,498) scale(0.75)" fill="none" stroke="#0e7490" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 10h18M3 15h18M9 4v6M15 10v5M9 15v5"/></g>
+<text x="190" y="426" text-anchor="end" font-size="14" font-weight="700" fill="#0f172a" class="halo">nginx 정문</text>
+<text x="190" y="443" text-anchor="end" font-size="11.5" fill="#475569" class="halo">+ ipset L4 차단</text>
+<text x="410" y="406" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a" class="halo">센서</text>
+<text x="410" y="423" text-anchor="middle" font-size="11.5" fill="#475569" class="halo">Suricata · Scapy</text>
+<text x="630" y="426" text-anchor="start" font-size="14" font-weight="700" fill="#0f172a" class="halo">shipper</text>
+<text x="630" y="443" text-anchor="start" font-size="11.5" fill="#475569" class="halo">경보에 HMAC 서명</text>
+<text x="468" y="512" text-anchor="start" font-size="14" font-weight="700" fill="#0f172a" class="halo">fw-agent</text>
+<text x="468" y="529" text-anchor="start" font-size="11.5" fill="#475569" class="halo">차단 목록 → ipset</text>
+<line x1="352" y1="162" x2="256" y2="400" stroke="#64748b" stroke-width="1.8" marker-end="url(#ah)"/>
+<g stroke="#16a34a" stroke-width="1.5" stroke-linejoin="round" stroke-opacity="0.55"><path d="M70,860 L410,1030 L410,1050 L70,880 Z" fill="#dcfce7"/><path d="M410,1030 L750,860 L750,880 L410,1050 Z" fill="#bbf7d0"/><path d="M410,690 L750,860 L410,1030 L70,860 Z" fill="#f0fdf4"/></g>
+<text x="790" y="712" text-anchor="end" font-size="16" font-weight="800" fill="#15803d">Flask 앱</text>
+<text x="790" y="731" text-anchor="end" font-size="12" fill="#475569">L7 탐지 · 대응 (Vercel 배포는 이 판만)</text>
+<line x1="287" y1="882" x2="368" y2="922" stroke="#64748b" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="452" y1="922" x2="533" y2="882" stroke="#64748b" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="533" y1="838" x2="452" y2="798" stroke="#64748b" stroke-width="1.8" marker-end="url(#ah)"/>
+<g stroke="#16a34a" stroke-width="1.2" stroke-linejoin="round" stroke-opacity="0.55"><path d="M202,860 L250,884 L250,896 L202,872 Z" fill="#bbf7d0"/><path d="M250,884 L298,860 L298,872 L250,896 Z" fill="#86efac"/><path d="M250,836 L298,860 L250,884 L202,860 Z" fill="#dcfce7"/></g>
+<circle cx="250" cy="857" r="15" fill="#fff" stroke="#16a34a" stroke-width="1.5"/><g transform="translate(241,848) scale(0.75)" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20a15 15 0 0 1 0-20"/></g>
+<g stroke="#16a34a" stroke-width="1.2" stroke-linejoin="round" stroke-opacity="0.55"><path d="M362,940 L410,964 L410,976 L362,952 Z" fill="#bbf7d0"/><path d="M410,964 L458,940 L458,952 L410,976 Z" fill="#86efac"/><path d="M410,916 L458,940 L410,964 L362,940 Z" fill="#dcfce7"/></g>
+<circle cx="410" cy="937" r="15" fill="#fff" stroke="#16a34a" stroke-width="1.5"/><g transform="translate(401,928) scale(0.75)" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></g>
+<g stroke="#16a34a" stroke-width="1.2" stroke-linejoin="round" stroke-opacity="0.55"><path d="M522,860 L570,884 L570,896 L522,872 Z" fill="#bbf7d0"/><path d="M570,884 L618,860 L618,872 L570,896 Z" fill="#86efac"/><path d="M570,836 L618,860 L570,884 L522,860 Z" fill="#dcfce7"/></g>
+<circle cx="570" cy="857" r="15" fill="#fff" stroke="#16a34a" stroke-width="1.5"/><g transform="translate(561,848) scale(0.75)" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M8.2 7.2 15.8 11M8.2 16.8 15.8 13"/></g>
+<g stroke="#16a34a" stroke-width="1.2" stroke-linejoin="round" stroke-opacity="0.55"><path d="M362,780 L410,804 L410,816 L362,792 Z" fill="#bbf7d0"/><path d="M410,804 L458,780 L458,792 L410,816 Z" fill="#86efac"/><path d="M410,756 L458,780 L410,804 L362,780 Z" fill="#dcfce7"/></g>
+<circle cx="410" cy="777" r="15" fill="#fff" stroke="#16a34a" stroke-width="1.5"/><g transform="translate(401,768) scale(0.75)" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></g>
+<text x="190" y="856" text-anchor="end" font-size="14" font-weight="700" fill="#0f172a" class="halo">① routes/</text>
+<text x="190" y="873" text-anchor="end" font-size="11.5" fill="#475569" class="halo">화면 · API · 내부 창구</text>
+<text x="410" y="994" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a" class="halo">② 탐지</text>
+<text x="410" y="1011" text-anchor="middle" font-size="11.5" fill="#475569" class="halo">detector · 위험등급</text>
+<text x="630" y="856" text-anchor="start" font-size="14" font-weight="700" fill="#0f172a" class="halo">③ 판단</text>
+<text x="630" y="873" text-anchor="start" font-size="11.5" fill="#475569" class="halo">상관분석 · 교차 규칙</text>
+<text x="410" y="834" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a" class="halo">④ 대응</text>
+<text x="410" y="851" text-anchor="middle" font-size="11.5" fill="#475569" class="halo">SOAR · 플레이북 · 잠금</text>
+<line x1="250" y1="468" x2="250" y2="830" stroke="#64748b" stroke-width="1.8" marker-end="url(#ah)"/>
+<text x="240" y="650" text-anchor="end" font-size="11.5" font-weight="600" fill="#334155" class="halo">요청 전달</text>
+<line x1="570" y1="468" x2="570" y2="830" stroke="#64748b" stroke-width="1.8" marker-end="url(#ah)"/>
+<text x="580" y="650" text-anchor="start" font-size="11.5" font-weight="600" fill="#334155" class="halo">HMAC 서명 경보</text>
+<line x1="410" y1="752" x2="410" y2="550" stroke="#64748b" stroke-width="1.8" marker-end="url(#ah)"/>
+<text x="420" y="650" text-anchor="start" font-size="11.5" font-weight="600" fill="#334155" class="halo">차단 목록</text>
+<line x1="395.75" y1="1056" x2="139.25" y2="1151" stroke="#64748b" stroke-width="1.8" stroke-dasharray="6 5" marker-end="url(#ah)" marker-start="url(#ah-s)"/>
+<text x="208.2" y="1124.6" text-anchor="end" font-size="11.5" font-weight="600" fill="#334155" class="halo">기록 · 조회</text>
+<g stroke="#b45309" stroke-width="1.2" stroke-linejoin="round" stroke-opacity="0.55"><path d="M69,1185 L125,1213 L125,1227 L69,1199 Z" fill="#fde68a"/><path d="M125,1213 L181,1185 L181,1199 L125,1227 Z" fill="#fcd34d"/><path d="M125,1157 L181,1185 L125,1213 L69,1185 Z" fill="#fef3c7"/></g>
+<circle cx="125" cy="1182" r="15" fill="#fff" stroke="#b45309" stroke-width="1.5"/><g transform="translate(116,1173) scale(0.75)" fill="none" stroke="#b45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/></g>
+<text x="125" y="1251" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a" class="halo">Supabase</text>
+<text x="125" y="1268" text-anchor="middle" font-size="11.5" fill="#475569" class="halo">PostgreSQL · pg_cron</text>
+<line x1="405.25" y1="1056" x2="319.75" y2="1151" stroke="#64748b" stroke-width="1.8" stroke-dasharray="6 5" marker-end="url(#ah)"/>
+<text x="337.4" y="1124.6" text-anchor="end" font-size="11.5" font-weight="600" fill="#334155" class="halo">조기 경보 판단</text>
+<g stroke="#7c3aed" stroke-width="1.2" stroke-linejoin="round" stroke-opacity="0.55"><path d="M259,1185 L315,1213 L315,1227 L259,1199 Z" fill="#ddd6fe"/><path d="M315,1213 L371,1185 L371,1199 L315,1227 Z" fill="#c4b5fd"/><path d="M315,1157 L371,1185 L315,1213 L259,1185 Z" fill="#ede9fe"/></g>
+<circle cx="315" cy="1182" r="15" fill="#fff" stroke="#7c3aed" stroke-width="1.5"/><g transform="translate(306,1173) scale(0.75)" fill="none" stroke="#7c3aed" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z"/></g>
+<text x="315" y="1251" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a" class="halo">Groq LLM</text>
+<text x="315" y="1268" text-anchor="middle" font-size="11.5" fill="#475569" class="halo">AI 조기 경보 · 리포트</text>
+<line x1="414.75" y1="1056" x2="500.25" y2="1151" stroke="#64748b" stroke-width="1.8" stroke-dasharray="6 5" marker-end="url(#ah)"/>
+<text x="482.6" y="1124.6" text-anchor="start" font-size="11.5" font-weight="600" fill="#334155" class="halo">알림</text>
+<g stroke="#db2777" stroke-width="1.2" stroke-linejoin="round" stroke-opacity="0.55"><path d="M449,1185 L505,1213 L505,1227 L449,1199 Z" fill="#fbcfe8"/><path d="M505,1213 L561,1185 L561,1199 L505,1227 Z" fill="#f9a8d4"/><path d="M505,1157 L561,1185 L505,1213 L449,1185 Z" fill="#fce7f3"/></g>
+<circle cx="505" cy="1182" r="15" fill="#fff" stroke="#db2777" stroke-width="1.5"/><g transform="translate(496,1173) scale(0.75)" fill="none" stroke="#db2777" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></g>
+<text x="505" y="1251" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a" class="halo">Slack · 메일</text>
+<text x="505" y="1268" text-anchor="middle" font-size="11.5" fill="#475569" class="halo">잠금 즉시 알림</text>
+<line x1="680.75" y1="1151" x2="424.25" y2="1056" stroke="#64748b" stroke-width="1.8" stroke-dasharray="6 5" marker-end="url(#ah)"/>
+<text x="611.8" y="1124.6" text-anchor="start" font-size="11.5" font-weight="600" fill="#334155" class="halo">5초 폴링</text>
+<g stroke="#2563eb" stroke-width="1.2" stroke-linejoin="round" stroke-opacity="0.55"><path d="M639,1185 L695,1213 L695,1227 L639,1199 Z" fill="#bfdbfe"/><path d="M695,1213 L751,1185 L751,1199 L695,1227 Z" fill="#93c5fd"/><path d="M695,1157 L751,1185 L695,1213 L639,1185 Z" fill="#dbeafe"/></g>
+<circle cx="695" cy="1182" r="15" fill="#fff" stroke="#2563eb" stroke-width="1.5"/><g transform="translate(686,1173) scale(0.75)" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></g>
+<text x="695" y="1251" text-anchor="middle" font-size="14" font-weight="700" fill="#0f172a" class="halo">Next.js 관제 화면</text>
+<text x="695" y="1268" text-anchor="middle" font-size="11.5" fill="#475569" class="halo">위협 현황 · 공격 상세 · 작업대</text>
+<rect x="40" y="1299" width="13" height="13" rx="3" fill="#93c5fd" stroke="#2563eb" stroke-width="1"/>
+<text x="59" y="1310" font-size="12.5" fill="#334155">사용자 · 화면</text>
+<rect x="176.0" y="1299" width="13" height="13" rx="3" fill="#67e8f9" stroke="#0e7490" stroke-width="1"/>
+<text x="195.0" y="1310" font-size="12.5" fill="#334155">네트워크 (Track D)</text>
+<rect x="343.0" y="1299" width="13" height="13" rx="3" fill="#86efac" stroke="#16a34a" stroke-width="1"/>
+<text x="362.0" y="1310" font-size="12.5" fill="#334155">우리 앱</text>
+<rect x="434.5" y="1299" width="13" height="13" rx="3" fill="#fcd34d" stroke="#b45309" stroke-width="1"/>
+<text x="453.5" y="1310" font-size="12.5" fill="#334155">데이터</text>
+<rect x="519.0" y="1299" width="13" height="13" rx="3" fill="#c4b5fd" stroke="#7c3aed" stroke-width="1"/>
+<text x="538.0" y="1310" font-size="12.5" fill="#334155">AI</text>
+<rect x="580.0" y="1299" width="13" height="13" rx="3" fill="#f9a8d4" stroke="#db2777" stroke-width="1"/>
+<text x="599.0" y="1310" font-size="12.5" fill="#334155">알림</text>
+<text x="40" y="1338" font-size="12" fill="#64748b">Vercel 배포에는 Track D 판이 없어 사용자가 Flask 앱으로 바로 접속합니다. ②→④는 앱 안의 처리 순서입니다.</text>
+</svg>

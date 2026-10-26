@@ -25,37 +25,7 @@
 
 ## 구조
 
-```mermaid
-flowchart LR
-    U["사용자 / 공격자"]
-
-    subgraph NET["Track D · 로컬 Docker 단지"]
-        GW["nginx 정문<br/>+ ipset L4 차단"]
-        SEN["센서<br/>Suricata · Scapy"]
-        SH["shipper"]
-        FW["fw-agent"]
-    end
-
-    subgraph APPG["Flask 앱 (Vercel 배포 · Docker 공통)"]
-        R["routes/<br/>화면 · API"]
-        DET["탐지<br/>security/detector"]
-        COR["판단<br/>correlate · LLM 조기 경보"]
-        SOAR["대응<br/>soar · playbooks · lockdown"]
-    end
-
-    DB[("Supabase<br/>PostgreSQL")]
-    UI["Next.js 관제 화면<br/>/admin/*"]
-    OUT["Slack · 메일"]
-
-    U --> GW --> R
-    U -. "배포 환경은 바로" .-> R
-    GW -. "트래픽 복사" .-> SEN --> SH -->|"HMAC 서명"| R
-    R --> DET --> COR --> SOAR
-    SOAR --> OUT
-    SOAR -->|"차단 목록"| FW --> GW
-    R <--> DB
-    UI -->|"5초 폴링"| R
-```
+<p align="center"><img src="docs/architecture.svg" width="680" alt="login-watchdog 구조도: 사용자 → Track D 단지(nginx 정문·센서·shipper·fw-agent) → Flask 앱(routes·탐지·판단·대응) → Supabase·Groq·Slack·Next.js 관제 화면"></p>
 
 - **L7 경로**: 모든 요청이 Flask 앱에서 탐지 → 상관분석 → 대응을 거칩니다. Vercel 배포에서는 이 경로만 동작합니다.
 - **L3/L4 경로**(Track D): 정문 앞 센서가 본 경보가 서명된 채 앱으로 들어오고, 앱이 앱 기록과 엮어 판단한 뒤 fw-agent가 정문에서 L4로 막습니다. `docker compose up`으로 켭니다 → [netwatch/README.md](netwatch/README.md)
