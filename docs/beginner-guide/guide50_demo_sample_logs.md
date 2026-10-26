@@ -1,6 +1,6 @@
 # 50단계 — 7일치 샘플 로그 만들기 (대시보드 시연용)
 
-[◀ 49단계](guide49_scripts_reorganization.md) · [전체 목차](beginner-guide.md)
+[◀ 49단계](guide49_scripts_reorganization.md) · [전체 목차](beginner-guide.md) · [51단계 ▶](guide51_network_sensor.md)
 
 > 기능은 그대로이고, 시연·스크린샷용 도구를 추가했습니다. 내 컴퓨터에서 **진짜 서버를 켜고, 가짜 회원을 가입시키고, 공격 시뮬레이션 21종을 돌려서** 지난 7일치 기록을 만들고, 그 기록으로 대시보드를 띄웁니다. 원하면 같은 기록을 실제 Supabase에도 넣을 수 있습니다.
 

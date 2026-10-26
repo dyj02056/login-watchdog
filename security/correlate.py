@@ -18,6 +18,8 @@
 # NET-01: 출발지 위조가 가능한 SYN Flood는 영구 잠금 대신 TTL 차단만 요청한다.
 # CR-01: 네트워크 정찰 뒤 앱 침투가 이어질 때 연결이 확인된 킬체인으로 본다.
 # CR-02: SYN Flood와 전역 HTTP 폭주가 겹칠 때만 다계층 폭주로 묶는다.
+# CR-03: 웹 공격·스캐너 기록(연결 완성 증거)이 있는 IP의 로그인 성공은 세션 전에 막는다 —
+#        비밀번호를 이미 손에 넣은 공격자일 수 있고, SYN·포트 스캔은 위조 가능해 근거로 쓰지 않는다.
 # ============================================================================
 
 import config
@@ -132,6 +134,11 @@ def check_cross_layer(ip: str, event_type: str) -> None:
                 and not db.incidents._is_idle(existing)
                 and rule["id"] in (existing.get("matched_rules") or [])
             ):
+                # 규칙은 이미 기록됐다 — 대응을 처음부터 반복하지 않고, 실패로 남은 단계만 이어서 한다.
+                _retry_failed_steps(
+                    rule["playbook"], f"incident:{existing['id']}:{rule['id']}",
+                    _rule_ctx(ip, existing, rule),
+                )
                 continue
 
             event_types = sorted({row["event_type"] for row in matched})
@@ -146,22 +153,134 @@ def check_cross_layer(ip: str, event_type: str) -> None:
             if not incident.get("rule_added", True):
                 # 동시에 들어온 다른 요청이 같은 사건에 이 규칙을 먼저 기록했다 — 그쪽이 실행한다.
                 continue
-            ctx = {
-                "ip": ip,
-                "incident_id": incident["id"],
-                "rule_id": rule["id"],
-                "priority": rule["priority"],
-                "matched_rules": incident.get("matched_rules") or [],
-                "evidence": rule["evidence"],
-                "username": None,
-                "user_id": None,
-                "user_email": None,
-            }
             playbooks.run(
-                rule["playbook"], f"incident:{incident['id']}:{rule['id']}", ctx
+                rule["playbook"], f"incident:{incident['id']}:{rule['id']}", _rule_ctx(ip, incident, rule)
             )
     except Exception as error:
         print(f"[교차 규칙 오류] {type(error).__name__}")
+
+
+def check_success_login(ip: str, username: str) -> bool:
+    """연결이 확인된 NET 경보 뒤의 로그인 성공을 막고 CR-03을 사건당 한 번 실행한다.
+
+    조회나 기록이 실패하면 검사 오류 때문에 정상 로그인을 막지 않는다.
+    """
+    try:
+        evidence = db.list_recent_connected_net_events_for_login(
+            ip, config.NET_SUCCESS_LOGIN_LOOKBACK_MINUTES
+        )
+        if not evidence:
+            return False
+
+        existing = db.get_open_incident(ip)
+        if (
+            existing
+            and not db.incidents._is_idle(existing)
+            and "CR-03" in (existing.get("matched_rules") or [])
+        ):
+            # 이번 로그인은 막는다. 다만 같은 IP에서 다른 계정이 들어왔다면 그 계정의 기존 세션도 끊어야
+            # 하므로, 사건이 이미 처리됐어도 계정마다 세션 끊기는 따로 확인한다(강사 피드백 추가 상황).
+            _invalidate_sessions_once_per_user(ip, existing, username)
+            return True
+
+        user = db.get_user_by_username(username)
+        event = evidence[0]
+        incident = db.record_incident(
+            ip, [event["event_type"]], event.get("severity") or "MEDIUM",
+            source="NET", rule_id="CR-03",
+        )
+        if incident.get("rule_added", True):
+            ctx = {
+                "ip": ip,
+                "incident_id": incident["id"],
+                "rule_id": "CR-03",
+                "priority": "HIGH",
+                "matched_rules": incident.get("matched_rules") or [],
+                "evidence": "CONNECTED",
+                "username": username,
+                "user_id": user["id"],
+                "user_email": user.get("email"),
+            }
+            playbooks.run(
+                "SUSPICIOUS_SUCCESS_LOGIN", f"incident:{incident['id']}:CR-03", ctx
+            )
+        else:
+            # 같은 순간 다른 요청이 CR-03을 먼저 기록했다 — 그쪽은 그 계정만 처리하므로 이 계정은 따로 확인한다.
+            _invalidate_sessions_once_per_user(ip, incident, username)
+        return True
+    except Exception as error:
+        print(f"[의심 로그인 검사 오류] {type(error).__name__}")
+        return False
+
+
+def _rule_ctx(ip: str, incident: dict, rule: dict) -> dict:
+    """교차 규칙 플레이북에 넘길 공통 정보. 처음 실행과 실패 단계 재실행이 같은 값을 쓴다."""
+    return {
+        "ip": ip,
+        "incident_id": incident["id"],
+        "rule_id": rule["id"],
+        "priority": rule["priority"],
+        "matched_rules": incident.get("matched_rules") or [],
+        "evidence": rule["evidence"],
+        "username": None,
+        "user_id": None,
+        "user_email": None,
+    }
+
+
+def _retry_failed_steps(playbook: str, trigger_ref: str, ctx: dict) -> None:
+    """같은 실행 근거에서 마지막 결과가 FAILED인 조치 단계만 다시 실행한다.
+
+    matched_rules는 "규칙에 해당함"만 뜻하고 "조치 완료"는 playbook_runs에 남는다. 예전에는 규칙이
+    기록돼 있으면 차단 요청이 일시적으로 실패했어도 다음 경보에서 건너뛰어, 오류가 풀린 뒤에도 차단이
+    걸리지 않았다(10/26 강사 피드백 3). 이미 성공한 단계와 알림은 반복하지 않는다(RETRYABLE_STEPS).
+    조회가 실패하면 아무것도 하지 않는다 — 확실하지 않을 때 조치를 반복하는 것보다 안전하다.
+    """
+    try:
+        latest: dict[str, str] = {}
+        for row in db.list_playbook_runs(trigger_ref):
+            latest[row["step"]] = row["status"]
+    except Exception as error:
+        print(f"[실패 단계 재실행 조회 오류] {type(error).__name__}")
+        return
+    steps = [step for step, status in latest.items()
+             if status == "FAILED" and step in playbooks.RETRYABLE_STEPS]
+    if steps:
+        playbooks.run(playbook, trigger_ref, ctx, only_steps=steps)
+
+
+def _invalidate_sessions_once_per_user(ip: str, incident: dict, username: str) -> None:
+    """CR-03 사건이 이미 처리된 IP에서 들어온 계정의 기존 세션을, 계정마다 한 번 끊는다.
+
+    사건 단위로 "이미 처리함"을 판단하면 같은 IP의 두 번째 계정은 이번 로그인만 막히고, 이미 발급된
+    세션은 그대로 남는다(10/26 강사 피드백 추가 상황). 그래서 계정별 실행 근거
+    incident:<id>:CR-03:user:<user_id> 로 세션 끊기 단계만 따로 기록·확인한다. 메일·Slack은 사건당
+    한 번이면 충분하므로 여기서는 보내지 않는다. 첫 계정도 다음 로그인 때 이 확인을 한 번 거치므로
+    session_version이 한 번 더 오를 수 있지만, 이미 끊긴 세션이라 결과는 같다.
+    어떤 오류도 로그인 차단 판정(True)을 바꾸지 않게 여기서 삼킨다.
+    """
+    try:
+        user = db.get_user_by_username(username)
+        if not user:
+            return
+        trigger_ref = f"incident:{incident['id']}:CR-03:user:{user['id']}"
+        rows = db.list_playbook_runs(trigger_ref)
+        if any(row["step"] == "invalidate_sessions" and row["status"] == "OK" for row in rows):
+            return
+        ctx = {
+            "ip": ip,
+            "incident_id": incident["id"],
+            "rule_id": "CR-03",
+            "priority": "HIGH",
+            "matched_rules": incident.get("matched_rules") or [],
+            "evidence": "CONNECTED",
+            "username": username,
+            "user_id": user["id"],
+            "user_email": user.get("email"),
+        }
+        playbooks.run("SUSPICIOUS_SUCCESS_LOGIN", trigger_ref, ctx, only_steps=["invalidate_sessions"])
+    except Exception as error:
+        print(f"[계정별 세션 끊기 오류] {type(error).__name__}")
 
 
 def _match_cross_layer_rule(ip: str, event_type: str, rule: dict) -> list[dict]:

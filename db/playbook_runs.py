@@ -13,7 +13,7 @@
 
 import db
 
-__all__ = ["insert_playbook_run"]
+__all__ = ["insert_playbook_run", "list_playbook_runs"]
 
 
 def insert_playbook_run(
@@ -24,3 +24,19 @@ def insert_playbook_run(
         "playbook": playbook, "trigger_ref": trigger_ref,
         "step": step, "status": status, "error": error,
     }).execute()
+
+
+def list_playbook_runs(trigger_ref: str) -> list[dict]:
+    """같은 실행 근거(trigger_ref)의 단계 기록을 오래된 순으로 돌려준다.
+
+    "규칙에 해당함(matched_rules)"과 "조치 완료"를 구분하려고 쓴다 — 규칙은 기록됐는데 일시적인 오류로
+    실패한 단계가 있으면, 다음 경보 때 그 단계만 이어서 처리한다(10/26 강사 피드백 3).
+    """
+    res = (
+        db.get_client().table("playbook_runs")
+        .select("step, status, ran_at")
+        .eq("trigger_ref", trigger_ref)
+        .order("ran_at")
+        .execute()
+    )
+    return res.data or []

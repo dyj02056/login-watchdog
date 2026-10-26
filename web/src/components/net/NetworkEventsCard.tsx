@@ -4,10 +4,10 @@
 // 데이터는 처리 작업대가 이미 5초마다 받는 /api/status의 network_events(최근 50건)에서 꺼내 쓴다(새 요청을 만들지 않는다).
 // 50건을 서버에 다시 요청하지 않고 프론트에서 쪽으로 나눠 보여 준다 — 한 화면에 50줄이 쏟아지면 보기 어려우므로,
 // 다른 처리 작업대 목록과 같은 Pagination UI를 재사용해 조작감을 맞춘다.
-import { useEffect, useState } from "react";
 import { formatShortDateTime } from "@/lib/format";
 import { netCategoryLabel } from "@/lib/labels";
 import type { NetworkEvent } from "@/lib/types";
+import { useClientPages } from "@/lib/useClientPages";
 import { Pill } from "../Badge";
 import { DataTable } from "../DataTable";
 import { Pagination } from "../Pagination";
@@ -22,16 +22,7 @@ const PAGE_SIZE = 8;
 export function NetworkEventsCard() {
   const { status } = useOps();
   const rows = status?.network_events ?? [];
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const [page, setPage] = useState(1);
-  // 폴링으로 건수가 줄면 지금 쪽이 범위를 벗어날 수 있으니 마지막 쪽으로 맞춘다(서버 페이징의 total 처리와 같은 뜻).
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
-
-  const current = Math.min(page, totalPages);
-  const start = (current - 1) * PAGE_SIZE;
-  const pageRows = rows.slice(start, start + PAGE_SIZE);
+  const { pageRows, page: current, totalPages, setPage } = useClientPages(rows, PAGE_SIZE);
 
   return (
     <Panel title="네트워크 이벤트 (최근 L3/L4 탐지)" meta={status ? <span className={`${styles.count} num`}>{rows.length}건</span> : null} flush>

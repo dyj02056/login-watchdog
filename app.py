@@ -162,9 +162,13 @@ for _endpoint in ("password.password_forgot_submit", "password.password_reset_su
 # Track D 경보 수집 창구(POST /api/internal/net-events)는 전역 한도에서 빠지는 대신(helpers/hooks.py의
 # PAGE_ACCESS_EXCLUDED_ENDPOINTS) 보낸이별 한도를 따로 건다(계약서 K1). IP가 아니라 보낸이 이름으로 세는
 # 이유: shipper는 Docker 내부 주소 하나에서 모든 경보를 보내므로, IP로 세면 의미 있는 구분이 없다.
+# deduct_when: 한도를 넘었는지는 요청 전에 보지만, 1회 차감은 서명 검사를 통과한 응답(401이 아님)에만 한다.
+# 헤더만 "shipper"로 적은 위조 요청이 진짜 shipper의 몫을 써 버려 공격 경보가 429로 막히는 것을 막는다
+# (10/26 강사 피드백 1). 위조 요청 자체는 gateway(nginx)가 /api/internal/을 막아 바깥에서 닿지 않는다.
 app.view_functions["internal.net_events"] = limiter.limit(
     f"{config.NET_INGEST_RATE_LIMIT_PER_MINUTE} per minute",
     key_func=internal_ingest.rate_limit_key,
+    deduct_when=lambda response: response.status_code != 401,
 )(app.view_functions["internal.net_events"])
 
 

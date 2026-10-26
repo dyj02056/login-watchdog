@@ -80,11 +80,16 @@ def list_blocks():
                     continue
                 ttl_sec = math.ceil(rem)
 
-        blocks_res.append({
+        item = {
             "ip": ip,
             "status": st,
             "ttl_seconds": ttl_sec
-        })
+        }
+        # 요청 번호(guide56). fw-agent가 ACK에 그대로 돌려줘 "어느 요청의 완료인지"를 구분한다.
+        # version 칸이 없는 DB(guide56 실행 전)에서는 칸을 빼서 예전 응답 모양을 그대로 둔다.
+        if "version" in r:
+            item["version"] = r["version"]
+        blocks_res.append(item)
 
     return jsonify({"generated_at": now_iso, "blocks": blocks_res})
 
@@ -132,20 +137,26 @@ def ack_block():
             error = str(error)
         error = error[:500]
 
+    # version이 있으면 그 요청 번호의 행일 때만 상태를 바꾼다(10/26 강사 피드백 4). 없으면(옛 agent) 예전처럼.
+    version = data.get("version")
+    if version is not None and (isinstance(version, bool) or not isinstance(version, int) or version < 0):
+        return jsonify(error="invalid", field="version"), 400
+    cond = {} if version is None else {"expected_version": version}
+
     now_iso = datetime.now(timezone.utc).isoformat()
     changed = False
 
     if status == "APPLIED":
-        changed = db.update_network_block_if_status(ip, ["PENDING_APPLY"], {"status": "APPLIED", "applied_at": now_iso})
+        changed = db.update_network_block_if_status(ip, ["PENDING_APPLY"], {"status": "APPLIED", "applied_at": now_iso}, **cond)
         if changed:
             row = db.get_network_block(ip)
             reason = row.get("reason", "NET_FLOOD") if row else "NET_FLOOD"
             net_ingest.record_net_blocked(ip, reason)
     elif status == "REMOVED":
-        changed = db.update_network_block_if_status(ip, ["PENDING_REMOVE"], {"status": "REMOVED", "removed_at": now_iso})
+        changed = db.update_network_block_if_status(ip, ["PENDING_REMOVE"], {"status": "REMOVED", "removed_at": now_iso}, **cond)
         if changed:
             net_ingest.resolve_net_blocked(ip)
     elif status == "FAILED":
-        changed = db.update_network_block_if_status(ip, ["PENDING_APPLY", "PENDING_REMOVE"], {"status": "FAILED", "last_error": error})
+        changed = db.update_network_block_if_status(ip, ["PENDING_APPLY", "PENDING_REMOVE"], {"status": "FAILED", "last_error": error}, **cond)
 
     return jsonify({"changed": changed})

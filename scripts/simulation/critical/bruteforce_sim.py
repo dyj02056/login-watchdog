@@ -34,7 +34,7 @@ import os as _os
 import sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 
-from _sim_common import is_local_host
+from _sim_common import fetch_spa_csrf, is_local_host
 
 load_dotenv()
 
@@ -51,6 +51,10 @@ def fetch_csrf_token(session: requests.Session, base_url: str, login_path: str =
     """
     response = session.get(f"{base_url}{login_path}", timeout=5)
     marker = 'name="csrf_token" value="'
+    if marker not in response.text:
+        # spa/ 빌드가 있는 앱(Docker 단지)은 토큰 없는 Next.js 껍데기를 준다 — 공격 상자의 brute(S4)가
+        # 이 경로로 로그인 POST를 못 보내던 문제를 막으려고 SPA 헤더로 다시 받는다(_sim_common.fetch_spa_csrf).
+        return fetch_spa_csrf(session, base_url, login_path)
     start = response.text.index(marker) + len(marker)
     end = response.text.index('"', start)
     return response.text[start:end]
