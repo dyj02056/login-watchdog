@@ -63,6 +63,15 @@ def run(ctx) -> cc.CheckResult:
         return cc.CheckResult(SCENARIO, "FAIL", "login 명령 출력(JSON)을 읽지 못함", ip)
     if first.get("error") == "no_password":
         return cc.CheckResult(SCENARIO, "SKIP", "컨테이너에 비밀번호가 전달되지 않음(no_password)", ip)
+    # lw.py는 요청 도중 예외가 나도 success:false를 낸다. 이걸 "CR-03이 막았다"로 읽으면 진짜 원인
+    # (로그인 POST가 앱에 닿지 않음)이 "메일 단계 기록 없음"으로 가려진다(10/26 첫 실행). 그래서 먼저 거른다.
+    if first.get("error") or first.get("ok") is not True:
+        return cc.CheckResult(
+            SCENARIO, "FAIL",
+            f"login 명령 오류({first.get('error') or 'ok가 true 아님'}, status={first.get('status')})"
+            " — 로그인 요청이 앱에 닿지 않아 CR-03을 판정할 수 없음",
+            ip,
+        )
 
     # 플레이북 단계는 순서대로(invalidate_sessions → notify_owner_email → notify_slack) 기록되므로,
     # 아무 행이나 보이자마자 판정하면 메일 단계가 아직 없을 수 있다. 메일 단계 행이 생길 때까지 기다린다.

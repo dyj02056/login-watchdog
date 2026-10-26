@@ -40,6 +40,13 @@ HTTP_FLOOD_SCRIPT = (
 # 앱에서 이 경로가 바뀌면 여기도 함께 바꿔야 S6 판정(success)이 맞게 나온다.
 MEMBER_DASHBOARD_PATH = "/dashboard"
 
+# 앱에 Next.js 정적 화면(spa/)이 들어 있으면 GET /login은 csrf_token 입력칸이 없는 화면 껍데기를
+# 돌려준다(helpers/spa.py). 브라우저처럼 이 헤더를 붙여 다시 요청하면 같은 라우트가 JSON 봉투
+# {"csrf": ..., "page": ...}로 답하므로, 껍데기에서 토큰을 못 찾았을 때 이 경로로 받는다.
+# 앱의 helpers/spa.py SPA_HEADER·SPA_HEADER_VALUE가 바뀌면 여기도 함께 바꾼다.
+SPA_HEADER = "X-Requested-With"
+SPA_HEADER_VALUE = "login-watchdog-spa"
+
 SCANNER_USER_AGENTS = (
     "sqlmap",
     "nikto",
@@ -89,6 +96,35 @@ def extract_csrf_token(html: str) -> str:
         raise ValueError("로그인 폼에서 CSRF 토큰을 찾지 못했습니다.")
 
     return parser.token
+
+
+def fetch_login_csrf(session, login_url: str) -> str:
+    """로그인 화면을 열어 CSRF 토큰을 받는다. 같은 세션 쿠키로 이어서 POST해야 유효하다.
+
+    먼저 옛 Jinja 폼(hidden csrf_token)에서 찾고, 없으면 SPA 헤더로 다시 요청해 JSON의 csrf를 쓴다.
+    Docker 단지처럼 spa/ 빌드가 있는 앱은 껍데기만 주므로, 이 대체 경로가 없으면 로그인 POST를
+    보내지도 못하고 끝난다(10/26 C3-1 S6 FAIL의 원인).
+    """
+    response = session.get(login_url, timeout=5)
+    response.raise_for_status()
+    try:
+        return extract_csrf_token(response.text)
+    except ValueError:
+        pass
+
+    spa_response = session.get(
+        login_url,
+        headers={SPA_HEADER: SPA_HEADER_VALUE},
+        timeout=5,
+    )
+    spa_response.raise_for_status()
+    try:
+        token = json.loads(spa_response.text).get("csrf")
+    except (ValueError, AttributeError):
+        token = None
+    if not token:
+        raise ValueError("로그인 화면(HTML·SPA JSON)에서 CSRF 토큰을 찾지 못했습니다.")
+    return token
 
 
 def bounded_int(
@@ -430,13 +466,10 @@ def command_login(
         session = session_factory()
         login_url = f"{target_url}/login"
 
-        get_response = session.get(
-            login_url,
-            timeout=5,
-        )
-        get_response.raise_for_status()
-        csrf_token = extract_csrf_token(get_response.text)
+        csrf_token = fetch_login_csrf(session, login_url)
 
+        # POST에는 SPA 헤더를 붙이지 않는다 — 그래야 앱이 JSON이 아니라 평소처럼 302(성공)·200(실패)으로
+        # 답하고, 아래 성공 판정을 그대로 쓸 수 있다.
         post_response = session.post(
             login_url,
             data={
