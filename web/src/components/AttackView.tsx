@@ -3,7 +3,7 @@
 // AttackView — 화면 B "공격 상세 모니터링". 시간대별 탐지, 국가 흐름, 출발지·유형·경로 Top 5, 실시간 이벤트.
 import { apiJson } from "@/lib/api";
 import { formatShortDateTime } from "@/lib/format";
-import { actionLabel, eventTypeLabel } from "@/lib/labels";
+import { actionLabel, eventTypeLabel, netCategoryLabel } from "@/lib/labels";
 import type { Stats } from "@/lib/types";
 import { usePolling } from "@/lib/usePolling";
 import { AdminShell } from "./AdminShell";
@@ -56,7 +56,14 @@ export function AttackView() {
                 title="수집 전입니다."
                 hint="SYN 플러드·포트 스캔 같은 L3/L4 공격은 네트워크 센서가 연동되면 이 칸에 나타납니다. 지금 보이는 모든 숫자는 애플리케이션 계층(L7) 기록입니다."
               />
-            ) : null,
+            ) : (
+              // network_events를 종류·계층별로 센 값(계약서 K10). 대역 필터를 하지 않아 배포 환경에서는 전체 PC 합계다.
+              <TopBars
+                items={s.network_layer.map((r) => ({ name: `${netCategoryLabel(r.category)} (${r.layer})`, count: r.count }))}
+                tone="cyan"
+                label="네트워크 계층 탐지 종류별 건수"
+              />
+            ),
           )}
         </Panel>
 
