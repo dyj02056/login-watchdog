@@ -18,6 +18,8 @@
 # NET-01: 출발지 위조가 가능한 SYN Flood는 영구 잠금 대신 TTL 차단만 요청한다.
 # CR-01: 네트워크 정찰 뒤 앱 침투가 이어질 때 연결이 확인된 킬체인으로 본다.
 # CR-02: SYN Flood와 전역 HTTP 폭주가 겹칠 때만 다계층 폭주로 묶는다.
+# CR-03: 웹 공격·스캐너 기록(연결 완성 증거)이 있는 IP의 로그인 성공은 세션 전에 막는다 —
+#        비밀번호를 이미 손에 넣은 공격자일 수 있고, SYN·포트 스캔은 위조 가능해 근거로 쓰지 않는다.
 # ============================================================================
 
 import config
@@ -162,6 +164,53 @@ def check_cross_layer(ip: str, event_type: str) -> None:
             )
     except Exception as error:
         print(f"[교차 규칙 오류] {type(error).__name__}")
+
+
+def check_success_login(ip: str, username: str) -> bool:
+    """연결이 확인된 NET 경보 뒤의 로그인 성공을 막고 CR-03을 사건당 한 번 실행한다.
+
+    조회나 기록이 실패하면 검사 오류 때문에 정상 로그인을 막지 않는다.
+    """
+    try:
+        evidence = db.list_recent_connected_net_events_for_login(
+            ip, config.NET_SUCCESS_LOGIN_LOOKBACK_MINUTES
+        )
+        if not evidence:
+            return False
+
+        existing = db.get_open_incident(ip)
+        if (
+            existing
+            and not db.incidents._is_idle(existing)
+            and "CR-03" in (existing.get("matched_rules") or [])
+        ):
+            return True
+
+        user = db.get_user_by_username(username)
+        event = evidence[0]
+        incident = db.record_incident(
+            ip, [event["event_type"]], event.get("severity") or "MEDIUM",
+            source="NET", rule_id="CR-03",
+        )
+        if incident.get("rule_added", True):
+            ctx = {
+                "ip": ip,
+                "incident_id": incident["id"],
+                "rule_id": "CR-03",
+                "priority": "HIGH",
+                "matched_rules": incident.get("matched_rules") or [],
+                "evidence": "CONNECTED",
+                "username": username,
+                "user_id": user["id"],
+                "user_email": user.get("email"),
+            }
+            playbooks.run(
+                "SUSPICIOUS_SUCCESS_LOGIN", f"incident:{incident['id']}:CR-03", ctx
+            )
+        return True
+    except Exception as error:
+        print(f"[의심 로그인 검사 오류] {type(error).__name__}")
+        return False
 
 
 def _match_cross_layer_rule(ip: str, event_type: str, rule: dict) -> list[dict]:
