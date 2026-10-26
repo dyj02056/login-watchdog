@@ -43,7 +43,7 @@ REQUIRED_SERVICES = ("gateway", "app", "mailpit", "sensor", "l4-detector", "ship
 #   .1 내 브라우저 / .10 gateway / .101~.103 고정 상자 / .140 S7 위조 전용 /
 #   .150~.199 통합 담당자의 5초 측정(measure_*)·M1 수동 차단 예시.
 # 같은 IP를 다시 쓰면 앞 시나리오의 차단과 "사건당 규칙당 1회"에 막혀 재현이 안 되므로
-# network_blocks와 (닫히지 않은)security_incidents에 아직 없는 주소만 고른다.
+# network_blocks와 security_incidents(닫힌 사건 포함)에 아직 없는 주소만 고른다.
 CHECK_IP_START = 111
 CHECK_IP_END = 139
 
@@ -81,7 +81,10 @@ _SHARED = ["docker", "run", "--rm", "--network", "container:lw-check-{ip}", "--c
 # 시나리오별 공격 명령 틀. S8은 shipper 안에서 직접 보내므로 여기 없다(check_s8 참고).
 SCAN = _ONESHOT + ["scan"]
 WEBSCAN = _ONESHOT + ["webscan"]
-BRUTE = _ONESHOT + ["brute", "--username", VICTIM_USERNAME, "--attempts", "6"]
+# brute는 --username을 주지 않아 lw.py 기본값(nonexistent-user)을 쓴다. CR-01에는 IP 기준 실패
+# (FAILURE_THRESHOLD 5)만 있으면 되고, victim 계정으로 실패를 쌓으면 계정 잠금(ACCOUNT_FAILURE_THRESHOLD 8)에
+# 걸려 S6 로그인이 CR-03이 아닌 이유로 막힐 수 있기 때문이다.
+BRUTE = _ONESHOT + ["brute", "--attempts", "6"]
 SCANNER_UA = _ONESHOT + ["scanner-ua"]
 LOGIN = list(_LOGIN)
 SYNFLOOD = _ONESHOT + ["synflood", "--count", "3000"]
@@ -130,16 +133,17 @@ def get_reader():
 def choose_fresh_ip(client, prefix: str, start: int = CHECK_IP_START, end: int = CHECK_IP_END) -> str | None:
     """점검 범위에서 아직 쓰지 않은 새 출발지 IP 하나. 다 썼으면 None.
 
-    network_blocks에 한 번이라도 오른 IP, 그리고 아직 닫히지 않은(OPEN·IDLE) 사건이 있는 IP는 피한다.
-    둘 중 하나라도 남아 있으면 앞 실행의 차단·사건에 막혀 같은 재현이 다시 일어나지 않기 때문이다.
+    network_blocks에 한 번이라도 오른 IP, 그리고 사건이 한 번이라도 있었던 IP(닫힌 사건 포함)는 피한다.
+    차단·열린 사건이 남아 있으면 앞 실행에 막혀 같은 재현이 다시 일어나지 않고, 닫힌 사건의 IP라도 다시 쓰면
+    그 IP로 남은 옛 경고 메일·playbook_runs·NET_SCANNER_UA가 이번 판정에 섞이기 때문이다.
+    그만큼 범위(.111~.139)가 빨리 떨어지므로, 다 쓰면 None을 돌려주고 시나리오는 SKIP한다(정리 후 재시도).
     """
     blocked = client.table("network_blocks").select("ip_address").like("ip_address", f"{prefix}.%").execute().data or []
     used = {row["ip_address"] for row in blocked}
     incidents = (
         client.table("security_incidents")
-        .select("ip_address, status")
+        .select("ip_address")
         .like("ip_address", f"{prefix}.%")
-        .neq("status", "CLOSED")
         .execute()
         .data
         or []
@@ -220,7 +224,7 @@ def playbook_runs_for_ip(client, ip: str, playbook: str) -> list[dict]:
     for incident in incidents:
         runs += (
             client.table("playbook_runs")
-            .select("playbook, step, status, ran_at")
+            .select("playbook, step, status, error, ran_at")
             .eq("playbook", playbook)
             .like("trigger_ref", f"incident:{incident['id']}:%")
             .execute()

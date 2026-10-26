@@ -35,15 +35,18 @@ def run(ctx) -> cc.CheckResult:
                           text=True, encoding="utf-8", errors="replace", timeout=60)
     if sent.returncode != 0:
         reason = (sent.stderr.strip().splitlines() or ["원인 불명"])[0][:120]
-        return cc.CheckResult(SCENARIO, "FAIL", f"shipper에서 요청을 보내지 못함: {reason}", SPOOFED)
+        # 결과 표의 "출발지 IP" 칸은 앱이 실제로 기록한 주소를 적는 자리다. 위조값을 적으면 그 주소에서
+        # 온 것처럼 읽히므로, 기록을 못 찾은 경우에는 비워 둔다(표에는 "-").
+        return cc.CheckResult(SCENARIO, "FAIL", f"shipper에서 요청을 보내지 못함: {reason}", None)
 
     rows = cc.wait_until(lambda: cc.not_found_rows(client, path) or None) or []
     if not rows:
-        return cc.CheckResult(SCENARIO, "FAIL", f"not_found_attempts에 {path} 행이 없음", SPOOFED)
-    recorded = {row.get("ip_address") for row in rows}
+        return cc.CheckResult(SCENARIO, "FAIL", f"not_found_attempts에 {path} 행이 없음", None)
+    recorded = sorted({row.get("ip_address") or "?" for row in rows})
+    recorded_ip = ", ".join(recorded)
     if SPOOFED in recorded:
-        return cc.CheckResult(SCENARIO, "FAIL", f"위조 주소 {SPOOFED}가 그대로 기록됨(헤더를 믿어 버림)", SPOOFED)
-    return cc.CheckResult(SCENARIO, "PASS", f"위조 헤더 무시됨 — 기록된 ip={sorted(recorded)}", SPOOFED)
+        return cc.CheckResult(SCENARIO, "FAIL", f"위조 주소 {SPOOFED}가 그대로 기록됨(헤더를 믿어 버림)", recorded_ip)
+    return cc.CheckResult(SCENARIO, "PASS", f"위조 헤더({SPOOFED}) 무시됨 — 실제 출발지가 기록됨", recorded_ip)
 
 
 def main() -> int:
