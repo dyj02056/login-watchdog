@@ -139,7 +139,7 @@
 
 ---
 
-## 7. 공격 상자로 경보 만들기 (attacker) (A 확인 전)
+## 7. 공격 상자로 경보 만들기 (attacker)
 
 > 단지가 탐지·차단을 제대로 하는지 보려면, 센서가 볼 수 있게 **edge 대역 안에서** 공격 트래픽을 흉내 내야 합니다. 이 일을 하는 것이 공격 상자 `lw-attacker` 이미지입니다. 대상은 늘 우리 gateway(`${LW_EDGE_PREFIX}.10:8080`) 하나로 고정돼 있고(`TARGET_URL`), 횟수·속도에 상한이 걸려 있습니다. 바깥 주소로는 쏠 수 없습니다.
 
@@ -153,6 +153,7 @@
 | `webscan` | 웹 경로 훑기 | — (앱 기록) | S4 2단계 |
 | `brute` | 로그인 반복 시도 | — (앱 잠금) | S4 3단계 |
 | `scanner-ua` | 스캐너 도구 이름을 User-Agent로 보내기 | Suricata `SCANNER_UA`(9000004) | S6 근거(L7 증거) |
+| `login` | victim 계정으로 올바른 비밀번호 로그인 1회(`--username` 필수, 비밀번호는 `LW_VICTIM_PASSWORD`) | — (앱 로그인 기록) | S6(scanner-ua 뒤 로그인 성공) |
 | `synflood` | gateway에 SYN 다발 보내기 | Suricata `SYN_FLOOD`(9000001)·Scapy(9100001) | S5 |
 | `httpflood` | 한 경로에 요청 몰아보내기 | 앱 `HTTP_FLOOD` | S5b(synflood와 동시) |
 
