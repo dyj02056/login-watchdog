@@ -139,7 +139,7 @@
 
 ---
 
-## 7. 공격 상자로 경보 만들기 (attacker)
+## 7. 공격 상자로 경보 만들기 (attacker) (A 확인 전)
 
 > 단지가 탐지·차단을 제대로 하는지 보려면, 센서가 볼 수 있게 **edge 대역 안에서** 공격 트래픽을 흉내 내야 합니다. 이 일을 하는 것이 공격 상자 `lw-attacker` 이미지입니다. 대상은 늘 우리 gateway(`${LW_EDGE_PREFIX}.10:8080`) 하나로 고정돼 있고(`TARGET_URL`), 횟수·속도에 상한이 걸려 있습니다. 바깥 주소로는 쏠 수 없습니다.
 
@@ -182,6 +182,28 @@ docker run --rm --network lw_edge --ip ${LW_EDGE_PREFIX}.111 --cap-add NET_RAW \
 - `--ip`는 측정용 범위(`.150~.199`) 또는 아직 쓰지 않은 주소로 바꿉니다. 고정 상자(`.101~.103`)·내 브라우저(`.1`)와 겹치지 않게 합니다.
 - `login` 명령만 victim 계정이 필요합니다: `-e LW_VICTIM_PASSWORD=... --username victim_<역할>`을 더합니다. 비밀번호는 셸 기록에 남지 않게 환경 변수로만 넘기고, 이 문서·이미지에는 값을 적지 않습니다(victim 계정·비밀번호는 PC마다 다릅니다 — 팀 계획 01 4장).
 - 이미지가 없으면 먼저 빌드합니다: `docker compose build attacker-1`.
+
+**S5b: SYN 폭주와 HTTP 폭주를 같은 IP에서 동시에**
+
+S5b는 한 출발지에서 두 공격이 **동시에** 와야 CR-02(다계층 폭주)로 묶입니다. 그런데 같은 네트워크에서 컨테이너 두 개가 같은 `--ip`를 잡을 수는 없습니다(두 번째가 `Address already in use`로 바로 죽습니다). 그래서 **IP만 잡고 기다리는 자리 잡기 컨테이너**를 먼저 띄우고, 공격 두 개는 `--network container:`로 그 네트워크를 함께 씁니다. 두 공격 중 어느 쪽이 먼저 끝나도 다른 쪽이 끊기지 않습니다.
+
+```bash
+# 1) 자리 잡기: 이 IP만 쥐고 기다림(트래픽 없음)
+docker run -d --rm --name lw-measure-${LW_EDGE_PREFIX}.151 --network lw_edge --ip ${LW_EDGE_PREFIX}.151 \
+  --entrypoint sleep lw-attacker:latest 300
+
+# 2) 같은 IP로 두 공격을 동시에 (터미널 두 개, 또는 뒤에 & 를 붙여서)
+docker run --rm --network container:lw-measure-${LW_EDGE_PREFIX}.151 --cap-add NET_RAW \
+  -e TARGET_URL=http://${LW_EDGE_PREFIX}.10:8080 lw-attacker:latest synflood --count 3000
+docker run --rm --network container:lw-measure-${LW_EDGE_PREFIX}.151 --cap-add NET_RAW \
+  -e TARGET_URL=http://${LW_EDGE_PREFIX}.10:8080 lw-attacker:latest httpflood --path /login --requests 200
+
+# 3) 끝나면 자리 잡기 컨테이너 지우기
+docker rm -f lw-measure-${LW_EDGE_PREFIX}.151
+```
+
+- `httpflood`의 `--path`는 몰아 보낼 경로(기본 `/`), `--requests`는 요청 수(기본 120, 최대 500)입니다. `synflood --count`는 기본 3000, 최대 5000입니다.
+- 5초 측정 스크립트(`scripts/net/measure_detect_to_block.py --scenario s5b`)는 위 1)~3)을 실행마다 새 IP로 자동으로 합니다. 손으로 해 본 IP는 `network_blocks`에 남으므로 스크립트가 알아서 건너뜁니다. 다만 같은 IP를 손으로 다시 쓰면 앞 차단 때문에 재현이 안 되니 실행마다 끝자리를 바꿉니다.
 
 ---
 
