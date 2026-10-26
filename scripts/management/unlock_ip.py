@@ -84,6 +84,15 @@ def unlock_one(ip: str, permanent: bool = False, note: str = DEFAULT_NOTE) -> bo
     """
     lockout = db.get_active_lockout(ip)
     if lockout is None:
+        if permanent:
+            # 예전 영구 해제가 L7만 풀고 L4 해제에 실패했을 수 있다 — 남은 L4 해제만 이어서 한다(강사 피드백 5).
+            l4 = lockdown.ensure_l4_released(ip, "script:unlock_ip")
+            if l4 == "REQUESTED":
+                print(f"[OK] {ip} 앱 잠금은 이미 풀려 있어 남은 L4 차단 해제를 요청했습니다.")
+                return True
+            if l4 == "FAILED":
+                print(f"[!] {ip} L4 차단 해제 요청이 실패했습니다. 잠시 뒤 다시 실행하세요.")
+                return False
         print(f"[*] {ip}는 이미 잠겨있지 않습니다. 할 일이 없습니다.")
         return False
 
@@ -93,6 +102,8 @@ def unlock_one(ip: str, permanent: bool = False, note: str = DEFAULT_NOTE) -> bo
             return False
         released = lockdown.release("ip", ip, "script:unlock_ip", note)
         print(f"[OK] {ip} 영구 잠금을 해제했습니다." if released else f"[*] {ip}는 이미 영구 잠금이 아닙니다.")
+        if released and lockdown.ensure_l4_released(ip, "script:unlock_ip") == "FAILED":
+            print(f"[!] {ip} L4 차단 해제 요청이 실패했습니다. --permanent로 다시 실행하면 L4만 이어서 처리합니다.")
         return released
 
     print(

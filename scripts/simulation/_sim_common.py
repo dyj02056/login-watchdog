@@ -120,9 +120,40 @@ def new_session(ip: str | None = None) -> requests.Session:
 
 
 def fetch_csrf(session: requests.Session, base_url: str, path: str) -> str:
-    """path 화면을 GET으로 열어 csrf_token을 뽑는다. 같은 세션 쿠키로 이어서 POST해야 유효하다."""
+    """path 화면을 GET으로 열어 csrf_token을 뽑는다. 같은 세션 쿠키로 이어서 POST해야 유효하다.
+
+    HTML에 토큰이 없으면(spa/ 빌드가 있어 Next.js 화면 껍데기가 온 경우) fetch_spa_csrf로 한 번 더 받는다.
+    """
     response = session.get(f"{base_url}{path}", timeout=REQUEST_TIMEOUT)
-    return extract_csrf_token(response.text, page_name=path)
+    try:
+        return extract_csrf_token(response.text, page_name=path)
+    except RuntimeError:
+        return fetch_spa_csrf(session, base_url, path)
+
+
+# 앱에 Next.js 정적 화면(spa/)이 있으면 브라우저 주소창 GET에는 csrf_token 입력칸이 없는 껍데기가 온다
+# (helpers/spa.py). 이 헤더를 붙여 다시 요청하면 같은 라우트가 JSON 봉투 {"csrf": ...}로 답한다.
+# 앱의 helpers/spa.py SPA_HEADER·SPA_HEADER_VALUE가 바뀌면 여기도 함께 바꾼다.
+SPA_HEADER = "X-Requested-With"
+SPA_HEADER_VALUE = "login-watchdog-spa"
+
+
+def fetch_spa_csrf(session: requests.Session, base_url: str, path: str) -> str:
+    """SPA 헤더로 path를 다시 요청해 JSON 봉투의 csrf를 받는다. 없으면 path를 넣은 안내와 함께 실패한다.
+
+    POST는 이 헤더 없이 평소처럼 폼으로 보낸다 — 그래야 앱이 JSON이 아닌 원래 응답(302·200 화면)을 돌려주고,
+    시뮬레이터들이 응답 본문의 잠금 문구로 판단하던 방식이 그대로 동작한다.
+    """
+    response = session.get(
+        f"{base_url}{path}", headers={SPA_HEADER: SPA_HEADER_VALUE}, timeout=REQUEST_TIMEOUT,
+    )
+    try:
+        token = response.json().get("csrf")
+    except (ValueError, AttributeError):
+        token = None
+    if not token:
+        raise RuntimeError(f"{path}에서 CSRF 토큰을 찾지 못했습니다(HTML·SPA JSON 모두).")
+    return token
 
 
 def post_form(

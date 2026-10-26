@@ -36,7 +36,7 @@
 | `NET_INGEST_SECRET` | `""` | B | shipper → 앱 서명 키. 비어 있으면 수집 API가 **모든 요청을 401**로 거부 |
 | `NET_INTERNAL_MAX_SKEW_SECONDS` | `60` | B | 서명 타임스탬프 허용 오차(초). 넘으면 401 |
 | `NET_INGEST_MAX_BODY_BYTES` | `16384` | B | 수집 요청 본문 최대 크기. 넘으면 413 |
-| `NET_INGEST_RATE_LIMIT_PER_MINUTE` | `600` | B | 보낸이(`X-LW-Sender` 헤더)별 분당 수집 요청 한도. 넘으면 429. PC마다 shipper가 하나이므로 사실상 PC별 한도다. 서명 검사 전에 세므로 헤더 값은 이름표로만 쓴다 |
+| `NET_INGEST_RATE_LIMIT_PER_MINUTE` | `600` | B | 보낸이(`X-LW-Sender` 헤더)별 분당 수집 요청 한도. 넘으면 429. PC마다 shipper가 하나이므로 사실상 PC별 한도다. 한도 확인은 서명 검사 전에 하지만 **1회 차감은 서명이 맞은 요청(401이 아닌 응답)만** 한다 — 헤더만 위조한 요청이 정상 shipper의 몫을 쓰지 못하게(10/26 강사 피드백 1). gateway(nginx)는 `/api/internal/`을 바깥에 열지 않는다(404) |
 | `NET_CORRELATION_WINDOW_MINUTES` | `15` | B | CR-01·04·06 창 |
 | `NET_FLOOD_WINDOW_MINUTES` | `5` | B | CR-02 창 |
 | `NET_SUCCESS_LOGIN_LOOKBACK_MINUTES` | `30` | B | CR-03 창 |
@@ -117,7 +117,7 @@ def verify_request(allowed_senders: set[str]) -> str | None:
 | 서명·타임스탬프 실패 | `401 {"error": "unauthorized"}` — 이유를 자세히 알려 주지 않는다 |
 | 본문 크기 초과 | `413 {"error": "too_large"}` |
 | 형식 오류 | `400 {"error": "invalid", "field": "<칸 이름>"}` |
-| 한도 초과 | `429 {"error": "rate_limited"}` |
+| 한도 초과 | `429 {"error": "rate_limited"}` — shipper는 버리지 않고 5xx처럼 물러났다가 다시 보낸다(1·2·4·8초, `Retry-After`가 있으면 그 값·최대 60초) |
 
 > **shipper·fw-agent는 앱 코드를 import하지 않는다**(다른 컨테이너). 같은 규칙을 각자 파일에 직접 구현하고, B의 `sign()`과 같은 값이 나오는지 테스트로 확인한다. 기준 예시값: key=`test-key`, timestamp=`1760930000`, body=`b'{"a":1}'` → 결과값 **`2f744cec328f65506df5ad72df7fdd688c7a3cf3c6f90b1e0085849106179de2`**. B의 `sign()`(B0-1), A의 shipper(A1-3), C의 fw-agent(C1-3), 뼈대의 `tests/track_d/conftest.py`가 모두 이 값을 만들어야 한다.
 
@@ -332,7 +332,7 @@ ctx = {
 {
   "generated_at": "2026-10-20T03:12:46Z",
   "blocks": [
-    {"ip": "172.28.13.103", "status": "PENDING_APPLY",  "ttl_seconds": 3600},
+    {"ip": "172.28.13.103", "status": "PENDING_APPLY",  "ttl_seconds": 3600, "version": 4},
     {"ip": "172.28.13.102", "status": "APPLIED",        "ttl_seconds": null},
     {"ip": "172.28.13.101", "status": "PENDING_REMOVE", "ttl_seconds": null}
   ]
@@ -341,6 +341,8 @@ ctx = {
 
 - "원하는 상태" 전체를 돌려준다: `PENDING_APPLY`, `APPLIED`, `PENDING_REMOVE` 행.
 - `ttl_seconds` = 만료까지 **남은** 초(올림). 영구면 `null`. `PENDING_REMOVE`는 `null`.
+- `version` = 요청 번호(guide56). 차단·강화·해제 요청마다 1씩 오른다. agent는 ack에 그대로 돌려준다. guide56 실행 전 DB에서는 칸이 없다.
+- agent는 받은 시각(monotonic) + `ttl_seconds`를 "언제까지"로 기억한다. 앱이 응답하지 않는 동안 그 시각이 지난 TTL 차단은 drift 보정으로 다시 넣지 않는다(10/26 강사 피드백 2). 응답에 `blocks` 칸이 없거나 목록이 아니면 오류로 보고 마지막 상태를 유지한다.
 - **`NET_EDGE_SUBNET`이 설정돼 있으면 그 대역 안의 IP만** 돌려준다.
 - 응답하기 전에 **만료된 `APPLIED`/`PENDING_APPLY` 행을 `REMOVED`로 바꾸고** `net_ingest.resolve_net_blocked(ip)`를 부른다(지연 만료 처리).
 - agent 동작: `PENDING_APPLY` → `ipset add … timeout <ttl>`(영구면 timeout 없음) 후 ack `APPLIED` / `APPLIED` → 없으면 다시 추가(drift 보정) / `PENDING_REMOVE` → `ipset del` 후 ack `REMOVED`.
@@ -348,8 +350,10 @@ ctx = {
 **② `POST /api/internal/blocks/ack`** (보낸이: fw-agent)
 
 ```json
-{"ip": "172.28.13.103", "status": "APPLIED", "error": null}
+{"ip": "172.28.13.103", "status": "APPLIED", "error": null, "version": 4}
 ```
+
+`version`(선택, 0 이상 정수)이 있으면 **같은 version의 행일 때만** 상태를 바꾼다 — 60초 차단을 읽은 직후 영구 차단으로 바뀐 경우, 옛 요청의 ACK가 새 요청을 완료시키지 못한다(10/26 강사 피드백 4). 없으면 예전처럼 상태만 본다.
 
 | status | 허용되는 이전 상태 | 바뀌면 앱이 하는 일 |
 |---|---|---|

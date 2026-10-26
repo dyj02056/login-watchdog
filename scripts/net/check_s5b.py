@@ -27,7 +27,7 @@ def run(ctx) -> cc.CheckResult:
     client, prefix = ctx.client, ctx.prefix
     ip = cc.choose_fresh_ip(client, prefix)
     if ip is None:
-        return cc.CheckResult(SCENARIO, "SKIP", "점검용 IP(.111~.139)를 모두 썼음 — 오래된 차단·사건 정리 후 재시도", None)
+        return cc.CheckResult(SCENARIO, "SKIP", f"점검용 IP({cc.CHECK_IP_LABEL})를 모두 썼음 — 오래된 차단·사건 정리 후 재시도", None)
 
     print(f"  [{SCENARIO}] 출발지 {ip} — SYN 폭주 + HTTP 폭주(같은 IP, 동시)")
     # 앞 실행이 끊겨 같은 이름의 자리 잡기 컨테이너가 남아 있으면 먼저 지운다.

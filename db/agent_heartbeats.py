@@ -1,7 +1,7 @@
 # ============================================================================
 # db/agent_heartbeats.py — agent_heartbeats 표: fw-agent·shipper 생존 신호, PC별 저장 (계약서 K9·K11)
 #
-# 담당: 역할 C (C1-1부터). Track D 뼈대 PR(I0-1)이 만든 빈 모듈이다.
+# 담당: 역할 C. Track D 뼈대 PR(I0-1)이 빈 모듈로 만들고, C1-1~C2-1에서 함수를 채웠다.
 #
 # 새 DB 함수는 이 파일에 만들고, 이름을 아래 __all__ 목록에 추가한다. 그러면
 # db/__init__.py가 "from .agent_heartbeats import *"로 자동으로 다시 내보내므로, 다른 파일에서

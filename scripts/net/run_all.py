@@ -3,6 +3,7 @@
 실행 방법(저장소 루트에서, docker compose로 단지를 켜고 시연용 .env를 쓴 뒤):
     python -m scripts.net.run_all                # 시나리오들을 3번씩 순서대로
     python -m scripts.net.run_all --repeat 1     # 한 번씩만
+    python -m scripts.net.run_all --with-release # S4에서 영구 해제 후 재접속까지 확인
     # S6를 재현하려면 같은 창에 victim 비밀번호를 넣어 둔다(없으면 S6는 SKIP):
     #   $env:LW_VICTIM_PASSWORD = Read-Host "victim 비밀번호"   # PowerShell
 
@@ -61,6 +62,8 @@ def s7_result() -> cc.CheckResult:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Track D 시연 시나리오 자동 점검 묶음 실행")
     parser.add_argument("--repeat", type=int, default=3, help="시나리오들을 몇 번씩 돌릴지(기본 3)")
+    parser.add_argument("--with-release", action="store_true",
+                        help="S4에서 영구 해제 후 재접속까지 확인(해제는 DB를 바꾼다)")
     args = parser.parse_args(argv)
     # Windows 기본 콘솔(cp949)에 없는 글자가 섞여도 멈추지 않게 못 찍는 글자는 ?로 바꾼다(measure_* 와 같은 처리).
     if hasattr(sys.stdout, "reconfigure"):
@@ -72,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         print("  (!) LW_EDGE_PREFIX가 없어 대상 IP를 만들 수 없습니다. 점검을 중단합니다.")
         return 2
 
-    ctx = SimpleNamespace(client=cc.get_reader(), prefix=prefix)
+    ctx = SimpleNamespace(client=cc.get_reader(), prefix=prefix, with_release=args.with_release)
     rows: list[str] = []
     results: list[cc.CheckResult] = []
     repeat = max(1, args.repeat)

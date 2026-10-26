@@ -39,13 +39,23 @@ RESULTS = ROOT / "docs" / "track-d" / "scenario-results.md"
 # 단지에서 함께 켜져 있어야 하는 서비스(README 3장). 상태만 보여 주고, 멈추지는 않는다.
 REQUIRED_SERVICES = ("gateway", "app", "mailpit", "sensor", "l4-detector", "shipper", "fw-agent")
 
-# 이 점검이 쓰는 새 출발지 IP 범위(.111~.139). 다른 용도와 겹치지 않게 범위를 나눠 둔다:
+# 이 점검이 쓰는 새 출발지 IP 범위(.111~.139, 그다음 .11~.99). 다른 용도와 겹치지 않게 범위를 나눠 둔다:
 #   .1 내 브라우저 / .10 gateway / .101~.103 고정 상자 / .140 S7 위조 전용 /
 #   .150~.199 통합 담당자의 5초 측정(measure_*)·M1 수동 차단 예시.
 # 같은 IP를 다시 쓰면 앞 시나리오의 차단과 "사건당 규칙당 1회"에 막혀 재현이 안 되므로
-# network_blocks와 (닫히지 않은)security_incidents에 아직 없는 주소만 고른다.
+# network_blocks와 security_incidents(닫힌 사건 포함)에 아직 없는 주소만 고른다.
+# .111~.139(29개)는 10/26 하루 세 번 실행에 바닥났다. 공용 DB의 기록을 지우지 않고 리허설·발표까지
+# 다시 돌릴 수 있게 비어 있던 .11~.99를 더했다(.2~.9는 Docker 자동 할당과 겹칠 수 있어 비워 둔다).
+# 앞 범위를 먼저 써서 기존 실행 기록과 같은 주소부터 이어 간다.
+CHECK_IP_RANGES = ((111, 139), (11, 99))
+CHECK_IP_LABEL = ".111~.139·.11~.99"
 CHECK_IP_START = 111
 CHECK_IP_END = 139
+# 점검 범위가 다른 용도와 겹치면 측정·시연 차단과 판정이 섞이므로 불러올 때 바로 막는다.
+_RESERVED_IPS = {1, 10, 101, 102, 103, 140, *range(150, 200)}
+assert not any(
+    last in _RESERVED_IPS for start, end in CHECK_IP_RANGES for last in range(start, end + 1)
+), "점검용 IP 범위가 예약 주소와 겹칩니다"
 
 # S6 login이 쓰는 테스트 계정. 시연 대역 PC에서 C3-1을 돌릴 때는 victim_c를 쓴다(README 7.4).
 VICTIM_USERNAME = "victim_c"
@@ -81,10 +91,20 @@ _SHARED = ["docker", "run", "--rm", "--network", "container:lw-check-{ip}", "--c
 # 시나리오별 공격 명령 틀. S8은 shipper 안에서 직접 보내므로 여기 없다(check_s8 참고).
 SCAN = _ONESHOT + ["scan"]
 WEBSCAN = _ONESHOT + ["webscan"]
-BRUTE = _ONESHOT + ["brute", "--username", VICTIM_USERNAME, "--attempts", "6"]
+# brute는 --username을 주지 않아 lw.py 기본값(nonexistent-user)을 쓴다. CR-01에는 IP 기준 실패
+# (FAILURE_THRESHOLD 5)만 있으면 되고, victim 계정으로 실패를 쌓으면 계정 잠금(ACCOUNT_FAILURE_THRESHOLD 8)에
+# 걸려 S6 로그인이 CR-03이 아닌 이유로 막힐 수 있기 때문이다.
+BRUTE = _ONESHOT + ["brute", "--attempts", "6"]
 SCANNER_UA = _ONESHOT + ["scanner-ua"]
 LOGIN = list(_LOGIN)
 SYNFLOOD = _ONESHOT + ["synflood", "--count", "3000"]
+# S4 실제 적용 확인: gateway에 TCP 연결만 시도한다(HTTP를 보내지 않아 DB에 흔적이 남지 않음).
+# --cap-add NET_RAW가 필요 없지만 _ONESHOT 형식을 그대로 쓴다. 시간 제한은 lw.py probe 기본값(3초).
+PROBE = _ONESHOT + ["probe"]
+# S4 --with-release: 대시보드 "영구 해제"와 같은 경로(lockdown.release)를 운영 스크립트로 부른다.
+# 앱 컨테이너 안에서 돌려야 DB 접속 정보가 있다. 비밀값은 argv에 들어가지 않는다.
+RELEASE_IP = ["docker", "compose", "exec", "-T", "app", "python", "-m", "scripts.management.unlock_ip",
+              "--ip", "{ip}", "--permanent", "--note", "S4 자동 점검 해제 확인"]
 S5B_ANCHOR = list(_ANCHOR)
 S5B_ANCHOR_REMOVE = list(_ANCHOR_REMOVE)
 S5B_SYNFLOOD = _SHARED + ["synflood", "--count", "3000"]
@@ -127,28 +147,32 @@ def get_reader():
     return db.get_client()
 
 
-def choose_fresh_ip(client, prefix: str, start: int = CHECK_IP_START, end: int = CHECK_IP_END) -> str | None:
+def choose_fresh_ip(client, prefix: str, start: int | None = None, end: int | None = None) -> str | None:
     """점검 범위에서 아직 쓰지 않은 새 출발지 IP 하나. 다 썼으면 None.
 
-    network_blocks에 한 번이라도 오른 IP, 그리고 아직 닫히지 않은(OPEN·IDLE) 사건이 있는 IP는 피한다.
-    둘 중 하나라도 남아 있으면 앞 실행의 차단·사건에 막혀 같은 재현이 다시 일어나지 않기 때문이다.
+    network_blocks에 한 번이라도 오른 IP, 그리고 사건이 한 번이라도 있었던 IP(닫힌 사건 포함)는 피한다.
+    차단·열린 사건이 남아 있으면 앞 실행에 막혀 같은 재현이 다시 일어나지 않고, 닫힌 사건의 IP라도 다시 쓰면
+    그 IP로 남은 옛 경고 메일·playbook_runs·NET_SCANNER_UA가 이번 판정에 섞이기 때문이다.
+    그만큼 범위가 빨리 떨어지므로, 다 쓰면 None을 돌려주고 시나리오는 SKIP한다(정리 후 재시도).
+    start·end를 주면 그 한 구간만, 안 주면 CHECK_IP_RANGES를 앞에서부터 차례로 본다.
     """
+    ranges = ((start, end),) if start is not None and end is not None else CHECK_IP_RANGES
     blocked = client.table("network_blocks").select("ip_address").like("ip_address", f"{prefix}.%").execute().data or []
     used = {row["ip_address"] for row in blocked}
     incidents = (
         client.table("security_incidents")
-        .select("ip_address, status")
+        .select("ip_address")
         .like("ip_address", f"{prefix}.%")
-        .neq("status", "CLOSED")
         .execute()
         .data
         or []
     )
     used |= {row["ip_address"] for row in incidents}
-    for last in range(start, end + 1):
-        ip = f"{prefix}.{last}"
-        if ip not in used:
-            return ip
+    for range_start, range_end in ranges:
+        for last in range(range_start, range_end + 1):
+            ip = f"{prefix}.{last}"
+            if ip not in used:
+                return ip
     return None
 
 
@@ -220,7 +244,7 @@ def playbook_runs_for_ip(client, ip: str, playbook: str) -> list[dict]:
     for incident in incidents:
         runs += (
             client.table("playbook_runs")
-            .select("playbook, step, status, ran_at")
+            .select("playbook, step, status, error, ran_at")
             .eq("playbook", playbook)
             .like("trigger_ref", f"incident:{incident['id']}:%")
             .execute()
@@ -273,6 +297,14 @@ def run_oneshot(template: list[str], ip: str, prefix: str, timeout: int = 180,
     cmd = fill(template, ip, prefix)
     return subprocess.run(cmd, cwd=ROOT, capture_output=capture, text=True,
                           encoding="utf-8", errors="replace", timeout=timeout)
+
+
+def probe_reachable(ip: str, prefix: str) -> bool | None:
+    """ip에서 gateway로 TCP 연결이 되는지. 공격 상자 출력(JSON)을 못 읽으면 None(판정 불가)."""
+    result = parse_json_line(run_oneshot(PROBE, ip, prefix, timeout=60, capture=True))
+    if result is None or not isinstance(result.get("reachable"), bool):
+        return None
+    return result["reachable"]
 
 
 def parse_json_line(completed: subprocess.CompletedProcess) -> dict | None:

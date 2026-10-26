@@ -9,12 +9,12 @@
 # 모든 함수는 여러 번 불려도 결과가 같고(멱등), 허용 목록·주소 형식을 스스로 검사한다 —
 # 판단하는 쪽(플레이북)이 잘못된 주소를 넘겨도 여기서 한 번 더 막는다.
 #
-# import 규칙(계약서 K7): config, db, security.lockdown만 쓴다. lockdown은 나중에(C2-2)
-# release() 안에서 함수 안 import로 이 파일을 부르므로, 여기서 lockdown을 모듈째 import해도
+# import 규칙(계약서 K7): config, db, security.lockdown만 쓴다. lockdown은 release() 안에서(C2-2)
+# 함수 안 import로 이 파일을 부르므로, 여기서 lockdown을 모듈째 import해도
 # 순환이 생기지 않는다. lockdown.is_ip_allowlisted(...)처럼 모듈 이름을 거쳐 부르는 것은
 # 테스트에서 monkeypatch로 바꿔 끼울 수 있게 하기 위해서다.
 #
-# 사용하는 DB 함수(C1-1에서 db/network_blocks.py에 만든다):
+# 사용하는 DB 함수(C1-1에서 db/network_blocks.py에 만들었다):
 #   db.get_network_block / db.insert_network_block / db.update_network_block_if_status /
 #   db.count_recent_net_blocked_events
 # ============================================================================
@@ -215,7 +215,7 @@ def request_block(
             "removed_at": None,
             "last_error": None,
         }
-        return db.update_network_block_if_status(ip, [current_status], update_fields)
+        return _update_with_version(ip, current_status, existing, update_fields)
 
     if current_status in _REUSABLE_STATUSES:
         # 해제됐거나 실패한 행은 같은 행을 새 요청으로 재사용한다(기본 키가 ip_address라 새 행을
@@ -231,11 +231,26 @@ def request_block(
             "removed_at": None,
             "last_error": None,
         }
-        return db.update_network_block_if_status(ip, [current_status], update_fields)
+        return _update_with_version(ip, current_status, existing, update_fields)
 
     # 알 수 없는 상태(표 제약상 나오면 안 됨)는 건드리지 않는다.
     print(f"[netblock] 거부: 알 수 없는 기존 상태 ('{ip}', status={current_status!r})")
     return False
+
+
+def _update_with_version(ip: str, current_status: str, existing: dict, fields: dict) -> bool:
+    """읽은 행 그대로일 때만 바꾸고, version 칸이 있으면 1 올린다(요청 번호).
+
+    fw-agent는 GET /blocks에서 받은 version을 ACK에 그대로 돌려준다. 요청이 바뀔 때마다 번호가
+    달라지므로, 60초 차단에 대한 늦은 ACK가 그 사이 바뀐 영구 차단을 "적용 완료"로 만들지 못한다
+    (10/26 강사 피드백 4). guide56 실행 전 DB(version 칸 없음)에서는 예전처럼 상태만 조건으로 쓴다.
+    """
+    if "version" not in existing:
+        return db.update_network_block_if_status(ip, [current_status], fields)
+    version = int(existing.get("version") or 0)
+    return db.update_network_block_if_status(
+        ip, [current_status], {**fields, "version": version + 1}, expected_version=version,
+    )
 
 
 def request_unblock(ip: str, actor: str) -> bool:
@@ -255,8 +270,20 @@ def request_unblock(ip: str, actor: str) -> bool:
         print(f"[netblock] request_unblock 거부: IP 해석 실패 ('{ip}'), actor='{actor}'")
         return False
 
-    res = db.update_network_block_if_status(
-        ip, list(_ACTIVE_STATUSES), {"status": "PENDING_REMOVE"}
-    )
+    # version 칸(guide56)이 있으면 해제도 "새 요청"으로 보고 1 올린다 — 그래야 해제 직전에 읽힌 옛 차단
+    # 요청의 늦은 ACK(FAILED 등)가 이 해제 요청을 덮어쓰지 못한다. 읽기가 실패하면 예전 방식으로 바꾼다.
+    try:
+        row = db.get_network_block(ip)
+    except Exception:
+        row = None
+    if row is not None and "version" in row:
+        if row.get("status") not in _ACTIVE_STATUSES:
+            res = False
+        else:
+            res = _update_with_version(ip, row["status"], row, {"status": "PENDING_REMOVE"})
+    else:
+        res = db.update_network_block_if_status(
+            ip, list(_ACTIVE_STATUSES), {"status": "PENDING_REMOVE"}
+        )
     print(f"[netblock] request_unblock 요청 처리 (ip='{ip}', actor='{actor}', result={res})")
     return res

@@ -29,8 +29,8 @@ GOAL_MS = {
 MEASURE_IP_START = 150
 MEASURE_IP_END = 199
 
-# 공격 상자 실행 형식 — A2-1(10/27)이 머지되고 통합 담당자가 netwatch/README.md "공격 상자" 절에 옮긴 뒤,
-# 그 README의 일회용 실행 형식을 **그대로** 여기에 옮긴다(새로 지어내지 않는다).
+# 공격 상자 실행 형식 — A2-1이 머지된 뒤 통합 담당자가 netwatch/README.md 7장 "공격 상자"에 옮긴
+# 일회용 실행 형식을 **그대로** 여기에 옮겼다(새로 지어내지 않는다).
 # 값이 None이면 측정하지 않고 SKIP한다. 자리표시: {ip} = 이번 실행의 새 출발지 IP, {prefix} = LW_EDGE_PREFIX.
 # 시나리오마다 "동시에 띄울 명령 목록"이다 — S5b는 SYN 폭주와 HTTP 폭주를 함께 일으켜야 해서 둘이 된다.
 # netwatch/README.md 7.3의 일회용 실행 형식을 그대로 옮긴 것. subprocess로 셸 없이 부른다.
@@ -167,7 +167,7 @@ def choose_fresh_ip(prefix: str, used: set[str], start: int = MEASURE_IP_START, 
 def resolve_attack(scenario: str, readme_path: Path, commands: dict | None = None) -> tuple[list[list[str]] | None, str | None]:
     """이 시나리오의 공격 명령 목록과, 못 쓰면 SKIP 이유를 돌려준다.
 
-    README에 일회용 실행 형식이 아직 없거나(A2-1 머지 전), 상수를 아직 옮기지 않았으면 측정하지 않는다.
+    README에 일회용 실행 형식이 없거나(README_MARKER로 확인), 상수를 옮기지 않은 시나리오면 측정하지 않는다.
     """
     table = ATTACK_COMMANDS if commands is None else commands
     if scenario not in table:

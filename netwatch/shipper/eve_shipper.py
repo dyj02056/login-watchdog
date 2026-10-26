@@ -24,7 +24,7 @@ import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 
 SCAPY_SIGNATURES = {
@@ -497,6 +497,22 @@ class Aggregator:
 
         return updates
 
+def _retry_after_seconds(response: Any) -> int | None:
+    """429 응답의 Retry-After(초)를 읽는다. 없거나 이상하면 None, 너무 길면 60초로 자른다.
+
+    앱(Flask-Limiter)은 기본 설정에서 이 헤더를 보내지 않지만, 보내게 바뀌면 그 값을 따르는 편이
+    같은 창 안에서 헛되이 다시 보내지 않는다. 60초 상한은 한도 창(분당)보다 오래 붙잡지 않으려는 것이다.
+    """
+    headers = getattr(response, "headers", None) or {}
+    try:
+        value = int(headers.get("Retry-After"))
+    except (TypeError, ValueError):
+        return None
+    if value < 0:
+        return None
+    return min(value, 60)
+
+
 class Sender:
     """HTTP 전송을 별도 작업 스레드에서 처리하는 제한된 대기열."""
 
@@ -549,6 +565,7 @@ class Sender:
         ).encode("utf-8")
 
         for attempt in range(MAX_SEND_ATTEMPTS):
+            retry_after: int | None = None
             headers = sign_headers(
                 self.secret,
                 raw_body,
@@ -567,7 +584,12 @@ class Sender:
                 if 200 <= status_code < 300:
                     return True
 
-                if 400 <= status_code < 500:
+                # 429는 "형식이 틀림"이 아니라 "지금 바쁨"이다. 다른 4xx처럼 바로 버리면 한도에 걸린
+                # 공격 경보가 영영 앱에 닿지 않으므로(10/26 강사 피드백 1), 5xx처럼 물러났다가 다시 보낸다.
+                # 서명은 매 시도마다 새 시각으로 다시 만들므로 오래 기다려도 시각 오차에 걸리지 않는다.
+                retry_after = _retry_after_seconds(response) if status_code == 429 else None
+
+                if 400 <= status_code < 500 and status_code != 429:
                     print(
                         "[WARN] shipper 요청이 재시도할 수 없는 "
                         f"HTTP {status_code}로 거부됐습니다.",
@@ -576,7 +598,7 @@ class Sender:
                     )
                     return False
 
-                retryable = 500 <= status_code < 600
+                retryable = status_code == 429 or 500 <= status_code < 600
 
                 if not retryable:
                     print(
@@ -603,6 +625,8 @@ class Sender:
                 return False
 
             delay = RETRY_DELAYS_SECONDS[attempt]
+            if retry_after is not None:
+                delay = max(delay, retry_after)
             print(
                 "[WARN] shipper 전송 실패, "
                 f"{delay}초 후 재시도합니다: {error_text}",

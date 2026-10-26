@@ -123,12 +123,44 @@ def _update_incident(
     if matched_rules is None:
         query.update(values).eq("id", incident_id).execute()
         return True
+    added = _append_matched_rule_rpc(incident_id, matched_rules[-1], event_types, severity_max)
+    if added is not None:
+        return added
     values["matched_rules"] = matched_rules
     res = (
         query.update(values).eq("id", incident_id)
         .not_.contains("matched_rules", [matched_rules[-1]]).execute()
     )
     return bool(res.data)
+
+
+# PostgREST가 "그런 함수 없음"을 알릴 때 쓰는 코드. guide56를 아직 실행하지 않은 DB에서는 예전 방식으로 돌아간다.
+_MISSING_FUNCTION_CODES = {"PGRST202", "42883"}
+
+
+def _append_matched_rule_rpc(
+    incident_id: int, rule_id: str, event_types: list[str], severity_max: str
+) -> bool | None:
+    """guide56의 append_matched_rule()로 규칙 하나를 원자적으로 덧붙인다. 함수가 없으면 None.
+
+    위의 예전 방식(읽은 목록 전체를 조건부로 다시 쓰기)은 "같은 규칙"의 중복은 막지만, 서로 다른 규칙
+    (NET-01과 CR-02)이 동시에 들어오면 나중에 쓴 쪽이 먼저 쓴 규칙을 지운다(10/26 강사 피드백 추가 상황).
+    DB 안에서 array_append로 붙이면 두 규칙이 모두 남는다. 반환값은 예전과 같이 "이번 호출이 처음 기록했는지".
+    """
+    rpc = getattr(db.get_client(), "rpc", None)
+    if rpc is None:
+        return None
+    try:
+        res = rpc("append_matched_rule", {
+            "p_incident_id": incident_id, "p_rule": rule_id,
+            "p_event_types": event_types, "p_severity_max": severity_max,
+        }).execute()
+    except APIError as e:
+        if getattr(e, "code", None) in _MISSING_FUNCTION_CODES:
+            return None
+        raise
+    # 함수는 boolean 하나를 돌려준다. 그 밖의 모양이면 판단하지 않고 예전 방식으로 넘긴다.
+    return res.data if isinstance(res.data, bool) else None
 
 
 def _merge_into_existing(

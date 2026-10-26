@@ -203,13 +203,24 @@ def test_rate_limit_key(flask_app, sender, expected):
         assert ingest.rate_limit_key() == f"net-ingest:{expected}"
 
 
-def test_rate_limits_are_separate_by_sender(client, storage):
+def test_rate_limits_are_separate_by_sender(client, storage, monkeypatch):
+    # 10/26 강사 피드백 1: 401은 한도를 쓰지 않으므로, shipper 서명만 통과시킨 채(형식 오류 400) 한도를 채운다.
+    monkeypatch.setattr(ingest, "verify_request",
+                        lambda senders: "shipper" if ingest.request.headers.get("X-LW-Sender") == "shipper" else None)
     for _ in range(config.NET_INGEST_RATE_LIMIT_PER_MINUTE):
-        assert client.post(URL, headers={"X-LW-Sender": "shipper"}).status_code == 401
+        assert client.post(URL, headers={"X-LW-Sender": "shipper"}).status_code == 400
     response = client.post(URL, headers={"X-LW-Sender": "shipper"})
     assert response.status_code == 429
     assert response.get_json() == {"error": "rate_limited"}
     assert client.post(URL, headers={"X-LW-Sender": "fw-agent"}).status_code == 401
+
+
+def test_unsigned_requests_do_not_use_up_shipper_limit(client, storage, monkeypatch):
+    # 헤더만 shipper로 적은 위조 요청을 한도보다 많이 보내도, 진짜 shipper 요청은 429가 아니라 처리된다.
+    for _ in range(config.NET_INGEST_RATE_LIMIT_PER_MINUTE + 5):
+        assert client.post(URL, headers={"X-LW-Sender": "shipper"}).status_code == 401
+    monkeypatch.setattr(ingest, "verify_request", lambda senders: "shipper")
+    assert client.post(URL, headers={"X-LW-Sender": "shipper"}).status_code == 400
 
 
 class FakeClient:
