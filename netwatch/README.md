@@ -153,6 +153,7 @@
 | `webscan` | 웹 경로 훑기 | — (앱 기록) | S4 2단계 |
 | `brute` | 로그인 반복 시도 | — (앱 잠금) | S4 3단계 |
 | `scanner-ua` | 스캐너 도구 이름을 User-Agent로 보내기 | Suricata `SCANNER_UA`(9000004) | S6 근거(L7 증거) |
+| `login` | victim 계정으로 올바른 비밀번호 로그인 1회(`--username` 필수, 비밀번호는 `LW_VICTIM_PASSWORD`) | — (앱 로그인 기록) | S6(scanner-ua 뒤 로그인 성공) |
 | `synflood` | gateway에 SYN 다발 보내기 | Suricata `SYN_FLOOD`(9000001)·Scapy(9100001) | S5 |
 | `httpflood` | 한 경로에 요청 몰아보내기 | 앱 `HTTP_FLOOD` | S5b(synflood와 동시) |
 
@@ -182,6 +183,28 @@ docker run --rm --network lw_edge --ip ${LW_EDGE_PREFIX}.111 --cap-add NET_RAW \
 - `--ip`는 측정용 범위(`.150~.199`) 또는 아직 쓰지 않은 주소로 바꿉니다. 고정 상자(`.101~.103`)·내 브라우저(`.1`)와 겹치지 않게 합니다.
 - `login` 명령만 victim 계정이 필요합니다: `-e LW_VICTIM_PASSWORD=... --username victim_<역할>`을 더합니다. 비밀번호는 셸 기록에 남지 않게 환경 변수로만 넘기고, 이 문서·이미지에는 값을 적지 않습니다(victim 계정·비밀번호는 PC마다 다릅니다 — 팀 계획 01 4장).
 - 이미지가 없으면 먼저 빌드합니다: `docker compose build attacker-1`.
+
+**S5b: SYN 폭주와 HTTP 폭주를 같은 IP에서 동시에**
+
+S5b는 한 출발지에서 두 공격이 **동시에** 와야 CR-02(다계층 폭주)로 묶입니다. 그런데 같은 네트워크에서 컨테이너 두 개가 같은 `--ip`를 잡을 수는 없습니다(두 번째가 `Address already in use`로 바로 죽습니다). 그래서 **IP만 잡고 기다리는 자리 잡기 컨테이너**를 먼저 띄우고, 공격 두 개는 `--network container:`로 그 네트워크를 함께 씁니다. 두 공격 중 어느 쪽이 먼저 끝나도 다른 쪽이 끊기지 않습니다.
+
+```bash
+# 1) 자리 잡기: 이 IP만 쥐고 기다림(트래픽 없음)
+docker run -d --rm --name lw-measure-${LW_EDGE_PREFIX}.151 --network lw_edge --ip ${LW_EDGE_PREFIX}.151 \
+  --entrypoint sleep lw-attacker:latest 300
+
+# 2) 같은 IP로 두 공격을 동시에 (터미널 두 개, 또는 뒤에 & 를 붙여서)
+docker run --rm --network container:lw-measure-${LW_EDGE_PREFIX}.151 --cap-add NET_RAW \
+  -e TARGET_URL=http://${LW_EDGE_PREFIX}.10:8080 lw-attacker:latest synflood --count 3000
+docker run --rm --network container:lw-measure-${LW_EDGE_PREFIX}.151 --cap-add NET_RAW \
+  -e TARGET_URL=http://${LW_EDGE_PREFIX}.10:8080 lw-attacker:latest httpflood --path /login --requests 200
+
+# 3) 끝나면 자리 잡기 컨테이너 지우기
+docker rm -f lw-measure-${LW_EDGE_PREFIX}.151
+```
+
+- `httpflood`의 `--path`는 몰아 보낼 경로(기본 `/`), `--requests`는 요청 수(기본 120, 최대 500)입니다. `synflood --count`는 기본 3000, 최대 5000입니다.
+- 5초 측정 스크립트(`scripts/net/measure_detect_to_block.py --scenario s5b`)는 위 1)~3)을 실행마다 새 IP로 자동으로 합니다. 손으로 해 본 IP는 `network_blocks`에 남으므로 스크립트가 알아서 건너뜁니다. 다만 같은 IP를 손으로 다시 쓰면 앞 차단 때문에 재현이 안 되니 실행마다 끝자리를 바꿉니다.
 
 ---
 
