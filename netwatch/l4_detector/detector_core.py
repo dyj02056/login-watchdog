@@ -19,7 +19,7 @@ import ipaddress
 import os
 import sys
 import time
-from collections import Counter, deque
+from collections import Counter, OrderedDict, deque
 from datetime import datetime, timezone
 from typing import Callable, TextIO
 
@@ -109,6 +109,17 @@ def has_syn_without_ack(flags: object) -> bool:
     return bool(numeric_flags & SYN_FLAG) and not bool(
         numeric_flags & ACK_FLAG
     )
+
+
+def has_ack_without_syn(flags: object) -> bool:
+    """TCP 플래그가 ACK를 포함하고 SYN은 포함하지 않는지 확인한다(handshake 뒤의 일반 패킷)."""
+    try:
+        numeric_flags = int(flags)
+    except (TypeError, ValueError):
+        text_flags = str(flags).upper()
+        return "A" in text_flags and "S" not in text_flags
+
+    return bool(numeric_flags & ACK_FLAG) and not bool(numeric_flags & SYN_FLAG)
 
 
 def gateway_ip_from_prefix(
@@ -261,6 +272,13 @@ class L4Detector:
         self.on_warning = on_warning
         self._last_prune: float | None = None
 
+        # 출발지 상한에 닿았을 때 누구를 먼저 내보낼지 정하는 장부(10/29 보완).
+        # SYN만 보낸 출발지는 주소를 위조했을 수 있어 "확인 안 됨"으로 두고(오래 쉰 순서로 보관),
+        # SYN 없는 ACK 패킷까지 보낸 출발지는 "확인됨"으로 올려 상한이 차도 밀려나지 않게 한다.
+        self._unconfirmed: OrderedDict[str, None] = OrderedDict()
+        self._confirmed: set[str] = set()
+        self._evicted_count = 0
+
         # 출발지와 상관없이 최근 1초의 SYN을 (시각, 출발지)로 보관하고, 출발지 수는 Counter로 센다.
         # 위조 출발지 SYN Flood는 출발지별 기준에 걸리지 않으므로 이 합계로만 보인다.
         self._global_syn: deque[tuple[float, str]] = deque()
@@ -277,6 +295,26 @@ class L4Detector:
             return True
 
         return self.gateway_ip is not None and address == self.gateway_ip
+
+    def _forget_source(self, src_ip: str) -> None:
+        """출발지 기록이 모두 사라졌을 때 확인 여부 장부에서도 뺀다(장부가 끝없이 커지지 않게)."""
+        self._unconfirmed.pop(src_ip, None)
+        self._confirmed.discard(src_ip)
+
+    def _evict_unconfirmed(self) -> bool:
+        """가장 오래 쉰 "확인 안 됨" 출발지 하나를 내보낸다. 내보낼 출발지가 없으면 False.
+
+        새 출발지를 무조건 버리면, 위조 출발지로 상한을 먼저 채운 공격자가 그 뒤의 진짜 공격자를
+        출발지별 판정(포트 스캔 포함)에서 숨겨 줄 수 있다. 그래서 위조일 수 있는 쪽을 밀어낸다.
+        지금 활발한 출발지는 매 패킷마다 장부 맨 뒤로 가므로 오래 쉰 것부터 나간다.
+        """
+        if not self._unconfirmed:
+            return False
+        victim, _ = self._unconfirmed.popitem(last=False)
+        self._port_events.pop(victim, None)
+        self._syn_events.pop(victim, None)
+        self._evicted_count += 1
+        return True
 
     def _prune_source(self, src_ip: str, now: float) -> None:
         """현재 패킷 출발지 한 곳의 오래된 기록만 지운다. 출발지별 숫자를 매번 정확하게 유지한다."""
@@ -295,6 +333,7 @@ class L4Detector:
                 del ports[port]
             if not ports:
                 del self._port_events[src_ip]
+                self._forget_source(src_ip)
 
     def _prune_global(self, now: float) -> None:
         """전체 SYN 기록에서 1초가 지난 것을 지운다. 앞에서부터 빼므로 패킷당 평균 O(1)이다."""
@@ -340,6 +379,7 @@ class L4Detector:
 
             if not ports:
                 del self._port_events[src_ip]
+                self._forget_source(src_ip)
 
         cooldown_cutoff = now - self.cooldown_seconds
 
@@ -422,14 +462,30 @@ class L4Detector:
         self._prune_source(src_ip, now)
 
         if src_ip not in self._port_events and len(self._port_events) >= self.max_sources:
-            # 새 출발지는 기록하지 않는다. 이미 추적 중인 공격자를 밀어내면 그 공격자를 놓치기 때문이다.
-            if self._can_emit(GLOBAL_KEY, "SOURCE_LIMIT", now):
-                self._last_emitted[(GLOBAL_KEY, "SOURCE_LIMIT")] = now
+            # 확인 안 된(SYN만 본) 출발지를 하나 내보내고 자리를 만든다. 이미 추적 중인 활발한 공격자는
+            # 오래 쉰 순서에서 뒤라 밀려나지 않는다. 내보낼 출발지가 없을 때(전부 확인됨)만 새 출발지를 버린다.
+            if not self._evict_unconfirmed():
+                if self._can_emit(GLOBAL_KEY, "SOURCE_LIMIT", now):
+                    self._last_emitted[(GLOBAL_KEY, "SOURCE_LIMIT")] = now
+                    self.on_warning(
+                        f"기록 중인 출발지가 모두 확인된 출발지로 상한 {self.max_sources:,}곳에 도달해 "
+                        "새 출발지는 출발지별 판정에서 빠집니다(전체 SYN 합계에는 포함)."
+                    )
+                return []
+            if self._can_emit(GLOBAL_KEY, "SOURCE_EVICT", now):
+                self._last_emitted[(GLOBAL_KEY, "SOURCE_EVICT")] = now
                 self.on_warning(
-                    f"기록 중인 출발지가 상한 {self.max_sources:,}곳에 도달해 새 출발지는 "
-                    "출발지별 판정에서 빠집니다(전체 SYN 합계에는 포함)."
+                    f"기록 중인 출발지가 상한 {self.max_sources:,}곳에 도달해 확인 안 된 출발지를 "
+                    f"밀어냅니다(누적 {self._evicted_count:,}곳). 출발지 위조 폭주일 수 있습니다."
                 )
-            return []
+
+        if has_ack_without_syn(flags):
+            # SYN 뒤 handshake 응답을 받아야 보낼 수 있는 패킷이라 단순 SYN 위조보다 믿을 만하다.
+            self._unconfirmed.pop(src_ip, None)
+            self._confirmed.add(src_ip)
+        elif src_ip not in self._confirmed:
+            self._unconfirmed[src_ip] = None
+            self._unconfirmed.move_to_end(src_ip)
 
         ports = self._port_events.setdefault(src_ip, {})
         ports[dst_port] = now
