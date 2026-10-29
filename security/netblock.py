@@ -39,6 +39,67 @@ _ACTIVE_STATUSES = ("PENDING_APPLY", "APPLIED")
 # 이 상태의 행은 같은 ip_address(기본 키) 행을 재사용해 PENDING_APPLY로 되돌린다.
 _REUSABLE_STATUSES = ("PENDING_REMOVE", "REMOVED", "FAILED")
 
+# gateway·app·shipper가 쓰는 core 대역(docker-compose.yml, 계약서 K2). 설정값과 상관없이 고정으로 막는다 —
+# 이 대역이 ipset에 들어가면 정문(gateway)이 앱의 응답 패킷을 버려 사이트 전체가 멈춘다(guide57).
+# Scapy 측정기(netwatch/l4_detector/detector_core.py)의 CORE_NETWORK와 같은 값이다.
+CORE_NETWORK = ipaddress.ip_network("172.30.0.0/24")
+
+
+def _edge_network() -> ipaddress.IPv4Network | ipaddress.IPv6Network | None:
+    """NET_EDGE_SUBNET을 대역으로 바꾼다. 비었거나 형식이 틀리면 None."""
+    if not config.NET_EDGE_SUBNET:
+        return None
+    try:
+        return ipaddress.ip_network(config.NET_EDGE_SUBNET, strict=False)
+    except ValueError:
+        return None
+
+
+def is_infrastructure_ip(ip: str) -> bool:
+    """우리 단지의 기반 주소이거나 사람이 쓰지 않는 특수 주소인지(guide57, 계약서 K7).
+
+    SYN·ICMP는 출발지를 마음대로 적어 보낼 수 있다. 공격자가 출발지를 app(core 대역)이나 gateway(.10)로
+    꾸며 폭주를 보내면, 예전에는 그 주소가 그대로 NET-01 차단 대상이 되어 우리 서비스가 스스로 막힐 수
+    있었다. 그래서 어떤 증거가 오든 이 주소들은 막지 않는다.
+    - core 대역 172.30.0.0/24 (고정)
+    - NET_EDGE_SUBNET의 .1(호스트 브라우저·Docker 게이트웨이)과 .10(gateway edge)
+    - 루프백·멀티캐스트·예약·미지정(0.0.0.0)·링크로컬 — 실제 공격자일 수 없는 주소
+    """
+    try:
+        address = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    if address.version == 4 and address in CORE_NETWORK:
+        return True
+    if (
+        address.is_loopback
+        or address.is_multicast
+        or address.is_reserved
+        or address.is_unspecified
+        or address.is_link_local
+    ):
+        return True
+    edge = _edge_network()
+    if edge is not None and address.version == edge.version:
+        base = int(edge.network_address)
+        if int(address) in (base + 1, base + 10):
+            return True
+    return False
+
+
+def is_outside_edge_subnet(ip: str) -> bool:
+    """NET_EDGE_SUBNET이 설정돼 있는데 ip가 그 밖이면 True(설정이 없으면 항상 False).
+
+    이 PC의 센서는 자기 edge 대역만 본다. 그 밖의 출발지가 edge로 들어왔다면 위조된 주소다(guide57).
+    """
+    edge = _edge_network()
+    if edge is None:
+        return False
+    try:
+        return ipaddress.ip_address(ip) not in edge
+    except ValueError:
+        return True
+
 
 def _now_utc() -> datetime:
     """지금 시각(UTC). 테스트에서 시각을 고정하고 싶을 때 이 함수만 바꿔 끼우면 된다."""
@@ -114,6 +175,11 @@ def request_block(
             return False
     except ValueError:
         print(f"[netblock] 거부: IP 해석 실패 ('{ip}')")
+        return False
+
+    if is_infrastructure_ip(ip):
+        # 위조된 출발지로 우리 core·gateway 주소를 막게 만드는 공격을 여기서 끊는다(guide57).
+        print(f"[netblock] 거부: 인프라·특수 주소 ('{ip}')")
         return False
 
     if evidence not in _VALID_EVIDENCES:
@@ -215,7 +281,7 @@ def request_block(
             "removed_at": None,
             "last_error": None,
         }
-        return _update_with_version(ip, current_status, existing, update_fields)
+        return _update_with_version(ip, current_status, existing, _with_retry_reset(existing, update_fields))
 
     if current_status in _REUSABLE_STATUSES:
         # 해제됐거나 실패한 행은 같은 행을 새 요청으로 재사용한다(기본 키가 ip_address라 새 행을
@@ -231,11 +297,18 @@ def request_block(
             "removed_at": None,
             "last_error": None,
         }
-        return _update_with_version(ip, current_status, existing, update_fields)
+        return _update_with_version(ip, current_status, existing, _with_retry_reset(existing, update_fields))
 
     # 알 수 없는 상태(표 제약상 나오면 안 됨)는 건드리지 않는다.
     print(f"[netblock] 거부: 알 수 없는 기존 상태 ('{ip}', status={current_status!r})")
     return False
+
+
+def _with_retry_reset(existing: dict, fields: dict) -> dict:
+    """새 차단 요청이면 적용 재시도 횟수(guide57)를 처음부터 센다. 칸이 없는 DB에서는 그대로 둔다."""
+    if "apply_attempts" not in existing:
+        return fields
+    return {**fields, "apply_attempts": 0, "failed_at": None}
 
 
 def _update_with_version(ip: str, current_status: str, existing: dict, fields: dict) -> bool:

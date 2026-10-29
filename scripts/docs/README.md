@@ -16,11 +16,14 @@ python scripts/docs/build_flowcharts.py --all    # 전부
 | `chapters/chNN_*.py` | 단원별 명세. 강조할 줄은 줄 번호가 아니라 **문구(anchor)** 로 지정한다. 문구를 못 찾으면 에러로 멈춘다 |
 | `templates/flowchart.html` | 화면 템플릿(CSS·클릭 동작·코드 강조) |
 
-코드가 바뀐 뒤에는 `--all` 로 다시 만들면 최신 코드가 반영됩니다. 설명 문서(`NN-xxx.md`)는 손으로 쓰는 문서입니다.
+코드가 바뀐 뒤에는 `--all` 로 다시 만들면 최신 코드가 반영됩니다.
+
+33~40단원(Track D) 명세 `chapters/ch33~ch40_*.py`는 2026-10-29에 추가했습니다. 이 단원들은 처음에 목차 페이지 안에 직접 만들어 넣었던 것이라, 박혀 있던 데이터를 명세로 되살려 강조 줄을 줄 번호 대신 문구로 바꿨습니다. dsl.py를 쓰지 않고 `SCENARIOS`를 직접 적습니다. 설명 문서(`NN-xxx.md`)는 손으로 쓰는 문서입니다.
 
 
 ## 목차 페이지(index.html)와 웹 배포
 
+- **주의:** 지금 `index.html`은 40개 단원의 흐름도와 그림 해설을 파일 안에 함께 넣은 단독 파일입니다. `build_index.py`를 돌리면 이 내용이 사라진 목차로 덮어써집니다. 단원 흐름도를 다시 만든 뒤에는 각 단원 파일(`NN-*.html`)의 `data` 스크립트를 `index.html` 안의 같은 단원에 옮겨 넣어 맞춥니다(2026-10-29에 이 방식으로 갱신).
 - `python3 -I scripts/docs/build_index.py` — 각 단원 명세의 `TITLE`/`SUBTITLE`을 읽어 `docs/feature-reference/02-layer-order/index.html`(목차)을 만든다. 단원 이름을 바꿨다면 흐름도 생성 뒤 이것도 다시 실행한다.
 - `.github/workflows/pages.yml` — `main`에 `02-layer-order/*.html`이 바뀌어 올라오면 `.html`만 GitHub Pages로 배포한다(설명 `.md`는 올리지 않고, 흐름도의 "설명 문서 보기" 링크만 GitHub 저장소 주소로 바꿔 연결). 주소: https://dyj02056.github.io/login-watchdog/
 - 최초 1회: 저장소 Settings → Pages → Source를 "GitHub Actions"로 설정해야 한다.

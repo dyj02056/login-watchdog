@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>39. 장비 정지 감시 (heartbeat) — 코드 흐름도</title>
+<style>
+  :root{
+    --bg:#f4f6f3; --surface:#ffffff; --surface-2:#eaefe9; --ink:#12201c; --ink-muted:#5a6b63;
+    --border:#d9e0da; --accent:#0f6f66; --accent-soft:#e2ede9; --danger:#bf3b2b; --danger-soft:#f8e6e2;
+    --edge:#7b8a82; --edge-call:#8a97a0;
+    --k-screen:#767f78; --k-screen-soft:#eef0ee;
+    --k-route:#2f5fd6;  --k-route-soft:#e7edfb;
+    --k-helper:#b56b0c; --k-helper-soft:#f7ecd9;
+    --k-db:#7a4fce;     --k-db-soft:#efe8fa;
+    --k-config:#0f6f66; --k-config-soft:#e2ede9;
+    --k-later:#9aa39d;  --k-later-soft:#f4f6f3;
+    --code-bg:#fbfcfb; --code-hl:#fff3c4; --code-hl-bar:#e0a800; --code-gutter:#8a978f;
+    --c-comment:#6b7d73; --c-str:#a1470f; --c-kw:#7a3fc0; --c-fn:#1f5fd0; --c-num:#0b7a6c; --c-deco:#b0306e;
+    --shadow:0 1px 2px rgba(18,32,28,.06), 0 6px 20px rgba(18,32,28,.07);
+    --panel-w: 520px;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0d1512; --surface:#141e1a; --surface-2:#1b2620; --ink:#e7efe9; --ink-muted:#93a49c;
+      --border:#28352e; --accent:#4fc9b8; --accent-soft:#17332d; --danger:#ec7a6a; --danger-soft:#3a1d19;
+      --edge:#6f8178; --edge-call:#5d6f67;
+      --k-screen:#9aa39d; --k-screen-soft:#1a221e;
+      --k-route:#7fa2f2;  --k-route-soft:#182236;
+      --k-helper:#e8a94c; --k-helper-soft:#31260f;
+      --k-db:#b49bee;     --k-db-soft:#241c34;
+      --k-config:#4fc9b8; --k-config-soft:#17332d;
+      --k-later:#6b7a72;  --k-later-soft:#111a16;
+      --code-bg:#0f1713; --code-hl:#3a3210; --code-hl-bar:#e8a94c; --code-gutter:#5f7068;
+      --c-comment:#7f9388; --c-str:#e9a27a; --c-kw:#c3a1f5; --c-fn:#8db3ff; --c-num:#6fd6c6; --c-deco:#f08ab8;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d1512; --surface:#141e1a; --surface-2:#1b2620; --ink:#e7efe9; --ink-muted:#93a49c;
+    --border:#28352e; --accent:#4fc9b8; --accent-soft:#17332d; --danger:#ec7a6a; --danger-soft:#3a1d19;
+    --edge:#6f8178; --edge-call:#5d6f67;
+    --k-screen:#9aa39d; --k-screen-soft:#1a221e;
+    --k-route:#7fa2f2;  --k-route-soft:#182236;
+    --k-helper:#e8a94c; --k-helper-soft:#31260f;
+    --k-db:#b49bee;     --k-db-soft:#241c34;
+    --k-config:#4fc9b8; --k-config-soft:#17332d;
+    --k-later:#6b7a72;  --k-later-soft:#111a16;
+    --code-bg:#0f1713; --code-hl:#3a3210; --code-hl-bar:#e8a94c; --code-gutter:#5f7068;
+    --c-comment:#7f9388; --c-str:#e9a27a; --c-kw:#c3a1f5; --c-fn:#8db3ff; --c-num:#6fd6c6; --c-deco:#f08ab8;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.55}
+  button{font:inherit;color:inherit;cursor:pointer}
+  code,.mono{font-family:var(--mono)}
+
+  .app{display:flex;height:100vh;min-height:0}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .top{padding:14px 20px 10px;border-bottom:1px solid var(--border);background:var(--surface)}
+  .top h1{margin:0;font-size:19px;letter-spacing:-.01em}
+  .top .sub{margin:2px 0 0;color:var(--ink-muted);font-size:13px}
+  .top-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+  .tabs{display:flex;gap:6px}
+  .tab{border:1px solid var(--border);background:var(--surface-2);border-radius:999px;padding:5px 14px;font-weight:600}
+  .tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+  :root[data-theme="dark"] .tab[aria-selected="true"]{color:#06201b}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .tab[aria-selected="true"]{color:#06201b}}
+  .spacer{flex:1}
+  .btn{border:1px solid var(--border);background:var(--surface);border-radius:8px;padding:5px 11px;font-size:13px}
+  .btn:hover{border-color:var(--accent)}
+  .btn:disabled{opacity:.4;cursor:default}
+  .stepper{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-muted)}
+  .stepper b{color:var(--ink);min-width:42px;text-align:center}
+  a.back{display:inline-block;margin-bottom:6px;border:1px solid var(--border);background:var(--surface);border-radius:8px;
+    padding:4px 11px;font-size:13px;font-weight:600;color:var(--accent);text-decoration:none}
+  a.back:hover,a.back:focus-visible{border-color:var(--accent);background:var(--accent-soft);outline:none}
+  a.link{color:var(--accent);text-decoration:none;font-size:13px}
+  a.link:hover{text-decoration:underline}
+
+  .intro{margin:0;padding:10px 20px;color:var(--ink-muted);font-size:13px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:8px 20px;font-size:12px;color:var(--ink-muted);border-bottom:1px solid var(--border)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+
+  .stage-wrap{flex:1;min-height:0;overflow:auto}
+  .stage{position:relative;display:grid;gap:26px 46px;padding:22px 22px 60px;width:max-content;min-width:100%}
+  .edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+  .edges path{fill:none;stroke:var(--edge);stroke-width:1.6}
+  .edges path.call{stroke:var(--edge-call);stroke-dasharray:5 4}
+  .edges path.active{stroke:var(--accent);stroke-width:2.4;stroke-dasharray:none}
+  .edges .head{fill:var(--edge)}
+  .edges .head-call{fill:var(--edge-call)}
+  .elabel{position:absolute;transform:translate(-50%,-50%);font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;
+    background:var(--surface);border:1px solid var(--border);color:var(--ink-muted);white-space:nowrap;pointer-events:none}
+
+  .colhead{font-size:12px;font-weight:700;color:var(--ink-muted);text-transform:none;border-bottom:2px solid var(--border);padding-bottom:6px;align-self:end}
+  .cell{display:flex;flex-direction:column;gap:12px;align-self:center;justify-content:center;position:relative;z-index:1}
+
+  .node{--k:var(--k-route);--ks:var(--k-route-soft);position:relative;background:var(--surface);border:1px solid var(--border);
+    border-left:5px solid var(--k);border-radius:10px;padding:10px 12px;box-shadow:var(--shadow);cursor:pointer;
+    transition:transform .08s, border-color .12s}
+  .node:hover{transform:translateY(-1px);border-color:var(--k)}
+  .node:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+  .node[aria-pressed="true"]{outline:3px solid var(--accent);outline-offset:1px}
+  .node.screen{--k:var(--k-screen);--ks:var(--k-screen-soft)}
+  .node.route{--k:var(--k-route);--ks:var(--k-route-soft)}
+  .node.helper{--k:var(--k-helper);--ks:var(--k-helper-soft)}
+  .node.db{--k:var(--k-db);--ks:var(--k-db-soft)}
+  .node.config{--k:var(--k-config);--ks:var(--k-config-soft)}
+  .node.later{--k:var(--k-later);--ks:var(--k-later-soft);background:var(--k-later-soft);box-shadow:none;border-style:dashed;border-left-style:solid;padding:8px 10px}
+  .n-title{font-weight:700;font-size:13.5px;letter-spacing:-.01em}
+  .n-plain{margin-top:3px;color:var(--ink-muted);font-size:12.5px}
+  .n-reject{margin-top:6px;font-size:12px;color:var(--danger);background:var(--danger-soft);border-radius:6px;padding:3px 8px}
+  .n-reject::before{content:"막히면 → ";font-weight:700}
+  .n-items{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+  .n-item{display:flex;flex-direction:column;gap:3px}
+  .n-call{overflow-wrap:anywhere;font-family:var(--mono);font-size:11.5px;color:var(--k);font-weight:600}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{max-width:100%;text-align:left;overflow-wrap:anywhere;border:1px solid var(--border);background:var(--ks);color:var(--ink);border-radius:6px;padding:1px 7px;font-family:var(--mono);font-size:11px}
+  .chip:hover{border-color:var(--k);color:var(--k)}
+  .chip.file::before{content:"📄 "}
+  .chip.fn::before{content:"ƒ ";color:var(--k);font-weight:700}
+  .chip.snip::before{content:"▤ ";color:var(--k);font-weight:700}
+  .tag-later{display:inline-block;margin-left:6px;font-size:10.5px;font-weight:700;color:var(--ink-muted);border:1px solid var(--border);border-radius:999px;padding:0 7px;background:var(--surface)}
+
+  /* 코드 패널 */
+  .panel{width:var(--panel-w);flex:none;border-left:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;min-height:0}
+  .p-head{padding:14px 16px 10px;border-bottom:1px solid var(--border)}
+  .p-head h2{margin:0;font-size:15.5px;letter-spacing:-.01em}
+  .p-head p{margin:4px 0 0;color:var(--ink-muted);font-size:13px}
+  .p-close{display:none}
+  .p-body{flex:1;min-height:0;overflow:auto;padding:12px 16px 24px}
+  .hint{color:var(--ink-muted);font-size:13px}
+  .hint li{margin:4px 0}
+  .itabs{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+  .itab{border:1px solid var(--border);background:var(--surface-2);border-radius:6px;padding:2px 9px;font-family:var(--mono);font-size:12px}
+  .itab[aria-selected="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700}
+  .fileline{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px}
+  .fileline .path{font-family:var(--mono);font-size:12.5px;font-weight:700}
+  .fileline .lines{font-family:var(--mono);font-size:12px;color:var(--ink-muted)}
+  .alias{border:1px solid var(--border);background:var(--k-db-soft);border-radius:8px;padding:8px 10px;margin:0 0 10px;font-size:12.5px}
+  .alias .route{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:5px;font-family:var(--mono);font-size:12px}
+  .alias .route span.step{padding:1px 7px;border-radius:6px;border:1px solid var(--border);background:var(--surface)}
+  .alias .route span.real{border-color:var(--k-db);color:var(--k-db);font-weight:700}
+  .alias .arrow{color:var(--ink-muted)}
+  .codebox{border:1px solid var(--border);border-radius:8px;background:var(--code-bg);overflow:auto;max-height:calc(100vh - 330px);min-height:240px}
+  .codebox.wrap table.code td.tx{white-space:pre-wrap;overflow-wrap:anywhere}
+  .btn[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:700}
+  /* 흐름도 ↔ 코드 패널 사이 드래그 분할선 (겹쳐 놓아 레이아웃은 밀리지 않는다) */
+  .splitter{flex:none;position:relative;z-index:6;width:11px;margin:0 -5px;cursor:col-resize;touch-action:none;outline:none}
+  .splitter::before{content:"";position:absolute;left:5px;top:0;bottom:0;width:1px;background:var(--border);transition:background .12s,width .12s,left .12s}
+  .splitter::after{content:"";position:absolute;left:3px;top:50%;width:5px;height:44px;margin-top:-22px;border-radius:3px;background:var(--border);transition:background .12s}
+  .splitter:hover::before,.splitter:focus-visible::before,body.dragging .splitter::before{background:var(--accent);width:3px;left:4px}
+  .splitter:hover::after,.splitter:focus-visible::after,body.dragging .splitter::after{background:var(--accent)}
+  body.dragging{user-select:none;cursor:col-resize}
+  table.code{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:12.2px;line-height:1.6}
+  table.code td{padding:0 10px;vertical-align:top;white-space:pre}
+  table.code td.ln{position:sticky;left:0;text-align:right;color:var(--code-gutter);user-select:none;background:var(--code-bg);border-right:1px solid var(--border);min-width:44px;padding-right:8px}
+  table.code tr.hl td{background:var(--code-hl)}
+  table.code tr.hl td.ln{background:var(--code-hl);color:var(--ink);font-weight:700;box-shadow:inset 3px 0 0 var(--code-hl-bar)}
+  .t-c{color:var(--c-comment);font-style:italic}.t-d{color:var(--c-comment)}.t-s{color:var(--c-str)}.t-k{color:var(--c-kw);font-weight:600}
+  .t-f{color:var(--c-fn)}.t-n{color:var(--c-num)}.t-a{color:var(--c-deco)}
+  .legend-hl{margin:8px 0 0;font-size:12px;color:var(--ink-muted)}
+  .legend-hl b{background:var(--code-hl);color:var(--ink);padding:0 6px;border-radius:4px}
+  .flist{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:6px}
+  .flist button{width:100%;text-align:left;border:1px solid var(--border);background:var(--surface-2);border-radius:8px;padding:6px 10px}
+  .flist button:hover{border-color:var(--accent)}
+  .flist small{display:block;color:var(--ink-muted)}
+  details.hdr{margin-top:12px;font-size:13px}
+  details.hdr pre{white-space:pre-wrap;background:var(--surface-2);border-radius:8px;padding:10px;font-family:var(--sans);font-size:12.5px;color:var(--ink-muted)}
+
+  @media (max-width:900px){
+    .splitter{display:none}
+    .app{display:block;height:auto}
+    .stage-wrap{max-height:none;overflow-x:auto}
+    .panel{position:fixed;left:0;right:0;bottom:0;width:auto;height:62vh;border-left:0;border-top:2px solid var(--accent);
+      box-shadow:0 -10px 30px rgba(0,0,0,.25);z-index:20;transform:translateY(105%);transition:transform .18s}
+    body.open .panel{transform:none}
+    .p-close{display:inline-block;position:absolute;right:12px;top:10px}
+    .p-head{position:relative;padding-right:70px}
+    .top{padding:12px 16px 8px}
+    .stage{padding:16px 16px 70vh}
+  }
+  @media (prefers-reduced-motion: reduce){.node,.panel{transition:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="main">
+    <header class="top">
+      <a class="back" href="index.html" title="단원 목차로 돌아가기">← 목차로</a>
+      <h1 id="title"></h1>
+      <p class="sub" id="subtitle"></p>
+      <div class="top-row">
+        <div class="tabs" role="tablist" id="tabs"></div>
+        <div class="stepper"><button class="btn" id="prev">◀ 이전</button><b id="stepNo">–</b><button class="btn" id="next">다음 ▶</button></div>
+        <span class="spacer"></span>
+        <a class="link" id="mdlink" href="#">📝 설명 문서 보기</a>
+        <button class="btn" id="theme" title="라이트/다크 전환">🌓</button>
+      </div>
+    </header>
+    <p class="intro" id="intro"></p>
+    <div class="legend" aria-label="범례">
+      <span><i style="background:var(--k-screen)"></i>화면 · 도착지</span>
+      <span><i style="background:var(--k-route)"></i>routes (입구)</span>
+      <span><i style="background:var(--k-helper)"></i>판단 (security · helpers)</span>
+      <span><i style="background:var(--k-db)"></i>db (저장소)</span>
+      <span><i style="background:var(--k-config)"></i>설정값</span>
+      <span><i style="background:var(--k-later);opacity:.6"></i>다른 단원에서 자세히</span>
+      <span>━ 다음 단계 &nbsp; ┅ 함수 호출</span>
+    </div>
+    <div class="stage-wrap" id="stageWrap"><div class="stage" id="stage"></div></div>
+  </div>
+
+  <div class="splitter" id="splitter" role="separator" aria-orientation="vertical" tabindex="0"
+       aria-label="코드 패널 너비 조절 (드래그, 또는 좌우 화살표 키 · 더블클릭하면 기본 너비)" title="드래그해서 코드 패널 너비 조절 · 더블클릭: 기본 너비"></div>
+  <aside class="panel" id="panel" aria-live="polite">
+    <div class="p-head">
+      <h2 id="pTitle"></h2><p id="pSub"></p>
+      <button class="btn p-close" id="pClose">닫기</button>
+    </div>
+    <div class="p-body" id="pBody"></div>
+  </aside>
+</div>
+
+<script type="application/json" id="data">{"title": "39. 장비 정지 감시 (heartbeat)", "subtitle": "fw-agent·shipper가 살아 있다는 신호를 보내고, 멈추면 아무도 화면을 열지 않아도 Slack으로 알리는 코드 흐름도 — 2026-10-29 보완(인프라 주소 보호·적용 재시도·장비 이상 알림·L3 경보·S7·S9)은 아직 그림·설명에 넣지 않았으니 docs/beginner-guide/guide57_reliability_l3.md를 함께 보세요", "mdFile": "39-agent-heartbeat.md", "github": "https://github.com/dyj02056/login-watchdog/blob/main/", "columns": ["장비 (shipper · fw-agent)", "routes (입구)", "판단", "db/ (저장소)"], "scenarios": [{"id": "beat", "name": "생존 신호 보내기와 받기", "intro": "센서나 차단 프로그램이 조용히 죽으면 트래픽은 계속 흐르는데 탐지·차단만 사라집니다. 아무 일도 없어 보이는 상태가 가장 위험하므로, 장비가 주기적으로 '살아 있다'고 말하게 하고 그 신호가 끊기면 알립니다.", "nodes": [{"id": "beat_n1", "col": 0, "row": 0, "kind": "screen", "title": "fw-agent가 10초마다, shipper가 30초마다 신호를 보낸다", "plain": "둘 다 서명해서 보냅니다. fw-agent는 앱 목록을 못 받는 중에도 보내고, 연속 실패 횟수(poll_failures)를 함께 실어 '살아는 있는데 목록을 못 받는 중'을 구분할 수 있게 합니다.", "reject": "", "later": "", "items": [{"block": "netwatch/fw_agent/fw_agent.py:main", "hl": [759, 782], "label": "main()", "call": null, "snippet": false}]}, {"id": "beat_n2", "col": 1, "row": 1, "kind": "helper", "title": "① shipper의 신호에는 센서 정체 여부가 실린다", "plain": "eve.json과 l4.json이 둘 다 120초(SHIPPER_STALL_SECONDS) 넘게 늘지 않으면 stalled=true. 한 파일만 보면 공격이 없을 때 l4.json이 원래 안 늘어 오판하므로 두 파일을 함께 보고, Suricata가 60초마다 stats를 쓰는 점을 고려해 기본값을 2배로 잡았습니다.", "reject": "", "later": "", "items": [{"block": "netwatch/shipper/eve_shipper.py:heartbeat_body", "hl": [843, 859], "label": "heartbeat_body()", "call": null, "snippet": false}]}, {"id": "beat_n3", "col": 2, "row": 1, "kind": "helper", "title": "두 로그의 정체 시간", "plain": "로그가 순환·재생성돼 크기가 줄어든 것도 활동으로 칩니다.", "reject": "", "later": "", "items": [{"block": "netwatch/shipper/eve_shipper.py:StallWatch.observe", "hl": null, "label": "StallWatch.observe()", "call": null, "snippet": false}]}, {"id": "beat_n4", "col": 1, "row": 2, "kind": "route", "title": "② 앱: 서명 확인 + 보낸이와 agent 이름이 같은지", "plain": "서명 검증은 shipper·fw-agent 둘 다 허용합니다. 본문의 agent가 서명한 보낸이와 다르면 400 — 한쪽이 다른 쪽인 척 신호를 보내지 못하게 합니다. 본문 상세(detail)는 2KB 이하만 받습니다.", "reject": "401 / 400", "later": "", "items": [{"block": "routes/internal/heartbeat.py:heartbeat", "hl": [89, 103], "label": "heartbeat()", "call": null, "snippet": false}]}, {"id": "beat_n5", "col": 2, "row": 2, "kind": "later", "title": "서명 검증", "plain": "34단원.", "reject": "", "later": "34단원", "items": [{"block": "routes/internal/_hmac.py:verify_request", "hl": null, "label": "verify_request()", "call": null, "snippet": false}]}, {"id": "beat_n6", "col": 1, "row": 3, "kind": "route", "title": "③ (agent, PC 이름) 한 줄로 저장", "plain": "세 PC가 같은 DB를 써도 서로 덮어쓰지 않게 (agent, node) 한 쌍을 키로 upsert합니다. LW_NODE_NAME이 비어 있는 환경(Vercel 등 단지가 없는 곳)은 신호를 받지 않습니다.", "reject": "", "later": "", "items": [{"block": "routes/internal/heartbeat.py:heartbeat", "hl": [122, 122], "label": "heartbeat()", "call": null, "snippet": false}]}, {"id": "beat_n7", "col": 3, "row": 3, "kind": "db", "title": "생존 신호 저장", "plain": "마지막 신호 시각과 상세(큐 길이·ipset 크기·정체 시간 등)를 덮어씁니다.", "reject": "", "later": "", "items": [{"block": "db/agent_heartbeats.py:upsert_agent_heartbeat", "hl": null, "label": "upsert_agent_heartbeat()", "call": null, "snippet": false}]}], "edges": [{"from": "beat_n1", "to": "beat_n2", "label": "", "kind": "flow"}, {"from": "beat_n2", "to": "beat_n3", "label": "", "kind": "call"}, {"from": "beat_n2", "to": "beat_n4", "label": "", "kind": "flow"}, {"from": "beat_n4", "to": "beat_n5", "label": "", "kind": "call"}, {"from": "beat_n4", "to": "beat_n6", "label": "", "kind": "flow"}, {"from": "beat_n6", "to": "beat_n7", "label": "", "kind": "call"}], "steps": ["beat_n1", "beat_n2", "beat_n4", "beat_n6"]}, {"id": "alert", "name": "멈췄다는 걸 알아채고 알리기", "intro": "'정지'는 마지막 신호가 기준 시간보다 오래됐다는 뜻입니다. fw-agent는 30초, shipper는 120초가 기본입니다. 알림은 같은 장비에 대해 10분에 한 번만 보내고, 그 '한 번만'은 메모리가 아니라 DB에 둡니다.", "nodes": [{"id": "alert_n1", "col": 0, "row": 0, "kind": "screen", "title": "신호를 받은 순간, 상대 장비도 확인", "plain": "관리자 화면을 아무도 열지 않아도 정지를 알리기 위해서입니다. fw-agent 신호가 오면 shipper를, shipper 신호가 오면 fw-agent를 봅니다.", "reject": "", "later": "", "items": [{"block": "routes/internal/heartbeat.py:heartbeat", "hl": [139, 160], "label": "heartbeat()", "call": null, "snippet": false}]}, {"id": "alert_n2", "col": 1, "row": 1, "kind": "helper", "title": "① 센서 로그가 안 늘면 알림 (shipper가 알려준 stalled)", "plain": "shipper가 stalled=true를 보내면 '센서 로그가 2분 넘게 늘지 않습니다'를 알립니다. 쿨다운 키는 slack:stalled:<PC>:<장비>입니다.", "reject": "", "later": "", "items": [{"block": "routes/internal/heartbeat.py:heartbeat", "hl": [125, 128], "label": "heartbeat()", "call": null, "snippet": false}]}, {"id": "alert_n3", "col": 3, "row": 1, "kind": "db", "title": "알림을 지금 보내도 되는지 (원자적 판단)", "plain": "마지막 전송이 기준 시간보다 오래됐으면 지금 시각으로 갱신하고 True. 조건부 UPDATE와 유니크 키로 동시 요청이 와도 한 번만 True가 됩니다.", "reject": "", "later": "", "items": [{"block": "db/agent_heartbeats.py:try_acquire_cooldown", "hl": null, "label": "try_acquire_cooldown()", "call": null, "snippet": false}]}, {"id": "alert_n4", "col": 2, "row": 1, "kind": "helper", "title": "장비 정지 Slack 알림", "plain": "어느 PC의 어느 장비가 얼마나 조용한지 알립니다.", "reject": "", "later": "", "items": [{"block": "notify/alert.py:send_component_alert", "hl": null, "label": "send_component_alert()", "call": null, "snippet": false}]}, {"id": "alert_n5", "col": 1, "row": 2, "kind": "helper", "title": "② 상대 장비의 마지막 신호가 너무 오래됐으면 알림", "plain": "기준: fw-agent 30초 · shipper 120초(FW_AGENT_STALE_SECONDS·SHIPPER_STALE_SECONDS). 쿨다운 키 slack:stale:<PC>:<장비>는 관리자 화면의 정지 알림과 같아서 같은 정지가 두 번 알려지지 않습니다.", "reject": "", "later": "", "items": [{"block": "routes/internal/heartbeat.py:heartbeat", "hl": [141, 156], "label": "heartbeat()", "call": null, "snippet": false}]}, {"id": "alert_n6", "col": 3, "row": 2, "kind": "db", "title": "이 PC의 두 장비 마지막 신호", "plain": "node(PC 이름)로 읽습니다.", "reject": "", "later": "", "items": [{"block": "db/agent_heartbeats.py:get_agent_heartbeats", "hl": null, "label": "get_agent_heartbeats()", "call": null, "snippet": false}]}, {"id": "alert_n7", "col": 1, "row": 3, "kind": "helper", "title": "③ 관리자 화면을 열 때도 같은 판단", "plain": "상태 API가 장비 상태(마지막 신호·정지 여부·상세)를 만들어 화면에 줍니다. 한 번이라도 신호를 보낸 장비가 멈췄을 때만 알립니다 — 아직 켠 적 없는 장비까지 알리면 단지를 안 켠 PC에서 화면을 열 때마다 알림이 쌓이기 때문입니다.", "reject": "", "later": "", "items": [{"block": "routes/admin/status.py:_build_agent_status", "hl": [249, 250], "label": "_build_agent_status()", "call": null, "snippet": false}]}, {"id": "alert_n8", "col": 3, "row": 3, "kind": "db", "title": "전송이 일시 실패했을 때 쿨다운 풀기", "plain": "아무 알림도 안 갔는데 쿨다운 시간 내내 조용하면 안 되므로 호출부가 풀 수 있습니다.", "reject": "", "later": "", "items": [{"block": "db/agent_heartbeats.py:release_cooldown", "hl": null, "label": "release_cooldown()", "call": null, "snippet": false}]}], "edges": [{"from": "alert_n1", "to": "alert_n2", "label": "", "kind": "flow"}, {"from": "alert_n2", "to": "alert_n3", "label": "", "kind": "call"}, {"from": "alert_n2", "to": "alert_n4", "label": "", "kind": "call"}, {"from": "alert_n2", "to": "alert_n5", "label": "", "kind": "flow"}, {"from": "alert_n5", "to": "alert_n6", "label": "", "kind": "call"}, {"from": "alert_n5", "to": "alert_n7", "label": "", "kind": "flow"}, {"from": "alert_n7", "to": "alert_n8", "label": "", "kind": "call"}], "steps": ["alert_n1", "alert_n2", "alert_n5", "alert_n7"]}], "blocks": {"netwatch/fw_agent/fw_agent.py:main": {"path": "netwatch/fw_agent/fw_agent.py", "start": 676, "end": 786, "lang": "python", "code": "def main() -> None:\n    \"\"\"서비스 루프. 2초마다 목록 처리, 60초마다 reconcile, 10초마다 heartbeat.\n\n    루프 한 바퀴 안의 어떤 예외도 잡아서 로그만 남긴다 — 이 프로그램이 죽으면 새 차단이\n    걸리지 않고, 앱은 heartbeat가 끊긴 것으로 '정지'만 알 수 있기 때문이다.\n    NET_AGENT_SECRET이 없으면 시작하지 않는다. 서명 없이 돌면 앱이 모든 요청을 401로 거절해\n    아무 일도 못 하면서 로그만 쌓이므로, 처음부터 실패를 드러내는 편이 낫다.\n    \"\"\"\n    secret = os.environ.get(\"NET_AGENT_SECRET\")\n    if not secret:\n        print(\"[fw-agent] 필수 환경 변수 NET_AGENT_SECRET이 없어 종료합니다.\")\n        sys.exit(1)\n\n    base_url = os.environ.get(\"APP_INTERNAL_URL\", \"http://app:5000\")\n    allowlist_str = os.environ.get(\"PERMANENT_LOCK_IP_ALLOWLIST\", \"\")\n    allowlist = [x.strip() for x in allowlist_str.split(\",\") if x.strip()]\n    set_name = os.environ.get(\"IPSET_NAME\", \"lw_block\")\n    # 이 PC의 edge 대역(guide57). compose가 넘긴다. 비어 있으면 대역 확인은 하지 않고 core 대역만 거부한다.\n    edge_network = _edge_network_from_env(os.environ.get(\"NET_EDGE_SUBNET\"))\n\n    poll_interval = _int_env(\"POLL_INTERVAL\", 2)\n    reconcile_interval = _int_env(\"RECONCILE_INTERVAL\", 60)\n    heartbeat_interval = _int_env(\"HEARTBEAT_INTERVAL\", 10)\n\n    runner = SubprocessRunner()\n    backend = IptablesBackend(runner, set_name=set_name)\n    try:\n        backend.ensure_ready()\n    except Exception as e:\n        # 집합·규칙을 만들 수 없으면(NET_ADMIN 권한 없음 등) 차단이 아예 안 되므로 종료해\n        # docker compose 로그에 원인이 바로 보이게 한다.\n        print(f\"[fw-agent] 백엔드 초기화 실패: {e}\")\n        sys.exit(1)\n    backend.ensure_l3()\n\n    client = AgentClient(base_url, secret)\n\n    poll_failures = 0\n    # None = 아직 목록을 한 번도 받지 못함(reconcile 금지). 받은 뒤에는 마지막으로 받은 상태를 유지한다.\n    desired_ips: dict[str, int | None] | None = None\n    # desired_ips를 받은 시각(monotonic). reconcile이 남은 초를 \"언제까지\"로 바꿔 계산하는 기준이다.\n    desired_received_at: float | None = None\n    last_reconcile = 0.0\n    last_heartbeat = 0.0\n    # 직전 heartbeat 때 LW_L3가 버린 ICMP 누적값. heartbeat에는 그 뒤 늘어난 만큼만 싣는다.\n    last_icmp_dropped = backend.icmp_dropped_total()\n\n    print(\"[fw-agent] 서비스 루프를 시작합니다.\")\n    while True:\n        now = time.time()\n\n        try:\n            # 1. Poll & Process\n            try:\n                blocks = client.get_blocks()\n                desired_received_at = time.monotonic()\n                desired_ips = process_blocks(blocks, backend, client, allowlist, edge_network=edge_network)\n                poll_failures = 0\n            except Exception as e:\n                # 앱이 응답하지 않으면 desired_ips를 그대로 둔다(마지막 상태 유지).\n                # 이미 ipset에 들어간 TTL 차단은 커널이 timeout으로 풀어 준다.\n                poll_failures += 1\n                print(f\"[fw-agent] 폴링 실패 ({poll_failures}회 연속): {e}\")\n\n            # 2. Reconcile\n            if now - last_reconcile >= reconcile_interval:\n                # 규칙 되살리기(guide57). 시작할 때 한 번만 만들면, 누가 iptables -F를 했을 때 ipset에는 IP가\n                # 남아 \"막혀 있음\"처럼 보이는데 실제로는 아무것도 막지 않는다. 두 함수 모두 규칙이 있으면\n                # 아무것도 바꾸지 않으므로 60초마다 불러도 안전하다.\n                try:\n                    backend.ensure_ready()\n                    backend.ensure_l3()\n                except Exception as e:\n                    print(f\"[fw-agent] 규칙 되살리기 실패: {e}\")\n                try:\n                    reconcile(\n                        desired_ips, backend, allowlist,\n                        received_at=desired_received_at, edge_network=edge_network,\n                    )\n                except Exception as e:\n                    print(f\"[fw-agent] reconcile 실패: {e}\")\n                last_reconcile = now\n\n            # 3. Heartbeat — 폴링이 실패하는 중에도 보낸다. 앱은 poll_failures로\n            #    'agent는 살아 있지만 목록을 못 받는 중'을 구분할 수 있다.\n            if now - last_heartbeat >= heartbeat_interval:\n                try:\n                    ipset_size = len(backend.list_ips())\n                    rules = backend.check_rules()\n                    icmp_total = backend.icmp_dropped_total()\n                    # 카운터가 줄었으면(체인을 비우고 다시 만듦) 새로 센 값만 쓴다.\n                    if icmp_total >= last_icmp_dropped:\n                        icmp_dropped = icmp_total - last_icmp_dropped\n                    else:\n                        icmp_dropped = icmp_total\n                    last_icmp_dropped = icmp_total\n                    client.heartbeat({\n                        \"poll_failures\": poll_failures,\n                        \"ipset_size\": ipset_size,\n                        \"rules_ok\": rules[\"input\"],\n                        \"raw_ok\": rules[\"raw\"],\n                        \"l3_ok\": rules[\"l3\"],\n                        \"icmp_dropped\": icmp_dropped,\n                    })\n                except Exception as e:\n                    print(f\"[fw-agent] heartbeat 실패: {e}\")\n                last_heartbeat = now\n        except Exception as e:  # noqa: BLE001  (루프가 죽지 않게 하는 마지막 그물)\n            print(f\"[fw-agent] 루프 예외: {e}\")\n\n        time.sleep(poll_interval)", "alias": null}, "netwatch/shipper/eve_shipper.py:heartbeat_body": {"path": "netwatch/shipper/eve_shipper.py", "start": 828, "end": 860, "lang": "python", "code": "def heartbeat_body(\n    eve_tailer: Tailer,\n    l4_tailer: Tailer,\n    event_sender: Sender,\n    *,\n    stalled: bool = False,\n    stalled_seconds: int = 0,\n    stalled_sensor_names: list[str] | None = None,\n    kernel_delta: tuple[int, int] | None = None,\n) -> dict:\n    \"\"\"계약서 K9의 shipper heartbeat 본문을 만든다.\n\n    stalled_sensor_names·kernel_delta(guide57)는 넘긴 경우에만 detail에 싣는다 — 넘기지 않는 호출은\n    예전 모양 그대로다.\n    \"\"\"\n    detail: dict = {\n        \"eve_bytes\": eve_tailer.last_size,\n        \"l4_bytes\": l4_tailer.last_size,\n        \"queue\": event_sender.queue_size,\n        \"stalled_seconds\": max(\n            0,\n            int(stalled_seconds),\n        ),\n    }\n    if stalled_sensor_names is not None:\n        detail[\"stalled_sensors\"] = list(stalled_sensor_names)\n    if kernel_delta is not None:\n        detail[\"kernel_packets\"], detail[\"kernel_drops\"] = kernel_delta\n    return {\n        \"agent\": \"shipper\",\n        \"stalled\": stalled,\n        \"detail\": detail,\n    }", "alias": null}, "netwatch/shipper/eve_shipper.py:StallWatch.observe": {"path": "netwatch/shipper/eve_shipper.py", "start": 419, "end": 463, "lang": "python", "code": "    def observe(\n        self,\n        eve_bytes: int,\n        l4_bytes: int,\n    ) -> tuple[bool, int]:\n        \"\"\"현재 파일 크기를 반영하고 정지 상태와 정지 시간을 반환한다.\"\"\"\n        now = self.clock()\n\n        current_sizes = {\n            \"eve\": max(0, int(eve_bytes)),\n            \"l4\": max(0, int(l4_bytes)),\n        }\n\n        for name, current_size in current_sizes.items():\n            previous_size = self._last_sizes.get(name)\n\n            # 첫 관찰, 파일 증가, 로그 순환·재생성에 따른 크기 감소를\n            # 모두 해당 센서 파일의 활동으로 처리한다.\n            if (\n                previous_size is None\n                or current_size != previous_size\n            ):\n                self._last_change_times[name] = now\n\n            self._last_sizes[name] = current_size\n\n        if len(self._last_change_times) < 2:\n            self.stalled = False\n            self.stalled_seconds = 0\n            return self.stalled, self.stalled_seconds\n\n        # 두 파일 중 더 최근에 바뀐 시각부터 두 파일 모두 멈춘 것이다.\n        most_recent_change = max(\n            self._last_change_times.values()\n        )\n\n        self.stalled_seconds = max(\n            0,\n            int(now - most_recent_change),\n        )\n        self.stalled = (\n            self.stalled_seconds >= self.threshold_seconds\n        )\n\n        return self.stalled, self.stalled_seconds", "alias": null}, "routes/internal/heartbeat.py:heartbeat": {"path": "routes/internal/heartbeat.py", "start": 83, "end": 162, "lang": "python", "code": "@internal_bp.route(\"/heartbeat\", methods=[\"POST\"])\ndef heartbeat():\n    \"\"\"fw-agent(10초)·shipper(30초)의 생존 신호(계약서 K9 ③).\n\n    받을 때마다 상대 장비(fw-agent ↔ shipper)의 마지막 신호도 확인한다 — 관리자 화면을\n    아무도 열지 않아도 장비 정지를 Slack으로 알리기 위해서다.\"\"\"\n    sender = verify_request({\"fw-agent\", \"shipper\"})\n    if sender is None:\n        return jsonify(error=\"unauthorized\"), 401\n\n    if not config.LW_NODE_NAME:\n        return jsonify(error=\"invalid\", field=\"node\"), 400\n\n    data = request.get_json(silent=True)\n    # [C1-1·C1-2 보완] 본문이 JSON 객체가 아니면 .get()에서 500이 나므로 400으로 거절한다.\n    if not isinstance(data, dict):\n        return jsonify(error=\"invalid\", field=\"body\"), 400\n    agent = data.get(\"agent\")\n    detail = data.get(\"detail\")\n\n    if agent != sender:\n        return jsonify(error=\"invalid\", field=\"agent\"), 400\n\n    if not isinstance(detail, dict):\n        return jsonify(error=\"invalid\", field=\"detail\"), 400\n\n    try:\n        detail_json = json.dumps(detail)\n        if len(detail_json.encode(\"utf-8\")) > 2048:\n            return jsonify(error=\"invalid\", field=\"detail\"), 400\n    except Exception:\n        return jsonify(error=\"invalid\", field=\"detail\"), 400\n\n    stalled = False\n    if sender == \"shipper\":\n        stalled = bool(data.get(\"stalled\", False))\n        detail[\"stalled\"] = stalled\n\n    # DB upsert\n    db.upsert_agent_heartbeat(agent, config.LW_NODE_NAME, detail)\n\n    # Stalled 알림 처리\n    if stalled:\n        cooldown_key = f\"slack:stalled:{config.LW_NODE_NAME}:{agent}\"\n        if db.try_acquire_cooldown(cooldown_key, config.AGENT_ALERT_COOLDOWN_SECONDS):\n            alert.send_component_alert(agent, f\"센서 로그가 2분 넘게 늘지 않습니다 (PC: {config.LW_NODE_NAME})\")\n\n    # guide57: 살아 있지만 제 일을 못 하는 상태 알림. 실패해도 생존 신호 응답은 그대로 200이다.\n    try:\n        if sender == \"fw-agent\":\n            _check_fw_agent_detail(detail)\n        else:\n            _check_shipper_detail(detail, stalled)\n    except Exception as e:\n        print(f\"[heartbeat] 상태 점검 예외: {e}\")\n\n    # 상대 장비 정지 감시\n    try:\n        other_agent = \"shipper\" if agent == \"fw-agent\" else \"fw-agent\"\n        other_stale_sec = config.SHIPPER_STALE_SECONDS if other_agent == \"shipper\" else config.FW_AGENT_STALE_SECONDS\n        beats = db.get_agent_heartbeats(config.LW_NODE_NAME)\n        if other_agent in beats:\n            last_seen_str = beats[other_agent].get(\"last_seen_at\")\n            if last_seen_str:\n                try:\n                    last_seen_dt = datetime.fromisoformat(last_seen_str.replace(\"Z\", \"+00:00\"))\n                    if last_seen_dt.tzinfo is None:\n                        last_seen_dt = last_seen_dt.replace(tzinfo=timezone.utc)\n                    now_dt = datetime.now(timezone.utc)\n                    diff_sec = (now_dt - last_seen_dt).total_seconds()\n                    if diff_sec > other_stale_sec:\n                        stale_key = f\"slack:stale:{config.LW_NODE_NAME}:{other_agent}\"\n                        if db.try_acquire_cooldown(stale_key, config.AGENT_ALERT_COOLDOWN_SECONDS):\n                            alert.send_component_alert(other_agent, f\"{int(diff_sec)}초 넘게 생존 신호가 없습니다 (PC: {config.LW_NODE_NAME})\")\n                except Exception as e:\n                    print(f\"[heartbeat] 상대 장비 시각 해석 예외: {e}\")\n    except Exception as e:\n        print(f\"[heartbeat] 상대 장비 점검 예외: {e}\")\n\n    return jsonify({\"ok\": True})", "alias": null}, "routes/internal/_hmac.py:verify_request": {"path": "routes/internal/_hmac.py", "start": 22, "end": 54, "lang": "python", "code": "def verify_request(allowed_senders: set[str]) -> str | None:\n    \"\"\"실패 상세는 로그에만 남기고 호출자는 공통 인증 실패로 응답하게 한다.\"\"\"\n    sender = request.headers.get(\"X-LW-Sender\")\n    timestamp = request.headers.get(\"X-LW-Timestamp\")\n    signature = request.headers.get(\"X-LW-Signature\")\n    if not sender or not timestamp or not signature:\n        print(\"internal_hmac: missing_header\")\n        return None\n    if sender not in allowed_senders or sender not in {\"shipper\", \"fw-agent\"}:\n        print(\"internal_hmac: disallowed_sender\")\n        return None\n\n    key = config.NET_INGEST_SECRET if sender == \"shipper\" else config.NET_AGENT_SECRET\n    if not key:\n        print(\"internal_hmac: empty_key\")\n        return None\n    try:\n        timestamp.encode(\"ascii\")\n        timestamp_value = int(timestamp)\n    except (ValueError, UnicodeEncodeError):\n        print(\"internal_hmac: invalid_timestamp\")\n        return None\n    if abs(time.time() - timestamp_value) > config.NET_INTERNAL_MAX_SKEW_SECONDS:\n        print(\"internal_hmac: timestamp_skew\")\n        return None\n\n    # 원본 바이트를 캐시해야 이후 라우트에서 get_json()으로 본문을 다시 읽을 수 있다.\n    expected = sign(key, timestamp, request.get_data(cache=True))\n    # 비ASCII 입력도 예외로 중단되지 않고 인증 실패로 처리한다.\n    if not hmac.compare_digest(expected.encode(\"ascii\"), signature.encode(\"utf-8\")):\n        print(\"internal_hmac: signature_mismatch\")\n        return None\n    return sender", "alias": null}, "db/agent_heartbeats.py:upsert_agent_heartbeat": {"path": "db/agent_heartbeats.py", "start": 28, "end": 36, "lang": "python", "code": "def upsert_agent_heartbeat(agent: str, node: str, detail: dict) -> None:\n    now_iso = datetime.now(timezone.utc).isoformat()\n    row = {\n        \"agent\": agent,\n        \"node\": node,\n        \"last_seen_at\": now_iso,\n        \"detail\": detail,\n    }\n    db.get_client().table(\"agent_heartbeats\").upsert(row, on_conflict=\"agent,node\").execute()", "alias": null}, "db/agent_heartbeats.py:try_acquire_cooldown": {"path": "db/agent_heartbeats.py", "start": 51, "end": 77, "lang": "python", "code": "def try_acquire_cooldown(key: str, seconds: int) -> bool:\n    now_dt = datetime.now(timezone.utc)\n    now_iso = now_dt.isoformat()\n    cutoff_iso = (now_dt - timedelta(seconds=seconds)).isoformat()\n\n    # 1. 조건부 update 시도 (last_sent_at < cutoff_iso)\n    res = (\n        db.get_client()\n        .table(\"notification_cooldowns\")\n        .update({\"last_sent_at\": now_iso})\n        .eq(\"key\", key)\n        .lt(\"last_sent_at\", cutoff_iso)\n        .execute()\n    )\n    if res.data:\n        return True\n\n    # 2. 행이 없는 경우 insert 시도\n    try:\n        db.get_client().table(\"notification_cooldowns\").insert(\n            {\"key\": key, \"last_sent_at\": now_iso}\n        ).execute()\n        return True\n    except APIError as e:\n        if getattr(e, \"code\", None) == \"23505\":\n            return False\n        raise", "alias": null}, "notify/alert.py:send_component_alert": {"path": "notify/alert.py", "start": 338, "end": 348, "lang": "python", "code": "def send_component_alert(component: str, message: str) -> None:\n    \"\"\"fw-agent·shipper 같은 Track D 구성요소가 멈췄거나 센서 기록이 늘지 않을 때 Slack에 알린다\n    (계약서 K9 ③, C1-2). 장비 정지는 패시브 IDS라 트래픽은 흐르지만 탐지·차단만 조용히\n    사라지는 상황이므로, 관리자 화면을 열지 않아도 알 수 있게 알림으로 보낸다. 같은 장비의\n    반복 알림은 호출하는 쪽이 db.try_acquire_cooldown()으로 막는다.\"\"\"\n    text = (\n        f\":warning: [HIGH] 로그인 워치독 장애 알림\\n\"\n        f\"대상 장비/에이전트: {component}\\n\"\n        f\"상세 내용: {message}\"\n    )\n    _send_slack_message(text)", "alias": null}, "db/agent_heartbeats.py:get_agent_heartbeats": {"path": "db/agent_heartbeats.py", "start": 39, "end": 48, "lang": "python", "code": "def get_agent_heartbeats(node: str) -> dict[str, dict]:\n    res = (\n        db.get_client()\n        .table(\"agent_heartbeats\")\n        .select(\"*\")\n        .eq(\"node\", node)\n        .execute()\n    )\n    rows = res.data or []\n    return {row[\"agent\"]: row for row in rows}", "alias": null}, "routes/admin/status.py:_build_agent_status": {"path": "routes/admin/status.py", "start": 216, "end": 261, "lang": "python", "code": "def _build_agent_status(rows: dict[str, dict], now: datetime.datetime) -> dict:\n    \"\"\"이 PC(LW_NODE_NAME)의 fw-agent·shipper 상태를 계약서 K10 agent_status 모양으로 만든다.\n\n    LW_NODE_NAME이 비어 있으면(Vercel 등 Docker 단지가 없는 환경) 감시할 장비가 없으므로 {}.\n    기록이 없거나 마지막 신호가 기준(FW_AGENT_STALE_SECONDS·SHIPPER_STALE_SECONDS)보다 오래되면\n    stale이다. 한 번이라도 신호를 보낸 장비가 멈췄을 때만 Slack으로 알린다 — 아직 켠 적 없는\n    장비까지 알리면 단지를 켜지 않은 PC에서 화면을 열 때마다 알림이 쌓인다. 쿨다운 키는 heartbeat\n    창구(C1-2)의 상대 장비 정지 알림과 같아서 알림이 두 번 가지 않는다.\"\"\"\n    if not config.LW_NODE_NAME:\n        return {}\n\n    result = {}\n    for agent, stale_seconds in (\n        (\"fw-agent\", config.FW_AGENT_STALE_SECONDS),\n        (\"shipper\", config.SHIPPER_STALE_SECONDS),\n    ):\n        row = rows.get(agent)\n        if not row or not row.get(\"last_seen_at\"):\n            result[agent] = {\"last_seen_at\": None, \"stale\": True, \"detail\": (row or {}).get(\"detail\") or {}}\n            continue\n\n        last_seen_str = row[\"last_seen_at\"]\n        detail = row.get(\"detail\") or {}\n        try:\n            last_seen_dt = datetime.datetime.fromisoformat(last_seen_str.replace(\"Z\", \"+00:00\"))\n            if last_seen_dt.tzinfo is None:\n                last_seen_dt = last_seen_dt.replace(tzinfo=datetime.timezone.utc)\n        except (TypeError, ValueError):\n            # 시각을 읽을 수 없으면 살아 있다고 보장할 수 없으므로 정지로 표시한다(알림은 보내지 않음).\n            result[agent] = {\"last_seen_at\": last_seen_str, \"stale\": True, \"detail\": detail}\n            continue\n\n        diff_sec = (now - last_seen_dt).total_seconds()\n        is_stale = diff_sec > stale_seconds\n        result[agent] = {\"last_seen_at\": last_seen_str, \"stale\": is_stale, \"detail\": detail}\n        if is_stale:\n            cooldown_key = f\"slack:stale:{config.LW_NODE_NAME}:{agent}\"\n            try:\n                if db.try_acquire_cooldown(cooldown_key, config.AGENT_ALERT_COOLDOWN_SECONDS):\n                    alert.send_component_alert(\n                        agent, f\"{int(diff_sec)}초 넘게 생존 신호가 없습니다 (PC: {config.LW_NODE_NAME})\"\n                    )\n            except Exception as e:\n                # 알림 실패가 관리자 화면 전체를 500으로 만들면 안 된다.\n                print(f\"[status] 장비 정지 알림 실패: {agent} — {e}\")\n    return result", "alias": null}, "db/agent_heartbeats.py:release_cooldown": {"path": "db/agent_heartbeats.py", "start": 80, "end": 90, "lang": "python", "code": "def release_cooldown(key: str) -> None:\n    \"\"\"try_acquire_cooldown()으로 잡은 쿨다운을 풀어, 다음 호출이 바로 True를 받게 한다.\n\n    쿨다운은 \"보내기 전에\" 잡아야 여러 스레드·PC가 같은 알림을 동시에 보내지 않는다. 그런데\n    그 뒤 실제 전송이 일시 장애로 실패하면, 아무것도 가지 않았는데 쿨다운 시간 내내 막힌다.\n    그래서 전송이 실패했을 때 호출부가 이 함수로 기록을 지운다.\n\n    행을 key로만 지우므로, 아주 드물게 그 사이 다른 쪽이 새로 잡은 쿨다운까지 지울 수 있다.\n    그 결과는 알림이 한 번 더 가는 것뿐이라, 알림이 아예 안 가는 쪽보다 낫다고 보고 받아들인다.\n    \"\"\"\n    db.get_client().table(\"notification_cooldowns\").delete().eq(\"key\", key).execute()", "alias": null}}, "files": {"netwatch/fw_agent/fw_agent.py": {"role": "gateway에서 실제 차단을 거는 차단 프로그램. 10초마다 생존 신호를 보낸다.", "header": "netwatch/fw_agent/fw_agent.py — L4 차단 실행 및 동기화 에이전트 (계약서 K3, K9)\n담당: 역할 C (C1-3).\n앱은 network_blocks 표에 \"막아야 할 목록\"(원하는 상태)만 적고, 이 프로그램이 그 목록을\n앱 내부 API로 받아 가(pull) gateway 네임스페이스의 ipset(lw_block)에 실제로 넣고 뺀다.\n왜 DB를 직접 읽지 않고 앱 내부 API를 거치나: 이 컨테이너는 방화벽을 바꾸는 NET_ADMIN 권한을\n갖는다. 여기에 Supabase 키까지 주면 이 컨테이너 하나가 털렸을 때 DB 전체가 털린다(상위 계획서\nP6·V7). 그래서 NET_AGENT_SECRET 서명(K3)만 들고 앱에 \"목록 주세요 / 반영했어요\"만 말한다.\n왜 앱 코드(db, config 등)를 import하지 않나: 이 파일은 app과 다른 컨테이너(fw-agent)에서 돈다.\n이미지에는 이 파일과 requests만 들어 있으므로, 서명 규칙(K3)도 여기에 직접 구현하고 테스트로\nB의 sign()과 같은 값이 나오는지 확인한다.\n시험하기 쉽게 나눈 구성:\nsign_headers      — K3 서명 헤더\nCommandRunner     — 실제 명령 실행(SubprocessRunner) / 기록만 하는 가짜(FakeRunner)\nFirewallBackend   — ipset·iptables 조작(IptablesBackend). 나중에 AWS 등으로 바꿀 때 파일 1개만 추가\nAgentClient       — 앱 내부 API 호출(K9 ①②③)\nprocess_blocks    — 받은 목록 한 번 처리(2초마다)\nreconcile         — 실제 ipset과 원하는 상태 전체 비교(60초마다, drift 보정)", "github": "https://github.com/dyj02056/login-watchdog/blob/main/netwatch/fw_agent/fw_agent.py"}, "netwatch/shipper/eve_shipper.py": {"role": "센서 로그를 서명해 앱에 보내는 배달원. 30초마다 생존 신호를 보내고 센서 로그 정체(stalled)를 함께 알린다.", "header": "", "github": "https://github.com/dyj02056/login-watchdog/blob/main/netwatch/shipper/eve_shipper.py"}, "routes/internal/heartbeat.py": {"role": "POST /api/internal/heartbeat — 장비 생존 신호 창구. 신호를 저장하고, 상대 장비가 멈췄는지도 같이 확인한다.", "header": "routes/internal/heartbeat.py — POST /api/internal/heartbeat: 장비 생존 신호 (계약서 K9 ③)\n담당: 역할 C (C1-2). fw-agent와 shipper 둘 다 부른다. 서명이 없거나 틀리면 401.\n생존 신호는 (agent, LW_NODE_NAME) 한 줄로 저장한다 — 세 PC가 같은 DB를 써도 서로 덮어쓰지\n않게 하기 위해서다(계약서 K9 ③·K11).", "github": "https://github.com/dyj02056/login-watchdog/blob/main/routes/internal/heartbeat.py"}, "routes/internal/_hmac.py": {"role": "내부 API 서명(HMAC) 검증 공용 함수(34단원).", "header": "", "github": "https://github.com/dyj02056/login-watchdog/blob/main/routes/internal/_hmac.py"}, "db/agent_heartbeats.py": {"role": "장비 생존 신호(agent_heartbeats)와 알림 쿨다운(notification_cooldowns) 표를 다룬다. 쿨다운은 여러 서버가 함께 지키도록 DB에 둔다.", "header": "db/agent_heartbeats.py — agent_heartbeats 표: fw-agent·shipper 생존 신호, PC별 저장 (계약서 K9·K11)\n담당: 역할 C. Track D 뼈대 PR(I0-1)이 빈 모듈로 만들고, C1-1~C2-1에서 함수를 채웠다.\n새 DB 함수는 이 파일에 만들고, 이름을 아래 __all__ 목록에 추가한다. 그러면\ndb/__init__.py가 \"from .agent_heartbeats import *\"로 자동으로 다시 내보내므로, 다른 파일에서\n바로 db.함수이름(...)으로 쓸 수 있다 — 세 사람이 공용 파일(db/__init__.py)을 고치지\n않아도 되게 하려는 장치다(team-plan 01 3.2).\ndb.get_client() 호출 이유는 db/attempts.py 상단 설명 참고(import db 후 db.get_client()).", "github": "https://github.com/dyj02056/login-watchdog/blob/main/db/agent_heartbeats.py"}, "notify/alert.py": {"role": "Slack 알림 모음. 장비 정지는 send_component_alert로 알린다.", "header": "notify/alert.py — \"전화 교환원\" 역할: Slack에 실제로 메시지를 전송한다\n이 파일이 하는 일은 딱 하나, \"메시지를 조립해서 Slack 웹훅 주소로 던지는 것\"뿐이다.\n\"언제 알림을 보낼지\"를 결정하는 판단은 이 파일의 몫이 아니고 security/soar/(대부분),\nsecurity/correlate.py·lockdown.py, notify/mailer.py(메일 발송 실패)가 결정해서\n이 파일의 함수를 호출해줄 때만 동작한다.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/notify/alert.py"}, "routes/admin/status.py": {"role": "관리자 화면용 상태 API. 장비 상태(agent_status)를 만들고, 화면을 열 때도 정지를 판단해 알린다.", "header": "routes/admin/status.py — 관리자 대시보드 화면(/admin/dashboard)과 대시보드 폴링 API(/api/status)\n예전 routes/admin.py(798줄)를 기능 묶음별로 나눈 조각 중 하나다. Blueprint(admin_bp)는\nroutes/admin/__init__.py에서 하나만 만들고, 이 파일은 거기에 라우트를 붙이기만 한다\n— 그래서 엔드포인트 이름(url_for(\"admin.xxx\"))은 나누기 전과 똑같다.\n배경은 docs/refactor/2026-10-09-module-plan.md 참고.", "github": "https://github.com/dyj02056/login-watchdog/blob/main/routes/admin/status.py"}}}</script>
+<script>
+(function(){
+  "use strict";
+  var D = JSON.parse(document.getElementById("data").textContent);
+  var $ = function(id){ return document.getElementById(id); };
+  var KIND_LABEL = {screen:"화면 · 도착지", route:"routes", helper:"판단", db:"db", config:"설정값", later:"다른 단원"};
+
+  var state = { sc: 0, node: null, item: 0, file: null };
+
+  /* ---------- 사용자 설정(브라우저에 기억 · 막혀 있어도 동작) ---------- */
+  function loadPref(k){ try { return window.localStorage.getItem(k); } catch(e){ return null; } }
+  function savePref(k, v){ try { if (v === null) window.localStorage.removeItem(k); else window.localStorage.setItem(k, v); } catch(e){} }
+  var prefs = { wrap: loadPref("lw-code-wrap") !== "0" };   // 기본: 줄바꿈 켜짐
+
+  function el(tag, attrs, kids){
+    var e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function(k){
+      if (k === "class") e.className = attrs[k];
+      else if (k === "text") e.textContent = attrs[k];
+      else if (k.slice(0,2) === "on") e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    });
+    (kids || []).forEach(function(c){ if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function brk(t){ return t.replace(/([\/._])/g, "$1\u200b"); }
+  function scen(){ return D.scenarios[state.sc]; }
+  function nodeById(id){ return scen().nodes.filter(function(n){ return n.id === id; })[0]; }
+  function fnName(label){ return label; }
+
+  /* ---------- 간단 문법 강조 ---------- */
+  var PY = /(#[^\n]*)|("""[\s\S]*?"""|'''[\s\S]*?''')|([rbfRBF]{0,2}"(?:\\.|[^"\\\n])*"|[rbfRBF]{0,2}'(?:\\.|[^'\\\n])*')|\b(def|class|return|if|elif|else|for|while|import|from|as|try|except|finally|with|in|not|and|or|is|None|True|False|raise|pass|lambda|yield|global|nonlocal|assert|del|continue|break)\b|(@[A-Za-z_][\w.]*)|\b(\d+(?:\.\d+)?)\b|\b([A-Za-z_]\w*)(?=\()/g;
+  var PYC = [null,"t-c","t-d","t-s","t-k","t-a","t-n","t-f"];
+  var HT = /(<!--[\s\S]*?-->)|(\{[{%#][\s\S]*?[}%#]\})|(<\/?[A-Za-z][\w-]*)|("[^"\n]*")|(\/?>)/g;
+  var HTC = [null,"t-c","t-a","t-k","t-s","t-k"];
+  var JS = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(`(?:\\.|[^`\\])*`)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*')|\b(const|let|var|function|return|if|else|for|while|import|from|export|default|async|await|try|catch|finally|new|class|extends|typeof|interface|type|null|undefined|true|false|throw|switch|case|break|continue|of|in|as)\b|(@[A-Za-z_]\w*)|\b(\d+(?:\.\d+)?)\b|\b([A-Za-z_$][\w$]*)(?=\()/g;
+  var JSC = [null,"t-c","t-s","t-s","t-k","t-a","t-n","t-f"];
+  var SQ = /(--[^\n]*|\/\*[\s\S]*?\*\/)|((?!))|('(?:''|[^'])*')|\b(select|from|where|insert|into|values|update|set|delete|create|table|index|alter|add|drop|on|conflict|do|nothing|and|or|not|null|default|primary|key|references|cascade|if|exists|as|order|by|group|limit|desc|asc|join|left|inner|count|returns|function|language|begin|end|return|with|union|all|distinct|in|is|true|false|unique|check|constraint|timestamptz|text|integer|bigint|boolean|interval|now|replace|trigger|view|policy|enable|row|level|security|using)\b|((?!))|\b(\d+(?:\.\d+)?)\b|\b([a-z_]\w*)(?=\()/gi;
+  var SQC = [null,"t-c",null,"t-s","t-k",null,"t-n","t-f"];
+  var SH = /(#[^\n]*)|((?!))|("(?:\\.|[^"\\\n])*"|'[^'\n]*')|\b(if|then|else|fi|for|do|done|while|case|esac|function|echo|export|python|pip|git|cd|run|name|on|jobs|steps|uses|with|env)\b|((?!))|\b(\d+)\b/g;
+  var SHC = [null,"t-c",null,"t-s","t-k",null,"t-n"];
+  function tokenize(code, lang){
+    var re = PY, cls = PYC;
+    if (lang === "html"){ re = HT; cls = HTC; }
+    else if (lang === "js"){ re = JS; cls = JSC; }
+    else if (lang === "sql"){ re = SQ; cls = SQC; }
+    else if (lang === "sh"){ re = SH; cls = SHC; }
+    var lines = [[]];
+    function push(text, c){
+      var parts = text.split("\n");
+      parts.forEach(function(p, i){
+        if (i > 0) lines.push([]);
+        if (p) lines[lines.length-1].push([p, c]);
+      });
+    }
+    var last = 0, m;
+    re.lastIndex = 0;
+    while ((m = re.exec(code)) !== null){
+      if (m.index > last) push(code.slice(last, m.index), null);
+      var idx = 1; while (idx < m.length && m[idx] === undefined) idx++;
+      push(m[0], cls[idx] || null);
+      last = m.index + m[0].length;
+      if (m[0].length === 0) re.lastIndex++;
+    }
+    if (last < code.length) push(code.slice(last), null);
+    return lines;
+  }
+
+  function codeTable(block, hl){
+    var lines = tokenize(block.code, block.lang);
+    var tbody = el("tbody");
+    var hlFirst = null;
+    lines.forEach(function(segs, i){
+      var no = block.start + i;
+      var on = hl && no >= hl[0] && no <= hl[1];
+      var td = el("td", {class:"tx"});
+      segs.forEach(function(s){ td.appendChild(s[1] ? el("span", {class:s[1], text:s[0]}) : document.createTextNode(s[0])); });
+      if (!segs.length) td.appendChild(document.createTextNode(" "));
+      var tr = el("tr", on ? {class:"hl"} : null, [el("td", {class:"ln", text:String(no)}), td]);
+      if (on && !hlFirst) hlFirst = tr;
+      tbody.appendChild(tr);
+    });
+    var box = el("div", {class:"codebox"}, [el("table", {class:"code"}, [tbody])]);
+    box._hlFirst = hlFirst;
+    return box;
+  }
+
+  function copyText(text, btn){
+    var done = function(){ var o = btn.textContent; btn.textContent = "복사됨 ✓"; setTimeout(function(){ btn.textContent = o; }, 1200); };
+    try { navigator.clipboard.writeText(text).then(done, fallback); } catch(e){ fallback(); }
+    function fallback(){
+      var ta = el("textarea", {style:"position:fixed;opacity:0"}); ta.value = text; document.body.appendChild(ta);
+      ta.select(); try { document.execCommand("copy"); done(); } catch(e){} document.body.removeChild(ta);
+    }
+  }
+
+  /* ---------- 패널 ---------- */
+  function openPanel(){ document.body.classList.add("open"); }
+  function closePanel(){ document.body.classList.remove("open"); }
+
+  function showHint(){
+    $("pTitle").textContent = "코드 보는 법";
+    $("pSub").textContent = "카드나 파일 이름을 누르면 실제 코드가 여기에 열립니다.";
+    var ul = el("ul", {class:"hint"}, [
+      el("li", {text:"카드(상자)를 누르면 그 단계에서 실행되는 실제 함수 코드가 열려요."}),
+      el("li", {text:"카드 안의 📄 파일 이름을 누르면 그 파일이 어떤 역할인지, 이 단원에서 쓰이는 함수가 무엇인지 보여줘요."}),
+      el("li", {text:"ƒ 함수 이름을 누르면 해당 함수 코드로 바로 이동해요."}),
+      el("li", {text:"노란색 줄이 지금 단계가 담당하는 부분이에요."}),
+      el("li", {text:"db.함수() 처럼 적혀 있어도 실제 코드는 db/users.py 같은 다른 파일에 있어요. 카드에 그 '진짜 파일'을 표시하고, 코드 위에 찾아가는 길도 그려줘요."}),
+      el("li", {text:"위쪽 ◀ ▶ 버튼으로 실행 순서대로 한 단계씩 따라갈 수 있어요."})
+    ]);
+    var b = $("pBody"); b.textContent = ""; b.appendChild(ul);
+  }
+
+  function renderAlias(a){
+    if (!a) return null;
+    return el("div", {class:"alias"}, [
+      el("div", {text:"코드에는 이렇게 적혀 있지만, 실제 함수는 다른 파일에 있어요."}),
+      el("div", {class:"route"}, [
+        el("span", {class:"step", text:a.call}), el("span", {class:"arrow", text:"→"}),
+        el("span", {class:"step", text:a.via + " (창구)"}), el("span", {class:"arrow", text:"→"}),
+        el("span", {class:"step real", text:a.real})
+      ])
+    ]);
+  }
+
+  function selectNode(id, itemIdx){
+    var n = nodeById(id); if (!n) return;
+    state.node = id; state.item = itemIdx || 0; state.file = null;
+    $("pTitle").textContent = n.title;
+    $("pSub").textContent = n.plain;
+    var body = $("pBody"); body.textContent = "";
+    if (n.reject) body.appendChild(el("div", {class:"n-reject", text:n.reject, style:"margin:0 0 10px"}));
+    if (n.items.length > 1){
+      var tabs = el("div", {class:"itabs", role:"tablist"});
+      n.items.forEach(function(it, i){
+        tabs.appendChild(el("button", {class:"itab", role:"tab", "aria-selected":String(i === state.item), text:it.label,
+          onclick:function(){ selectNode(id, i); }}));
+      });
+      body.appendChild(tabs);
+    }
+    var it = n.items[state.item];
+    var block = D.blocks[it.block];
+    var linesTxt = it.hl ? (it.hl[0] === it.hl[1] ? it.hl[0] + "줄" : it.hl[0] + "–" + it.hl[1] + "줄") : "";
+    var fl = el("div", {class:"fileline"}, [
+      el("button", {class:"chip file", onclick:function(){ selectFile(block.path); }, text:block.path}),
+      el("span", {class:"lines", text: block.start + "–" + block.end + "줄 표시" + (linesTxt ? " · 노란색 " + linesTxt : "")}),
+      el("span", {class:"spacer"}),
+      el("button", {class:"btn", id:"wrapBtn", "aria-pressed":String(prefs.wrap), title:"긴 줄을 화면 너비에 맞춰 줄바꿈", text:"줄바꿈", onclick:function(e){
+        prefs.wrap = !prefs.wrap; savePref("lw-code-wrap", prefs.wrap ? "1" : "0");
+        e.currentTarget.setAttribute("aria-pressed", String(prefs.wrap));
+        var bx = document.querySelector("#pBody .codebox"); if (bx) bx.classList.toggle("wrap", prefs.wrap);
+      }}),
+      el("button", {class:"btn", text:"복사", onclick:function(e){ copyText(block.code, e.currentTarget); }}),
+      el("a", {class:"btn link", href:D.files[block.path].github + "#L" + block.start + "-L" + block.end, target:"_blank", rel:"noopener", text:"GitHub ↗"})
+    ]);
+    body.appendChild(fl);
+    var al = renderAlias(block.alias); if (al) body.appendChild(al);
+    var box = codeTable(block, it.hl);
+    if (prefs.wrap) box.classList.add("wrap");
+    body.appendChild(box);
+    if (it.hl) body.appendChild(el("p", {class:"legend-hl"}, [el("b", {text:"노란색"}), " = 이 카드가 담당하는 줄"]));
+    refreshSelection();
+    openPanel();
+    if (box._hlFirst){
+      var off = box._hlFirst.offsetTop - 60;
+      box.scrollTop = Math.max(0, off);
+    }
+    updateStepper();
+  }
+
+  function selectFile(path){
+    state.file = path; state.node = null;
+    var f = D.files[path];
+    $("pTitle").textContent = "📄 " + path;
+    $("pSub").textContent = f.role;
+    var body = $("pBody"); body.textContent = "";
+    body.appendChild(el("div", {class:"fileline"}, [
+      el("a", {class:"btn link", href:f.github, target:"_blank", rel:"noopener", text:"GitHub에서 파일 열기 ↗"})
+    ]));
+    body.appendChild(el("h3", {text:"이 단원에서 쓰이는 함수", style:"font-size:13.5px;margin:12px 0 0"}));
+    var ul = el("ul", {class:"flist"}), seen = {};
+    D.scenarios.forEach(function(sc, si){
+      sc.nodes.forEach(function(n){
+        n.items.forEach(function(it, ii){
+          var b = D.blocks[it.block]; if (b.path !== path) return;
+          var key = si + n.id + ii; if (seen[key]) return; seen[key] = 1;
+          var li = el("li");
+          li.appendChild(el("button", {onclick:function(){
+            if (state.sc !== si) switchScenario(si);
+            selectNode(n.id, ii); scrollToNode(n.id);
+          }}, [
+            el("span", {class:"mono", text:it.label}), el("small", {text:sc.name + " · " + n.title})
+          ]));
+          ul.appendChild(li);
+        });
+      });
+    });
+    body.appendChild(ul);
+    if (f.header){
+      var d = el("details", {class:"hdr"}, [el("summary", {text:"파일 맨 위 설명 주석 보기"}), el("pre", {text:f.header})]);
+      body.appendChild(d);
+    }
+    refreshSelection();
+    openPanel();
+  }
+
+  /* ---------- 흐름도 ---------- */
+  var cols, colIndex, nodeEls = {};
+  function renderStage(){
+    var sc = scen();
+    var used = {}; sc.nodes.forEach(function(n){ used[n.col] = 1; });
+    cols = Object.keys(used).map(Number).sort(function(a,b){ return a-b; });
+    colIndex = {}; cols.forEach(function(c, i){ colIndex[c] = i + 1; });
+    var stage = $("stage");
+    stage.textContent = "";
+    stage.style.gridTemplateColumns = "repeat(" + cols.length + ", 196px)";
+    nodeEls = {};
+
+    var svgNS = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("class", "edges"); svg.id = "edges";
+    svg.innerHTML = '<defs>' +
+      '<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head" d="M0 0L10 5L0 10z" style="stroke:none"/></marker>' +
+      '<marker id="ahc" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path class="head-call" d="M0 0L10 5L0 10z" style="stroke:none"/></marker>' +
+      '</defs>';
+    stage.appendChild(svg);
+
+    cols.forEach(function(c){
+      stage.appendChild(el("div", {class:"colhead", style:"grid-column:" + colIndex[c] + ";grid-row:1", text:D.columns[c]}));
+    });
+    var cells = {};
+    sc.nodes.forEach(function(n){
+      var k = n.row + ":" + n.col;
+      if (!cells[k]){
+        cells[k] = el("div", {class:"cell", style:"grid-column:" + colIndex[n.col] + ";grid-row:" + (n.row + 2)});
+        stage.appendChild(cells[k]);
+      }
+      var node = buildNode(n);
+      nodeEls[n.id] = node;
+      cells[k].appendChild(node);
+    });
+    $("intro").textContent = sc.intro;
+    scheduleEdges();
+  }
+
+  function buildNode(n){
+    var node = el("div", {class:"node " + n.kind, role:"button", tabindex:"0", "aria-pressed":"false", "data-id":n.id,
+      onclick:function(e){ if (e.target.closest(".chip")) return; selectNode(n.id, 0); },
+      onkeydown:function(e){ if ((e.key === "Enter" || e.key === " ") && !e.target.closest(".chip")){ e.preventDefault(); selectNode(n.id, 0); } }});
+    var title = el("div", {class:"n-title", text:n.title});
+    if (n.later) title.appendChild(el("span", {class:"tag-later", text:n.later + "에서 자세히"}));
+    node.appendChild(title);
+    if (n.kind !== "later" && n.plain) node.appendChild(el("div", {class:"n-plain", text:n.plain}));
+    if (n.reject) node.appendChild(el("div", {class:"n-reject", text:n.reject}));
+    var items = el("div", {class:"n-items"});
+    // 같은 파일에 있는 함수는 파일 칩 하나 아래에 함수 칩을 나란히 놓는다
+    var groups = [];
+    n.items.forEach(function(it, i){
+      var b = D.blocks[it.block], g = groups[groups.length - 1];
+      if (g && g.path === b.path) g.list.push({it: it, i: i}); else groups.push({path: b.path, list: [{it: it, i: i}]});
+    });
+    groups.forEach(function(g){
+      var row = el("div", {class:"n-item"});
+      if (g.list.length === 1 && g.list[0].it.call) row.appendChild(el("div", {class:"n-call", text:brk(g.list[0].it.call)}));
+      var chips = el("div", {class:"chips"}, [
+        el("button", {class:"chip file", text:brk(g.path), title:"파일 설명 보기", onclick:function(){ selectFile(g.path); }})
+      ]);
+      g.list.forEach(function(x){
+        chips.appendChild(el("button", {class:"chip " + (x.it.snippet ? "snip" : "fn"), text:x.it.label, title:(x.it.call ? x.it.call + " — " : "") + "코드 보기",
+          onclick:function(){ selectNode(n.id, x.i); }}));
+      });
+      row.appendChild(chips);
+      items.appendChild(row);
+    });
+    node.appendChild(items);
+    return node;
+  }
+
+  function rectIn(elm, host){
+    var a = elm.getBoundingClientRect(), h = host.getBoundingClientRect();
+    return {l:a.left-h.left, r:a.right-h.left, t:a.top-h.top, b:a.bottom-h.top, cx:(a.left+a.right)/2-h.left, cy:(a.top+a.bottom)/2-h.top};
+  }
+  var raf = 0;
+  function scheduleEdges(){ cancelAnimationFrame(raf); raf = requestAnimationFrame(drawEdges); }
+  function drawEdges(){
+    var stage = $("stage"), svg = $("edges"), sc = scen();
+    Array.prototype.slice.call(svg.querySelectorAll("path.e")).forEach(function(p){ p.remove(); });
+    Array.prototype.slice.call(stage.querySelectorAll(".elabel")).forEach(function(p){ p.remove(); });
+    var svgNS = "http://www.w3.org/2000/svg";
+    sc.edges.forEach(function(e){
+      var a = nodeById(e.from), b = nodeById(e.to);
+      var ea = nodeEls[e.from], eb = nodeEls[e.to]; if (!ea || !eb) return;
+      var ra = rectIn(ea, stage), rb = rectIn(eb, stage), d, lx, ly;
+      if (a.col === b.col){
+        if (b.row - a.row <= 1){
+          d = "M" + ra.cx + " " + ra.b + " V" + rb.t; lx = ra.cx; ly = (ra.b + rb.t) / 2;
+        } else {
+          var x = Math.min(ra.l, rb.l) - 30;
+          d = "M" + ra.l + " " + ra.cy + " H" + x + " V" + rb.cy + " H" + rb.l; lx = x; ly = (ra.cy + rb.cy) / 2;
+        }
+      } else {
+        var dir = b.col > a.col ? 1 : -1;
+        var x1 = dir > 0 ? ra.r : ra.l, x2 = dir > 0 ? rb.l : rb.r;
+        var xm = x2 - dir * 30;
+        d = "M" + x1 + " " + ra.cy + " H" + xm + " V" + rb.cy + " H" + x2;
+        lx = (x1 + x2) / 2; ly = ra.cy;
+      }
+      var kind = e.kind === "call" ? "call" : "flow";
+      var p = document.createElementNS(svgNS, "path");
+      p.setAttribute("d", d); p.setAttribute("class", "e " + kind);
+      p.setAttribute("marker-end", "url(#" + (kind === "call" ? "ahc" : "ah") + ")");
+      p.setAttribute("data-from", e.from); p.setAttribute("data-to", e.to);
+      svg.appendChild(p);
+      if (e.label && kind === "flow"){
+        var lab = el("span", {class:"elabel", text:e.label});
+        lab.style.left = lx + "px"; lab.style.top = ly + "px";
+        stage.appendChild(lab);
+      }
+    });
+    svg.setAttribute("width", stage.scrollWidth); svg.setAttribute("height", stage.scrollHeight);
+    refreshSelection();
+  }
+
+  function refreshSelection(){
+    Object.keys(nodeEls).forEach(function(id){ nodeEls[id].setAttribute("aria-pressed", String(id === state.node)); });
+    var svg = $("edges"); if (!svg) return;
+    Array.prototype.slice.call(svg.querySelectorAll("path.e")).forEach(function(p){
+      var on = state.node && (p.getAttribute("data-from") === state.node || p.getAttribute("data-to") === state.node);
+      p.classList.toggle("active", !!on);
+    });
+  }
+  function scrollToNode(id){
+    var n = nodeEls[id]; if (n && n.scrollIntoView) n.scrollIntoView({block:"center", inline:"center", behavior:"smooth"});
+  }
+
+  /* ---------- 단계 이동 / 탭 ---------- */
+  function stepIndex(){ return scen().steps.indexOf(state.node); }
+  function updateStepper(){
+    var steps = scen().steps, i = stepIndex();
+    $("stepNo").textContent = i < 0 ? "– / " + steps.length : (i + 1) + " / " + steps.length;
+    $("prev").disabled = i <= 0 && state.node !== null ? true : false;
+    $("next").disabled = i >= steps.length - 1;
+    if (state.node === null){ $("prev").disabled = true; $("next").disabled = false; }
+  }
+  function go(delta){
+    var steps = scen().steps, i = stepIndex();
+    var j = i < 0 ? 0 : Math.max(0, Math.min(steps.length - 1, i + delta));
+    selectNode(steps[j], 0); scrollToNode(steps[j]);
+  }
+  function renderTabs(){
+    var t = $("tabs"); t.textContent = "";
+    D.scenarios.forEach(function(sc, i){
+      t.appendChild(el("button", {class:"tab", role:"tab", "aria-selected":String(i === state.sc), text:sc.name, onclick:function(){ switchScenario(i); }}));
+    });
+  }
+  function switchScenario(i){
+    state.sc = i; state.node = null; state.file = null;
+    renderTabs(); renderStage(); showHint(); updateStepper();
+    try { history.replaceState(null, "", "#" + D.scenarios[i].id); } catch(e){}
+  }
+
+  /* ---------- 시작 ---------- */
+  document.title = D.title + " — 코드 흐름도";
+  $("title").textContent = D.title + " · 코드 흐름도";
+  $("subtitle").textContent = D.subtitle;
+  $("mdlink").setAttribute("href", D.mdFile);
+  $("prev").addEventListener("click", function(){ go(-1); });
+  $("next").addEventListener("click", function(){ go(1); });
+  $("pClose").addEventListener("click", closePanel);
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape") closePanel(); });
+  $("theme").addEventListener("click", function(){
+    var r = document.documentElement, cur = r.getAttribute("data-theme");
+    var dark = cur ? cur === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+    r.setAttribute("data-theme", dark ? "light" : "dark");
+  });
+  window.addEventListener("resize", scheduleEdges);
+  if (window.ResizeObserver){ var ro = new ResizeObserver(scheduleEdges); ro.observe($("stage")); ro.observe($("stageWrap")); }
+
+  /* ---------- 코드 패널 너비: 자동 기본값 + 드래그/키보드 조절 + 기억 ---------- */
+  var MIN_PANEL = 360, MIN_MAIN = 420, SPLIT_KEY = "lw-panel-w";
+  var splitter = $("splitter");
+  function maxPanel(){ return Math.max(MIN_PANEL, Math.min(window.innerWidth * 0.75, window.innerWidth - MIN_MAIN - 6)); }
+  function clampPanel(w){ return Math.round(Math.min(maxPanel(), Math.max(MIN_PANEL, w))); }
+  // 흐름도가 실제로 차지하는 너비(가장 넓은 탭 기준)를 빼고 남는 공간을 패널에 준다
+  function autoPanelWidth(){
+    var most = 1;
+    D.scenarios.forEach(function(sc){ var u = {}; sc.nodes.forEach(function(n){ u[n.col] = 1; }); most = Math.max(most, Object.keys(u).length); });
+    var natural = most * 196 + (most - 1) * 46 + 44 + 24;
+    return clampPanel(Math.max(440, window.innerWidth - natural - 6));
+  }
+  var savedW = parseInt(loadPref(SPLIT_KEY), 10);
+  var userSet = savedW > 0;
+  function setPanelW(w, persist){
+    w = clampPanel(w);
+    document.documentElement.style.setProperty("--panel-w", w + "px");
+    splitter.setAttribute("aria-valuenow", String(w)); splitter.setAttribute("aria-valuemin", String(MIN_PANEL)); splitter.setAttribute("aria-valuemax", String(Math.round(maxPanel())));
+    if (persist){ userSet = true; savePref(SPLIT_KEY, String(w)); }
+    scheduleEdges();
+  }
+  function currentW(){ return $("panel").getBoundingClientRect().width; }
+  setPanelW(userSet ? savedW : autoPanelWidth(), false);
+  window.addEventListener("resize", function(){ setPanelW(userSet ? currentW() : autoPanelWidth(), false); });
+  splitter.addEventListener("pointerdown", function(e){
+    if (e.button !== undefined && e.button !== 0) return;
+    e.preventDefault(); splitter.setPointerCapture(e.pointerId); document.body.classList.add("dragging");
+    function move(ev){ setPanelW(window.innerWidth - ev.clientX, false); }
+    function up(ev){
+      splitter.removeEventListener("pointermove", move); splitter.removeEventListener("pointerup", up); splitter.removeEventListener("pointercancel", up);
+      try { splitter.releasePointerCapture(ev.pointerId); } catch(x){}
+      document.body.classList.remove("dragging"); setPanelW(currentW(), true);
+    }
+    splitter.addEventListener("pointermove", move); splitter.addEventListener("pointerup", up); splitter.addEventListener("pointercancel", up);
+  });
+  splitter.addEventListener("keydown", function(e){
+    var step = (e.shiftKey ? 72 : 24);
+    if (e.key === "ArrowLeft"){ e.preventDefault(); setPanelW(currentW() + step, true); }
+    else if (e.key === "ArrowRight"){ e.preventDefault(); setPanelW(currentW() - step, true); }
+    else if (e.key === "Home"){ e.preventDefault(); setPanelW(MIN_PANEL, true); }
+    else if (e.key === "End"){ e.preventDefault(); setPanelW(maxPanel(), true); }
+  });
+  splitter.addEventListener("dblclick", function(){ userSet = false; savePref(SPLIT_KEY, null); setPanelW(autoPanelWidth(), false); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleEdges);
+
+  var startId = (location.hash || "").replace("#", "");
+  var startIdx = 0; D.scenarios.forEach(function(s, i){ if (s.id === startId) startIdx = i; });
+  switchScenario(startIdx);
+  // 화면 확인/테스트용 지름길: window.__flow.select("s7")
+  window.__flow = { select: function(id, i){ selectNode(id, i || 0); }, file: selectFile, state: state };
+})();
+</script>
+</body>
+</html>

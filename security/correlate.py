@@ -22,6 +22,8 @@
 #        비밀번호를 이미 손에 넣은 공격자일 수 있고, SYN·포트 스캔은 위조 가능해 근거로 쓰지 않는다.
 # ============================================================================
 
+from datetime import datetime, timedelta, timezone
+
 import config
 import db
 from notify import alert
@@ -139,6 +141,7 @@ def check_cross_layer(ip: str, event_type: str) -> None:
                     rule["playbook"], f"incident:{existing['id']}:{rule['id']}",
                     _rule_ctx(ip, existing, rule),
                 )
+                _reblock_if_ttl_expired(ip, existing, rule)
                 continue
 
             event_types = sorted({row["event_type"] for row in matched})
@@ -247,6 +250,126 @@ def _retry_failed_steps(playbook: str, trigger_ref: str, ctx: dict) -> None:
              if status == "FAILED" and step in playbooks.RETRYABLE_STEPS]
     if steps:
         playbooks.run(playbook, trigger_ref, ctx, only_steps=steps)
+
+
+# TTL 차단(block_l4_ttl)을 쓰는 규칙. CR-01(킬체인)은 영구 차단이라 TTL로 끝나지 않으므로 빠진다.
+_TTL_REBLOCK_RULES = {"NET-01", "CR-02"}
+
+
+def _parse_utc(value: str | None) -> datetime | None:
+    """DB 시각 문자열을 UTC datetime으로 바꾼다. 비었거나 해석할 수 없으면 None."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _ttl_block_expired(row: dict | None) -> bool:
+    """network_blocks 행이 'TTL이 다 돼서' 풀렸는지(또는 이미 풀렸어야 하는지).
+
+    - REMOVED이고 removed_at >= expires_at: 지연 만료(GET /blocks)가 정리한 행 → True.
+    - REMOVED이고 removed_at < expires_at: 관리자가 만료 전에 푼 행 → False(관리자 판단 존중).
+    - PENDING_APPLY/APPLIED인데 expires_at이 지남: fw-agent가 멈춰 정리만 안 됐고 커널은 이미 풀었다 → True.
+    - 행이 없음: 처음부터 거절된 IP(허용 목록 등)일 수 있어 경보마다 같은 거절을 반복하지 않게 False.
+    """
+    if not row:
+        return False
+    expires_at = _parse_utc(row.get("expires_at"))
+    if expires_at is None:
+        return False  # 영구 차단(또는 깨진 값)은 TTL로 끝나지 않는다.
+    status = row.get("status")
+    if status == "REMOVED":
+        removed_at = _parse_utc(row.get("removed_at"))
+        return removed_at is not None and removed_at >= expires_at
+    if status in ("PENDING_APPLY", "APPLIED"):
+        return expires_at <= datetime.now(timezone.utc)
+    return False
+
+
+def _expire_block_row(ip: str, row: dict) -> bool:
+    """만료 시각이 지났는데 아직 APPLIED인 행을 지연 만료(GET /blocks)와 똑같이 정리한다.
+
+    다음 경보가 fw-agent 폴링(2초)보다 먼저 오면 행이 APPLIED인 채로 다시 막게 된다. 그러면 이전
+    NET_BLOCKED가 해결되지 않아 새 NET_BLOCKED가 기록되지 않고(record_net_blocked의 멱등 규칙),
+    request_block이 세는 '실제 적용 횟수'가 늘지 않아 TTL 2배가 한 번에서 멈춘다(10/29 Docker 실측:
+    60→120→120초). 그래서 REMOVED로 바꾸고 NET_BLOCKED를 해결 처리한 뒤 다시 요청한다.
+    조건부로만 바꾸므로, 그 사이 다른 요청이 행을 바꿨으면 다시 읽어 확실히 만료된 경우에만 True.
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+    cond = {"expected_version": row["version"]} if "version" in row else {}
+    try:
+        if db.update_network_block_if_status(
+            ip, [row["status"]], {"status": "REMOVED", "removed_at": now_iso}, **cond
+        ):
+            db.resolve_net_blocked_events(ip)
+            return True
+        latest = db.get_network_block(ip)
+    except Exception as error:
+        print(f"[재차단 만료 정리 오류] {type(error).__name__}")
+        return False
+    # 지연 만료가 먼저 정리했으면(REMOVED, NET_BLOCKED 해결됨) 그대로 다시 막는다. 다른 요청이 이미
+    # 다시 막았으면(PENDING_APPLY 등) 여기서 또 요청하지 않는다.
+    return bool(latest) and latest.get("status") == "REMOVED" and _ttl_block_expired(latest)
+
+
+def _reblock_if_ttl_expired(ip: str, incident: dict, rule: dict) -> None:
+    """같은 사건 안에서 TTL 차단이 끝났는데 공격이 계속되면 차단 단계만 다시 실행한다.
+
+    센서는 iptables보다 앞(AF_PACKET)에서 패킷을 보므로 차단 중에도 경보가 계속 들어오고, 그때마다
+    사건의 last_event_at이 갱신돼 IDLE이 되지 않는다. 그러면 "이미 실행한 규칙"으로만 판단해 TTL이
+    끝난 뒤 다시 막지 못한다(10/29 점검). 차단 단계만 다시 돌리고 알림은 반복하지 않는다 —
+    RETRYABLE_STEPS와 같은 이유다. TTL을 2배로 늘리는 계산은 request_block이 그대로 맡는다.
+    조회가 실패하면 아무것도 하지 않는다 — 확실하지 않을 때 조치를 반복하지 않는다.
+    """
+    if rule["id"] not in _TTL_REBLOCK_RULES:
+        return
+    try:
+        row = db.get_network_block(ip)
+    except Exception as error:
+        print(f"[재차단 조회 오류] {type(error).__name__}")
+        return
+    if not _ttl_block_expired(row):
+        return
+    if row.get("status") in ("PENDING_APPLY", "APPLIED") and not _expire_block_row(ip, row):
+        return
+    playbooks.run(
+        rule["playbook"], f"incident:{incident['id']}:{rule['id']}",
+        _rule_ctx(ip, incident, rule), only_steps=["block_l4_ttl"],
+    )
+
+
+def reblock_on_expiry(ip: str) -> None:
+    """TTL 차단이 만료 처리된 바로 그 순간, 공격이 아직 진행 중이면 차단 단계만 다시 실행한다.
+
+    GET /blocks의 지연 만료가 행을 REMOVED로 바꾼 직후 부른다. shipper는 1분 창의 첫 경보만 바로 보내고
+    같은 분의 추가분은 창이 끝난 뒤 보내므로(계약서 K4), 경보를 기다려 다시 막으면 TTL이 분 중간에
+    끝날 때 다음 분까지 차단이 풀려 있었다(10/29 Docker 실측: 약 21~25초, 최대 약 1분). 그래서 만료
+    시점에 이번 분이나 지난 분 창에 SYN Flood 경보가 있으면 공격이 계속되는 것으로 보고 바로 다시 요청한다.
+    같은 응답의 차단 목록에 새 요청이 실리므로 공백은 fw-agent 폴링 간격(2초) 안쪽이 된다.
+    공격이 만료 직전 1~2분 안에 멈췄다면 한 번 더 막힐 수 있지만, TTL 차단이라 시간이 지나면 풀린다.
+    사건 기록·알림은 하지 않는다. 이미 실행된 TTL 규칙(NET-01·CR-02)이 있는 열린 사건에서만 동작한다.
+    어떤 오류도 차단 목록 응답을 깨지 않게 여기서 삼킨다.
+    """
+    try:
+        now = datetime.now(timezone.utc)
+        since = (now.replace(second=0, microsecond=0) - timedelta(minutes=1)).isoformat()
+        if not db.has_recent_network_event(ip, "SYN_FLOOD", since):
+            return
+        existing = db.get_open_incident(ip)
+        if not existing or db.incidents._is_idle(existing):
+            return
+        matched = existing.get("matched_rules") or []
+        for rule in CROSS_LAYER_RULES:
+            if rule["id"] in _TTL_REBLOCK_RULES and rule["id"] in matched:
+                # 둘 다 기록돼 있어도 첫 재요청 뒤 행이 PENDING_APPLY라 두 번째는 건너뛴다.
+                _reblock_if_ttl_expired(ip, existing, rule)
+    except Exception as error:
+        print(f"[만료 시 재차단 확인 오류] {type(error).__name__}")
 
 
 def _invalidate_sessions_once_per_user(ip: str, incident: dict, username: str) -> None:

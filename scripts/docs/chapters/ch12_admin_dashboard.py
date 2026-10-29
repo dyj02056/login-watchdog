@@ -33,7 +33,7 @@ s1.step("③ 만료된 잠금 정리 (정해진 간격마다)", "별도 타이�
         calls=[call("routes/admin/status.py:_release_expired_locks_if_due", "만료 잠금 정리 3종", "정해진 간격마다만 동시에 돌립니다.",
                     then=[call("soar.try_release_expired_lockouts", "IP 잠금 만료 해제", "풀릴 시각이 지난 IP 잠금을 풀고 CRITICAL 이벤트를 정리합니다.")])])
 s1.step("④ 조회 17개를 동시에 실행", "로그인 시도·잠긴 IP·회원·게시글·댓글·보안 이벤트·사건·AI 조기 경보 등을 한꺼번에 보냅니다. 순서대로 하면 2~3초, 동시에 하면 가장 느린 쿼리 하나 수준입니다(실측 약 5배 개선).",
-        fn="routes/admin/status.py:api_status", hl=("with ThreadPoolExecutor(max_workers=17) as executor:", "admin_users_future = executor.submit(db.list_admin_users)"),
+        fn="routes/admin/status.py:api_status", hl=("with ThreadPoolExecutor(max_workers=20) as executor:", "admin_users_future = executor.submit(db.list_admin_users)"),
         calls=[call(refs=["db.list_recent_attempts", "db.list_active_lockouts", "db.list_users", "db.list_security_events", "db.list_security_incidents", "db.list_pending_requests"],
                     title="조회 17개 중 대표 6개", plain="각각 (이번 쪽 데이터, 전체 개수)를 한 번의 왕복으로 돌려줍니다. 나머지는 게시글·댓글·로그인 기록·복구 요청 등입니다.")])
 s1.step("⑤ 시도 기록에 접속 위치 붙이기", "시도 목록이 도착하자마자, 다른 조회가 아직 도는 동안 함께 위치를 붙입니다.",

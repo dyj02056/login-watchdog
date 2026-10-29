@@ -57,6 +57,9 @@ rule-files:
   # Login Watchdog 자체 규칙
   - /etc/suricata/custom/rules/local.rules
 
+  # Login Watchdog L3 규칙(guide57, ICMP 폭주 9000005)
+  - /etc/suricata/custom/rules/l3.rules
+
 # Docker gateway 네임스페이스의 edge 인터페이스를 감시한다.
 af-packet:
   - interface: "__SENSOR_IFACE__"

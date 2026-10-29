@@ -1,7 +1,7 @@
 # ============================================================================
 # scripts/net/check_common.py — 시연 시나리오 자동 점검(C3-1)이 쓰는 공용 부품
 #
-# 각 시나리오(check_s4·s5·s5b·s6·s8)와 run_all이 함께 쓰는 조각을 모았다:
+# 각 시나리오(check_s4·s5·s5b·s6·s7·s8·s9)와 run_all이 함께 쓰는 조각을 모았다:
 #   - 시작 전 확인 출력(preflight)
 #   - 읽기 전용 DB 조회(db.get_client()로 select만 — 이 스크립트는 DB에 쓰지 않는다)
 #   - 기다리기(wait_until, 최대 30초·1초 간격)
@@ -23,7 +23,7 @@ import time
 import urllib.parse
 import urllib.request
 from collections import namedtuple
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -41,7 +41,8 @@ REQUIRED_SERVICES = ("gateway", "app", "mailpit", "sensor", "l4-detector", "ship
 
 # 이 점검이 쓰는 새 출발지 IP 범위(.111~.139, 그다음 .11~.99). 다른 용도와 겹치지 않게 범위를 나눠 둔다:
 #   .1 내 브라우저 / .10 gateway / .101~.103 고정 상자 / .140 S7 위조 전용 /
-#   .150~.199 통합 담당자의 5초 측정(measure_*)·M1 수동 차단 예시.
+#   .150~.199 통합 담당자의 5초 측정(measure_*)·M1 수동 차단 예시 /
+#   .200~.254 S7 ① 출발지를 바꾸는 폭주가 돌려 쓰는 주소(guide57, lw.py ROTATING_HOST_NUMBERS).
 # 같은 IP를 다시 쓰면 앞 시나리오의 차단과 "사건당 규칙당 1회"에 막혀 재현이 안 되므로
 # network_blocks와 security_incidents(닫힌 사건 포함)에 아직 없는 주소만 고른다.
 # .111~.139(29개)는 10/26 하루 세 번 실행에 바닥났다. 공용 DB의 기록을 지우지 않고 리허설·발표까지
@@ -52,7 +53,7 @@ CHECK_IP_LABEL = ".111~.139·.11~.99"
 CHECK_IP_START = 111
 CHECK_IP_END = 139
 # 점검 범위가 다른 용도와 겹치면 측정·시연 차단과 판정이 섞이므로 불러올 때 바로 막는다.
-_RESERVED_IPS = {1, 10, 101, 102, 103, 140, *range(150, 200)}
+_RESERVED_IPS = {1, 10, 101, 102, 103, 140, *range(150, 255)}
 assert not any(
     last in _RESERVED_IPS for start, end in CHECK_IP_RANGES for last in range(start, end + 1)
 ), "점검용 IP 범위가 예약 주소와 겹칩니다"
@@ -110,9 +111,32 @@ S5B_ANCHOR_REMOVE = list(_ANCHOR_REMOVE)
 S5B_SYNFLOOD = _SHARED + ["synflood", "--count", "3000"]
 S5B_HTTPFLOOD = _SHARED + ["httpflood", "--path", "/login", "--requests", "200"]
 
+# S7(guide57): 출발지 위조. {spoof}는 check_s7이 채운다(lw.py가 허용 대역인지 다시 확인한다).
+#   ① 출발지를 바꾸는 폭주 — edge .200~.254를 돌려 쓰는 SYN 3000개(초당 2000개)
+#   ②③④ 한 출발지로 위조한 SYN 폭주
+S7_ROTATING = _ONESHOT + ["synflood", "--rand-source", "--count", "3000"]
+S7_SPOOFED = _ONESHOT + ["synflood", "--spoof-source", "{spoof}", "--count", "3000"]
+# S7 ①이 돌려 쓰는 출발지 끝자리(lw.py ROTATING_HOST_NUMBERS와 같아야 한다).
+S7_ROTATING_HOSTS = range(200, 255)
+# S7 ② core 대역 안의 비어 있는 주소(앱·gateway가 쓰지 않음). netblock은 core 대역 전체를 거절한다.
+S7_CORE_SPOOF = "172.30.0.250"
+# S7 ④ edge 대역 밖 위조 주소 — 인터넷에서 쓰이지 않는 문서용 대역(TEST-NET-1).
+S7_FOREIGN_SPOOF = "192.0.2.50"
+# S9(guide57): 한 출발지에서 ICMP echo 3000개(초당 1000개).
+ICMPFLOOD = _ONESHOT + ["icmpflood", "--count", "3000"]
+
 # 기다리는 한도(초). 재현 결과가 DB에 반영될 때까지 넉넉히 기다린다.
 WAIT_SECONDS = 30
 WAIT_INTERVAL = 1.0
+
+# PC(·WSL 센서) 시계와 Supabase 시계의 차이를 흡수하는 여유(초). security_events.detected_at·network_events.received_at은
+# DB 시계(now())로, 점검 시작 시각은 PC 시계로 찍힌다. 10/29 시연 PC에서 PC 시계가 DB보다 약 7초 앞서, PC 시각 기준으로
+# 거르면 방금 생긴 보안 이벤트가 "없음"으로 나왔다(S9 FAIL). "있으면 안 되는" 확인은 이 여유만큼 넓게 본다.
+CLOCK_SKEW_MARGIN_SECONDS = 60
+
+# 이번 실행에서 이미 공격 상자 IP로 쓴 주소. S7·S9의 공격 상자 IP는 차단·사건을 남기지 않아 choose_fresh_ip가 다시
+# 고르므로(10/29: .56이 S7 → S9 → S4에 연달아 쓰임), 같은 run_all 안에서는 직접 기억해 다시 고르지 않는다.
+_USED_THIS_RUN: set[str] = set()
 
 # 점검 한 건의 결과. status는 PASS / FAIL / SKIP.
 CheckResult = namedtuple("CheckResult", "scenario status reason ip")
@@ -168,12 +192,24 @@ def choose_fresh_ip(client, prefix: str, start: int | None = None, end: int | No
         or []
     )
     used |= {row["ip_address"] for row in incidents}
+    used |= _USED_THIS_RUN
     for range_start, range_end in ranges:
         for last in range(range_start, range_end + 1):
             ip = f"{prefix}.{last}"
             if ip not in used:
                 return ip
     return None
+
+
+def mark_used(ip: str) -> None:
+    """DB에 흔적을 남기지 않는 공격 상자 IP를 이번 실행 동안 다시 고르지 않게 기억한다(S7·S9)."""
+    _USED_THIS_RUN.add(ip)
+
+
+def shift_iso(value: str, seconds: float) -> str:
+    """ISO 시각 문자열을 seconds만큼 옮긴다(음수면 이전). DB 시계 기준 비교의 여유를 줄 때 쓴다."""
+    moved = datetime.fromisoformat(value.replace("Z", "+00:00")) + timedelta(seconds=seconds)
+    return moved.isoformat()
 
 
 # ── 시나리오들이 함께 쓰는 읽기 전용 조회 (모두 select만) ──
@@ -252,6 +288,88 @@ def playbook_runs_for_ip(client, ip: str, playbook: str) -> list[dict]:
             or []
         )
     return runs
+
+
+def network_events_since(client, category: str, since_iso: str, src_ip: str | None = None) -> list[dict]:
+    """since_iso 이후 관측된 그 종류의 network_events(guide57, S7·S9). src_ip를 주면 그 출발지만."""
+    query = (
+        client.table("network_events")
+        .select("src_ip, category, layer, observed_at, received_at, promoted")
+        .eq("category", category)
+        .gte("observed_at", since_iso)
+    )
+    if src_ip is not None:
+        query = query.eq("src_ip", src_ip)
+    return query.execute().data or []
+
+
+def network_blocks_since(client, ips: list[str], since_iso: str) -> list[dict]:
+    """주어진 IP들 중 since_iso 이후 차단 요청된 network_blocks 행(guide57, S7 ①)."""
+    if not ips:
+        return []
+    return (
+        client.table("network_blocks")
+        .select("ip_address, status, evidence, expires_at, requested_at")
+        .in_("ip_address", ips)
+        .gte("requested_at", since_iso)
+        .execute()
+        .data
+        or []
+    )
+
+
+def security_events_since(client, ip: str, event_type: str, since_iso: str) -> list[dict]:
+    """since_iso 이후 그 IP의 해당 보안 이벤트(guide57, S7 ②·S9)."""
+    return (
+        client.table("security_events")
+        .select("event_type, severity, layer, detected_at")
+        .eq("ip_address", ip)
+        .eq("event_type", event_type)
+        .gte("detected_at", since_iso)
+        .execute()
+        .data
+        or []
+    )
+
+
+def icmp_dropped_total() -> int | None:
+    """정문 커널 LW_L3 체인이 지금까지 버린 ICMP 누적 수(DROP 규칙 카운터 합). 읽지 못하면 None.
+
+    heartbeat의 icmp_dropped는 "직전 10초 증가분"이라 폭주가 끝나고 10초 뒤면 0으로 덮인다(10/29 S9 1회차 FAIL).
+    그래서 판정은 공격 전·후의 누적 카운터를 직접 비교한다. fw-agent 컨테이너 안에서 iptables로 읽기만 한다.
+    """
+    try:
+        out = subprocess.run(
+            ["docker", "compose", "exec", "-T", "fw-agent", "iptables", "-t", "raw", "-L", "LW_L3", "-v", "-x", "-n"],
+            cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    total = 0
+    for line in out.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 3 and parts[0].isdigit() and parts[2] == "DROP":
+            total += int(parts[0])
+    return total
+
+
+def fw_agent_detail(client) -> dict:
+    """이 PC(LW_NODE_NAME) fw-agent의 마지막 heartbeat detail(guide57, S9의 icmp_dropped 확인)."""
+    node = os.environ.get("LW_NODE_NAME", "").strip()
+    if not node:
+        return {}
+    rows = (
+        client.table("agent_heartbeats")
+        .select("detail")
+        .eq("agent", "fw-agent")
+        .eq("node", node)
+        .limit(1)
+        .execute()
+        .data
+    )
+    return (rows[0].get("detail") or {}) if rows else {}
 
 
 def not_found_rows(client, path: str) -> list[dict]:

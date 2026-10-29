@@ -46,6 +46,24 @@ _STATUS_PENDING_REMOVE = "PENDING_REMOVE"
 # iptables 오류 출력이 길게 붙어도 요청 본문이 수집 창구 크기 한도에 걸리지 않는다.
 _MAX_ERROR_LEN = 500
 
+# gateway·app·shipper가 쓰는 core 대역(docker-compose.yml, 계약서 K2). 앱의 netblock도 같은 대역을 거절하지만,
+# 이 대역이 ipset에 들어가면 정문이 앱의 응답 패킷을 버려 사이트 전체가 멈추므로 실제로 막는 쪽에서 한 번 더
+# 막는다(guide57). 앱 코드를 import하지 않으므로 값을 여기 따로 둔다.
+_CORE_NETWORK = ipaddress.ip_network("172.30.0.0/24")
+
+# ICMP 속도 제한(guide57, L3). 출발지별로 초당 이만큼 넘는 ICMP는 버리고, 출발지를 계속 바꾸는 폭주는
+# 전체 한도로 깎는다. 주소를 막는 것이 아니라 양만 줄이므로, 위조된 주소의 주인이 막히지 않는다.
+_L3_CHAIN = "LW_L3"
+_L3_RULES = [
+    ["-p", "icmp", "-m", "hashlimit", "--hashlimit-above", "50/sec",
+     "--hashlimit-burst", "100", "--hashlimit-mode", "srcip",
+     "--hashlimit-name", "lw_icmp_src", "-j", "DROP"],
+    ["-p", "icmp", "-m", "limit", "--limit", "2000/sec", "--limit-burst", "2000", "-j", "RETURN"],
+    ["-p", "icmp", "-j", "DROP"],
+]
+# core 대역(앱·shipper)에서 오는 ICMP는 우리 내부 통신이라 제한하지 않는다.
+_L3_JUMP = ["PREROUTING", "-p", "icmp", "!", "-s", str(_CORE_NETWORK), "-j", _L3_CHAIN]
+
 
 def sign_headers(secret: str, body: bytes = b"", timestamp: str | None = None) -> dict[str, str]:
     """계약서 K3 규격에 맞춰 HMAC-SHA256 서명 헤더를 생성한다.
@@ -162,6 +180,12 @@ class IptablesBackend:
         - "-exist": 컨테이너가 재시작돼도 기존 집합(이미 막힌 IP)을 지우지 않고 그대로 쓴다.
         - iptables는 -C(확인)로 규칙이 이미 있는지 본 뒤 없을 때만 -I로 맨 앞에 넣는다.
           재시작할 때마다 같은 규칙이 겹겹이 쌓이지 않게 하려는 것이다.
+        - raw PREROUTING에도 같은 DROP을 둔다. raw는 연결 추적(conntrack)보다 앞이라, 차단된 IP의
+          패킷마다 연결 추적 항목을 만들고 조회하는 일을 건너뛴다. INPUT에서 버린 패킷도 표에 확정되지는
+          않아 표가 차오르지는 않는다(10/29 Docker 실측: INPUT만으로 SYN 3000개를 버려도 nf_conntrack_count
+          증가 0) — 그래서 효과는 SYN Flood 때 패킷당 처리량을 줄이는 정도다.
+          INPUT 규칙은 raw 규칙이 실패하거나 지워졌을 때의 예비로 그대로 둔다. 그래서 raw 실패는
+          시작을 막지 않고 경고만 남긴다 — INPUT만으로도 차단 자체는 된다.
         """
         # 1. ipset 생성
         code, err = self.runner.run(
@@ -170,7 +194,15 @@ class IptablesBackend:
         if code != 0:
             raise RuntimeError(f"ipset create failed: {err}")
 
-        # 2. iptables 규칙 확인 및 없으면 삽입
+        # 2. raw PREROUTING 규칙(연결 추적 전 차단). INPUT 규칙보다 먼저 확인한다.
+        raw_rule = ["PREROUTING", "-m", "set", "--match-set", self.set_name, "src", "-j", "DROP"]
+        raw_chk, _ = self.runner.run(["iptables", "-t", "raw", "-C", *raw_rule])
+        if raw_chk != 0:
+            raw_ins, raw_err = self.runner.run(["iptables", "-t", "raw", "-I", raw_rule[0], "1", *raw_rule[1:]])
+            if raw_ins != 0:
+                print(f"[fw-agent] 경고: raw PREROUTING 규칙을 넣지 못해 INPUT 규칙만 씁니다: {raw_err}")
+
+        # 3. filter INPUT 규칙 확인 및 없으면 삽입
         chk_code, _ = self.runner.run(
             ["iptables", "-C", "INPUT", "-m", "set", "--match-set", self.set_name, "src", "-j", "DROP"]
         )
@@ -199,6 +231,68 @@ class IptablesBackend:
         code, err = self.runner.run(["ipset", "del", self.set_name, ip, "-exist"])
         if code != 0:
             raise RuntimeError(f"ipset del failed for {ip}: {err}")
+
+    def ensure_l3(self) -> bool:
+        """ICMP 속도 제한 체인 LW_L3(raw 표)를 만들고 PREROUTING에서 이 체인으로 넘긴다(guide57).
+
+        raw 표에 두는 이유는 lw_block DROP과 같다 — 연결 추적보다 앞에서 버려 폭주 때 처리량을 아낀다.
+        규칙이 모두 있으면 아무것도 바꾸지 않는다(카운터·hashlimit 상태 유지). 하나라도 빠졌으면 체인을
+        비우고 순서대로 다시 넣는다 — 순서(출발지별 → 전체 → 나머지 DROP)가 틀리면 뜻이 달라지기 때문이다.
+        커널에 hashlimit 모듈이 없는 등으로 실패하면 False만 돌려준다. L4 차단(lw_block)은 이것과 상관없이
+        동작해야 하므로 시작을 막지 않고, heartbeat의 l3_ok로 앱에 알린다.
+        """
+        exists, _ = self.runner.run(["iptables", "-t", "raw", "-L", _L3_CHAIN, "-n"])
+        if exists != 0:
+            code, err = self.runner.run(["iptables", "-t", "raw", "-N", _L3_CHAIN])
+            if code != 0:
+                print(f"[fw-agent] 경고: {_L3_CHAIN} 체인을 만들지 못해 ICMP 속도 제한을 쓰지 않습니다: {err}")
+                return False
+        missing = any(
+            self.runner.run(["iptables", "-t", "raw", "-C", _L3_CHAIN, *rule])[0] != 0 for rule in _L3_RULES
+        )
+        if missing:
+            self.runner.run(["iptables", "-t", "raw", "-F", _L3_CHAIN])
+            for rule in _L3_RULES:
+                code, err = self.runner.run(["iptables", "-t", "raw", "-A", _L3_CHAIN, *rule])
+                if code != 0:
+                    print(f"[fw-agent] 경고: ICMP 속도 제한 규칙을 넣지 못했습니다: {err}")
+                    return False
+        if self.runner.run(["iptables", "-t", "raw", "-C", *_L3_JUMP])[0] != 0:
+            code, err = self.runner.run(["iptables", "-t", "raw", "-A", *_L3_JUMP])
+            if code != 0:
+                print(f"[fw-agent] 경고: PREROUTING에서 {_L3_CHAIN}로 넘기는 규칙을 넣지 못했습니다: {err}")
+                return False
+        return True
+
+    def check_rules(self) -> dict[str, bool]:
+        """차단 규칙이 지금 실제로 걸려 있는지(guide57).
+
+        ensure_ready·ensure_l3를 시작할 때만 부르면, 누가 iptables -F를 했을 때 ipset에는 IP가 그대로
+        있어 "막혀 있음"처럼 보이는데 실제로는 하나도 막지 않는다. 그래서 heartbeat마다 이 결과를 싣는다.
+          input — filter INPUT의 lw_block DROP(필수, 이게 없으면 차단이 전혀 안 됨)
+          raw   — raw PREROUTING의 lw_block DROP(연결 추적 절약용 보조)
+          l3    — LW_L3 체인 규칙 3개와 PREROUTING 점프(ICMP 속도 제한)
+        """
+        match = ["-m", "set", "--match-set", self.set_name, "src", "-j", "DROP"]
+        input_ok = self.runner.run(["iptables", "-C", "INPUT", *match])[0] == 0
+        raw_ok = self.runner.run(["iptables", "-t", "raw", "-C", "PREROUTING", *match])[0] == 0
+        l3_ok = self.runner.run(["iptables", "-t", "raw", "-C", *_L3_JUMP])[0] == 0 and all(
+            self.runner.run(["iptables", "-t", "raw", "-C", _L3_CHAIN, *rule])[0] == 0 for rule in _L3_RULES
+        )
+        return {"input": input_ok, "raw": raw_ok, "l3": l3_ok}
+
+    def icmp_dropped_total(self) -> int:
+        """LW_L3 체인이 지금까지 버린 ICMP 패킷 수(DROP 규칙 카운터 합). 읽지 못하면 0."""
+        code, out = self.runner.run(["iptables", "-t", "raw", "-L", _L3_CHAIN, "-v", "-x", "-n"])
+        if code != 0:
+            return 0
+        total = 0
+        for line in out.splitlines():
+            parts = line.split()
+            # 머리글 아래 줄은 "pkts bytes target prot ..." 순서다. 첫 칸이 숫자이고 target이 DROP인 줄만 더한다.
+            if len(parts) >= 3 and parts[0].isdigit() and parts[2] == "DROP":
+                total += int(parts[0])
+        return total
 
     def list_ips(self) -> set[str]:
         """지금 집합에 실제로 들어 있는 IP 목록.
@@ -362,6 +456,37 @@ def _is_ip_allowlisted(ip: str, allowlist: list[str]) -> bool:
     return False
 
 
+def _edge_network_from_env(raw: str | None) -> ipaddress.IPv4Network | None:
+    """NET_EDGE_SUBNET 환경 변수를 대역으로 바꾼다. 비었거나 형식이 틀리면 None(대역 확인 안 함)."""
+    if not raw or not raw.strip():
+        return None
+    try:
+        network = ipaddress.ip_network(raw.strip(), strict=False)
+    except ValueError:
+        print(f"[fw-agent] 경고: NET_EDGE_SUBNET 형식이 틀려 대역 확인을 하지 않습니다 ('{raw}')")
+        return None
+    return network if network.version == 4 else None
+
+
+def _refusal_reason(ip: str, edge_network: ipaddress.IPv4Network | None) -> str | None:
+    """막으면 안 되는 대상이면 ack에 실을 이유를, 막아도 되면 None을 돌려준다(guide57).
+
+    - core 대역, gateway edge(.10) → "infrastructure": 막으면 정문이 앱 응답이나 자기 자신을 버린다.
+    - 이 PC의 edge 대역 밖 → "out_of_subnet": 이 정문으로 들어올 수 없는 주소라 막을 이유가 없고,
+      앱이 잘못 내려보낸 다른 PC 대역의 차단일 수 있다.
+    앱은 두 이유로 실패한 행을 다시 시도하지 않는다(routes/internal/blocks.py _NO_RETRY_ERRORS).
+    """
+    ip_obj = ipaddress.ip_address(ip)
+    if ip_obj in _CORE_NETWORK:
+        return "infrastructure"
+    if edge_network is not None:
+        if ip_obj not in edge_network:
+            return "out_of_subnet"
+        if int(ip_obj) == int(edge_network.network_address) + 10:
+            return "infrastructure"
+    return None
+
+
 def _safe_ack(client: Any, ip: str, status: str, error: str | None = None, version: int | None = None) -> bool:
     """ack를 보내고 성공 여부만 돌려준다. 실패해도 예외를 올리지 않는다.
 
@@ -386,6 +511,7 @@ def process_blocks(
     backend: FirewallBackend,
     client: Any,
     allowlist: list[str],
+    edge_network: ipaddress.IPv4Network | None = None,
 ) -> dict[str, int | None]:
     """받은 목록 한 번을 처리하고, "지금 ipset에 있어야 할 IP와 남은 TTL"을 돌려준다.
 
@@ -424,6 +550,13 @@ def process_blocks(
             # 앱의 장부가 '대기 중'으로 계속 남지 않게 한다. reconcile이 집합에서도 지운다.
             if status == _STATUS_PENDING_APPLY:
                 _safe_ack(client, ip, "FAILED", "allowlisted", version=version)
+            continue
+
+        refusal = _refusal_reason(ip, edge_network)
+        if refusal is not None:
+            # 우리 인프라나 대역 밖 주소는 어떤 상태로 와도 막지 않는다(guide57). 허용 목록과 같은 방식이다.
+            if status == _STATUS_PENDING_APPLY:
+                _safe_ack(client, ip, "FAILED", refusal, version=version)
             continue
 
         if status == _STATUS_PENDING_APPLY:
@@ -470,6 +603,7 @@ def reconcile(
     allowlist: list[str] | None = None,
     received_at: float | None = None,
     now: float | None = None,
+    edge_network: ipaddress.IPv4Network | None = None,
 ) -> None:
     """실제 ipset과 원하는 상태(desired)를 전부 비교해 어긋난 것(drift)을 바로잡는다.
 
@@ -496,7 +630,8 @@ def reconcile(
     current_ips = backend.list_ips()
 
     for ip in current_ips:
-        if _is_ip_allowlisted(ip, allowlist) or ip not in desired:
+        refused = _parse_ipv4(ip) is not None and _refusal_reason(ip, edge_network) is not None
+        if _is_ip_allowlisted(ip, allowlist) or refused or ip not in desired:
             try:
                 backend.remove(ip)
             except Exception as e:
@@ -509,6 +644,8 @@ def reconcile(
 
     for ip, ttl in list(desired.items()):
         if _is_ip_allowlisted(ip, allowlist) or ip in current_ips:
+            continue
+        if _refusal_reason(ip, edge_network) is not None:
             continue
         if ttl is not None and received_at is not None:
             remaining = math.ceil(ttl - elapsed)
@@ -553,6 +690,8 @@ def main() -> None:
     allowlist_str = os.environ.get("PERMANENT_LOCK_IP_ALLOWLIST", "")
     allowlist = [x.strip() for x in allowlist_str.split(",") if x.strip()]
     set_name = os.environ.get("IPSET_NAME", "lw_block")
+    # 이 PC의 edge 대역(guide57). compose가 넘긴다. 비어 있으면 대역 확인은 하지 않고 core 대역만 거부한다.
+    edge_network = _edge_network_from_env(os.environ.get("NET_EDGE_SUBNET"))
 
     poll_interval = _int_env("POLL_INTERVAL", 2)
     reconcile_interval = _int_env("RECONCILE_INTERVAL", 60)
@@ -567,6 +706,7 @@ def main() -> None:
         # docker compose 로그에 원인이 바로 보이게 한다.
         print(f"[fw-agent] 백엔드 초기화 실패: {e}")
         sys.exit(1)
+    backend.ensure_l3()
 
     client = AgentClient(base_url, secret)
 
@@ -577,6 +717,8 @@ def main() -> None:
     desired_received_at: float | None = None
     last_reconcile = 0.0
     last_heartbeat = 0.0
+    # 직전 heartbeat 때 LW_L3가 버린 ICMP 누적값. heartbeat에는 그 뒤 늘어난 만큼만 싣는다.
+    last_icmp_dropped = backend.icmp_dropped_total()
 
     print("[fw-agent] 서비스 루프를 시작합니다.")
     while True:
@@ -587,7 +729,7 @@ def main() -> None:
             try:
                 blocks = client.get_blocks()
                 desired_received_at = time.monotonic()
-                desired_ips = process_blocks(blocks, backend, client, allowlist)
+                desired_ips = process_blocks(blocks, backend, client, allowlist, edge_network=edge_network)
                 poll_failures = 0
             except Exception as e:
                 # 앱이 응답하지 않으면 desired_ips를 그대로 둔다(마지막 상태 유지).
@@ -597,8 +739,19 @@ def main() -> None:
 
             # 2. Reconcile
             if now - last_reconcile >= reconcile_interval:
+                # 규칙 되살리기(guide57). 시작할 때 한 번만 만들면, 누가 iptables -F를 했을 때 ipset에는 IP가
+                # 남아 "막혀 있음"처럼 보이는데 실제로는 아무것도 막지 않는다. 두 함수 모두 규칙이 있으면
+                # 아무것도 바꾸지 않으므로 60초마다 불러도 안전하다.
                 try:
-                    reconcile(desired_ips, backend, allowlist, received_at=desired_received_at)
+                    backend.ensure_ready()
+                    backend.ensure_l3()
+                except Exception as e:
+                    print(f"[fw-agent] 규칙 되살리기 실패: {e}")
+                try:
+                    reconcile(
+                        desired_ips, backend, allowlist,
+                        received_at=desired_received_at, edge_network=edge_network,
+                    )
                 except Exception as e:
                     print(f"[fw-agent] reconcile 실패: {e}")
                 last_reconcile = now
@@ -608,7 +761,22 @@ def main() -> None:
             if now - last_heartbeat >= heartbeat_interval:
                 try:
                     ipset_size = len(backend.list_ips())
-                    client.heartbeat({"poll_failures": poll_failures, "ipset_size": ipset_size})
+                    rules = backend.check_rules()
+                    icmp_total = backend.icmp_dropped_total()
+                    # 카운터가 줄었으면(체인을 비우고 다시 만듦) 새로 센 값만 쓴다.
+                    if icmp_total >= last_icmp_dropped:
+                        icmp_dropped = icmp_total - last_icmp_dropped
+                    else:
+                        icmp_dropped = icmp_total
+                    last_icmp_dropped = icmp_total
+                    client.heartbeat({
+                        "poll_failures": poll_failures,
+                        "ipset_size": ipset_size,
+                        "rules_ok": rules["input"],
+                        "raw_ok": rules["raw"],
+                        "l3_ok": rules["l3"],
+                        "icmp_dropped": icmp_dropped,
+                    })
                 except Exception as e:
                     print(f"[fw-agent] heartbeat 실패: {e}")
                 last_heartbeat = now

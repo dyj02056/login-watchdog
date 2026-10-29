@@ -10,6 +10,12 @@ requests 설치 없이도 실행되게 한다.
 - 기본값을 120초로 둔 이유는 Suricata가 60초마다 stats를 쓰기 때문이다. 한 번 빠져도
   정지로 오판하지 않게 그 두 배로 잡았다. 값을 60초 이하로 낮추면 조용할 때 오판한다.
 - 정지를 즉시 따로 보내지 않고 30초 heartbeat에 실어 보낸다. 알림 쿨다운은 앱이 맡는다.
+
+파일별 정지(guide57): l4-detector가 60초마다 생존 줄을 쓰게 되어 l4.json도 조용할 때 는다.
+그래서 위 "둘 다" 판정(stalled)은 그대로 두고, 파일마다 따로 멈춘 것을 stalled_sensors에 싣는다.
+예전에는 Suricata의 60초 stats 때문에 eve.json이 늘 늘어 Scapy가 죽어도 알 수 없었다.
+eve.json의 stats 줄에서 capture.kernel_packets·kernel_drops도 읽어 heartbeat에 증가분을 싣는다
+(센서가 폭주를 따라가지 못해 패킷을 놓치는지 앱이 알 수 있게).
 """
 
 from __future__ import annotations
@@ -27,14 +33,37 @@ from pathlib import Path
 from typing import Any, Callable
 
 
+# count_field는 packet_count에 옮길 l4.json 칸이다. layer·proto는 계약서 K4 표를 따른다.
+# SPOOFED_SRC·GLOBAL_SYN_FLOOD(guide57)는 출발지가 가짜이거나 없으므로 signature에 서로 다른 출발지 수를 덧붙여
+# 알림 한 통만 봐도 규모를 알 수 있게 한다.
 SCAPY_SIGNATURES = {
     "SYN_FLOOD": {
         "signature_id": 9100001,
         "signature": "LW Scapy SYN flood suspected",
+        "layer": "L4",
+        "proto": "TCP",
+        "count_field": "syn_per_sec",
     },
     "PORT_SCAN": {
         "signature_id": 9100002,
         "signature": "LW Scapy port scan suspected",
+        "layer": "L4",
+        "proto": "TCP",
+        "count_field": "distinct_ports_10s",
+    },
+    "SPOOFED_SRC": {
+        "signature_id": 9100003,
+        "signature": "LW Scapy spoofed source outside edge subnet",
+        "layer": "L3",
+        "proto": None,
+        "count_field": "packets",
+    },
+    "GLOBAL_SYN_FLOOD": {
+        "signature_id": 9100004,
+        "signature": "LW Scapy global SYN flood (rotating sources)",
+        "layer": "L4",
+        "proto": "TCP",
+        "count_field": "syn_per_sec",
     },
 }
 
@@ -42,7 +71,12 @@ SURICATA_SID_MAPPING = {
     9000001: ("SYN_FLOOD", "L4"),
     9000003: ("LOGIN_BURST", "L7"),
     9000004: ("SCANNER_UA", "L7"),
+    # guide57 L3 경보 — local.rules의 ICMP echo 폭주 규칙.
+    9000005: ("ICMP_FLOOD", "L3"),
 }
+
+# OTHER 경보의 계층을 프로토콜로 정한다(guide57, 계약서 K4). ICMP는 IP 계층(L3) 메시지다.
+L3_PROTOCOLS = {"ICMP", "IPV6-ICMP"}
 
 DEFAULT_EVE_PATH = "/var/log/suricata/eve.json"
 DEFAULT_L4_PATH = "/var/log/suricata/l4.json"
@@ -188,7 +222,9 @@ def to_event(
         ):
             category, layer = "WEB_ATTACK", "L7"
         else:
-            category, layer = "OTHER", "L4"
+            proto_name = str(line_dict.get("proto") or "").upper()
+            category = "OTHER"
+            layer = "L3" if proto_name in L3_PROTOCOLS else "L4"
 
         observed_at = utc_iso(
             line_dict.get("timestamp", time.time())
@@ -235,27 +271,27 @@ def to_event(
         if signature_info is None:
             return None
 
-        if category == "SYN_FLOOD":
-            packet_count = optional_int(
-                line_dict.get("syn_per_sec")
-            )
-        else:
-            packet_count = optional_int(
-                line_dict.get("distinct_ports_10s")
-            )
+        packet_count = optional_int(
+            line_dict.get(signature_info["count_field"])
+        )
 
         if packet_count is None or packet_count < 1:
             packet_count = 1
 
+        signature = signature_info["signature"]
+        distinct_sources = optional_int(line_dict.get("distinct_sources"))
+        if distinct_sources is not None:
+            signature = f"{signature} (sources={distinct_sources})"
+
         return {
             "sensor": "scapy",
-            "layer": "L4",
+            "layer": signature_info["layer"],
             "src_ip": str(line_dict.get("src_ip", "")),
             "dst_port": None,
-            "proto": "TCP",
+            "proto": signature_info["proto"],
             "category": category,
             "signature_id": signature_info["signature_id"],
-            "signature": signature_info["signature"],
+            "signature": signature[:200],
             "sensor_severity": 1,
             "packet_count": packet_count,
             "observed_at": utc_iso(
@@ -425,6 +461,59 @@ class StallWatch:
         )
 
         return self.stalled, self.stalled_seconds
+
+    def stalled_sensors(self) -> list[str]:
+        """파일마다 따로 기준 시간 넘게 늘지 않은 센서 이름("eve"·"l4")을 돌려준다(guide57).
+
+        stalled는 두 파일이 모두 멈췄을 때만 참이다. l4-detector가 생존 줄을 쓰게 된 뒤로는 하나만
+        멈춰도 그 센서가 죽은 것이므로, 앱이 어느 센서인지 알 수 있게 따로 계산한다.
+        """
+        if len(self._last_change_times) < 2:
+            return []
+        now = self.clock()
+        return sorted(
+            name
+            for name, changed_at in self._last_change_times.items()
+            if now - changed_at >= self.threshold_seconds
+        )
+
+
+class CaptureStats:
+    """eve.json의 stats 줄에서 패킷 수신·누락 누적값을 읽고, heartbeat마다 증가분을 돌려준다(guide57).
+
+    Suricata는 60초마다 누적값을 쓴다. heartbeat(30초)마다 직전에 보고한 값과의 차이를 싣고,
+    누적값이 줄었으면(Suricata 재시작) 새 누적값을 그대로 증가분으로 본다.
+    """
+
+    def __init__(self) -> None:
+        self.latest_packets = 0
+        self.latest_drops = 0
+        self._reported_packets = 0
+        self._reported_drops = 0
+
+    def observe(self, line_dict: dict) -> None:
+        stats = line_dict.get("stats")
+        capture = stats.get("capture") if isinstance(stats, dict) else None
+        if not isinstance(capture, dict):
+            return
+        packets = optional_int(capture.get("kernel_packets"))
+        drops = optional_int(capture.get("kernel_drops"))
+        if packets is not None and packets >= 0:
+            self.latest_packets = packets
+        if drops is not None and drops >= 0:
+            self.latest_drops = drops
+
+    def take_delta(self) -> tuple[int, int]:
+        def delta(latest: int, reported: int) -> int:
+            return latest - reported if latest >= reported else latest
+
+        result = (
+            delta(self.latest_packets, self._reported_packets),
+            delta(self.latest_drops, self._reported_drops),
+        )
+        self._reported_packets = self.latest_packets
+        self._reported_drops = self.latest_drops
+        return result
 
 
 class Aggregator:
@@ -697,8 +786,9 @@ def process_tailer(
     source: str,
     aggregator: Aggregator,
     sender: Sender,
+    capture_stats: CaptureStats | None = None,
 ) -> None:
-    """Tailer의 새 JSON 줄을 변환·집계해 전송 대기열에 넣는다."""
+    """Tailer의 새 JSON 줄을 변환·집계해 전송 대기열에 넣는다. stats 줄은 capture_stats에 반영한다."""
     for raw_line in tailer.read_lines():
         try:
             line_dict = json.loads(raw_line)
@@ -711,6 +801,10 @@ def process_tailer(
             continue
 
         if not isinstance(line_dict, dict):
+            continue
+
+        if capture_stats is not None and line_dict.get("event_type") == "stats":
+            capture_stats.observe(line_dict)
             continue
 
         try:
@@ -738,20 +832,31 @@ def heartbeat_body(
     *,
     stalled: bool = False,
     stalled_seconds: int = 0,
+    stalled_sensor_names: list[str] | None = None,
+    kernel_delta: tuple[int, int] | None = None,
 ) -> dict:
-    """계약서 K9의 shipper heartbeat 본문을 만든다."""
+    """계약서 K9의 shipper heartbeat 본문을 만든다.
+
+    stalled_sensor_names·kernel_delta(guide57)는 넘긴 경우에만 detail에 싣는다 — 넘기지 않는 호출은
+    예전 모양 그대로다.
+    """
+    detail: dict = {
+        "eve_bytes": eve_tailer.last_size,
+        "l4_bytes": l4_tailer.last_size,
+        "queue": event_sender.queue_size,
+        "stalled_seconds": max(
+            0,
+            int(stalled_seconds),
+        ),
+    }
+    if stalled_sensor_names is not None:
+        detail["stalled_sensors"] = list(stalled_sensor_names)
+    if kernel_delta is not None:
+        detail["kernel_packets"], detail["kernel_drops"] = kernel_delta
     return {
         "agent": "shipper",
         "stalled": stalled,
-        "detail": {
-            "eve_bytes": eve_tailer.last_size,
-            "l4_bytes": l4_tailer.last_size,
-            "queue": event_sender.queue_size,
-            "stalled_seconds": max(
-                0,
-                int(stalled_seconds),
-            ),
-        },
+        "detail": detail,
     }
 
 
@@ -834,6 +939,7 @@ def main(
     eve_tailer = Tailer(eve_path)
     l4_tailer = Tailer(l4_path)
     aggregator = Aggregator(clock)
+    capture_stats = CaptureStats()
     stall_watch = StallWatch(
         clock=clock,
         threshold_seconds=stall_seconds,
@@ -874,6 +980,7 @@ def main(
                     "eve",
                     aggregator,
                     event_sender,
+                    capture_stats,
                 )
                 process_tailer(
                     l4_tailer,
@@ -922,6 +1029,8 @@ def main(
                             stalled_seconds=(
                                 stall_watch.stalled_seconds
                             ),
+                            stalled_sensor_names=stall_watch.stalled_sensors(),
+                            kernel_delta=capture_stats.take_delta(),
                         )
                     )
                     last_heartbeat = now
