@@ -119,12 +119,28 @@
 2. `select day, sum(count) from log_daily_summary where source = 'login_attempts' and category = 'failure' group by day order by day;` — 날짜별 로그인 실패 추이(원본이 지워진 날짜도 남음)
 3. `select * from cleanup_old_logs(true) where deleted_rows > 0;` — 지금 정리하면 몇 건이 지워질지 미리 보기(아무것도 지우지 않음)
 
+## 6-4. (선택) Track D — 네트워크 계층 탐지·차단 (5분)
+
+로컬 Docker 단지에서만 합니다(`docker compose up -d --build`, 준비는 [netwatch/README.md](../netwatch/README.md) 1~3장). 공격은 단지 안의 일회용 공격 상자로 보내고, 관리자 화면은 `http://localhost:8080/admin/ops`(처리 작업대)를 띄워 둡니다.
+
+| 장면 | 보낼 것 (netwatch/README.md 7장) | 화면에서 보여 줄 것 |
+|---|---|---|
+| S4 킬체인 | `scan` → `webscan` → `brute` (같은 IP) | 연관 사건 `CR-01`, 영구 잠금, L4 차단 목록에 **영구·차단 중**, 그 IP는 접속 자체가 안 됨(`probe`) |
+| S5 SYN 폭주 | `synflood` | L4 차단 목록에 **시간 제한** 차단(위조 가능 증거라 영구 아님), 탐지→차단 2~3초 |
+| S6 의심 로그인 | `scanner-ua` 뒤 `login`(victim 계정) | 올바른 비밀번호인데 로그인 거절, Mailpit에 경고 메일 |
+| S7 위조 출발지 | `synflood --rand-source` / `--spoof-source 172.30.0.250` | 출발지를 바꾸는 폭주는 **차단 없이** "전체 SYN 폭주" 알림, 우리 core 주소로 위조해도 차단되지 않음 |
+| S9 ICMP 폭주 | `icmpflood` | 네트워크 이벤트에 "ICMP 플러드(L3)", 주소 차단은 없고 정문 커널이 초당 50개 넘는 만큼 버림 |
+
+- 시연 전 점검은 `python -m scripts.net.run_all --repeat 1`로 S4~S9를 한 번에 채점할 수 있습니다(결과: `docs/track-d/scenario-results.md`).
+- 같은 IP를 다시 쓰면 앞 차단 때문에 재현이 안 됩니다. 시연마다 새 IP를 쓰세요(7.3절).
+
 ## 7. 정리
 
 - `python scripts/management/unlock_ip.py --all --permanent --note "시연 정리"` — 시연에서 만든 잠금 전부 해제
 - `python scripts/management/unlock_account.py --admin --all` — 시연에서 잠근 관리자 계정 해제
 - 대시보드에서 시연용 사건 "해결", 시연용 IP 예외 "회수", 남은 "AI 조기 경보" 반려
 - `TRUST_FORWARDED_FOR`를 다시 `false`로 되돌리기
+- Track D를 시연했다면: 시연 대역 IP(`172.28.0.%`)의 `network_blocks`·`lockouts`·`access_requests`·`security_incidents`·`security_events`·`lock_history`를 SQL로 지우면 처리 작업대가 비고, fw-agent가 1분 안에 정문 차단도 풉니다(`docker compose exec fw-agent ipset list lw_block`이 0건)
 
 ## 시연 시 주의
 

@@ -88,6 +88,19 @@ def test_nginx_overwrites_forwarded_for() -> None:
     assert "proxy_set_header X-Forwarded-Proto $scheme;" in nginx
 
 
+def test_nginx_limits_slow_connections() -> None:
+    """한 IP가 연결을 느리게 붙잡아 정문을 막는 공격(Slowloris)을 제한한다."""
+    nginx = read_project_file("netwatch/nginx/nginx.conf")
+
+    assert "limit_conn_zone $binary_remote_addr zone=lw_perip:10m;" in nginx
+    assert "limit_conn lw_perip 30;" in nginx
+    assert "limit_conn_status 429;" in nginx
+    assert "client_header_timeout 10s;" in nginx
+    assert "client_body_timeout 10s;" in nginx
+    # 내부 API 차단은 그대로 있어야 한다.
+    assert "location ^~ /api/internal/" in nginx
+
+
 def test_env_example_contains_role_a_values() -> None:
     """팀원이 필요한 Compose 환경변수를 확인할 수 있게 한다."""
     env_example = read_project_file(".env.example")

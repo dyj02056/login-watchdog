@@ -4,13 +4,13 @@
 > 처음 보는 사람이 1장부터 순서대로 따라 하면 `http://localhost:8080/login`이 열리도록 쓰는 것이 목표입니다.
 > 함수 이름·주소·데이터 모양의 기준은 [`docs/track-d/contracts.md`](../docs/track-d/contracts.md)(이하 계약서)입니다. 이 문서와 다르면 계약서가 맞습니다.
 >
-> - 이 문서는 통합 담당자가 통합일마다 머지된 부분을 절 단위로 더해 갑니다. 지금은 **단지 켜기·주소표·A0-2 확인 결과, 센서·shipper·fw-agent 상태 보기와 오래 켜 둘 때의 안정화(6장), 공격 상자·victim 계정(7장), 막혔을 때(8장), 시나리오 자동 점검(9장)** 까지입니다(2026-10-26 main 기준).
-> - 명령의 정확성은 A(편승훈)가 확인합니다. 확인 전인 절은 제목 옆에 **(A 확인 전)** 을 붙였습니다.
+> - 이 문서는 통합 담당자가 관리합니다. 지금은 **단지 켜기·주소표·A0-2 확인 결과, 센서·shipper·fw-agent 상태 보기와 오래 켜 둘 때의 안정화(6장), 공격 상자·victim 계정·위조 출발지·ICMP(7장), 막혔을 때(8장), 시나리오 자동 점검 S4~S9(9장)** 까지입니다(2026-10-29 guide57 기준).
+> - 2026-10-29부터 역할 구분 없이 통합 담당자가 혼자 고치고 확인합니다. 예전에 절 제목에 붙어 있던 "(A 확인 전)" 표시는 뗐습니다 — 1~3·6장 명령은 10/22 병합2 종합 점검과 10/26·10/29 시연 PC의 `run_all` 실행에 실제로 쓰인 것입니다.
 > - 키·비밀번호·`.env`의 실제 값은 이 문서에 적지 않습니다. 변수 **이름**만 적습니다.
 
 ---
 
-## 1. 준비물 (A 확인 전)
+## 1. 준비물
 
 | 준비물 | 확인 방법 | 비고 |
 |---|---|---|
@@ -22,7 +22,7 @@
 
 ---
 
-## 2. `.env` 준비 (A 확인 전)
+## 2. `.env` 준비
 
 앱 컨테이너는 저장소 루트의 `.env`를 통째로 읽고(`env_file: .env`), Docker Compose는 같은 `.env`에서 대역 값(`LW_EDGE_PREFIX` 등)을 읽습니다.
 
@@ -52,7 +52,7 @@
 
 ---
 
-## 3. 켜기·끄기·상태·로그 (A 확인 전)
+## 3. 켜기·끄기·상태·로그
 
 | 하고 싶은 일 | 명령 |
 |---|---|
@@ -91,6 +91,7 @@
 | `.101`~`.103` | 고정 공격 상자 attacker-1~3 (수동 시연) |
 | `.140` | S7 위조 출발지 전용 |
 | `.150`~`.199` | 5초 측정(`scripts/net/measure_*`)·수동 차단 예시 |
+| `.200`~`.254` | S7 ① 출발지를 바꾸는 SYN 폭주가 돌려 쓰는 가짜 출발지(guide57, `lw.py synflood --rand-source`) |
 
 **네트워크 3개**
 
@@ -106,13 +107,13 @@
 
 ## 5. A0-2 세 PC 확인 결과
 
-> A가 세 PC에서 직접 확인하고 PR 메모로 넘긴 값을 옮기는 표입니다. 10/22 기준으로 확인된 값만 채웠고, 나머지는 **(A 확인 전)** 입니다.
+> A가 세 PC에서 직접 확인하고 PR 메모로 넘긴 값을 옮긴 표입니다(10/22 기준). 첫 세 줄은 화면 접속을 따로 기록하지 않았으므로, 단지가 실제로 떠서 센서가 돈 기록을 근거로 적었습니다.
 
 | 확인 항목 | 결과 | 근거 |
 |---|---|---|
-| A PC에서 `docker compose up` 후 `/login` 접속 | (A 확인 전) | — |
-| B PC에서 `docker compose up` 후 `/login` 접속 | (A 확인 전) | — |
-| C PC에서 `docker compose up` 후 `/login` 접속 | (A 확인 전) | — |
+| A PC에서 `docker compose up` 후 `/login` 접속 | 단지 기동 확인(`/login` 화면 접속은 따로 기록 안 함) | 2026-10-22 병합2 종합 점검 — 이 PC의 sensor·l4-detector `iface=` 줄(아래 줄) |
+| B PC에서 `docker compose up` 후 `/login` 접속 | 단지 기동 확인(`/login` 화면 접속은 따로 기록 안 함) | 2026-10-22 병합2 종합 점검 — 이 PC의 sensor·l4-detector `iface=` 줄(아래 줄) |
+| C PC에서 `docker compose up` 후 `/login` 접속 | 단지 기동 확인(`/login` 화면 접속은 따로 기록 안 함) | 2026-10-22 병합2 종합 점검 — 이 PC의 sensor·l4-detector `iface=` 줄(아래 줄) |
 | 감시 인터페이스 이름 `SENSOR_IFACE` | **`.env`는 모두 `eth1` 고정, 실제 edge는 PC마다 다름** — 10/22 기록: A `eth1`, B `eth1`, C `eth0`, demo(통합 담당자 PC) `eth1`. A는 10/20에 `eth0`이었다가 컨테이너를 다시 만든 뒤 `eth1`로 바뀌었습니다. Docker가 네트워크를 붙이는 순서를 보장하지 않기 때문입니다 | 2026-10-22 병합2 종합 점검 — 네 PC의 `ip -br -4 addr`, sensor·l4-detector `iface=` 줄, eve.json `in_iface`(계약서 K1) |
 | 인터페이스 자동 선택 | sensor(`netwatch/suricata/entrypoint.sh`)와 l4-detector(`detector_core.py`의 `resolve_sensor_iface`)가 `${LW_EDGE_PREFIX}.10`이 붙은 인터페이스를 찾아 감시합니다. `SENSOR_IFACE`가 틀리면 edge 쪽으로 바꾸고 로그에 `[WARN]`을 남깁니다 | 2026-10-20 main(f7899f1·cd4322e) |
 | core 대역 충돌 | `172.29.0.0/24`는 Docker Desktop(WSL2) 내부 대역과 충돌 → `172.30.0.0/24` 사용 | 2026-10-19 통합 담당자 PC(Docker Desktop 4.91)에서 확인 |
@@ -123,16 +124,16 @@
 
 ---
 
-## 6. 센서·shipper·fw-agent 상태 보기 (A 확인 전)
+## 6. 센서·shipper·fw-agent 상태 보기
 
 `docker compose up -d --build` 한 번으로 아래 네 서비스가 함께 켜집니다(별도 프로필 없음).
 
 | 서비스 | 하는 일 | 만든 작업 |
 |---|---|---|
 | `sensor` | Suricata. edge 쪽 통신을 보고 `eve.json`에 경보·흐름·HTTP 기록을 씁니다. 통신이 없어도 1분마다 통계(`stats`) 한 줄을 써서, shipper가 조용한 시간을 센서 정지로 오해하지 않게 합니다(A2-3). ET Open 규칙은 처음 켤 때 한 번 받고(`suricata-rules` 볼륨), 못 받으면 `local.rules`만으로 시작합니다 | A1-1 |
-| `l4-detector` | Scapy. 출발지별 SYN 비율·서로 다른 포트 수를 세어 `l4.json`에 씁니다 | A1-2 |
+| `l4-detector` | Scapy. 출발지별 SYN 비율·서로 다른 포트 수를 세어 `l4.json`에 씁니다. guide57부터 위조 출발지(`SPOOFED_SRC`)·출발지를 바꾸는 SYN 폭주(`GLOBAL_SYN_FLOOD`)도 쓰고, 60초마다 생존 줄(`HEARTBEAT`)을 남깁니다 | A1-2·guide57 |
 | `shipper` | 두 파일을 읽어 서명(HMAC)을 붙여 앱 수집 창구로 보내고, 30초마다 생존 신호를 보냅니다 | A1-3 |
-| `fw-agent` | 앱 내부 API에서 차단 목록을 받아 gateway의 ipset `lw_block`에 넣고 빼고, 10초마다 생존 신호를 보냅니다 | C1-3 |
+| `fw-agent` | 앱 내부 API에서 차단 목록을 받아 gateway의 ipset `lw_block`에 넣고 빼고, 10초마다 생존 신호를 보냅니다. guide57부터 ICMP 속도 제한 체인 `LW_L3`도 걸고, 60초마다 빠진 규칙을 되살리며, 규칙 상태(`rules_ok`·`l3_ok`)를 생존 신호에 싣습니다 | C1-3·guide57 |
 
 | 보고 싶은 것 | 명령 |
 |---|---|
@@ -141,6 +142,7 @@
 | 경보 전송 로그 | `docker compose logs -f shipper` |
 | 차단 프로그램 로그 | `docker compose logs -f fw-agent` |
 | 지금 걸린 L4 차단 목록 | `docker compose exec fw-agent ipset list lw_block` |
+| 차단·ICMP 속도 제한 규칙과 버린 패킷 수 | `docker compose exec fw-agent iptables -t raw -L -v -n` (PREROUTING의 `lw_block` DROP과 `LW_L3` 체인) |
 | 센서 기록 마지막 몇 줄 | `docker compose exec shipper tail -n 5 /var/log/suricata/eve.json` |
 
 - 센서 기록 파일(`eve.json`·`l4.json`)은 `eve` 볼륨 하나에 함께 있습니다. sensor·l4-detector가 쓰고 shipper는 읽기만 합니다.
@@ -183,6 +185,9 @@
 | `synflood` | gateway에 SYN 다발 보내기 | Suricata `SYN_FLOOD`(9000001)·Scapy(9100001) | S5 |
 | `httpflood` | 한 경로에 요청 몰아보내기 | 앱 `HTTP_FLOOD` | S5b(synflood와 동시) |
 | `probe` | gateway에 TCP 연결만 한 번 시도(`--timeout` 기본 3초), `reachable` 출력. HTTP를 보내지 않아 DB 흔적 없음 | — | S4 실제 접속 차단 확인 |
+| `synflood --spoof-source <IP>` | 출발지를 꾸민 SYN 다발(hping3 `-a`). 이 PC edge 대역(.10 제외)·`172.30.0.0/24`·`192.0.2.0/24`만 허용 | 대역 안이면 SYN_FLOOD, 대역 밖이면 Scapy `SPOOFED_SRC`(9100003) | S7 ②③④ |
+| `synflood --rand-source` | 출발지를 edge `.200~.254`로 돌려 쓰는 SYN 3000개(초당 2000개, raw 소켓) | Scapy `GLOBAL_SYN_FLOOD`(9100004) | S7 ① |
+| `icmpflood` | gateway에 ICMP echo 다발(`--count` 기본 3000·최대 5000, 초당 1000개, `--spoof-source` 가능) | Suricata `ICMP_FLOOD`(9000005, `rules/l3.rules`) | S9 |
 
 > `category`·`sid`의 기준은 계약서 K4입니다. `scanner-ua`가 보내는 이름은 `netwatch/suricata/rules/local.rules`의 sid 9000004 목록과 같아야 합니다.
 
@@ -267,9 +272,29 @@ $env:LW_VICTIM_PASSWORD = Read-Host "victim 비밀번호"
 - 값이 없으면 `login` 명령은 `"ok": false, "error": "no_password"`로 끝나고, C3-1은 S6를 SKIP합니다.
 - 시연 대역 PC에서 C3-1을 돌릴 때는 `victim_c`를 쓰므로, 그 계정 주인(C)이 직접 입력하는 것이 가장 간단합니다. 다른 사람이 대신 돌려야 하면 비밀번호는 팀 비밀값 보관소(Infisical)로 넘기고 단체방에 평문으로 보내지 않습니다.
 
+### 7.5 위조 출발지·ICMP 폭주 (S7·S9, guide57)
+
+```bash
+# S7 ③ edge 안 주소로 위조(위조 가능 증거 → TTL 차단까지만)
+docker run --rm --network lw_edge --ip ${LW_EDGE_PREFIX}.111 --cap-add NET_RAW \
+  -e TARGET_URL=http://${LW_EDGE_PREFIX}.10:8080 lw-attacker:latest synflood --spoof-source ${LW_EDGE_PREFIX}.140 --count 3000
+
+# S7 ① 출발지를 바꾸는 폭주(막을 주소 없음 → GLOBAL_SYN_FLOOD 알림만)
+docker run --rm --network lw_edge --ip ${LW_EDGE_PREFIX}.111 --cap-add NET_RAW \
+  -e TARGET_URL=http://${LW_EDGE_PREFIX}.10:8080 lw-attacker:latest synflood --rand-source
+
+# S9 ICMP 폭주(ICMP_FLOOD 기록 + 정문 커널이 초당 50개 넘는 만큼 버림, 주소 차단 없음)
+docker run --rm --network lw_edge --ip ${LW_EDGE_PREFIX}.112 --cap-add NET_RAW \
+  -e TARGET_URL=http://${LW_EDGE_PREFIX}.10:8080 lw-attacker:latest icmpflood
+```
+
+- **왜 위조 대역을 제한하나:** gateway는 위조된 출발지로 SYN-ACK·ICMP 응답을 돌려보냅니다. 아무 주소나 허용하면 응답이 Docker 호스트를 거쳐 실제 인터넷 주소로 나갑니다. 그래서 `--spoof-source`는 이 PC edge 대역·core 대역·문서용 `192.0.2.0/24`만 받고, 출발지를 바꾸는 폭주도 hping3 `--rand-source`(전 인터넷 주소) 대신 edge `.200~.254`만 돌려 씁니다.
+- `--rand-source`는 raw 소켓을 쓰므로 `--cap-add NET_RAW`가 필요합니다.
+- 결과 확인: `docker compose logs l4-detector`(`전체 SYN 폭주 의심`), Slack의 "네트워크 경보", 처리 작업대의 네트워크 이벤트(위조 출발지·전체 SYN 폭주·ICMP 플러드), `docker compose exec fw-agent iptables -t raw -L LW_L3 -v -n`의 DROP 카운터.
+
 ---
 
-## 8. 막혔을 때 (A 확인 전)
+## 8. 막혔을 때
 
 | 증상 | 확인할 것 |
 |---|---|
@@ -283,6 +308,12 @@ $env:LW_VICTIM_PASSWORD = Read-Host "victim 비밀번호"
 | `localhost:8025`가 안 열림 | `docker-compose.mailpit.yml`을 따로 띄워 두지 않았는지 확인(이름·포트 충돌) |
 | 모든 로그인이 같은 IP로 기록되거나 바로 잠김 | `docker-compose.yml`의 app에 `TRUST_FORWARDED_FOR: "true"`가 있는 최신 `main`인지 확인 |
 | 대역 관련 오류·남의 기록이 내 사건에 섞임 | `.env`의 `LW_EDGE_PREFIX`·`NET_EDGE_SUBNET`이 2장 표의 내 값과 같은지 확인 |
+| fw-agent 로그에 `폴링 실패 … 503` 반복 · Slack "차단 목록을 N번 연속 받지 못했습니다" | `.env`의 `NET_EDGE_SUBNET` 형식이 틀린 것(guide57 — 오타로 남의 대역까지 막지 않게 차단 목록 창구가 멈춤). `172.28.13.0/24`처럼 고치고 `docker compose up -d app` |
+| Slack "방화벽 규칙이 빠져 있습니다: LW_L3" · fw-agent 로그 `ICMP 속도 제한 규칙을 넣지 못했습니다` | 커널에 `hashlimit` 모듈이 없거나 raw 표를 못 쓰는 환경입니다. L4 차단(`lw_block`)은 그대로 동작하고 ICMP 속도 제한만 빠집니다. `docker compose exec fw-agent iptables -t raw -S`로 확인 |
+| Slack "방화벽 규칙이 빠져 있습니다: INPUT" | 누가 `iptables -F` 등으로 규칙을 지운 것. fw-agent가 60초 안에 되살립니다. 계속 오면 fw-agent 로그의 `규칙 되살리기 실패`를 확인 |
+| Slack "센서 기록이 2분 넘게 늘지 않습니다: l4.json(Scapy l4-detector)" | l4-detector가 멈춘 것(guide57부터 60초마다 생존 줄을 씀). `docker compose logs l4-detector` 확인 후 `docker compose up -d --force-recreate l4-detector` |
+| Slack "L4 차단 적용 실패" | fw-agent가 ipset에 넣지 못한 것. 앱이 10초 간격으로 3번 다시 시도하고, 그래도 안 되면 "포기" 알림이 한 번 더 옵니다. fw-agent 로그의 `add 차단 실패` 이유를 확인 |
+| 공격 상자 `synflood --spoof-source`가 `[FAIL] --spoof-source는 이 PC edge 대역…` | 허용 대역 밖 주소입니다(7.5). 이 PC edge 대역·`172.30.0.0/24`·`192.0.2.0/24`만 씁니다 |
 | 공격 상자 `login`이 `"error":"ValueError"`, `"status":null`로 끝남 · `brute`를 해도 gateway 로그에 `POST /login`이 없음 | 옛 공격 상자 이미지입니다. 앱의 `/login`은 Next.js 화면이라 HTML에 CSRF 입력칸이 없고, 10/26 이후 공격 상자는 `X-Requested-With: login-watchdog-spa` 헤더로 토큰을 다시 받습니다(`81be35a`). 최신 `main`을 받아 `docker compose build attacker-1` (2026-10-26 시연 PC) |
 | 앱 로그에 `SMTP AUTH extension not supported by server` · S6가 `notify_owner_email 단계가 FAILED` | `.env`의 배포용 Gmail 계정 때문에 앱이 Mailpit에 로그인을 시도한 것입니다. app에 `SMTP_USER: ""`·`SMTP_PASSWORD: ""`가 있는 최신 `docker-compose.yml`인지 확인하고 `docker compose up -d app` (`1f2bb72`, 2026-10-26 시연 PC). `.env`는 고치지 않습니다 |
 | S6가 `notify_owner_email 단계 기록 없음`으로 FAIL · 같은 IP가 다음 회차 S4에 다시 쓰임 | victim 비밀번호가 틀린 것입니다(CR-03은 로그인이 **성공**해야 판단). Supabase `login_attempts`에서 그 IP의 `success`가 `false`인지 봅니다. 한/영 키·앞뒤 공백을 확인하고 같은 창에서 7.4 ②를 다시 합니다. 틀린 채로 계속 돌리면 victim 계정이 잠길 수 있습니다(실패 8회 초과) |
@@ -294,9 +325,9 @@ $env:LW_VICTIM_PASSWORD = Read-Host "victim 비밀번호"
 
 ## 9. 시나리오 자동 점검 (C3-1)
 
-시연 시나리오(S4·S5·S5b·S6·S8, S7)를 실행한 뒤 기대 결과가 DB·응답·메일에 실제로 생겼는지 확인해 PASS/FAIL을 냅니다. 스크립트는 내 PC에서 돌고(앱과 같은 `.env`로 Supabase를 **읽기만** 함), 공격은 7.3의 일회용 공격 상자로 보냅니다.
+시연 시나리오(S4·S5·S5b·S6·S7·S8·S9)를 실행한 뒤 기대 결과가 DB·응답·메일에 실제로 생겼는지 확인해 PASS/FAIL을 냅니다. 스크립트는 내 PC에서 돌고(앱과 같은 `.env`로 Supabase를 **읽기만** 함), 공격은 7.3의 일회용 공격 상자로 보냅니다.
 
-**준비** — 3장으로 단지를 켜고, 공격 상자 이미지를 최신으로 만들고(`docker compose build attacker-1`), S6까지 보려면 같은 창에서 7.4 ②로 `LW_VICTIM_PASSWORD`를 넣습니다.
+**준비** — guide57 SQL을 공용 DB에 실행했는지 확인하고(`docs/migrations/guide57_track_d_reliability.sql`), 3장으로 단지를 켜고(`docker compose up -d --build`), 공격 상자 이미지를 최신으로 만들고(`docker compose build attacker-1`), S6까지 보려면 같은 창에서 7.4 ②로 `LW_VICTIM_PASSWORD`를 넣습니다.
 
 ```powershell
 # 결과 표를 비우고 처음부터 (선택 — 지난 기록을 남기려면 건너뜀)
@@ -315,13 +346,16 @@ Get-Content docs\track-d\scenario-results.md -Tail 20 -Encoding UTF8
 | S5 SYN 폭주 | TTL L4 차단, 앱 잠금 없음, 미해결 `NET_BLOCKED` |
 | S5b 다계층 폭주 | 사건에 `CR-02`, TTL L4 차단 (7.3의 자리 잡기 방식으로 같은 IP 동시 공격) |
 | S6 의심 로그인 성공 | `login`이 `success:false`, 플레이북 `SUSPICIOUS_SUCCESS_LOGIN` 실행, 경고 메일 1통(1시간 안 재실행은 SKIPPED가 정상) |
-| S7 위조 출발지 | 이 README에 재현 명령이 없어 SKIP |
+| S7 위조 출발지 | ① 돌려 쓴 `.200~.254` 차단 없음·`GLOBAL_SYN_FLOOD` 기록, ② core 주소(`172.30.0.250`) 차단·보안 이벤트 없음, ③ `.140`은 `SPOOFABLE` TTL 차단만·앱 잠금 없음, ④ `192.0.2.50` 차단 없음·`SPOOFED_SRC` 기록, 공격 상자에서 gateway 연결 됨 |
 | S8 XFF 위조 | 위조 헤더(`1.2.3.4`)가 아니라 실제 출발지가 기록됨 |
+| S9 ICMP 폭주 | 그 IP의 `ICMP_FLOOD`(L3)·`NET_ICMP_FLOOD` 기록, 차단 행 없음, 정문 `LW_L3` DROP 누적 카운터 증가, TCP 연결은 됨 |
 
-- 실행마다 **새 출발지 IP**를 씁니다(`.111~.139` 다음 `.11~.99`). 차단·사건이 한 번이라도 남은 IP는 건너뜁니다.
-- S6만 다시 볼 때는 `.\venv\Scripts\python.exe -m scripts.net.check_s6`(IP를 하나만 씀).
+- 실행마다 **새 출발지 IP**를 씁니다(`.111~.139` 다음 `.11~.99`). 차단·사건이 한 번이라도 남은 IP는 건너뜁니다. S7·S9의 공격 상자 IP는 DB에 흔적을 남기지 않으므로 같은 실행 안에서는 따로 기억해 다시 쓰지 않습니다.
+- **PC 시계와 DB 시계가 다를 수 있습니다.** 10/29 시연 PC는 PC(·WSL 센서) 시계가 Supabase보다 약 7초 앞서 있었습니다(`network_events.observed_at - received_at`). 보안 이벤트 시각(`detected_at`)은 DB 시계라, S9는 경보가 DB에 도착한 시각(`received_at`)을 기준으로 찾고, S7의 "있으면 안 되는" 확인은 60초 여유를 둡니다. 시계 차이 확인: `select extract(epoch from (observed_at - received_at)) from network_events order by received_at desc limit 5;`
+- S6만 다시 볼 때는 `.\venv\Scripts\python.exe -m scripts.net.check_s6`(IP를 하나만 씀). S7·S9도 같은 방식(`check_s7`·`check_s9`).
 - 2026-10-26 시연 대역 PC 결과: **S4·S5·S5b·S6·S8 3회 연속 PASS, S7 SKIP** (`baad60d`, [docs/track-d/scenario-results.md](../docs/track-d/scenario-results.md)).
 - 2026-10-26 강사 피드백 반영 후(S4 판정 강화): **S4·S5·S5b·S8 3회 연속 PASS**, S6은 `LW_VICTIM_PASSWORD` 없이 돌려 SKIP, `check_s4 --with-release` PASS. fw-agent를 멈추고 돌리면 S4가 FAIL(`PENDING_APPLY`)로 바뀌는 것도 확인했습니다([guide56](../docs/beginner-guide/guide56_feedback_hardening.md)).
+- 2026-10-29 guide57 보완 후 시연 대역 PC 결과: **S4~S9 7개 모두 PASS**(S7 위조 출발지 4종·S9 ICMP 폭주 포함, 기록 초기화 뒤 1회 재확인), S5 탐지→L4 차단 1.9~2.9초([measurements.md](../docs/track-d/measurements.md)). 같은 날 첫 실행의 S9 FAIL은 PC·DB 시계 차이(약 7초)를 점검 스크립트가 잘못 비교한 것이라 스크립트를 고쳤습니다([guide57](../docs/beginner-guide/guide57_reliability_l3.md)).
 - S4 해제 후 재접속까지 볼 때: `.\venv\Scripts\python.exe -m scripts.net.run_all --with-release`(또는 `-m scripts.net.check_s4 --with-release`). 해제는 관리자 "영구 해제"와 같은 경로라 DB를 바꿉니다.
 - `lw.py`·nginx 설정을 바꾼 뒤에는 공격 상자 이미지를 다시 만들고(`docker compose build attacker-1`), gateway를 다시 띄울 때는 `docker compose up -d --force-recreate gateway sensor l4-detector fw-agent`로 **네 개를 함께** 띄웁니다. gateway만 재시작하면 그 네트워크를 함께 쓰는 셋이 앱 주소를 찾지 못합니다.
 - 시나리오를 여러 번 돌리면 L4 차단·IP 영구 잠금이 쌓입니다. 처리 작업대의 두 카드는 10줄씩 쪽으로 나뉩니다.

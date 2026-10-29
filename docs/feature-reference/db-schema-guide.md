@@ -258,7 +258,7 @@ IP로 국가/도시를 알아내주는 외부 서비스(`ip-api.com`)는 분당 
 | `source` | 글자 | 어디서 온 기록인지 — `APP`(앱이 직접 판단, 기본값) / `NET`(Track D 센서 경보를 올린 것). guide52 |
 | `layer` | 글자 (없을 수 있음) | `NET` 기록의 계층 — `L3` / `L4` / `L7`. `APP` 기록은 비어 있음 |
 
-Track D 이벤트 종류: `NET_SYN_FLOOD`·`NET_WEB_ATTACK`(HIGH), `NET_PORT_SCAN`·`NET_SCANNER_UA`·`NET_LOGIN_BURST`(MEDIUM), 그리고 정문에서 실제로 막았다는 기록 `NET_BLOCKED`(CRITICAL, 차단이 풀리면 처리 완료).
+Track D 이벤트 종류: `NET_SYN_FLOOD`·`NET_WEB_ATTACK`(HIGH), `NET_PORT_SCAN`·`NET_SCANNER_UA`·`NET_LOGIN_BURST`·`NET_ICMP_FLOOD`(MEDIUM, `NET_ICMP_FLOOD`는 layer `L3`·guide57), 그리고 정문에서 실제로 막았다는 기록 `NET_BLOCKED`(CRITICAL, 차단이 풀리면 처리 완료).
 
 ---
 
@@ -494,7 +494,7 @@ Suricata·Scapy 센서가 남긴 경보를 배달원(shipper)이 서명해 보�
 | `layer` | 글자 | `L3` / `L4` / `L7` |
 | `src_ip` | 글자 | 출발지 IP |
 | `dst_port`, `proto` | 숫자·글자 (없을 수 있음) | 목적지 포트, 프로토콜 |
-| `category` | 글자 | `SYN_FLOOD` / `PORT_SCAN` / `SCANNER_UA` / `WEB_ATTACK` / `LOGIN_BURST` / `OTHER` |
+| `category` | 글자 | `SYN_FLOOD` / `PORT_SCAN` / `SCANNER_UA` / `WEB_ATTACK` / `LOGIN_BURST` / `OTHER`, guide57부터 `ICMP_FLOOD`(L3) / `SPOOFED_SRC`(L3, 출발지가 edge 대역 밖 = 위조) / `GLOBAL_SYN_FLOOD`(L4, 출발지를 바꾸는 SYN 폭주, `src_ip`=`0.0.0.0`). 뒤 둘은 보안 이벤트로 올리지 않고 알림만 |
 | `signature_id`, `signature`, `sensor_severity` | 숫자·글자 (없을 수 있음) | 센서 규칙 번호·이름·센서 자체 등급 |
 | `packet_count` | 숫자 | 묶인 패킷 수 |
 | `window_start`, `observed_at`, `last_seen_at` | 날짜/시각 | 센서가 센 구간 시작, 처음 본 시각, 마지막으로 본 시각 |
@@ -520,6 +520,8 @@ Suricata·Scapy 센서가 남긴 경보를 배달원(shipper)이 서명해 보�
 | `requested_at`, `applied_at`, `removed_at` | 날짜/시각 | 요청·적용·해제 시각 |
 | `last_error` | 글자 (없을 수 있음) | fw-agent가 보고한 마지막 오류 |
 | `version` | 숫자 (기본 0) | 요청 번호. 차단·강화·해제 요청마다 1씩 오르고, fw-agent의 ACK에 같은 번호가 있어야 상태를 바꾼다 — 늦게 온 옛 요청의 완료 응답이 새 요청을 완료시키지 못하게(guide56) |
+| `apply_attempts` | 숫자 (기본 0) | 적용 실패(`PENDING_APPLY`→`FAILED`)를 앱이 다시 시도한 횟수. `NET_BLOCK_APPLY_MAX_RETRIES`(3)까지 10초 간격으로 다시 `PENDING_APPLY`로 돌리고, 새 차단 요청이 오면 0부터 다시 센다(guide57) |
+| `failed_at` | 날짜/시각 (없을 수 있음) | 적용 실패 시각. 재시도 간격 계산에 쓰고, 다시 시도하거나 포기하면 비운다(해제 실패에는 적지 않음, guide57) |
 
 보존: `REMOVED`·`FAILED` 줄만 **30일** 뒤 지웁니다. 지금 걸려 있는 차단은 지우지 않습니다.
 
@@ -534,7 +536,7 @@ shipper(30초)·fw-agent(10초)가 "살아 있다"를 보내면 PC(`node`)별로
 | `agent` | 글자 | `fw-agent` / `shipper` |
 | `node` | 글자 | PC 이름 (`.env`의 `LW_NODE_NAME` — A·B·C·demo) |
 | `last_seen_at` | 날짜/시각 | 마지막 신호 시각 |
-| `detail` | JSON (없을 수 있음) | 장비가 덧붙인 상태 (예: 센서 정지 여부 `stalled`, 차단 목록 크기) |
+| `detail` | JSON (없을 수 있음) | 장비가 덧붙인 상태. fw-agent: 목록 연속 실패 `poll_failures`, 차단 목록 크기 `ipset_size`, 규칙 상태 `rules_ok`·`raw_ok`·`l3_ok`, 직전 신호 뒤 버린 ICMP `icmp_dropped`. shipper: 센서 정지 `stalled`(두 파일 모두)·`stalled_sensors`(파일별), Suricata 수신·누락 `kernel_packets`·`kernel_drops`(guide57) |
 
 기본키는 (`agent`, `node`)입니다.
 

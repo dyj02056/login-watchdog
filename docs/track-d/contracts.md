@@ -45,7 +45,7 @@
 | `NET_FLOOD_REPEAT_DAYS` | `30` | B | CR-02 반복 판단 기간 |
 | `NET_AGENT_SECRET` | `""` | C | fw-agent → 앱 서명 키. 비어 있으면 agent API가 모든 요청을 401로 거부 |
 | `TRUSTED_PROXY_IPS` | `""` (쉼표 목록) | C | 이 주소에서 온 요청만 X-Forwarded-For를 믿는다. **비어 있으면 기존 동작 그대로** |
-| `NET_EDGE_SUBNET` | `""` | C | 이 PC가 맡는 공격 대역(예 `172.28.13.0/24`). 비어 있으면 필터 없음 |
+| `NET_EDGE_SUBNET` | `""` | C | 이 PC가 맡는 공격 대역(예 `172.28.13.0/24`). 비어 있으면 필터 없음. **값이 있는데 형식이 틀리면 "설정 오류"** — `/blocks`가 503을 돌려준다. 비어 있을 때는 거르지 않되 인프라 주소는 항상 뺀다(guide57, K9 ①) |
 | `NET_BLOCK_DEFAULT_TTL_SECONDS` | `3600` | C | 위조 가능 증거 L4 차단 기본 1시간 |
 | `NET_BLOCK_MAX_TTL_SECONDS` | `21600` | C | 위조 가능 증거 L4 차단 최대 6시간 |
 | `NET_BLOCK_REPEAT_DAYS` | `30` | C | TTL 2배 계산에 쓰는 과거 차단 조회 기간 |
@@ -54,6 +54,9 @@
 | `SHIPPER_STALE_SECONDS` | `120` | C | shipper가 이 시간 넘게 조용하면 "정지" |
 | `AGENT_ALERT_COOLDOWN_SECONDS` | `600` | C | 구성요소 정지 Slack 알림 쿨다운 |
 | `LW_NODE_NAME` | `""` | C | 이 앱이 어느 PC의 Track D인지(`A`·`B`·`C`·`demo`). 생존 신호를 PC별로 저장하고 화면에 이 PC 것만 보여 준다. **비어 있으면(Vercel 등) 장비 정지 감시·알림을 하지 않는다** |
+| `FW_AGENT_POLL_FAIL_ALERT_COUNT` | `15` | C | fw-agent heartbeat의 `poll_failures`가 이 값 이상이면 Slack 알림(살아 있지만 목록을 못 받는 상태, guide57) |
+| `NET_BLOCK_APPLY_MAX_RETRIES` | `3` | C | 적용 실패(`PENDING_APPLY`→`FAILED`) 행을 다시 `PENDING_APPLY`로 돌리는 최대 횟수(guide57, K9 ①) |
+| `NET_BLOCK_APPLY_RETRY_SECONDS` | `10` | C | 위 재시도 간격(초). `failed_at`에서 이만큼 지난 뒤 다시 돌린다 |
 
 **`.env`에만 있고 `config.py`에는 없는 값 (Docker Compose가 읽음, A 소구역)**
 
@@ -155,7 +158,7 @@ def verify_request(allowed_senders: set[str]) -> str | None:
 | `src_ip` | 문자열 | ✓ | `ipaddress.ip_address()` 통과. 저장 전 `normalize_ip()` |
 | `dst_port` | 정수 또는 null | | 0~65535 |
 | `proto` | 문자열 또는 null | | `TCP`, `UDP`, `ICMP` |
-| `category` | 문자열 | ✓ | `SYN_FLOOD`, `PORT_SCAN`, `SCANNER_UA`, `WEB_ATTACK`, `LOGIN_BURST`, `OTHER` |
+| `category` | 문자열 | ✓ | `SYN_FLOOD`, `PORT_SCAN`, `SCANNER_UA`, `WEB_ATTACK`, `LOGIN_BURST`, `OTHER`, `ICMP_FLOOD`, `SPOOFED_SRC`, `GLOBAL_SYN_FLOOD` (뒤 3종은 guide57) |
 | `signature_id` | 정수 | ✓ | 1 이상 |
 | `signature` | 문자열 | ✓ | 1~200자 |
 | `sensor_severity` | 정수 또는 null | | 1~3 |
@@ -177,9 +180,14 @@ def verify_request(allowed_senders: set[str]) -> str | None:
 | Suricata | sid `9000003` | `LOGIN_BURST` | L7 | 9000003 |
 | Suricata | sid `9000004` | `SCANNER_UA` | L7 | 9000004 |
 | Suricata | 위에 없고 classtype `web-application-attack` | `WEB_ATTACK` | L7 | 원래 sid |
-| Suricata | 그 외 alert | `OTHER` | L4 | 원래 sid |
+| Suricata | sid `9000005` (`rules/l3.rules`) | `ICMP_FLOOD` | L3 | 9000005 (guide57) |
+| Suricata | 그 외 alert | `OTHER` | 프로토콜이 ICMP면 **L3**, 그 밖은 L4 (guide57) | 원래 sid |
 | Scapy | SYN 비율 초과 | `SYN_FLOOD` | L4 | **9100001** |
 | Scapy | 서로 다른 포트 수 초과 | `PORT_SCAN` | L4 | **9100002** |
+| Scapy | edge 대역 밖 출발지가 edge로 들어옴 | `SPOOFED_SRC` | L3 | **9100003** (guide57) |
+| Scapy | 출발지와 무관한 전체 SYN 비율 초과 | `GLOBAL_SYN_FLOOD` | L4 | **9100004** (guide57) |
+
+> **guide57 L3 경보의 `src_ip`:** `GLOBAL_SYN_FLOOD`는 막을 출발지가 하나로 정해지지 않으므로 `0.0.0.0`(출발지 없음)을 넣는다. `SPOOFED_SRC`는 실제로 보인 가짜 주소 하나를 넣는다. 둘 다 `proto`는 `GLOBAL_SYN_FLOOD`=`TCP`, `SPOOFED_SRC`=null. 출발지가 인프라 주소이거나 `NET_EDGE_SUBNET` 밖이면 앱은 저장만 하고 보안 이벤트로 올리지 않는다(K5)
 
 **응답 (B)**
 
@@ -202,11 +210,16 @@ def verify_request(allowed_senders: set[str]) -> str | None:
 | `SCANNER_UA` | `NET_SCANNER_UA` | MEDIUM | 연결 완성 | ✓ |
 | `WEB_ATTACK` | `NET_WEB_ATTACK` | HIGH | 연결 완성 | ✓ |
 | `LOGIN_BURST` | `NET_LOGIN_BURST` | MEDIUM | 연결 완성 | ✓ |
+| `ICMP_FLOOD` | `NET_ICMP_FLOOD` | MEDIUM | 위조 가능 | ✓ (guide57). 교차 규칙에는 쓰지 않는다 |
+| `SPOOFED_SRC` | — | — | 위조 | ✕ (`network_events`에만 + Slack 알림, guide57) |
+| `GLOBAL_SYN_FLOOD` | — | — | 위조 가능 | ✕ (`network_events`에만 + Slack 알림, guide57) |
 | `OTHER` | — | — | — | ✕ (`network_events`에만) |
 | (L4 차단 실제 적용) | `NET_BLOCKED` | **CRITICAL** | — | K6 함수로만 |
 
 - NET 이벤트의 `security_events.source='NET'`, `layer`는 수집 값 그대로, `path=None`, `count=packet_count`, `action='NET_ALERT'`.
 - `NET_BLOCKED`는 `action='L4_BLOCKED'`, `layer='L4'`.
+- **출발지 거름(guide57):** `src_ip`가 인프라 주소(core `172.30.0.0/24`, edge `.1`·`.10`, 루프백·멀티캐스트·예약·미지정·링크로컬)이거나 `NET_EDGE_SUBNET`이 설정돼 있는데 그 밖이면, category와 상관없이 `network_events`에만 저장하고 보안 이벤트로 올리지 않는다. 우리 core 주소를 위조한 SYN이 사건·차단으로 이어지지 않게 하기 위해서다.
+- **L3 알림(guide57):** `ICMP_FLOOD`·`SPOOFED_SRC`·`GLOBAL_SYN_FLOOD`는 처음 저장할 때 `alert.send_network_notice(category, summary)`로 Slack에 알린다. 쿨다운 키는 출발지가 아니라 종류 단위 `slack:net:<LW_NODE_NAME>:<category>`(`AGENT_ALERT_COOLDOWN_SECONDS`).
 - `_record_event` 새 모양(B1-2):
 
 ```python
@@ -245,7 +258,8 @@ def request_block(ip: str, reason: str, evidence: str,
     """network_blocks에 '막아라'를 기록한다(실제 차단은 fw-agent). 실제로 바뀌었을 때만 True.
 
     거부(False): 허용 목록 IP(lockdown.is_ip_allowlisted), IP 형식 오류, IPv6,
-                 '/'가 들어간 대역, evidence가 'SPOOFABLE'/'CONNECTED'가 아님,
+                 '/'가 들어간 대역, 인프라 주소(guide57 — core 172.30.0.0/24, NET_EDGE_SUBNET의 .1·.10,
+                 루프백·멀티캐스트·예약·미지정·링크로컬), evidence가 'SPOOFABLE'/'CONNECTED'가 아님,
                  reason이 K12 값(NET_FLOOD·KILL_CHAIN·ADMIN_MANUAL)이 아님, ttl_seconds가 0 이하.
     TTL 계산:
       - evidence='SPOOFABLE': ttl_seconds가 None이면
@@ -343,7 +357,9 @@ ctx = {
 - `ttl_seconds` = 만료까지 **남은** 초(올림). 영구면 `null`. `PENDING_REMOVE`는 `null`.
 - `version` = 요청 번호(guide56). 차단·강화·해제 요청마다 1씩 오른다. agent는 ack에 그대로 돌려준다. guide56 실행 전 DB에서는 칸이 없다.
 - agent는 받은 시각(monotonic) + `ttl_seconds`를 "언제까지"로 기억한다. 앱이 응답하지 않는 동안 그 시각이 지난 TTL 차단은 drift 보정으로 다시 넣지 않는다(10/26 강사 피드백 2). 응답에 `blocks` 칸이 없거나 목록이 아니면 오류로 보고 마지막 상태를 유지한다.
-- **`NET_EDGE_SUBNET`이 설정돼 있으면 그 대역 안의 IP만** 돌려준다.
+- **`NET_EDGE_SUBNET`이 설정돼 있으면 그 대역 안의 IP만** 돌려준다. `NET_EDGE_SUBNET` 값이 있는데 형식이 틀리면 **`503 {"error": "misconfigured"}`** — 오타 하나로 거르지 않은 목록이 나가는 일을 막는다. agent는 오류로 보고 마지막 상태를 유지한다. 대역 설정과 상관없이 인프라 주소(K7) 행은 **항상 빼고** 돌려준다 — 우리 core 주소가 들어가면 정문이 앱 응답을 버리기 때문이다(guide57).
+- **적용 재시도(guide57):** 만료 처리 다음에, `FAILED`이면서 `failed_at`이 `NET_BLOCK_APPLY_RETRY_SECONDS` 넘게 지났고 `apply_attempts < NET_BLOCK_APPLY_MAX_RETRIES`이며 오류가 `allowlisted`·`out_of_subnet`·`infrastructure`가 아니고 만료되지 않은 행을 `PENDING_APPLY`로 되돌린다(`version`·`apply_attempts` +1). 횟수를 다 쓰면 한 번 "포기" 알림. `apply_attempts` 칸이 없는 DB에서는 건너뛴다.
+- agent는 `NET_EDGE_SUBNET`(compose가 넘김) 밖이거나 core 대역인 IP는 넣지 않고 `FAILED`로 보고한다 — 대역 밖은 `error="out_of_subnet"`, core 대역·gateway `.10`은 `error="infrastructure"`. 앱은 이 두 오류와 `allowlisted`는 다시 시도하지 않는다(guide57).
 - 응답하기 전에 **만료된 `APPLIED`/`PENDING_APPLY` 행을 `REMOVED`로 바꾸고** `net_ingest.resolve_net_blocked(ip)`를 부른다(지연 만료 처리).
 - agent 동작: `PENDING_APPLY` → `ipset add … timeout <ttl>`(영구면 timeout 없음) 후 ack `APPLIED` / `APPLIED` → 없으면 다시 추가(drift 보정) / `PENDING_REMOVE` → `ipset del` 후 ack `REMOVED`.
 
@@ -359,18 +375,20 @@ ctx = {
 |---|---|---|
 | `APPLIED` | `PENDING_APPLY` | `applied_at` 기록, `net_ingest.record_net_blocked(ip, reason)` |
 | `REMOVED` | `PENDING_REMOVE` | `removed_at` 기록, `net_ingest.resolve_net_blocked(ip)` |
-| `FAILED` | `PENDING_APPLY`, `PENDING_REMOVE` | `last_error` 기록(최대 500자) |
+| `FAILED` | `PENDING_APPLY`, `PENDING_REMOVE` | `last_error` 기록(최대 500자). `PENDING_APPLY`에서 바뀐 경우(적용 실패)는 `failed_at` 기록 + Slack 알림(`slack:block_failed:<node>:<ip>`, `KILL_CHAIN`은 CRITICAL)(guide57) |
 
 응답: `200 {"changed": true | false}`. 이전 상태가 맞지 않으면 `changed: false`(오류 아님, 멱등). 대역 밖 IP는 `400 {"error": "invalid", "field": "ip"}`.
 
 **③ `POST /api/internal/heartbeat`** (보낸이: fw-agent 또는 shipper)
 
 ```json
-{"agent": "fw-agent", "detail": {"poll_failures": 0, "ipset_size": 2}}
-{"agent": "shipper", "stalled": false, "detail": {"eve_bytes": 104857, "l4_bytes": 2048, "queue": 0, "stalled_seconds": 0}}
+{"agent": "fw-agent", "detail": {"poll_failures": 0, "ipset_size": 2, "rules_ok": true, "raw_ok": true, "l3_ok": true, "icmp_dropped": 0}}
+{"agent": "shipper", "stalled": false, "detail": {"eve_bytes": 104857, "l4_bytes": 2048, "queue": 0, "stalled_seconds": 0, "stalled_sensors": [], "kernel_packets": 5000, "kernel_drops": 0}}
 ```
 
-- shipper의 `stalled`는 `eve.json`·`l4.json`이 **둘 다** `SHIPPER_STALL_SECONDS`(기본 120초) 넘게 늘지 않을 때 `true`다(A2-3). `detail.stalled_seconds`는 두 파일이 마지막으로 늘어난 뒤 흐른 초(정수). Suricata가 60초마다 eve에 `stats`를 써서, 공격이 없는 조용한 시간에는 `true`가 되지 않는다.
+- shipper의 `stalled`는 `eve.json`·`l4.json`이 **둘 다** `SHIPPER_STALL_SECONDS`(기본 120초) 넘게 늘지 않을 때 `true`다(A2-3, 센서 전체 정지). guide57부터 파일마다 따로 멈춘 것을 `detail.stalled_sensors`(`"eve"`·`"l4"`)에 담는다 — l4-detector가 60초마다 생존 줄(`category: "HEARTBEAT"`)을 쓰므로 조용할 때도 l4.json이 늘고, 하나만 멈춰도 그 센서가 죽은 것이다. 앱은 `stalled_sensors`가 비어 있지 않으면 알린다. `kernel_packets`·`kernel_drops`는 직전 heartbeat 뒤 Suricata `stats`의 `capture.kernel_packets`·`capture.kernel_drops` 증가분이다.
+- fw-agent의 `rules_ok`는 filter INPUT의 `lw_block` DROP 규칙(없으면 차단이 전혀 안 됨), `raw_ok`는 raw PREROUTING의 `lw_block` DROP 규칙, `l3_ok`는 `LW_L3` ICMP 속도 제한 체인과 점프 규칙이 있는지다. fw-agent는 60초마다 빠진 규칙을 되살린다. `icmp_dropped`는 직전 heartbeat 뒤 `LW_L3`가 버린 패킷 수다(guide57).
+- **guide57 알림:** fw-agent `rules_ok=false` 또는 `l3_ok=false` → `slack:rules:<node>`, `poll_failures ≥ FW_AGENT_POLL_FAIL_ALERT_COUNT` → `slack:pollfail:<node>`, shipper `kernel_drops`가 `kernel_packets`의 5% 초과 → `slack:drops:<node>`. 모두 `AGENT_ALERT_COOLDOWN_SECONDS` 쿨다운. `detail.stalled_seconds`는 두 파일이 마지막으로 늘어난 뒤 흐른 초(정수). Suricata가 60초마다 eve에 `stats`를 써서, 공격이 없는 조용한 시간에는 `true`가 되지 않는다.
 
 - `agent`는 `X-LW-Sender`와 같아야 한다(다르면 400). `detail`은 JSON 객체, 직렬화 2KB 이하.
 - 보내는 주기: fw-agent **10초**, shipper **30초**. (정지 판단 기준 30초와 같으면 배지가 깜빡이므로 fw-agent는 10초. 본 계획서 2.6도 10/13에 맞췄다)
@@ -404,7 +422,7 @@ ctx = {
 }
 ```
 
-- `network_events`: 최근 50건, 최신순. 데이터는 B가 제공하는 `db.list_recent_network_events(limit=50)`. `NET_EDGE_SUBNET`이 설정돼 있으면 그 대역의 `src_ip`만 남긴다(C2-3에서 거름).
+- `network_events`: 최근 50건, 최신순. 데이터는 B가 제공하는 `db.list_recent_network_events(limit=50)`. `NET_EDGE_SUBNET`이 설정돼 있으면 그 대역의 `src_ip`만 남긴다(C2-3에서 거름). 단 `SPOOFED_SRC`·`GLOBAL_SYN_FLOOD`는 출발지가 원래 대역 밖·`0.0.0.0`이므로 거르지 않는다(guide57).
 - `agent_status`: **이 앱의 `LW_NODE_NAME`** 줄만. `LW_NODE_NAME`이 비어 있으면 빈 객체 `{}`를 돌려준다.
 - `network_blocks`: `REMOVED` 제외 전부 + 최근 24시간 `REMOVED`. `db.list_network_blocks_for_dashboard()`(C). `NET_EDGE_SUBNET`이 설정돼 있으면 그 대역의 `ip`만 남긴다(C2-3에서 거름).
 - 기존 사건 목록의 각 항목에 `"matched_rules": ["CR-01"]` 추가(B2-1이 칸을 채우고, 화면 표시는 통합 담당자의 선택 작업).
@@ -470,6 +488,8 @@ ctx = {
 | `ADMIN_MANUAL` | 사람이 직접 넣은 수동 차단. 관리자 화면에 수동 차단 기능은 없고, M1 확인 때 통합 담당자가 Supabase SQL로 한 줄 넣는다(03 점검서) |
 
 **`playbook_runs.status`**: `OK`, `FAILED`, `SKIPPED`
+
+**guide57 DB 추가** (`docs/migrations/guide57_track_d_reliability.sql`): `network_blocks.apply_attempts int not null default 0`, `network_blocks.failed_at timestamptz`, `network_events.category` 제약에 `ICMP_FLOOD`·`SPOOFED_SRC`·`GLOBAL_SYN_FLOOD` 추가.
 **`playbook_runs.trigger_ref`**: `incident:<사건 id>:<규칙 ID>` (예: `incident:12:CR-01`). 모든 교차 계층 규칙은 사건을 열거나 병합한 뒤 플레이북을 실행하므로 사건 번호가 항상 있다.
 
 ---
@@ -498,3 +518,4 @@ ctx = {
 | 2026-10-23 | K8 | C2-1 보완: `bump_session_version` 재시도를 "1회"에서 "최대 3번, 다 지면 False"로 고침(요청서·`update_user_password`와 맞춤). 의심 로그인 메일이 `FAILED`면 쿨다운을 푸는 `db.release_cooldown` 추가. `send_playbook_alert`에 선택 인자 `priority="HIGH"` 추가 — 플레이북이 `ctx["priority"]`를 넘기는 한 줄(B, `security/playbooks.py`)은 아직 반영 전 | 통합 담당자 확인 |
 | 2026-10-23 | K9 | A2-3 보완: shipper heartbeat 예시에 `detail.stalled_seconds` 추가, `stalled` 판단 기준(두 파일 모두 `SHIPPER_STALL_SECONDS` 넘게 안 늘면) 명시. 조용할 때 오판하지 않도록 Suricata eve에 60초 `stats` 출력 추가, compose가 `SHIPPER_STALL_SECONDS`를 shipper에 넘김 | 통합 담당자 확인 |
 | 2026-10-26 | K1·K7 | 문서 점검 보완: K1 `.env` 전용 값 표에 `SHIPPER_STALL_SECONDS`·`NET_INGEST_URL`·`APP_INTERNAL_URL` 추가, `LW_VICTIM_PASSWORD`는 일회용 공격 컨테이너가 쓰고 `.env.example`에 이름을 넣지 않는다고 명시. K7 거부 조건에 코드가 이미 하던 "reason이 K12 값이 아님"·"ttl_seconds ≤ 0" 추가. 10/23 K8·K9 보완분이 원본에 없던 것을 원본(02)에도 반영 | 통합 담당자 확인 |
+| 2026-10-29 | K1·K4·K5·K7·K9·K10·K11 | guide57 보완(통합 담당자 단독 진행): 인프라 주소 차단 거절(K7)·출발지 거름(K5)·`/blocks`의 인프라 주소 제외와 대역 형식 오류 시 503(K9 ①), 적용 실패 재시도와 알림(K9 ①②, 새 설정 3개 K1), fw-agent `rules_ok`·`raw_ok`·`l3_ok`·`icmp_dropped`와 shipper 파일별 `stalled_sensors`·`kernel_packets`·`kernel_drops`(K9 ③, `stalled`의 뜻은 그대로), L3 경보 3종 `ICMP_FLOOD`(9000005)·`SPOOFED_SRC`(9100003)·`GLOBAL_SYN_FLOOD`(9100004)와 `OTHER`의 프로토콜별 layer(K4·K5), 이벤트 카드 필터 예외(K10), DB 칸·제약(K11). 원본(team-plan 02)에도 같은 내용을 옮겨야 한다 | 통합 담당자 |

@@ -37,6 +37,9 @@ FALLBACK_IFACE="eth1"
 EDGE_IP="${LW_EDGE_PREFIX}.10"
 
 # HOME_NET은 gateway 한 주소만 지정하지 않고 edge·core 대역 전체를 사용한다.
+# 그래서 공격 상자(.101~.103 등)도 HOME_NET 안에 들어가, "$EXTERNAL_NET -> $HOME_NET" 모양인
+# ET Open 규칙 대부분은 이 실습망에서 울리지 않는다. 실습망에서 실제로 쓰이는 것은 local.rules이고,
+# ET Open은 실제 외부망 앞에 둘 때를 위한 것이다(10/29 점검, docs/track-d/measurements.md "센서 기준").
 HOME_NET="[${LW_EDGE_PREFIX}.0/24,172.30.0.0/24]"
 
 case "${EVE_MAX_BYTES}" in
