@@ -175,6 +175,11 @@ def _build_permanent_locks(ip_lockouts: list[dict], account_lockouts: list[dict]
 # Track D 화면 데이터 (C2-3, 계약서 K10)
 # ---------------------------------------------------------------------------
 
+# 출발지가 원래 대역 밖(위조 주소)이거나 0.0.0.0(출발지 없음)인 L3 경보(guide57). 대역으로 거르면 화면에서
+# 늘 사라지므로 거르지 않는다(계약서 K10). 공용 DB라 다른 PC의 같은 경보도 함께 보일 수 있다.
+_UNFILTERED_NET_CATEGORIES = {"SPOOFED_SRC", "GLOBAL_SYN_FLOOD"}
+
+
 def _in_edge_subnet(ip: str | None) -> bool:
     """이 PC가 맡은 공격 대역(NET_EDGE_SUBNET) 안의 IP인지 본다.
 
@@ -415,7 +420,10 @@ def api_status():
         can_manage_admins = can_manage_admins_future.result()
         # 권한이 없으면 결과를 꺼내지 않는다 — 실패했더라도 그 관리자의 화면과는 무관하다.
         admin_users = admin_users_future.result() if can_manage_admins else None
-        network_events = [e for e in net_events_future.result() if _in_edge_subnet(e.get("src_ip"))]
+        network_events = [
+            e for e in net_events_future.result()
+            if e.get("category") in _UNFILTERED_NET_CATEGORIES or _in_edge_subnet(e.get("src_ip"))
+        ]
         network_blocks = [
             _network_block_for_dashboard(b)
             for b in net_blocks_future.result()

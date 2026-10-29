@@ -23,7 +23,9 @@ _ENUMS = {
     "sensor": {"suricata", "scapy"},
     "layer": {"L3", "L4", "L7"},
     "proto": {"TCP", "UDP", "ICMP"},
-    "category": {"SYN_FLOOD", "PORT_SCAN", "SCANNER_UA", "WEB_ATTACK", "LOGIN_BURST", "OTHER"},
+    # 뒤 3종은 guide57 L3 경보(계약서 K4).
+    "category": {"SYN_FLOOD", "PORT_SCAN", "SCANNER_UA", "WEB_ATTACK", "LOGIN_BURST", "OTHER",
+                 "ICMP_FLOOD", "SPOOFED_SRC", "GLOBAL_SYN_FLOOD"},
 }
 _TIME_PATTERN = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?Z")
 
@@ -96,6 +98,11 @@ def net_events():
     row["last_seen_at"] = row["observed_at"]
     row["promoted"] = False
     if db.insert_network_event(row):
+        # L3 경보 알림(guide57)은 처음 저장할 때만 보낸다. 알림이 실패해도 경보 저장·승격은 계속한다.
+        try:
+            net_ingest.notify_network(row)
+        except Exception as error:
+            print(f"[ingest] 네트워크 경보 알림 실패: {type(error).__name__}")
         promoted = net_ingest.promote(row)
         if promoted:
             db.mark_network_event_promoted(row["event_id"])

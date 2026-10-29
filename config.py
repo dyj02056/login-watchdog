@@ -298,7 +298,8 @@ TRUSTED_PROXY_IPS = [
     value.strip() for value in os.environ.get("TRUSTED_PROXY_IPS", "").split(",") if value.strip()
 ]
 # 이 PC가 맡는 공격 대역(예: 172.28.13.0/24). 세 PC가 DB 하나를 쓰므로 차단 목록·화면을 내 대역으로 거른다.
-# 비어 있으면 거르지 않는다.
+# 비어 있으면 거르지 않는다. 형식이 틀리면 차단 목록 창구(/api/internal/blocks)가 503으로 멈춘다(guide57) —
+# 오타 하나로 거르지 않은 목록이 나가 다른 PC 대역의 차단까지 이 PC 정문에 걸리는 일을 막기 위해서다.
 NET_EDGE_SUBNET = os.environ.get("NET_EDGE_SUBNET", "").strip()
 # 위조 가능한 증거(SYN·포트 스캔)로 거는 L4 차단의 기본 시간과 상한(초). 반복되면 2배씩 늘린다.
 NET_BLOCK_DEFAULT_TTL_SECONDS = int(os.environ.get("NET_BLOCK_DEFAULT_TTL_SECONDS", 3600))
@@ -314,3 +315,10 @@ AGENT_ALERT_COOLDOWN_SECONDS = int(os.environ.get("AGENT_ALERT_COOLDOWN_SECONDS"
 # 이 앱이 어느 PC의 Track D인지(A·B·C·demo). 생존 신호를 PC별로 저장한다.
 # 비어 있으면(Vercel 등 Docker 단지가 없는 곳) 장비 정지 감시·알림을 하지 않는다.
 LW_NODE_NAME = os.environ.get("LW_NODE_NAME", "").strip()
+# fw-agent가 살아서 heartbeat는 보내는데 차단 목록을 이 횟수(2초 간격) 이상 연속으로 못 받으면 Slack으로 알린다.
+# heartbeat가 계속 오므로 "정지" 감시로는 잡히지 않는 "살아 있지만 눈먼" 상태다(guide57). 15번 = 약 30초.
+FW_AGENT_POLL_FAIL_ALERT_COUNT = int(os.environ.get("FW_AGENT_POLL_FAIL_ALERT_COUNT", 15))
+# fw-agent가 차단 적용에 실패(FAILED)한 행을 다시 PENDING_APPLY로 돌리는 최대 횟수와 간격(초)(guide57).
+# 예전에는 FAILED 행이 목록에서 빠져, 영구 차단이 일시 오류 한 번으로 조용히 걸리지 않을 수 있었다.
+NET_BLOCK_APPLY_MAX_RETRIES = int(os.environ.get("NET_BLOCK_APPLY_MAX_RETRIES", 3))
+NET_BLOCK_APPLY_RETRY_SECONDS = int(os.environ.get("NET_BLOCK_APPLY_RETRY_SECONDS", 10))

@@ -1,6 +1,6 @@
 # 56단계 — 예외 상황 보완 (10/26 강사 피드백 반영)
 
-[◀ 54단계](guide54_l4_block_agent.md) · [전체 목차](beginner-guide.md) · (55단계 관제 화면·시연은 작성 예정)
+[◀ 54단계](guide54_l4_block_agent.md) · [전체 목차](beginner-guide.md) · (55단계 관제 화면·시연은 작성 예정) · [57단계 ▶](guide57_reliability_l3.md)
 
 > 51~54단계에서 센서 경보 → 판단 → 차단 → 해제 흐름을 만들었습니다. 이 단계는 기능을 더하지 않고, **이미 만든 흐름이 예외 상황에서도 끊기지 않게** 고친 기록입니다. 2026-10-26 강사님 피드백 6개와 추가로 짚어 주신 상황 3개를 코드에서 하나씩 확인했고, 모두 실제로 재현되는 문제여서 고쳤습니다.
 > DB 변경은 [docs/migrations/guide56_track_d_hardening.sql](../migrations/guide56_track_d_hardening.sql) 한 개입니다(2026-10-26 공용 DB에 실행 완료).

@@ -28,6 +28,7 @@ __all__ = [
     "is_network_event_unpromoted",
     "list_recent_security_events_for_correlation",
     "list_recent_connected_net_events_for_login",
+    "has_recent_network_event",
 ]
 
 _PAGE = 1000
@@ -87,6 +88,20 @@ def is_network_event_unpromoted(event_id: str) -> bool:
         .eq("event_id", event_id).limit(1).execute().data
     )
     return bool(rows) and rows[0].get("promoted") is False
+
+
+def has_recent_network_event(ip: str, category: str, since_iso: str) -> bool:
+    """이 IP의 해당 category 경보가 since_iso 이후 창(window_start)에 하나라도 있는지.
+
+    shipper는 1분 창의 첫 경보를 바로 보내므로, 공격이 이어지는 동안에는 이번 분(또는 분이 막 바뀐
+    때는 지난 분) 창의 행이 항상 있다. TTL 차단이 끝나는 순간 공격이 아직 진행 중인지 판단하는 데 쓴다.
+    """
+    rows = (
+        db.get_client().table("network_events").select("event_id")
+        .eq("src_ip", ip).eq("category", category).gte("window_start", since_iso)
+        .limit(1).execute().data
+    )
+    return bool(rows)
 
 
 def resolve_net_blocked_events(ip: str) -> None:
