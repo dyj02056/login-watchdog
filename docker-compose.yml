@@ -158,6 +158,8 @@ services:
       APP_INTERNAL_URL: "http://app:5000"
       NET_AGENT_SECRET: ${NET_AGENT_SECRET}
       PERMANENT_LOCK_IP_ALLOWLIST: ${PERMANENT_LOCK_IP_ALLOWLIST}
+      # 이 PC의 edge 대역(guide57). fw-agent가 대역 밖·core·gateway 주소를 넣지 않고 거부하는 기준이다.
+      NET_EDGE_SUBNET: ${NET_EDGE_SUBNET:-}
     restart: unless-stopped
 
   attacker-1:

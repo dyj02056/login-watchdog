@@ -25,6 +25,7 @@ __all__ = [
     "list_desired_network_blocks",
     "list_expired_network_blocks",
     "list_network_blocks_for_dashboard",
+    "list_failed_apply_blocks",
 ]
 
 
@@ -115,4 +116,26 @@ def list_network_blocks_for_dashboard() -> list[dict]:
         .limit(100)
         .execute()
     )
+    return res.data or []
+
+
+def list_failed_apply_blocks() -> list[dict]:
+    """적용 재시도 후보(guide57): failed_at이 있는 FAILED 행.
+
+    failed_at은 PENDING_APPLY → FAILED(적용 실패)일 때만 적으므로, 해제 실패(PENDING_REMOVE → FAILED)는
+    여기 나오지 않는다 — 해제 실패 행은 fw-agent의 reconcile이 ipset에서 빼므로 다시 시도할 필요가 없다.
+    횟수·간격·만료·오류 종류는 호출하는 쪽(routes/internal/blocks.py)이 판단한다. guide57 SQL 실행 전
+    DB(failed_at 칸 없음)에서는 조회가 실패하므로 빈 목록을 돌려 재시도를 건너뛴다.
+    """
+    try:
+        res = (
+            db.get_client()
+            .table("network_blocks")
+            .select("*")
+            .eq("status", "FAILED")
+            .not_.is_("failed_at", "null")
+            .execute()
+        )
+    except APIError:
+        return []
     return res.data or []

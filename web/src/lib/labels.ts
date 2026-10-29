@@ -34,6 +34,10 @@ const NET_CATEGORIES: Record<string, string> = {
   WEB_ATTACK: "웹 공격",
   LOGIN_BURST: "로그인 폭주",
   OTHER: "기타",
+  // guide57 L3 경보 — 출발지를 믿을 수 없어 차단하지 않고 기록·알림만 하는 종류
+  ICMP_FLOOD: "ICMP 플러드",
+  SPOOFED_SRC: "위조 출발지",
+  GLOBAL_SYN_FLOOD: "전체 SYN 폭주",
 };
 
 export function eventTypeLabel(code: string): string {

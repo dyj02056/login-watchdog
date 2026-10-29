@@ -348,6 +348,48 @@ def send_component_alert(component: str, message: str) -> None:
     _send_slack_message(text)
 
 
+def send_block_failed_alert(ip: str, reason: str, error: str | None, gave_up: bool = False) -> None:
+    """fw-agent가 L4 차단 적용에 실패(PENDING_APPLY → FAILED)했을 때 Slack에 알린다(guide57, K9 ②).
+
+    예전에는 이 실패가 장부의 last_error에만 남아, 영구 차단(KILL_CHAIN)이 일시 오류 한 번으로
+    조용히 걸리지 않을 수 있었다. 앱이 정해진 횟수만큼 다시 시도하므로, 첫 실패와 "포기"를 구분해
+    보낸다. KILL_CHAIN은 연결이 확인된 공격자의 영구 차단이라 CRITICAL로 보낸다.
+    """
+    header = ":rotating_light: [CRITICAL]" if reason == "KILL_CHAIN" else ":warning: [HIGH]"
+    state = "재시도 횟수를 모두 써서 포기했습니다 — 직접 확인이 필요합니다" if gave_up else "앱이 잠시 뒤 다시 시도합니다"
+    text = (
+        f"{header} 로그인 워치독 L4 차단 적용 실패\n"
+        f"대상 IP: {ip} (사유 {reason})\n"
+        f"오류: {error or '-'}\n"
+        f"상태: {state}"
+    )
+    _send_slack_message(text)
+
+
+# L3 경보(guide57) 종류별 한 줄 설명 — 알림을 받은 사람이 "왜 막지 않았는지"까지 바로 알게 한다.
+_NETWORK_NOTICE_TITLES = {
+    "ICMP_FLOOD": "ICMP 폭주(L3) — 정문 커널이 출발지별 속도 제한으로 깎는 중, 주소 차단은 하지 않음",
+    "SPOOFED_SRC": "위조 출발지 패킷(L3) — edge 대역 밖 주소라 실제 발신자가 아님, 차단하지 않음",
+    "GLOBAL_SYN_FLOOD": "출발지를 바꾸는 SYN 폭주(L4) — 막을 주소가 없어 SYN cookies로 방어, 차단하지 않음",
+}
+
+
+def send_network_notice(category: str, summary: str) -> None:
+    """L3 경보(ICMP_FLOOD·SPOOFED_SRC·GLOBAL_SYN_FLOOD)를 Slack에 알린다(guide57, K5).
+
+    이 경보들은 출발지를 믿을 수 없어 차단·잠금으로 잇지 않는다. 대신 관리자 화면을 열지 않아도
+    공격 사실은 알 수 있게 알린다. 출발지가 수천 개일 수 있으므로 쿨다운은 호출하는 쪽이 출발지가
+    아니라 종류 단위(slack:net:<node>:<category>)로 잡는다.
+    """
+    title = _NETWORK_NOTICE_TITLES.get(category, category)
+    text = (
+        f":satellite: [MEDIUM] 로그인 워치독 네트워크 경보\n"
+        f"종류: {title}\n"
+        f"요약: {summary}"
+    )
+    _send_slack_message(text)
+
+
 # 단계 상태별 표시 기호 — 사람이 한 줄씩 훑어보고 성공(✓)·실패(✗)·건너뜀(–)을 바로 구분하게 한다.
 _PLAYBOOK_STEP_MARKS = {"OK": "✓", "FAILED": "✗", "SKIPPED": "–"}
 

@@ -9,8 +9,13 @@ Docker gateway 자신과 core 네트워크에서 발생한 패킷은 센서 내�
 
 출발지를 패킷마다 바꾸는 SYN Flood(hping3 --rand-source 등)는 출발지별 기준을
 넘지 않으므로, 출발지와 상관없는 "전체 SYN 비율"을 따로 센다. 이 경보는 막을
-주소가 하나로 정해지지 않아 l4.json(→ 차단)으로 보내지 않고 on_global_alert로만
-넘긴다(10/29 결정: 로그만 남김). 실제 방어는 gateway의 SYN cookies가 맡는다.
+주소가 하나로 정해지지 않아 차단으로 잇지 않고 on_global_alert로만 넘긴다. 실제 방어는
+gateway의 SYN cookies가 맡는다. guide57부터 l4_detector.py가 이 출구에 l4.json 쓰기를 연결해
+GLOBAL_SYN_FLOOD 경보(알림 전용, 계약서 K4·K5)로 앱에 보낸다.
+
+edge 대역 밖 출발지가 edge 인터페이스로 들어오면 위조된 주소다(이 PC의 edge에는 자기 대역과
+Docker 게이트웨이 .1만 붙어 있다). observe_foreign이 10초 창으로 세어 SPOOFED_SRC 경보를 만든다
+(guide57, L3). 이것도 출발지가 가짜라 차단하지 않는다.
 """
 
 from __future__ import annotations
@@ -36,6 +41,10 @@ DEFAULT_MAX_SOURCES = 50_000
 # 전체 SYN 경보 기준(초당). 출발지별 기준(100)보다 높게 둬 정상 접속이 몰릴 때 울리지 않게 한다.
 DEFAULT_GLOBAL_SYN_PER_SEC = 1000
 GLOBAL_KEY = "*"
+# 위조 출발지(edge 대역 밖) 판정 창과 기준(guide57). 위조 출발지는 한 개만 와도 이상이지만, 잘못 붙은
+# 패킷 몇 개로 알림이 울리지 않게 10초에 기본 10개 이상일 때만 경보한다.
+FOREIGN_WINDOW_SECONDS = 10.0
+DEFAULT_FOREIGN_PACKETS_10S = 10
 
 
 def log_warning(message: str) -> None:
@@ -140,6 +149,25 @@ def gateway_ip_from_prefix(
     return ipaddress.ip_address(int(network.network_address) + 10)
 
 
+def build_capture_filter(edge_prefix: str | None) -> str:
+    """Scapy가 커널에서 받아 올 패킷 조건(BPF)을 만든다(guide57).
+
+    - TCP는 gateway(.10)로 가는 것만 받는다. 출발지별 SYN·포트 수는 gateway를 노리는 패킷만 의미가 있고,
+      gateway가 내보내는 응답까지 파이썬으로 올리면 폭주 때 처리 부담만 두 배가 된다.
+    - edge 대역 밖·core 대역 밖 출발지는 프로토콜과 상관없이 받는다. 위조 출발지(SPOOFED_SRC) 판정용이며,
+      정상일 때는 거의 0건이라 부담이 없다. 커널이 미리 걸러 주므로 파이썬까지 올라오는 패킷이 적다.
+    edge 대역을 모르면 예전처럼 모든 TCP를 받는다(위조 판정은 하지 않음).
+    """
+    gateway_ip = gateway_ip_from_prefix(edge_prefix)
+    if gateway_ip is None:
+        return "tcp"
+    edge = ipaddress.ip_network(f"{gateway_ip}/24", strict=False)
+    return (
+        f"ip and ((tcp and dst host {gateway_ip}) or "
+        f"(not src net {edge} and not src net {CORE_NETWORK}))"
+    )
+
+
 def resolve_sensor_iface(
     configured: str | None,
     edge_prefix: str | None,
@@ -220,6 +248,7 @@ class L4Detector:
         global_syn_threshold_per_sec: int = DEFAULT_GLOBAL_SYN_PER_SEC,
         on_global_alert: Callable[[dict], None] = log_global_alert,
         on_warning: Callable[[str], None] = log_warning,
+        foreign_packets_threshold: int = DEFAULT_FOREIGN_PACKETS_10S,
     ) -> None:
         if syn_threshold_per_sec <= 0:
             raise ValueError(
@@ -249,6 +278,11 @@ class L4Detector:
                 "global_syn_threshold_per_sec는 1 이상이어야 합니다."
             )
 
+        if foreign_packets_threshold <= 0:
+            raise ValueError(
+                "foreign_packets_threshold는 1 이상이어야 합니다."
+            )
+
         self.syn_threshold_per_sec = syn_threshold_per_sec
         self.distinct_ports_threshold = distinct_ports_threshold
         self.window_seconds = float(window_seconds)
@@ -256,6 +290,12 @@ class L4Detector:
         self.clock = clock
 
         self.gateway_ip = gateway_ip_from_prefix(edge_prefix)
+        # 위조 출발지 판정에 쓰는 이 PC의 edge 대역. 대역을 모르면 위조 판정을 하지 않는다.
+        self.edge_network = (
+            ipaddress.ip_network(f"{self.gateway_ip}/24", strict=False)
+            if self.gateway_ip is not None
+            else None
+        )
 
         # SYN은 최근 1초의 발생 시각만 보관한다.
         self._syn_events: dict[str, deque[float]] = {}
@@ -283,6 +323,74 @@ class L4Detector:
         # 위조 출발지 SYN Flood는 출발지별 기준에 걸리지 않으므로 이 합계로만 보인다.
         self._global_syn: deque[tuple[float, str]] = deque()
         self._global_sources: Counter[str] = Counter()
+
+        # 생존 줄(guide57)에 싣는 누적 숫자. observe·observe_foreign이 받은 패킷 수다.
+        self.packets_seen = 0
+
+        # 위조 출발지 10초 고정 창(guide57). 패킷마다 시각을 보관하면 초당 수만 개의 위조 폭주에서 메모리가
+        # 커지므로 개수만 세고, 서로 다른 출발지는 max_sources까지만 담는다(넘으면 "이상"으로 표시).
+        self.foreign_packets_threshold = foreign_packets_threshold
+        self._foreign_window_start: float | None = None
+        self._foreign_count = 0
+        self._foreign_sources: set[str] = set()
+        self._foreign_last_src = ""
+
+    @property
+    def sources_tracked(self) -> int:
+        """지금 출발지별 판정에 기록 중인 출발지 수(생존 줄용)."""
+        return len(self._port_events)
+
+    @property
+    def evicted_count(self) -> int:
+        """출발지 상한 때문에 지금까지 밀어낸 출발지 수(생존 줄용)."""
+        return self._evicted_count
+
+    def is_foreign_source(self, src_ip: str) -> bool:
+        """edge 대역 밖이고 core 대역도 아닌 출발지인지 — 이 PC의 edge로 들어왔다면 위조 주소다."""
+        if self.edge_network is None:
+            return False
+        try:
+            address = ipaddress.ip_address(src_ip)
+        except ValueError:
+            return False
+        return address not in self.edge_network and address not in CORE_NETWORK
+
+    def observe_foreign(self, src_ip: str) -> list[dict]:
+        """edge 대역 밖 출발지 패킷 하나를 반영하고, 10초 창의 기준을 넘으면 SPOOFED_SRC 경보를 낸다.
+
+        창이 끝나기 전에 기준을 넘으면 바로 내보내 알림이 늦지 않게 하고, 같은 경보는 cooldown마다 한 번만
+        낸다. src_ip에는 마지막으로 본 위조 주소 하나를 싣는다(계약서 K4 — 실제 발신자가 아님).
+        """
+        now = float(self.clock())
+        self.packets_seen += 1
+        if not self.is_foreign_source(src_ip):
+            return []
+
+        if (
+            self._foreign_window_start is None
+            or now - self._foreign_window_start >= FOREIGN_WINDOW_SECONDS
+        ):
+            self._foreign_window_start = now
+            self._foreign_count = 0
+            self._foreign_sources = set()
+
+        self._foreign_count += 1
+        self._foreign_last_src = src_ip
+        if len(self._foreign_sources) < self.max_sources:
+            self._foreign_sources.add(src_ip)
+
+        if self._foreign_count < self.foreign_packets_threshold:
+            return []
+        if not self._can_emit(GLOBAL_KEY, "SPOOFED_SRC", now):
+            return []
+        self._last_emitted[(GLOBAL_KEY, "SPOOFED_SRC")] = now
+        return [{
+            "timestamp": utc_timestamp(now),
+            "src_ip": self._foreign_last_src,
+            "category": "SPOOFED_SRC",
+            "packets": self._foreign_count,
+            "distinct_sources": len(self._foreign_sources),
+        }]
 
     def _is_excluded_source(self, src_ip: str) -> bool:
         """Gateway 자신과 core 대역의 패킷인지 확인한다."""
@@ -443,6 +551,7 @@ class L4Detector:
     ) -> list[dict]:
         """TCP 패킷 하나를 반영하고 새로 발생한 경보를 반환한다."""
         now = float(self.clock())
+        self.packets_seen += 1
         self._maybe_prune(now)
 
         if self._is_excluded_source(src_ip):

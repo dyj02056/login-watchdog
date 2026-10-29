@@ -48,6 +48,7 @@
 | | 영구 잠금 | 30일 안에 두 번째 잠금이거나 CRITICAL 사건이면 자동 만료 없는 잠금으로 승격 | [33](docs/beginner-guide/guide33_permanent_lock.md) |
 | | L4 차단 (Track D) | fw-agent가 정문 ipset에 넣고 빼서 차단, 위조 가능한 증거는 시간 제한 차단만 | [54](docs/beginner-guide/guide54_l4_block_agent.md) |
 | | 예외 상황 보완 (Track D) | 위조 요청이 수집 한도를 못 쓰게, 통신 끊김 중 TTL 만료, ACK 요청 번호, 실패 단계만 재실행, L7·L4 해제 결과 분리 (10/26 강사 피드백) | [56](docs/beginner-guide/guide56_feedback_hardening.md) |
+| | 차단 신뢰성·L3 탐지 (Track D) | 인프라 주소 위조 차단 방지, 적용 실패 재시도·알림, 규칙·센서·폴링 이상 알림, ICMP·위조 출발지·전체 SYN 경보와 ICMP 속도 제한, 정문 용량, S7·S9 자동 점검 | [57](docs/beginner-guide/guide57_reliability_l3.md) |
 | | 알림 | Slack(등급 표시)과 메일 | [07](docs/beginner-guide/guide07_alert.md) |
 | **복구** | 이메일 인증 해제 | 잠긴 계정·IP를 본인 메일 인증으로 해제(본인 기기에만 예외) | [34a](docs/beginner-guide/guide34a_email_recovery.md) · [43](docs/beginner-guide/guide43_recovery_request_limit.md) |
 | | 이메일 인증·변경 보호 | 인증 링크, 비밀번호 + 새 주소 확인을 거쳐야 이메일 변경 | [40](docs/beginner-guide/guide40_email_verification.md) |
