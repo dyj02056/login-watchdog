@@ -7,7 +7,10 @@
   그래서 시작할 때 LW_EDGE_PREFIX.10 주소가 붙은 인터페이스를 찾아, 지정한 이름에 그 주소가 없으면
   그쪽으로 바꾼다. core는 탐지에서 빼므로 core를 보면 오류 없이 0건이 되기 때문이다.
 - L4_SYN_PER_SEC=100
-  Suricata sid 9000001과 비슷한 수준으로 SYN Flood를 판단한다.
+  출발지 하나가 1초에 SYN 100개 이상이면 SYN Flood로 본다. Suricata sid 9000001(5초에 100개
+  = 초당 20개)보다 5배 높다 — Suricata가 먼저 울리고, 이 측정기는 심한 폭주만 확인하는 두 번째
+  근거다. 두 경보 모두 SYN_FLOOD로 같은 NET-01 차단으로 이어지므로 기준을 낮춰 맞출 이유는 없고,
+  낮추면 정상 접속이 몰릴 때 오탐만 는다(10/29 점검, docs/track-d/measurements.md "센서 기준").
 - L4_DISTINCT_PORTS_10S=15
   정상적인 단일 서비스 접근과 여러 포트를 탐색하는 동작을 구분한다.
 - L4_OUTPUT=/var/log/suricata/l4.json
@@ -17,6 +20,12 @@
   shipper는 파일 크기 감소를 감지하고 새로 기록되는 첫 줄부터 다시 읽는다.
 - LW_EDGE_PREFIX
   gateway 자신의 .10 주소를 탐지 대상에서 제외하는 데 사용한다.
+- L4_MAX_SOURCES=50000
+  기록하는 출발지 수 상한. 위조 출발지가 끝없이 늘어도 메모리가 무한히 커지지 않게 한다.
+  상한을 넘은 새 출발지는 출발지별 판정에서 빠지고 전체 SYN 합계에만 들어간다.
+- L4_GLOBAL_SYN_PER_SEC=1000
+  출발지와 상관없는 전체 SYN 경보 기준. 출발지를 바꾸는 SYN Flood를 보기 위한 것이며,
+  막을 주소가 하나로 정해지지 않아 l4.json에는 쓰지 않고 로그(stderr)에만 남긴다.
 """
 
 from __future__ import annotations
@@ -30,6 +39,8 @@ from typing import TextIO
 from scapy.all import IP, TCP, get_if_addr, get_if_list, sniff
 
 from detector_core import (
+    DEFAULT_GLOBAL_SYN_PER_SEC,
+    DEFAULT_MAX_SOURCES,
     L4Detector,
     resolve_sensor_iface,
     truncate_output_if_oversized,
@@ -92,6 +103,14 @@ def run() -> None:
         "L4_MAX_BYTES",
         DEFAULT_MAX_OUTPUT_BYTES,
     )
+    max_sources = read_positive_int(
+        "L4_MAX_SOURCES",
+        DEFAULT_MAX_SOURCES,
+    )
+    global_syn_threshold = read_positive_int(
+        "L4_GLOBAL_SYN_PER_SEC",
+        DEFAULT_GLOBAL_SYN_PER_SEC,
+    )
     output_path = Path(
         os.environ.get("L4_OUTPUT", DEFAULT_OUTPUT)
     )
@@ -122,6 +141,8 @@ def run() -> None:
         window_seconds=DEFAULT_WINDOW_SECONDS,
         cooldown_seconds=DEFAULT_COOLDOWN_SECONDS,
         edge_prefix=edge_prefix or None,
+        max_sources=max_sources,
+        global_syn_threshold_per_sec=global_syn_threshold,
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -131,6 +152,8 @@ def run() -> None:
         f"iface={sensor_iface}, "
         f"syn_per_sec={syn_threshold}, "
         f"distinct_ports_10s={ports_threshold}, "
+        f"global_syn_per_sec={global_syn_threshold}, "
+        f"max_sources={max_sources}, "
         f"output={output_path}",
         flush=True,
     )

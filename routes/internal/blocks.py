@@ -18,7 +18,7 @@ import config
 import db
 from routes.internal import internal_bp
 from routes.internal._hmac import verify_request
-from security import net_ingest
+from security import correlate, net_ingest
 
 
 def _parse_iso(value: str | None) -> datetime | None:
@@ -54,6 +54,10 @@ def list_blocks():
         cur_status = row["status"]
         if db.update_network_block_if_status(ip, [cur_status], {"status": "REMOVED", "removed_at": now_iso}):
             net_ingest.resolve_net_blocked(ip)
+            # 공격이 아직 진행 중이면 바로 다시 막는다. 아래 2번 조회가 새 PENDING_APPLY를 같은 응답에
+            # 싣기 때문에, 다음 분의 경보를 기다리지 않아도 된다(10/29 공백 보완). 관리자 수동 차단은 제외.
+            if row.get("reason") == "NET_FLOOD":
+                correlate.reblock_on_expiry(ip)
 
     # 2. 원하는 차단 목록 조회 및 서브넷 필터링
     desired = db.list_desired_network_blocks()

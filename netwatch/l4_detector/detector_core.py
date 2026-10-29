@@ -6,14 +6,20 @@ SYN Flood는 출발지별 최근 1초 동안의 SYN 전용 패킷 수로 판단�
 
 Docker gateway 자신과 core 네트워크에서 발생한 패킷은 센서 내부
 통신이므로 탐지 대상에서 제외한다.
+
+출발지를 패킷마다 바꾸는 SYN Flood(hping3 --rand-source 등)는 출발지별 기준을
+넘지 않으므로, 출발지와 상관없는 "전체 SYN 비율"을 따로 센다. 이 경보는 막을
+주소가 하나로 정해지지 않아 l4.json(→ 차단)으로 보내지 않고 on_global_alert로만
+넘긴다(10/29 결정: 로그만 남김). 실제 방어는 gateway의 SYN cookies가 맡는다.
 """
 
 from __future__ import annotations
 
 import ipaddress
 import os
+import sys
 import time
-from collections import deque
+from collections import Counter, deque
 from datetime import datetime, timezone
 from typing import Callable, TextIO
 
@@ -21,6 +27,33 @@ from typing import Callable, TextIO
 SYN_FLAG = 0x02
 ACK_FLAG = 0x10
 SYN_WINDOW_SECONDS = 1.0
+# 모든 출발지 기록을 훑는 정리는 이 간격에 한 번만 한다. 패킷마다 하면 출발지가 수만 개일 때
+# 패킷 하나에 수만 번 계산해 측정기가 밀린다(10/29 점검). 현재 패킷의 출발지는 매번 따로 정리하므로
+# 출발지별 숫자는 정확하다.
+PRUNE_INTERVAL_SECONDS = 1.0
+# 기록하는 출발지 수 상한. 위조 출발지가 끝없이 늘어도 메모리가 무한히 커지지 않게 한다.
+DEFAULT_MAX_SOURCES = 50_000
+# 전체 SYN 경보 기준(초당). 출발지별 기준(100)보다 높게 둬 정상 접속이 몰릴 때 울리지 않게 한다.
+DEFAULT_GLOBAL_SYN_PER_SEC = 1000
+GLOBAL_KEY = "*"
+
+
+def log_warning(message: str) -> None:
+    """측정기 경고를 stderr에 한 줄 남긴다(docker compose logs l4-detector로 확인)."""
+    print(f"[WARN] {message}", file=sys.stderr, flush=True)
+
+
+def log_global_alert(event: dict) -> None:
+    """전체 SYN 경보를 로그로만 남긴다.
+
+    나중에 계약서(K4)에 전체 경보 종류가 생기면 이 함수 대신 l4.json에 쓰는 함수를
+    on_global_alert로 넘기면 된다 — 탐지 로직은 바꾸지 않아도 되게 경보 출구를 하나로 모았다.
+    """
+    log_warning(
+        f"전체 SYN 폭주 의심: 최근 1초 SYN {event['syn_per_sec']:,}개"
+        f"(기준 {event['threshold']:,}개), 출발지 {event['distinct_sources']:,}곳 — "
+        "출발지 위조 가능성이 있어 차단하지 않습니다."
+    )
 # gateway·app·shipper가 쓰는 core 대역(compose의 core 네트워크와 같아야 한다).
 # 예전 172.29.0.0/24는 Docker Desktop(WSL2) 내부 대역과 겹쳐 172.30으로 옮겼다(A0-1 보완).
 CORE_NETWORK = ipaddress.ip_network("172.30.0.0/24")
@@ -172,6 +205,10 @@ class L4Detector:
         clock: Callable[[], float] = time.time,
         *,
         edge_prefix: str | None = None,
+        max_sources: int = DEFAULT_MAX_SOURCES,
+        global_syn_threshold_per_sec: int = DEFAULT_GLOBAL_SYN_PER_SEC,
+        on_global_alert: Callable[[dict], None] = log_global_alert,
+        on_warning: Callable[[str], None] = log_warning,
     ) -> None:
         if syn_threshold_per_sec <= 0:
             raise ValueError(
@@ -193,6 +230,14 @@ class L4Detector:
                 "cooldown_seconds는 0 이상이어야 합니다."
             )
 
+        if max_sources <= 0:
+            raise ValueError("max_sources는 1 이상이어야 합니다.")
+
+        if global_syn_threshold_per_sec <= 0:
+            raise ValueError(
+                "global_syn_threshold_per_sec는 1 이상이어야 합니다."
+            )
+
         self.syn_threshold_per_sec = syn_threshold_per_sec
         self.distinct_ports_threshold = distinct_ports_threshold
         self.window_seconds = float(window_seconds)
@@ -210,6 +255,17 @@ class L4Detector:
         # 같은 출발지와 경보 종류의 반복 출력을 제한한다.
         self._last_emitted: dict[tuple[str, str], float] = {}
 
+        self.max_sources = max_sources
+        self.global_syn_threshold_per_sec = global_syn_threshold_per_sec
+        self.on_global_alert = on_global_alert
+        self.on_warning = on_warning
+        self._last_prune: float | None = None
+
+        # 출발지와 상관없이 최근 1초의 SYN을 (시각, 출발지)로 보관하고, 출발지 수는 Counter로 센다.
+        # 위조 출발지 SYN Flood는 출발지별 기준에 걸리지 않으므로 이 합계로만 보인다.
+        self._global_syn: deque[tuple[float, str]] = deque()
+        self._global_sources: Counter[str] = Counter()
+
     def _is_excluded_source(self, src_ip: str) -> bool:
         """Gateway 자신과 core 대역의 패킷인지 확인한다."""
         try:
@@ -221,6 +277,43 @@ class L4Detector:
             return True
 
         return self.gateway_ip is not None and address == self.gateway_ip
+
+    def _prune_source(self, src_ip: str, now: float) -> None:
+        """현재 패킷 출발지 한 곳의 오래된 기록만 지운다. 출발지별 숫자를 매번 정확하게 유지한다."""
+        timestamps = self._syn_events.get(src_ip)
+        if timestamps is not None:
+            syn_cutoff = now - SYN_WINDOW_SECONDS
+            while timestamps and timestamps[0] <= syn_cutoff:
+                timestamps.popleft()
+            if not timestamps:
+                del self._syn_events[src_ip]
+
+        ports = self._port_events.get(src_ip)
+        if ports is not None:
+            port_cutoff = now - self.window_seconds
+            for port in [p for p, last_seen in ports.items() if last_seen <= port_cutoff]:
+                del ports[port]
+            if not ports:
+                del self._port_events[src_ip]
+
+    def _prune_global(self, now: float) -> None:
+        """전체 SYN 기록에서 1초가 지난 것을 지운다. 앞에서부터 빼므로 패킷당 평균 O(1)이다."""
+        cutoff = now - SYN_WINDOW_SECONDS
+        while self._global_syn and self._global_syn[0][0] <= cutoff:
+            _, src_ip = self._global_syn.popleft()
+            self._global_sources[src_ip] -= 1
+            if self._global_sources[src_ip] <= 0:
+                del self._global_sources[src_ip]
+
+    def _maybe_prune(self, now: float) -> None:
+        """전체 정리는 PRUNE_INTERVAL_SECONDS에 한 번만 한다."""
+        if (
+            self._last_prune is not None
+            and now - self._last_prune < PRUNE_INTERVAL_SECONDS
+        ):
+            return
+        self._last_prune = now
+        self._prune(now)
 
     def _prune(self, now: float) -> None:
         """시간 창 밖의 기록과 오래된 cooldown 기록을 제거한다."""
@@ -268,6 +361,22 @@ class L4Detector:
 
         return now - last_emitted >= self.cooldown_seconds
 
+    def _check_global(self, now: float) -> None:
+        """전체 SYN 비율이 기준 이상이면 cooldown마다 한 번 on_global_alert로 넘긴다."""
+        syn_per_sec = len(self._global_syn)
+        if syn_per_sec < self.global_syn_threshold_per_sec:
+            return
+        if not self._can_emit(GLOBAL_KEY, "GLOBAL_SYN_FLOOD", now):
+            return
+        self._last_emitted[(GLOBAL_KEY, "GLOBAL_SYN_FLOOD")] = now
+        self.on_global_alert({
+            "timestamp": utc_timestamp(now),
+            "category": "GLOBAL_SYN_FLOOD",
+            "syn_per_sec": syn_per_sec,
+            "distinct_sources": len(self._global_sources),
+            "threshold": self.global_syn_threshold_per_sec,
+        })
+
     def _make_event(
         self,
         *,
@@ -294,7 +403,7 @@ class L4Detector:
     ) -> list[dict]:
         """TCP 패킷 하나를 반영하고 새로 발생한 경보를 반환한다."""
         now = float(self.clock())
-        self._prune(now)
+        self._maybe_prune(now)
 
         if self._is_excluded_source(src_ip):
             return []
@@ -302,10 +411,30 @@ class L4Detector:
         if not isinstance(dst_port, int) or not 0 <= dst_port <= 65535:
             return []
 
+        is_syn = has_syn_without_ack(flags)
+        if is_syn:
+            # 출발지 상한과 상관없이 전체 합계에는 항상 넣는다 — 위조 출발지 폭주를 보는 유일한 숫자다.
+            self._prune_global(now)
+            self._global_syn.append((now, src_ip))
+            self._global_sources[src_ip] += 1
+            self._check_global(now)
+
+        self._prune_source(src_ip, now)
+
+        if src_ip not in self._port_events and len(self._port_events) >= self.max_sources:
+            # 새 출발지는 기록하지 않는다. 이미 추적 중인 공격자를 밀어내면 그 공격자를 놓치기 때문이다.
+            if self._can_emit(GLOBAL_KEY, "SOURCE_LIMIT", now):
+                self._last_emitted[(GLOBAL_KEY, "SOURCE_LIMIT")] = now
+                self.on_warning(
+                    f"기록 중인 출발지가 상한 {self.max_sources:,}곳에 도달해 새 출발지는 "
+                    "출발지별 판정에서 빠집니다(전체 SYN 합계에는 포함)."
+                )
+            return []
+
         ports = self._port_events.setdefault(src_ip, {})
         ports[dst_port] = now
 
-        if has_syn_without_ack(flags):
+        if is_syn:
             timestamps = self._syn_events.setdefault(
                 src_ip,
                 deque(),

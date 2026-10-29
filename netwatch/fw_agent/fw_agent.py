@@ -162,6 +162,12 @@ class IptablesBackend:
         - "-exist": 컨테이너가 재시작돼도 기존 집합(이미 막힌 IP)을 지우지 않고 그대로 쓴다.
         - iptables는 -C(확인)로 규칙이 이미 있는지 본 뒤 없을 때만 -I로 맨 앞에 넣는다.
           재시작할 때마다 같은 규칙이 겹겹이 쌓이지 않게 하려는 것이다.
+        - raw PREROUTING에도 같은 DROP을 둔다. raw는 연결 추적(conntrack)보다 앞이라, 차단된 IP의
+          패킷마다 연결 추적 항목을 만들고 조회하는 일을 건너뛴다. INPUT에서 버린 패킷도 표에 확정되지는
+          않아 표가 차오르지는 않는다(10/29 Docker 실측: INPUT만으로 SYN 3000개를 버려도 nf_conntrack_count
+          증가 0) — 그래서 효과는 SYN Flood 때 패킷당 처리량을 줄이는 정도다.
+          INPUT 규칙은 raw 규칙이 실패하거나 지워졌을 때의 예비로 그대로 둔다. 그래서 raw 실패는
+          시작을 막지 않고 경고만 남긴다 — INPUT만으로도 차단 자체는 된다.
         """
         # 1. ipset 생성
         code, err = self.runner.run(
@@ -170,7 +176,15 @@ class IptablesBackend:
         if code != 0:
             raise RuntimeError(f"ipset create failed: {err}")
 
-        # 2. iptables 규칙 확인 및 없으면 삽입
+        # 2. raw PREROUTING 규칙(연결 추적 전 차단). INPUT 규칙보다 먼저 확인한다.
+        raw_rule = ["PREROUTING", "-m", "set", "--match-set", self.set_name, "src", "-j", "DROP"]
+        raw_chk, _ = self.runner.run(["iptables", "-t", "raw", "-C", *raw_rule])
+        if raw_chk != 0:
+            raw_ins, raw_err = self.runner.run(["iptables", "-t", "raw", "-I", raw_rule[0], "1", *raw_rule[1:]])
+            if raw_ins != 0:
+                print(f"[fw-agent] 경고: raw PREROUTING 규칙을 넣지 못해 INPUT 규칙만 씁니다: {raw_err}")
+
+        # 3. filter INPUT 규칙 확인 및 없으면 삽입
         chk_code, _ = self.runner.run(
             ["iptables", "-C", "INPUT", "-m", "set", "--match-set", self.set_name, "src", "-j", "DROP"]
         )
