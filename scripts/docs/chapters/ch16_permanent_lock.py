@@ -54,8 +54,8 @@ s2.screen("사건이 열리거나 갱신된 직후", "상관분석이 마지막 
 s2.step("① 영구 잠금 이벤트 자체는 다시 승격하지 않는다", "승격이 승격을 부르는 재귀를 막고, 설정이 켜져 있으면 그 사건을 자동으로 닫습니다.",
         fn="security/correlate.py:check_and_correlate", hl=("if event_type == lockdown.PERMANENT_LOCK_EVENT_TYPE:", "lockdown.close_incident_if_configured(incident)"),
         calls=[call("security/lockdown.py:close_incident_if_configured", "사건 자동 닫기(선택)", "기본은 꺼짐 — 관리자가 직접 '해결'을 누릅니다.")])
-s2.step("② CRITICAL 사건은 즉시 영구 잠금", "허용 목록 IP 는 건너뜁니다.",
-        fn="security/lockdown.py:consider_incident_promotion", hl=('severity = incident.get("severity_max")', 'promote_ip(ip, "SIEM_CRITICAL", "EXEMPTION", incident_id=incident.get("id"))'))
+s2.step("② CRITICAL 사건은 즉시 영구 잠금", "허용 목록 IP 는 건너뜁니다. 등급은 앱이 직접 남긴 이벤트만 센 app_severity_max 로 봅니다 — 위조될 수 있는 네트워크 경보(Track D)가 섞여 사건 등급이 올라가도 IP 를 잠그지 않게 하기 위해서입니다(guide52).",
+        fn="security/lockdown.py:consider_incident_promotion", hl=('severity = incident.get("app_severity_max")', 'promote_ip(ip, "SIEM_CRITICAL", "EXEMPTION", incident_id=incident.get("id"))'))
 s2.step("③ HIGH 사건은 관리자 승인 대기", "자동 승격 설정이 꺼져 있으면(기본) 승인 대기 표에 올리고 Slack 으로 알립니다. 가입·글·댓글 도배처럼 오탐 여지가 있는 등급이라 사람이 확인합니다.",
         fn="security/lockdown.py:consider_incident_promotion", hl=("if config.PERMANENT_LOCK_AUTO_ON_HIGH:", "alert.send_pending_approval_alert("),
         calls=[call("db.insert_pending_request", "승인 대기 요청 저장", "11단원의 AI 조기 경보 승인 표를 그대로 재사용합니다.", later="11단원")])

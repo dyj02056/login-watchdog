@@ -32,7 +32,7 @@ s1.step("③ MEDIUM — 관찰만 했다", "Web Scanning·미인증 접근·매�
         calls=[call("soar.notify_unauthorized_access", "UNAUTHORIZED_ACCESS", "MEDIUM 으로 기록합니다."),
                call("soar.notify_macro_pattern", "API_MACRO_PATTERN", "MEDIUM 으로 기록합니다.")])
 s1.step("④ 공통 기록 지점 _record_event()", "모든 조치 함수가 결국 여기를 통과합니다. 새 조치 함수를 만들 때 상관분석 호출을 빠뜨리지 않도록 한 곳으로 모았습니다.",
-        fn="security/soar/_events.py:_record_event", hl=("if username is not None:", "db.insert_security_event(event_type, severity, ip, path, count, action)"),
+        fn="security/soar/_events.py:_record_event", hl=("if username is not None:", "db.insert_security_event(event_type, severity, ip, path, count, action, **options)"),
         calls=[call("db.insert_security_event", "security_events 표에 저장", "유형·등급·IP·경로·횟수·조치를 한 줄로 저장합니다.")])
 s1.step("⑤ 상관분석 훅 자동 호출", "저장 직후 항상 상관분석(9단원)을 부릅니다. 같은 IP의 이벤트들이 하나의 공격 흐름인지 보기 위해서입니다.",
         fn="security/soar/_events.py:_record_event", hl="correlate.check_and_correlate(ip, event_type, severity)",

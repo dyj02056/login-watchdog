@@ -33,7 +33,8 @@ GET 11회를 보내 재현할 수 있습니다. [실행 조건과 알림 확인 
 
 | 스크립트 | 역할 |
 |---|---|
-| `scripts/net/run_all.py` | 시연 시나리오 S4·S5·S5b·S6·S8(S7)을 `--repeat N`번 돌려 기대 결과가 DB·응답·메일에 생겼는지 PASS/FAIL로 채점하고 `docs/track-d/scenario-results.md`에 덧붙임. 시나리오 하나만은 `check_s4.py`~`check_s8.py`. S4는 차단 적용(`APPLIED`·`applied_at`)과 실제 접속 차단(대상 IP 막힘·다른 IP 열림)까지 보고, `--with-release`를 주면 영구 해제 후 재접속까지 확인(해제는 DB를 바꿈, guide56) |
+| `scripts/net/run_all.py` | 시연 시나리오 S4·S5·S5b·S6·S7·S8·S9를 `--repeat N`번 돌려 기대 결과가 DB·응답·메일에 생겼는지 PASS/FAIL로 채점하고 `docs/track-d/scenario-results.md`에 덧붙임. 시나리오 하나만은 `check_s4.py`~`check_s9.py`(S7 위조 출발지 4종, S9 ICMP 폭주 — guide57). S4는 차단 적용(`APPLIED`·`applied_at`)과 실제 접속 차단(대상 IP 막힘·다른 IP 열림)까지 보고, `--with-release`를 주면 영구 해제 후 재접속까지 확인(해제는 DB를 바꿈, guide56) |
+| `netwatch/attacker/lw.py` (공격 상자) | 단지 안에서 공격을 흉내 낸다: `scan`·`webscan`·`brute`·`scanner-ua`·`login`·`synflood`(`--spoof-source <IP>`·`--rand-source`)·`httpflood`·`icmpflood`·`probe`. 위조 출발지는 이 PC edge 대역·`172.30.0.0/24`·`192.0.2.0/24`만 허용(응답이 실제 인터넷 주소로 나가지 않게). 사용법은 netwatch/README.md 7장 |
 | `scripts/net/measure_detect_to_block.py` | SYN 폭주를 탐지한 뒤 정문에서 L4로 막기까지 걸린 시간을 DB 시각으로 재 `docs/track-d/measurements.md`에 기록(`--scenario s5\|s5b --repeat 3`) |
 
 `bruteforce_sim.py`의 `--ip` 옵션: 로컬 환경에서는 팀원 전원이 다 같은 `127.0.0.1`로 접속하게 되어 "서로 다른 공격자 IP에서 왔다"는 상황을 재현할 수 없다. `--ip 1.2.3.4`를 주면 그 값을 `X-Forwarded-For` 헤더에 실어 보내는데, 이 헤더는 대상 서버의 `.env`에서 `TRUST_FORWARDED_FOR=true`로 켜뒀을 때만 실제 접속 IP처럼 반영된다(운영 환경 기본값인 `false`에서는 서버가 헤더를 무시하고 진짜 접속 IP를 그대로 씀 — 배포 사이트에서 이 옵션이 안전하게 아무 효과가 없는 이유).

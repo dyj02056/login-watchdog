@@ -20,13 +20,13 @@ s1 = Scenario("correlate", "사건 묶기",
 s1.screen("이벤트가 기록된 직후", "_record_event() 가 이벤트를 저장하고 나면 항상 상관분석을 부릅니다.",
           fn="security/soar/_events.py:_record_event", hl="correlate.check_and_correlate(ip, event_type, severity)")
 s1.step("① 최근 5분 안에 서로 다른 유형이 몇 개?", "같은 IP 의 최근 이벤트 유형 목록(중복 없이)을 가져옵니다. 방금 기록한 이벤트도 포함됩니다.",
-        fn="security/correlate.py:check_and_correlate", hl=("distinct_types = db.get_recent_distinct_event_types(", "if len(distinct_types) < 2:"),
+        fn="security/correlate.py:check_and_correlate", hl=("distinct_types = db.get_recent_distinct_event_types(", "if len(distinct_types) >= 2:"),
         calls=[call("db.get_recent_distinct_event_types", "최근 이벤트 유형 목록", "security_events 에서 이 IP 의 최근 N분 유형을 모아 중복을 없앱니다."),
                call(snippet=("config.py", "INCIDENT_CORRELATION_WINDOW_MINUTES =", "INCIDENT_CORRELATION_WINDOW_MINUTES ="), title="시간 창 설정 (5분)", plain="상관분석이 보는 시간 범위입니다.", label="config.py 시간 창")])
-s1.step("② 2개 미만이면 사건으로 만들지 않는다", "단발성 이벤트까지 전부 사건으로 묶으면 사건 표가 이벤트 표와 다를 바 없어집니다.",
-        fn="security/correlate.py:check_and_correlate", hl=("if len(distinct_types) < 2:", "return"))
+s1.step("② 2개 미만이면 사건으로 만들지 않는다", "단발성 이벤트까지 전부 사건으로 묶으면 사건 표가 이벤트 표와 다를 바 없어집니다. 2개 이상일 때만 아래 사건 처리로 들어가고, Track D 교차 규칙(35단원)은 유형 수와 상관없이 따로 확인합니다.",
+        fn="security/correlate.py:check_and_correlate", hl="if len(distinct_types) >= 2:")
 s1.step("③ 사건을 열거나 갱신", "이 IP 에 열린 사건이 있으면 합치고, 없으면 새로 엽니다.",
-        fn="security/correlate.py:check_and_correlate", hl="incident = db.record_incident(ip, distinct_types, severity)",
+        fn="security/correlate.py:check_and_correlate", hl=("if source == \"APP\":", "incident = db.record_incident(ip, distinct_types, severity, source=source)"),
         calls=[call("db.record_incident", "사건 열기 / 병합", "열린 사건을 찾아 병합하거나 새 사건을 만듭니다.",
                     then=[call("db.get_open_incident", "열린 사건 찾기", "이 IP 의 OPEN 사건 한 건을 가져옵니다.")])])
 s1.step("④ 오래 조용했던 사건은 IDLE 로 옮기고 새로 연다", "마지막 이벤트로부터 30분 넘게 조용했던 사건에 새 공격을 억지로 합치지 않습니다. 이미 알림이 나간 옛 사건이 새 공격의 알림을 삼키는 일을 막기 위해서입니다.",

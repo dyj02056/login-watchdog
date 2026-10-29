@@ -1,7 +1,7 @@
 # ============================================================================
 # pages.yml — 코드 흐름도(.html)를 GitHub Pages 로 배포해 누구나 링크로 볼 수 있게 한다
 #
-# 올리는 것: docs/feature-reference/02-layer-order/ 안의 .html 파일(목차 index.html + 32개 단원 흐름도)
+# 올리는 것: docs/feature-reference/02-layer-order/ 안의 .html 파일(목차 index.html + 40개 단원 흐름도)
 # 올리지 않는 것: 같은 폴더의 설명 문서(.md) — 흐름도 위쪽의 "설명 문서 보기" 링크만
 #                GitHub 저장소의 해당 .md 주소로 바꿔서 연결한다(저장소의 원본 파일은 건드리지 않는다).
 # 함께 올리는 것: docs/track-d/flowchart-guide.html(Track D 순서도 그림 해설) — 공유하기 쉬운 짧은 이름

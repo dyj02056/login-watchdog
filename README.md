@@ -18,10 +18,10 @@
 |---|---|
 | **막는 공격** | 브루트포스·패스워드 스프레이·분산 브루트포스, 가입·글·댓글 도배, 웹 스캐닝, 매크로/봇, HTTP 플러딩, SYN Flood·포트 스캔 |
 | **판단 방식** | 위험등급 4단계(CRITICAL/HIGH/MEDIUM/LOW), SIEM 상관분석(사건으로 묶기), 교차 규칙 NET-01·CR-01~03, LLM 조기 경보 |
-| **대응** | IP/계정 임시 잠금 → 반복 시 영구 잠금, SOAR 플레이북, 정문에서 L4 차단(탐지→차단 중앙값 약 2.6~3.2초), Slack·메일 알림 |
+| **대응** | IP/계정 임시 잠금 → 반복 시 영구 잠금, SOAR 플레이북, 정문에서 L4 차단(탐지→차단 2~3초대, 10/29 S5 중앙값 2.7초), L3 경보(ICMP·위조 출발지)는 주소 차단 없이 알림·속도 제한, Slack·메일 알림 |
 | **복구** | 이메일 인증으로 본인 잠금 해제, 비밀번호 찾기·변경, 관리자 해제(역할별 권한) |
 | **관제** | Next.js 관제 보드 3개(위협 현황·공격 상세·처리 작업대), RBAC 3역할 |
-| **규모** | Supabase 표 35개 · pytest 1,325개 통과 · 시연 시나리오 S4·S5·S5b·S8 3회 연속 PASS — S4는 차단 적용(`APPLIED`)과 실제 접속 차단까지 확인 (2026-10-26 기준) |
+| **규모** | Supabase 표 35개 · pytest 1,484개 통과 · 시연 시나리오 S4~S9 7개 모두 PASS(S7 위조 출발지·S9 ICMP 폭주 포함) — S4는 차단 적용(`APPLIED`)과 실제 접속 차단까지 확인 (2026-10-29 기준) |
 
 ## 구조
 
@@ -118,9 +118,9 @@ python app.py          # http://localhost:5000
 pytest tests/ -q
 ```
 
-- **단위 테스트**: 실제 Supabase에 접속하지 않고 monkeypatch로 판정 로직만 검증합니다. 1,325개가 통과합니다(Track D는 `tests/track_d/`).
+- **단위 테스트**: 실제 Supabase에 접속하지 않고 monkeypatch로 판정 로직만 검증합니다. 1,484개가 통과합니다(Track D는 `tests/track_d/`).
 - **공격 시뮬레이터**: `scripts/simulation/{critical,high,medium}/`, 일괄 점검은 `scripts/demo/check_simulations.py`
-- **Track D 시나리오 채점**: `scripts/net/run_all.py`(S4 해제 후 재접속까지 보려면 `--with-release`), 측정 결과는 [measurements.md](docs/track-d/measurements.md)와 [scenario-results.md](docs/track-d/scenario-results.md)
+- **Track D 시나리오 채점**: `scripts/net/run_all.py`가 S4~S9를 채점합니다(S4 해제 후 재접속까지 보려면 `--with-release`), 측정 결과는 [measurements.md](docs/track-d/measurements.md)와 [scenario-results.md](docs/track-d/scenario-results.md)
 
 스크립트별 옵션과 사용 예는 **[docs/scripts.md](docs/scripts.md)** 에 있습니다.
 
@@ -153,7 +153,7 @@ login-watchdog/
 | 기능을 자세히 알고 싶은 분 | [docs/features.md](docs/features.md) |
 | 직접 실행해 보려는 분 | [docs/setup.md](docs/setup.md) → Track D는 [netwatch/README.md](netwatch/README.md) |
 | 코드가 어떤 순서로 실행되는지 따라가려는 분 | [기능 순서](docs/feature-reference/01-feature-order.md) · [계층 순서](docs/feature-reference/02-layer-order.md) · [클릭형 흐름도](https://dyj02056.github.io/login-watchdog/) |
-| 구현 과정을 처음부터 배우려는 분 | [단계별 해설서](docs/beginner-guide/beginner-guide.md) (guide01~54·56, 51~54·56이 Track D, 55는 작성 예정) |
+| 구현 과정을 처음부터 배우려는 분 | [단계별 해설서](docs/beginner-guide/beginner-guide.md) (guide01~54·56·57, 51~54·56·57이 Track D, 55는 작성 예정) |
 | DB 표를 보려는 분 | [db-schema-guide.md](docs/feature-reference/db-schema-guide.md) · [ERD.svg](docs/feature-reference/ERD.svg) (ERD에는 Track D 표가 아직 없음) |
 | Track D와 연동하려는 분 | [contracts.md](docs/track-d/contracts.md) (함수·주소·데이터 모양의 기준) |
 | 화면을 고치려는 분 | [PRODUCT.md](PRODUCT.md) (디자인 원칙) · [web/README.md](web/README.md) (빌드) |
@@ -165,6 +165,7 @@ login-watchdog/
 - **IP 단위 잠금**: 같은 공유 IP나 IPv6 /64 대역의 사용자는 함께 잠깁니다.
 - **`TRUST_FORWARDED_FOR`는 데모 전용**: 켜 두면 헤더로 IP를 속여 잠금을 우회하거나 남의 IP를 잠글 수 있습니다.
 - **L3/L4 대응은 로컬 Docker 단지에서만** 동작합니다. Vercel 배포에서는 L7 방어만 동작합니다.
+- **위조될 수 있는 증거로는 주소를 영구로 막지 않습니다**: SYN·포트 스캔은 시간 제한 L4 차단까지, L3 경보(ICMP 폭주·위조 출발지·출발지를 바꾸는 SYN 폭주)는 기록·알림과 ICMP 속도 제한까지만 합니다. 우리 인프라 주소(core·gateway)는 어떤 경보로도 막지 않습니다.
 - **대시보드는 실시간이 아니라 폴링**(기본 5초)이고, 자동 잠금 해제는 다음 요청이 올 때 처리됩니다.
 - **`web/`을 고치면 빌드 결과(`spa/`, `public/_next/`)도 함께 커밋**해야 배포에 반영됩니다.
 

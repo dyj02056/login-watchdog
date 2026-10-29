@@ -14,7 +14,7 @@ login-watchdog/
 │   ├── correlate.py               #   같은 IP의 서로 다른 이벤트를 사건으로 묶기 (SIEM) + Track D 교차 규칙 NET-01·CR-01~03
 │   ├── lockdown.py                #   영구 잠금 승격·해제·이메일 복구 반영 (해제 시 L4 차단도 해제 요청)
 │   ├── net_ingest.py              #   Track D: 네트워크 경보 → 보안 이벤트 승격, NET_BLOCKED 기록·해결
-│   ├── netblock.py                #   Track D: L4 차단·해제 요청을 network_blocks 장부에 기록(TTL 계산, 허용 목록 거부)
+│   ├── netblock.py                #   Track D: L4 차단·해제 요청을 network_blocks 장부에 기록(TTL 계산, 허용 목록·인프라 주소 거부)
 │   ├── playbooks.py               #   Track D: 규칙별 대응 절차(플레이북) 실행·단계 기록
 │   └── soar/                      #   판정 결과를 실제 조치로 실행 (SOAR) — 함수는 __init__.py가 재내보내기
 │       ├── lockouts.py            #     enforce_*(잠금 집행), try_release_expired_*/manual_release_*(해제)
@@ -82,12 +82,12 @@ login-watchdog/
 │   ├── agent_heartbeats.py        #   Track D: agent_heartbeats (장비 생존 신호), notification_cooldowns (알림 쿨다운)
 │   └── playbook_runs.py           #   Track D: playbook_runs (플레이북 단계 기록)
 ├── netwatch/                      # Track D Docker 단지 구성품 — 실행 안내는 netwatch/README.md
-│   ├── nginx/                     #   정문(gateway) 설정 — X-Forwarded-For를 실제 출발지로 덮어씀, 바깥에서 /api/internal/은 404
-│   ├── suricata/                  #   센서(시그니처 IDS) 설정·우리 규칙(local.rules)
-│   ├── l4_detector/               #   Scapy L4 측정기(SYN 비율·포트 수)
+│   ├── nginx/                     #   정문(gateway) 설정 — X-Forwarded-For를 실제 출발지로 덮어씀, 바깥에서 /api/internal/은 404, IP별·전체 동시 연결 제한
+│   ├── suricata/                  #   센서(시그니처 IDS) 설정·우리 규칙(local.rules = L4·L7, l3.rules = ICMP 폭주)
+│   ├── l4_detector/               #   Scapy L4 측정기(SYN 비율·포트 수, 위조 출발지·전체 SYN 폭주, 60초 생존 줄)
 │   ├── shipper/                   #   센서 기록을 서명해 앱으로 보내는 배달원
-│   ├── fw_agent/                  #   차단 목록을 받아 ipset에 넣고 빼는 차단 프로그램
-│   └── attacker/                  #   연습용 공격 상자(lw.py: scan·webscan·brute·scanner-ua·login·synflood·httpflood)
+│   ├── fw_agent/                  #   차단 목록을 받아 ipset에 넣고 빼는 차단 프로그램 + ICMP 속도 제한(LW_L3)·규칙 되살리기
+│   └── attacker/                  #   연습용 공격 상자(lw.py: scan·webscan·brute·scanner-ua·login·synflood(위조 출발지 옵션)·httpflood·icmpflood·probe)
 ├── docker-compose.yml, Dockerfile # Track D 단지 정의(edge·core·egress 네트워크, 서비스 7개 + 공격 상자) / 앱 컨테이너(gunicorn)
 ├── web/                           # Next.js(React, TypeScript) 화면 소스 — src/app(화면 주소), src/components, src/lib(api·폴링), src/styles. `npm run build`가 spa/·public/_next/를 만든다 (web/README.md, guide48)
 ├── spa/                           # Next.js 빌드 결과 HTML(화면 껍데기) — Flask가 helpers/spa.py로 서빙, 저장소에 커밋
@@ -99,9 +99,9 @@ login-watchdog/
 │   ├── simulation/                #   공격 시뮬레이터: critical/(브루트포스·분산·관리자·영구 잠금·사건화) · high/(도배·HTTP 플러딩·복구 폭주) · medium/(웹 스캐닝·허니팟·매크로 등), _sim_common.py(공용 부품)
 │   ├── management/                #   운영 도구: unlock_ip/unlock_account, create_admin, daily_report, tune_thresholds, delete_security_events, send_test_mail
 │   ├── demo/                      #   generate_demo_logs.py(7일치 샘플 로그 생성) + demo_server.py(그 로그로 화면 확인) + load_demo_to_supabase.py(선택: 실제 DB 적재), check_simulations.py + memory_supabase.py(시뮬레이션 일괄 점검)
-│   └── net/                       #   Track D 점검: run_all.py·check_s*.py(시나리오 채점), measure_detect_to_block.py(탐지→차단 시간)
+│   └── net/                       #   Track D 점검: run_all.py·check_s4~s9.py(시나리오 채점), measure_detect_to_block.py(탐지→차단 시간)
 ├── docs/schema.sql                # Supabase 테이블 정의
-├── docs/migrations/               # 기존 DB에 추가로 실행할 SQL (guide33 영구 잠금, guide35 비밀번호 변경, guide38 관리자 계정 잠금, guide40 이메일 인증, guide44 로그 자동 정리, guide47 일별 요약, guide52 Track D 표·칸, guide53 Track D 보존, guide56 Track D 예외 상황 보완)
+├── docs/migrations/               # 기존 DB에 추가로 실행할 SQL (guide33 영구 잠금, guide35 비밀번호 변경, guide38 관리자 계정 잠금, guide40 이메일 인증, guide44 로그 자동 정리, guide47 일별 요약, guide52 Track D 표·칸, guide53 Track D 보존, guide56 Track D 예외 상황 보완, guide57 Track D 신뢰성·L3)
 ├── docs/track-d/                  # Track D 연동 계약서(contracts.md), 탐지→차단 측정 결과, 시나리오 점검 결과, 순서도 해설
 ├── .github/workflows/             # tests.yml(push/PR마다 pytest + Next.js 타입 검사·빌드 결과 일치 확인 + Suricata 규칙 검사), supabase-keep-alive.yml(무료 Supabase가 멈추지 않게 매일 호출), pages.yml(순서도 해설 GitHub Pages)
 ├── vercel.json                    # Vercel 설정 — spa/ 포함, _next 정적 파일 장기 캐시

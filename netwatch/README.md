@@ -355,6 +355,7 @@ Get-Content docs\track-d\scenario-results.md -Tail 20 -Encoding UTF8
 - S6만 다시 볼 때는 `.\venv\Scripts\python.exe -m scripts.net.check_s6`(IP를 하나만 씀). S7·S9도 같은 방식(`check_s7`·`check_s9`).
 - 2026-10-26 시연 대역 PC 결과: **S4·S5·S5b·S6·S8 3회 연속 PASS, S7 SKIP** (`baad60d`, [docs/track-d/scenario-results.md](../docs/track-d/scenario-results.md)).
 - 2026-10-26 강사 피드백 반영 후(S4 판정 강화): **S4·S5·S5b·S8 3회 연속 PASS**, S6은 `LW_VICTIM_PASSWORD` 없이 돌려 SKIP, `check_s4 --with-release` PASS. fw-agent를 멈추고 돌리면 S4가 FAIL(`PENDING_APPLY`)로 바뀌는 것도 확인했습니다([guide56](../docs/beginner-guide/guide56_feedback_hardening.md)).
+- 2026-10-29 guide57 보완 후 시연 대역 PC 결과: **S4~S9 7개 모두 PASS**(S7 위조 출발지 4종·S9 ICMP 폭주 포함, 기록 초기화 뒤 1회 재확인), S5 탐지→L4 차단 1.9~2.9초([measurements.md](../docs/track-d/measurements.md)). 같은 날 첫 실행의 S9 FAIL은 PC·DB 시계 차이(약 7초)를 점검 스크립트가 잘못 비교한 것이라 스크립트를 고쳤습니다([guide57](../docs/beginner-guide/guide57_reliability_l3.md)).
 - S4 해제 후 재접속까지 볼 때: `.\venv\Scripts\python.exe -m scripts.net.run_all --with-release`(또는 `-m scripts.net.check_s4 --with-release`). 해제는 관리자 "영구 해제"와 같은 경로라 DB를 바꿉니다.
 - `lw.py`·nginx 설정을 바꾼 뒤에는 공격 상자 이미지를 다시 만들고(`docker compose build attacker-1`), gateway를 다시 띄울 때는 `docker compose up -d --force-recreate gateway sensor l4-detector fw-agent`로 **네 개를 함께** 띄웁니다. gateway만 재시작하면 그 네트워크를 함께 쓰는 셋이 앱 주소를 찾지 못합니다.
 - 시나리오를 여러 번 돌리면 L4 차단·IP 영구 잠금이 쌓입니다. 처리 작업대의 두 카드는 10줄씩 쪽으로 나뉩니다.
