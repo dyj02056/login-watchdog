@@ -1,5 +1,5 @@
 // core.test.mjs — 미니 창의 계산(lib/core.js)을 크롬 없이 검사한다.
-// 실행: node --test extension/test/
+// 실행: node --test extension/test/core.test.mjs extension/test/monitor.test.mjs
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -10,7 +10,8 @@ import {
   mergeEvents,
   minuteBuckets,
   normalizeBaseUrl,
-  threatLevel,
+  recentCounts,
+  recentLevel,
 } from "../lib/core.js";
 
 test("등급 비교: 높은 쪽, 비어 있으면 다른 쪽", () => {
@@ -21,24 +22,33 @@ test("등급 비교: 높은 쪽, 비어 있으면 다른 쪽", () => {
   assert.equal(maxSeverity(null, null), null);
 });
 
-test("위협 등급: 미해결이 없으면 정상", () => {
-  assert.equal(threatLevel(null), "NORMAL");
-  assert.equal(threatLevel({ kpi: { unresolved_critical: 0 }, unresolved: [] }), "NORMAL");
+const NOW = Date.parse("2026-11-02T10:00:00+09:00");
+const at = (hhmm, day = "02") => `2026-11-${day}T${hhmm}:00+09:00`;
+
+test("위협 등급: 최근 30분에 공격이 없으면 정상(어젯밤 공격은 보지 않음)", () => {
+  assert.equal(recentLevel([], NOW), "NORMAL");
+  assert.equal(recentLevel([{ severity: "CRITICAL", detected_at: at("22:30", "01") }], NOW), "NORMAL");
+  assert.equal(recentLevel([{ severity: "CRITICAL", detected_at: at("09:29") }], NOW), "NORMAL"); // 31분 전
 });
 
-test("위협 등급: 서버가 등급순으로 준 미해결 목록의 첫 줄", () => {
-  const stats = { kpi: { unresolved_critical: 0 }, unresolved: [{ severity: "HIGH" }, { severity: "MEDIUM" }] };
-  assert.equal(threatLevel(stats), "HIGH");
+test("위협 등급: 최근 30분 공격 중 가장 높은 등급", () => {
+  const events = [
+    { severity: "MEDIUM", detected_at: at("09:55") },
+    { severity: "HIGH", detected_at: at("09:40") },
+    { severity: "CRITICAL", detected_at: at("22:30", "01") },
+  ];
+  assert.equal(recentLevel(events, NOW), "HIGH");
 });
 
-test("위협 등급: 미해결 CRITICAL이 하나라도 있으면 CRITICAL", () => {
-  assert.equal(threatLevel({ kpi: { unresolved_critical: 1 }, unresolved: [{ severity: "MEDIUM" }] }), "CRITICAL");
-});
-
-test("위협 등급: 집계 뒤에 들어온 새 공격도 반영", () => {
-  const stats = { kpi: { unresolved_critical: 0 }, unresolved: [{ severity: "MEDIUM" }] };
-  assert.equal(threatLevel(stats, [{ severity: "CRITICAL" }]), "CRITICAL");
-  assert.equal(threatLevel(null, [{ severity: "MEDIUM" }]), "MEDIUM");
+test("최근 30분 공격 수를 등급별로 센다", () => {
+  const events = [
+    { severity: "CRITICAL", detected_at: at("09:59") },
+    { severity: "HIGH", detected_at: at("09:50") },
+    { severity: "HIGH", detected_at: at("09:45") },
+    { severity: "MEDIUM", detected_at: at("09:31") },
+    { severity: "CRITICAL", detected_at: at("09:00") }, // 범위 밖
+  ];
+  assert.deepEqual(recentCounts(events, NOW), { total: 4, CRITICAL: 1, HIGH: 2, MEDIUM: 1 });
 });
 
 test("이벤트 합치기: id 중복 제거, 최신순, ip 이름 통일", () => {
@@ -97,13 +107,6 @@ test("최근 30분 공격만 고른다(어젯밤 공격은 목록에서 뺀다)"
     { id: 1, detected_at: "2026-11-01T22:30:00+09:00" },
   ];
   assert.deepEqual(recentEvents(events, now, 30).map((e) => e.id), [3]);
-});
-
-test("시각 표시: 오늘은 시:분, 다른 날은 월/일까지", async () => {
-  const { shortWhen } = await import("../lib/core.js");
-  const now = new Date(2026, 10, 2, 10, 0).getTime();
-  assert.equal(shortWhen(new Date(2026, 10, 2, 9, 5).toISOString(), now), "09:05");
-  assert.equal(shortWhen(new Date(2026, 10, 1, 22, 30).toISOString(), now), "11/01 22:30");
 });
 
 test("네트워크 이벤트 이름도 한국어로", async () => {

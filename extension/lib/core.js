@@ -61,18 +61,29 @@ export function maxSeverity(a, b) {
   return (SEVERITY_RANK[a] ?? 0) >= (SEVERITY_RANK[b] ?? 0) ? (a ?? b ?? null) : b;
 }
 
+// 미니 창이 "지금"으로 보는 시간 범위(분). 등급·건수·그래프·목록이 모두 이 범위만 본다.
+export const WINDOW_MINUTES = 30;
+
 /**
- * 지금 보여줄 위협 등급("NORMAL"/"MEDIUM"/"HIGH"/"CRITICAL").
+ * 지금 보여줄 위협 등급("NORMAL"/"MEDIUM"/"HIGH"/"CRITICAL") = 최근 `minutes`분 공격 중 가장 높은 등급.
  *
- * 기준은 /api/stats의 미해결 목록이다 — 서버가 등급 높은 순으로 정렬해 주므로(db/stats.py)
- * 첫 줄이 가장 위험한 등급이다. 집계를 받은 뒤에 새로 들어온 공격(freshEvents)은 아직
- * 미해결 목록에 없으니 함께 본다. 대시보드에서 다 처리(해결)하면 다시 "정상"이 된다.
+ * 처리 안 된 예전 공격(미해결)은 보지 않는다 — 미니 창은 "지금 공격이 들어오는가"만 알려 주고,
+ * 예전 공격의 처리는 관리자 대시보드에서 한다. 공격이 멈추고 30분이 지나면 저절로 "정상"이 된다.
  */
-export function threatLevel(stats, freshEvents = []) {
-  let level = stats?.unresolved?.[0]?.severity ?? null;
-  if ((stats?.kpi?.unresolved_critical ?? 0) > 0) level = "CRITICAL";
-  for (const event of freshEvents) level = maxSeverity(level, event.severity);
+export function recentLevel(events, now = Date.now(), minutes = WINDOW_MINUTES) {
+  let level = null;
+  for (const event of recentEvents(events, now, minutes)) level = maxSeverity(level, event.severity);
   return level && SEVERITY_RANK[level] ? level : "NORMAL";
+}
+
+/** 최근 `minutes`분 공격을 등급별로 센다. { total, CRITICAL, HIGH, MEDIUM } */
+export function recentCounts(events, now = Date.now(), minutes = WINDOW_MINUTES) {
+  const counts = { total: 0, CRITICAL: 0, HIGH: 0, MEDIUM: 0 };
+  for (const event of recentEvents(events, now, minutes)) {
+    counts.total += 1;
+    if (event.severity in counts) counts[event.severity] += 1;
+  }
+  return counts;
 }
 
 /** /api/stats의 이벤트(ip)와 /api/pip/check의 이벤트(ip_address)를 같은 모양으로 맞춘다. */
@@ -97,7 +108,7 @@ export function mergeEvents(known, incoming, keep = 60) {
 /**
  * 최근 `minutes`분을 1분 칸으로 나눠 탐지된 공격 수를 센다. 그래프의 막대 하나가 1분이다.
  * 각 칸은 { count, severity(그 1분 동안 가장 높은 등급) }이고, 맨 오른쪽 칸이 지금이다.
- * 30분 안에 공격이 서버가 주는 최근 30건보다 많이 몰리면 앞쪽 칸이 실제보다 낮게 나온다.
+ * 창을 열기 전에 30분 안에 공격이 서버가 주는 최근 30건보다 많이 몰렸다면 앞쪽 칸이 실제보다 낮게 나온다.
  */
 export function minuteBuckets(events, now = Date.now(), minutes = 30) {
   const buckets = Array.from({ length: minutes }, () => ({ count: 0, severity: null }));
@@ -120,16 +131,6 @@ export function recentEvents(events, now = Date.now(), minutes = 30) {
     const t = Date.parse(e.detected_at);
     return !Number.isNaN(t) && t >= since;
   });
-}
-
-/** 오늘이면 "22:30", 다른 날이면 "11/01 22:30"처럼 짧게 보여준다. */
-export function shortWhen(value, now = Date.now()) {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "-";
-  const hm = clock(d).slice(0, 5);
-  if (d.toDateString() === new Date(now).toDateString()) return hm;
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${hm}`;
 }
 
 /** 새 이벤트 중 윈도우 알림을 띄울 것(HIGH 이상)만 고른다. MEDIUM은 화면·배지로만 알린다. */

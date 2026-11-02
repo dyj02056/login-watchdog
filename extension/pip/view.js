@@ -5,9 +5,7 @@
 // HTML 대신 DOM을 하나씩 만들고 이벤트도 addEventListener로 붙인다. 서버에서 온 값(IP 등)은
 // textContent로만 넣어서 혹시 이상한 글자가 와도 화면 코드로 실행되지 않게 한다.
 
-import { LEVELS, clock, eventTypeLabel, minuteBuckets, recentEvents, shortWhen } from "../lib/core.js";
-
-const CHART_MINUTES = 30;
+import { LEVELS, WINDOW_MINUTES, clock, eventTypeLabel, minuteBuckets, recentCounts, recentEvents } from "../lib/core.js";
 
 function h(doc, tag, attrs = {}, children = []) {
   const el = doc.createElement(tag);
@@ -71,17 +69,18 @@ export function createView(doc, handlers) {
   // ── 관제 화면 ────────────────────────────────────────────────────────
   const statusTitle = h(doc, "strong", { class: "status-title" });
   const statusSub = h(doc, "span", { class: "status-sub" });
-  const kpiUnresolved = h(doc, "b", { text: "0" });
+  // 숫자는 모두 최근 30분 기준이다(미해결·오늘 합계는 관리자 대시보드에서 본다).
+  const kpiTotal = h(doc, "b", { text: "0" });
   const kpiCritical = h(doc, "b", { text: "0" });
-  const kpiToday = h(doc, "b", { text: "0" });
+  const kpiHigh = h(doc, "b", { text: "0" });
   const canvas = h(doc, "canvas", { class: "chart", width: "312", height: "64" });
   const list = h(doc, "ul", { class: "events" });
   const watch = h(doc, "section", { class: "watch" }, [
     h(doc, "div", { class: "status" }, [h(doc, "span", { class: "status-light" }), h(doc, "div", {}, [statusTitle, statusSub])]),
     h(doc, "div", { class: "kpis" }, [
-      h(doc, "span", {}, [doc.createTextNode("미해결 "), kpiUnresolved]),
+      h(doc, "span", {}, [doc.createTextNode("30분 내 공격 "), kpiTotal]),
       h(doc, "span", {}, [doc.createTextNode("CRITICAL "), kpiCritical]),
-      h(doc, "span", {}, [doc.createTextNode("오늘 탐지 "), kpiToday]),
+      h(doc, "span", {}, [doc.createTextNode("HIGH "), kpiHigh]),
     ]),
     h(doc, "div", { class: "chart-head" }, [h(doc, "span", { text: "최근 30분 탐지 (1분 단위)" }), h(doc, "span", { class: "muted", text: "지금 →" })]),
     canvas,
@@ -112,9 +111,9 @@ export function createView(doc, handlers) {
     const ctx = canvas.getContext("2d");
     const { width, height } = canvas;
     ctx.clearRect(0, 0, width, height);
-    const buckets = minuteBuckets(events, Date.now(), CHART_MINUTES);
+    const buckets = minuteBuckets(events, Date.now(), WINDOW_MINUTES);
     const peak = Math.max(3, ...buckets.map((b) => b.count));
-    const slot = width / CHART_MINUTES;
+    const slot = width / WINDOW_MINUTES;
     ctx.fillStyle = "rgba(148,163,184,0.18)";
     ctx.fillRect(0, height - 1, width, 1); // 바닥선
     buckets.forEach((bucket, i) => {
@@ -129,7 +128,7 @@ export function createView(doc, handlers) {
     list.replaceChildren();
     // 집계(/api/stats)는 30일 안의 "마지막 30건"을 주므로 어젯밤 공격도 섞여 온다. 목록은 그래프와 같은
     // 최근 30분만 보여서 "지금 일어나는 공격"으로 읽히게 한다. 오래된 미해결 공격은 위 상태 줄이 알린다.
-    const recent = recentEvents(events, Date.now(), CHART_MINUTES).slice(0, 5);
+    const recent = recentEvents(events, Date.now(), WINDOW_MINUTES).slice(0, 5);
     if (!recent.length) {
       list.append(h(doc, "li", { class: "empty", text: "최근 30분 동안 탐지된 공격이 없습니다" }));
       return;
@@ -171,24 +170,19 @@ export function createView(doc, handlers) {
     } else if (state.phase === "offline") {
       offlineMessage.textContent = state.message;
     } else if (state.phase === "watch") {
-      const kpi = state.stats?.kpi;
-      kpiUnresolved.textContent = String(kpi?.unresolved_total ?? 0);
-      kpiCritical.textContent = String(kpi?.unresolved_critical ?? 0);
-      kpiToday.textContent = String(kpi?.events_today ?? 0);
+      const now = Date.now();
+      const counts = recentCounts(state.events, now, WINDOW_MINUTES);
+      kpiTotal.textContent = String(counts.total);
+      kpiCritical.textContent = String(counts.CRITICAL);
+      kpiHigh.textContent = String(counts.HIGH);
       const checked = state.lastCheckAt ? `마지막 확인 ${clock(state.lastCheckAt)}` : "확인 중…";
-      // 등급은 "처리 안 된 공격" 기준이라, 최근 30분에 공격이 없어도 예전 미해결 공격 때문에 색이 남을 수 있다.
-      // 그때는 "지금 공격 중"이 아니라 "처리할 것이 남았다"로 읽히게 문구와 시각을 바꾼다.
-      const topUnresolved = state.stats?.unresolved?.[0]; // 서버가 등급 높은 순·최신순으로 정렬해 준다
-      const happeningNow = recentEvents(state.events, Date.now(), CHART_MINUTES).length > 0;
       if (state.level === "NORMAL") {
-        statusTitle.textContent = "정상 — 미해결 공격 없음";
-        statusSub.textContent = checked;
-      } else if (happeningNow || !topUnresolved) {
-        statusTitle.textContent = `${level.label} 공격 탐지`;
+        statusTitle.textContent = "정상 — 최근 30분 공격 없음";
         statusSub.textContent = checked;
       } else {
-        statusTitle.textContent = `미해결 ${level.label} 남아 있음`;
-        statusSub.textContent = `${shortWhen(topUnresolved.detected_at)} 공격 · 대시보드에서 처리 필요`;
+        const latest = recentEvents(state.events, now, WINDOW_MINUTES)[0]; // 최신순으로 들고 있다
+        statusTitle.textContent = `${level.label} 공격 탐지 중`;
+        statusSub.textContent = `마지막 공격 ${clock(latest?.detected_at).slice(0, 5)} · ${checked}`;
       }
       drawChart(state.events);
       renderList(state.events, state.flashIds);

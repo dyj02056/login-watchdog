@@ -1,17 +1,21 @@
 // monitor.test.mjs — 미니 창의 확인 흐름(lib/monitor.js)을 가짜 서버·가짜 시계로 검사한다.
-// 핵심은 "평소엔 가벼운 확인만, 새 공격이 있을 때만 무거운 집계"가 지켜지는지다.
-// 실행: node --test extension/test/
+// 핵심은 두 가지다. 1) 평소엔 가벼운 확인만 하고 무거운 집계는 창을 열 때 한 번뿐인지,
+// 2) 등급이 "최근 30분 공격"만으로 정해지는지(어젯밤 미해결 공격으로 빨갛게 남지 않는지).
+// 실행: node --test extension/test/core.test.mjs extension/test/monitor.test.mjs
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { Monitor, STATS_MIN_GAP_MS, STATS_REFRESH_MS } from "../lib/monitor.js";
+import { Monitor } from "../lib/monitor.js";
+
+const START = Date.parse("2026-11-02T10:00:00+09:00");
+const MIN = 60_000;
 
 function fakeServer() {
   const server = {
     admin: true,
     latest: 100,
     pending: [], // 다음 확인에서 돌려줄 새 이벤트
-    unresolved: [],
+    statsEvents: [], // 집계가 돌려주는 "최근 기록된 공격"(시간 상관없이 마지막 30건)
     calls: { session: 0, check: 0, stats: 0 },
     loginResult: { ok: true },
     api: {
@@ -29,14 +33,7 @@ function fakeServer() {
       },
       getStats: async () => {
         server.calls.stats++;
-        return {
-          status: 200,
-          data: {
-            kpi: { unresolved_total: server.unresolved.length, unresolved_critical: server.unresolved.filter((e) => e.severity === "CRITICAL").length, events_today: 5 },
-            unresolved: server.unresolved,
-            events: [],
-          },
-        };
+        return { status: 200, data: { events: server.statsEvents } };
       },
       login: async () => {
         if (server.loginResult.ok) server.admin = true;
@@ -48,7 +45,7 @@ function fakeServer() {
 }
 
 function makeMonitor(server) {
-  let clock = 1_000_000;
+  let clock = START;
   const notified = [];
   const monitor = new Monitor({
     api: server.api,
@@ -61,13 +58,16 @@ function makeMonitor(server) {
   return {
     monitor,
     notified,
+    now: () => clock,
     advance(ms) {
       clock += ms;
     },
   };
 }
 
-const event = (id, severity) => ({ id, severity, event_type: "BRUTE_FORCE", ip_address: "192.0.2.9", detected_at: new Date().toISOString() });
+const event = (id, severity, atMs) => ({
+  id, severity, event_type: "BRUTE_FORCE", ip_address: "192.0.2.9", detected_at: new Date(atMs).toISOString(),
+});
 
 test("처음 열면 기준점을 잡고 집계를 한 번 받는다(알림 없음)", async () => {
   const server = fakeServer();
@@ -80,7 +80,23 @@ test("처음 열면 기준점을 잡고 집계를 한 번 받는다(알림 없�
   assert.deepEqual(notified, []);
 });
 
-test("평소에는 가벼운 확인만 하고 집계는 부르지 않는다", async () => {
+test("어젯밤 공격만 있으면(처리 안 됐어도) 정상으로 보인다", async () => {
+  const server = fakeServer();
+  server.statsEvents = [event(90, "CRITICAL", START - 12 * 60 * MIN), event(89, "HIGH", START - 31 * MIN)];
+  const { monitor } = makeMonitor(server);
+  await monitor.tick();
+  assert.equal(monitor.state.level, "NORMAL");
+});
+
+test("창을 열기 직전 30분 안의 공격은 처음부터 등급에 반영된다", async () => {
+  const server = fakeServer();
+  server.statsEvents = [event(99, "HIGH", START - 5 * MIN), event(98, "MEDIUM", START - 20 * MIN)];
+  const { monitor } = makeMonitor(server);
+  await monitor.tick();
+  assert.equal(monitor.state.level, "HIGH");
+});
+
+test("평소에는 가벼운 확인만 하고 집계는 다시 부르지 않는다", async () => {
   const server = fakeServer();
   const { monitor, advance } = makeMonitor(server);
   await monitor.tick();
@@ -92,52 +108,49 @@ test("평소에는 가벼운 확인만 하고 집계는 부르지 않는다", as
   assert.equal(server.calls.stats, 1); // 처음 한 번뿐
 });
 
-test("새 공격이 오면 등급이 바뀌고 알림, 집계는 간격을 두고 한 번", async () => {
+test("새 공격이 오면 등급이 바뀌고 알림, 집계는 부르지 않는다", async () => {
   const server = fakeServer();
-  const { monitor, notified, advance } = makeMonitor(server);
+  const { monitor, notified, advance, now } = makeMonitor(server);
   await monitor.tick();
 
   advance(10_000);
-  server.pending.push(event(101, "HIGH"));
+  server.pending.push(event(101, "HIGH", now()));
   await monitor.tick();
   assert.equal(monitor.state.level, "HIGH");
   assert.deepEqual(notified, [{ count: 1, level: "HIGH" }]);
   assert.deepEqual(monitor.state.flashIds, [101]);
   assert.equal(monitor.lastId, 101);
-  assert.equal(server.calls.stats, 1); // 직전 집계가 20초 안이라 아직 안 부름
-
-  server.unresolved = [{ severity: "HIGH" }];
-  advance(STATS_MIN_GAP_MS);
-  await monitor.tick();
-  assert.equal(server.calls.stats, 2);
-  assert.equal(monitor.state.level, "HIGH");
+  assert.equal(server.calls.stats, 1);
 });
 
 test("CRITICAL이 섞여 오면 CRITICAL", async () => {
   const server = fakeServer();
-  const { monitor, notified, advance } = makeMonitor(server);
+  const { monitor, notified, advance, now } = makeMonitor(server);
   await monitor.tick();
   advance(10_000);
-  server.pending.push(event(101, "MEDIUM"), event(102, "CRITICAL"));
+  server.pending.push(event(101, "MEDIUM", now()), event(102, "CRITICAL", now()));
   await monitor.tick();
   assert.equal(monitor.state.level, "CRITICAL");
   assert.equal(notified[0].level, "CRITICAL");
 });
 
-test("대시보드에서 다 처리하면 1분 안에 정상으로 돌아온다", async () => {
+test("공격이 멈추고 30분이 지나면 서버에 더 묻지 않아도 정상으로 돌아온다", async () => {
   const server = fakeServer();
-  const { monitor, advance } = makeMonitor(server);
+  const { monitor, advance, now } = makeMonitor(server);
   await monitor.tick();
-  advance(30_000);
-  server.pending.push(event(101, "HIGH"));
-  server.unresolved = [{ severity: "HIGH" }];
-  await monitor.tick(); // 마지막 집계 후 30초 → 바로 집계
+  advance(10_000);
+  server.pending.push(event(101, "HIGH", now()));
+  await monitor.tick();
   assert.equal(monitor.state.level, "HIGH");
 
-  server.unresolved = []; // 관리자가 대시보드에서 해결
-  advance(STATS_REFRESH_MS);
+  advance(29 * MIN);
+  await monitor.tick();
+  assert.equal(monitor.state.level, "HIGH"); // 아직 30분 안
+
+  advance(2 * MIN);
   await monitor.tick();
   assert.equal(monitor.state.level, "NORMAL");
+  assert.equal(server.calls.stats, 1);
 });
 
 test("로그아웃 상태면 확인 API를 부르지 않는다(미인증 접근 기록 방지)", async () => {
