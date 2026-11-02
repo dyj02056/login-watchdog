@@ -18,8 +18,10 @@ from flask import g, jsonify, redirect, render_template, request, url_for
 
 import config
 import db
+from db import security_events
 from db import stats as db_stats
 from helpers import _attach_locations, login_required
+from helpers.hooks import PAGE_ACCESS_EXCLUDED_ENDPOINTS
 from notify import alert
 from routes.admin import admin_bp
 from security import soar
@@ -485,3 +487,42 @@ def api_status():
             if len(_status_cache) > 64:  # 쪽 번호 조합이 무한히 늘지 않게
                 _status_cache.pop(next(iter(_status_cache)))
     return jsonify(response_data)
+
+
+# ============================================================================
+# 관리자 미니 창(크롬 확장 extension/)의 "새 공격 확인" API — /api/pip/check
+#
+# 미니 창은 하루 종일 떠 있는 것이 목적이라, 대시보드처럼 /api/stats를 계속 부르면 무료
+# Supabase의 전송량·성능에 부담이 된다. 그래서 평소에는 이 API로 "마지막으로 본 이벤트 id
+# 뒤에 새 이벤트가 있나"만 묻고(조회 1번, 대부분 빈 응답), 새 공격이 있을 때만 화면이
+# /api/stats를 한 번 받는다.
+# ============================================================================
+
+# 한 번에 돌려주는 새 이벤트 최대 개수. 넘치면 more=True로 알리고, 다음 확인에서 이어서 받는다.
+PIP_CHECK_LIMIT = 20
+
+# 10초마다 같은 주소를 부르는 자동 폴링이라, 대시보드 폴링 API처럼 반복 접근·매크로 관찰과
+# 전역 요청 한도에서 빼야 한다(빼지 않으면 미니 창을 켜 둔 관리자 PC가 "같은 페이지 반복
+# 접근"으로 알림을 받고, 요청마다 접근 기록 insert가 2번씩 더 생긴다). 그 목록은
+# helpers/hooks.py에 있는데 그 파일은 수정하지 않기로 한 파일이라(AGENTS.md), 같은 집합에
+# 여기서 이름을 더한다 — Limiter와 관찰 훅이 모두 이 집합 객체를 그대로 참조하므로 효과는 같다.
+PAGE_ACCESS_EXCLUDED_ENDPOINTS.add("admin.api_pip_check")
+
+
+@admin_bp.route("/api/pip/check", methods=["GET"])
+@login_required
+def api_pip_check():
+    """`?after=<id>` 뒤에 기록된 보안 이벤트를 돌려준다. after가 없으면 기준점(최신 id)만 돌려준다.
+
+    응답: {"latest_id": 다음 확인에 쓸 id, "new": [새 이벤트...], "more": 더 남았는지}
+    조회만 하므로 권한은 로그인 확인이면 충분하다(/api/stats와 같다).
+    """
+    after = request.args.get("after", type=int)
+    if after is None or after < 0:
+        return jsonify({"latest_id": security_events.get_latest_security_event_id(), "new": [], "more": False})
+
+    # 하나 더 가져와 보고 남은 게 있는지 판단한다(개수 조회를 따로 하지 않기 위해).
+    rows = security_events.list_security_events_after(after, PIP_CHECK_LIMIT + 1)
+    more = len(rows) > PIP_CHECK_LIMIT
+    rows = rows[:PIP_CHECK_LIMIT]
+    return jsonify({"latest_id": rows[-1]["id"] if rows else after, "new": rows, "more": more})
