@@ -1,0 +1,6 @@
+# 공격 IP 172.28.0.180 — scan (촬영 스크린샷에서 복원)
+# Nmap 7.95 scan initiated Mon Nov  2 06:51:28 2026 as: nmap -sS -p 8000-8090 --max-rate 100 --open -oG - 172.28.0.10
+Host: 172.28.0.10 (login-watchdog-gateway.lw_edge)	Status: Up
+Host: 172.28.0.10 (login-watchdog-gateway.lw_edge)	Ports: 8080/open/tcp//http-proxy///	Ignored State: closed (90)
+# Nmap done at Mon Nov  2 06:51:29 2026 -- 1 IP address (1 host up) scanned in 1.03 seconds
+{"step":"scan","target":"http://172.28.0.10:8080","ok":true,"open_ports":[8080]}

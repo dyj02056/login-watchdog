@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      :root {
+        --ground: #0a0e16; --panel: #0e141f; --border: #1e2a3a; --ink: #e6edf3; --muted: #8b97a7;
+        --mono: Consolas, "Courier New", monospace; --sans: "Segoe UI", system-ui, sans-serif;
+        --green: #7ee787; --red: #ff6b6b; --amber: #f0a74a; --ok: #4ec97a; --blue: #4aa8ff; --crit: #ff5c5c; --att: #d9944a;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--ground); }
+      #root { width: 100%; height: 100%; font-family: var(--sans); color: var(--ink); position: relative; }
+
+      #hdr { position: absolute; top: 34px; left: 96px; right: 96px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+      #hdr .t { font-size: 38px; font-weight: 800; letter-spacing: -0.02em; }
+      #hdr .t b { color: var(--amber); }
+      #hdr .tag { font-family: var(--mono); font-size: 21px; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: 7px 15px; }
+
+      .stage { position: absolute; top: 108px; left: 96px; right: 96px; height: 430px; display: flex; gap: 30px; }
+      .pane { flex: 1; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; position: relative; }
+      .pane-head { height: 46px; display: flex; align-items: center; gap: 9px; padding: 0 20px; border-bottom: 1px solid var(--border); background: #0c1220; }
+      .pane-head .dot { width: 12px; height: 12px; border-radius: 50%; }
+      .pane-head .label { margin-left: 9px; font-size: 18px; color: var(--muted); font-weight: 600; }
+
+      .term { font-family: var(--mono); font-size: 20px; line-height: 1.6; }
+      .term .blk { position: absolute; left: 0; right: 0; top: 46px; padding: 18px 24px; }
+      .term .cmd { color: #c9d4e3; } .term .cmd .p { color: var(--green); } .term .cmd .d { color: var(--blue); }
+      .term .out { color: #9fb0c3; } .term .json { color: var(--muted); word-break: break-all; }
+      .term .k-ok { color: var(--ok); font-weight: 700; } .term .flood { color: var(--amber); } .term .row { opacity: 0; }
+
+      .dash .card { position: absolute; left: 0; right: 0; top: 46px; bottom: 0; padding: 18px 24px; }
+      .dash .ctitle { font-size: 20px; font-weight: 700; color: var(--blue); margin-bottom: 12px; display: flex; align-items: center; gap: 9px; }
+      .dash .ctitle::before { content: ""; width: 5px; height: 20px; background: var(--blue); border-radius: 3px; }
+      table { width: 100%; border-collapse: collapse; font-size: 17px; }
+      th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 15px; }
+      td { padding: 10px 10px; border-bottom: 1px solid #141d2b; color: #d7e0ec; }
+      td.ip, td.num { font-family: var(--mono); }
+      tr.hl td { background: rgba(240,167,74,0.08); }
+      .badge { font-size: 14px; font-weight: 800; padding: 3px 9px; border-radius: 6px; }
+      .b-high { background: rgba(240,167,74,0.16); color: var(--amber); border: 1px solid rgba(240,167,74,0.4); }
+      .pill { font-size: 15px; font-weight: 800; padding: 4px 11px; border-radius: 6px; }
+      .p-block { background: rgba(240,167,74,0.16); color: var(--amber); border: 1px solid rgba(240,167,74,0.45); }
+      .dash .note { margin-top: 14px; font-size: 17px; color: var(--muted); }
+      .dash .big { margin-top: 8px; font-size: 19px; }
+      .ttl { color: var(--amber); font-weight: 800; }
+      .sig { margin-top: 14px; display: inline-flex; align-items: center; gap: 9px; font-size: 18px; color: var(--ok); border: 1px solid rgba(78,201,122,0.4); background: rgba(78,201,122,0.08); border-radius: 10px; padding: 9px 14px; }
+      .dash .card .row { opacity: 0; }
+
+      .band { position: absolute; left: 96px; right: 96px; top: 556px; height: 340px; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+      .scene { position: absolute; inset: 0; }
+      .scene svg { width: 100%; height: 100%; display: block; }
+      .band .sg { opacity: 0; }
+
+      #subs { position: absolute; left: 10%; right: 10%; bottom: 52px; text-align: center; height: 0; }
+      .sub { position: absolute; left: 0; right: 0; bottom: 0; opacity: 0; }
+      .sub .cue { display: inline-block; font-size: 30px; font-weight: 700; line-height: 1.4; color: #fff; background: rgba(8,12,20,0.85); border: 1px solid var(--border); border-radius: 12px; padding: 12px 26px; }
+      .sub .cue b { color: var(--amber); }
+
+      #intro { position: absolute; inset: 0; background: var(--ground); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; z-index: 50; }
+      #intro .eye { font-family: var(--mono); font-size: 25px; color: var(--amber); letter-spacing: 0.2em; opacity: 0; }
+      #intro .big { font-size: 92px; font-weight: 800; letter-spacing: -0.03em; opacity: 0; }
+      #intro .sub2 { font-size: 29px; color: var(--muted); opacity: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="40" data-width="1920" data-height="1080" data-track-kind="graphics">
+
+      <div id="hdr">
+        <div class="t">시연 ② <b>SYN 폭주</b></div>
+        <div class="tag">NET-01 · TTL BLOCK</div>
+      </div>
+
+      <div class="stage">
+        <div class="pane term">
+          <div class="pane-head"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="label">공격 터미널</span></div>
+          <div id="t-syn" class="blk clip" data-start="3.5" data-duration="36.5" data-track-index="0">
+            <div class="row cmd"><span class="p">$</span> docker run --rm attacker-3 <span class="d">synflood</span> --count 3000 <span style="color:#7e8ea1">--ip .172</span></div>
+            <div class="row out">[*] 172.28.0.10:8080 에 SYN 다발 전송…</div>
+            <div class="row flood">    SYN → SYN → SYN → SYN → SYN → …  (위조 가능)</div>
+            <div class="row out">3000 packets transmitted, 1742 received, 42% loss</div>
+            <div class="row json">{"step":"synflood","ok":<span class="k-ok">true</span>,"sent":3000}</div>
+          </div>
+        </div>
+
+        <div class="pane dash">
+          <div class="pane-head"><span class="dot" style="background:var(--blue)"></span><span class="label">로그인 워치독 — 관제 화면</span></div>
+          <div id="d-sensor" class="card clip" data-start="12" data-duration="7" data-track-index="1">
+            <div class="row ctitle">네트워크 이벤트 (L3/L4 탐지)</div>
+            <table><tr><th>시각</th><th>출발지 IP</th><th>계층</th><th>종류</th><th>패킷</th></tr>
+              <tr class="row hl"><td class="num">16:05:44</td><td class="ip">172.28.0.172</td><td>L4</td><td>SYN 플러더</td><td class="num">100</td></tr></table>
+            <div class="row note">센서가 SYN 폭주를 <b>즉시 탐지</b></div>
+          </div>
+          <div id="d-alert" class="card clip" data-start="19" data-duration="7" data-track-index="2">
+            <div class="row ctitle">보안 이벤트</div>
+            <table><tr><th>시각</th><th>유형</th><th>IP</th><th>조치</th></tr>
+              <tr class="row"><td class="num">16:05:44</td><td>NET_SYN_FLOOD</td><td class="ip">172.28.0.172</td><td><span class="badge b-high">high</span></td></tr></table>
+            <div class="row sig">HMAC 서명된 경보 — 위·변조 방지</div>
+          </div>
+          <div id="d-block" class="card clip" data-start="26" data-duration="14" data-track-index="3">
+            <div class="row ctitle">L4 차단 목록 (정문 방화벽)</div>
+            <table><tr><th>IP</th><th>사유</th><th>증거</th><th>상태</th><th>남은 시간</th></tr>
+              <tr class="row hl"><td class="ip">172.28.0.172</td><td>네트워크 폭주</td><td>위조 가능 · 시간 제한</td><td><span class="pill p-block">차단 중</span></td><td class="ttl">56분 남음</td></tr></table>
+            <div class="row big">위조될 수 있는 증거 → 영구가 아닌 <span class="ttl">시간 제한(TTL) 차단</span></div>
+            <div class="row note" id="d-speed" style="opacity:0">탐지 → 차단까지 <b>약 3초</b></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 하단 비유 그림 띠 ===== -->
+      <div class="band">
+        <!-- 장면1: 초인종 연타 + 도망 -->
+        <div id="b1" class="scene clip" data-start="3.5" data-duration="8.5" data-track-index="10">
+          <svg viewBox="0 0 1728 340"><g class="sg">
+            <rect x="24" y="20" width="220" height="40" rx="9" fill="#111a28" stroke="#2a3a50"/><circle cx="46" cy="40" r="5" fill="#f0a74a"/><text x="60" y="47" fill="#f0a74a" font-size="20" font-weight="700">SYN 폭주</text>
+            <g id="b1arm"><path d="M196 176 Q380 172 500 180 T 596 190" fill="none" stroke="#d9944a" stroke-width="22" stroke-linecap="round"/><circle cx="600" cy="192" r="15" fill="#d9944a"/></g>
+            <g transform="translate(120,96) scale(2.4)" fill="#d9944a"><circle cx="20" cy="12" r="9"/><path d="M4 51A16 22 0 0 1 36 51Z"/></g>
+            <text x="168" y="252" fill="#8b97a7" font-size="19" text-anchor="middle">수상한 사람</text>
+            <!-- 인터폰(초인종) -->
+            <g transform="translate(628,96)"><rect width="120" height="150" rx="10" fill="#152033" stroke="#33465f" stroke-width="3"/><rect x="18" y="16" width="84" height="48" rx="5" fill="#0d1726" stroke="#28384d"/><circle id="bell" cx="60" cy="110" r="18" fill="#2a1f10" stroke="#f0a74a" stroke-width="3"/></g>
+            <!-- 벨 음파 -->
+            <g id="waves" stroke="#f0a74a" fill="none" stroke-width="4" stroke-linecap="round"><path d="M706 206 q24 0 24 -24"/><path d="M722 222 q40 0 40 -40"/><path d="M738 238 q56 0 56 -56"/></g>
+            <text x="820" y="150" fill="#f0a74a" font-size="30" font-weight="800">딩동! 딩동! 딩동!</text>
+            <text x="820" y="196" fill="#8b97a7" font-size="22">SYN ×3000 — 눌러만 놓고 도망</text>
+            <!-- 도망 화살표 -->
+            <g id="runaway"><path d="M300 250 q140 70 360 40" fill="none" stroke="#7e8ea1" stroke-width="4" stroke-dasharray="10 9" marker-end="url(#ar2)"/><text x="470" y="320" fill="#8b97a7" font-size="20" text-anchor="middle">누르고 → 바로 도망</text></g>
+            <text x="1180" y="190" fill="#c9d4e3" font-size="24" font-weight="700" text-anchor="middle">초인종만 <tspan fill="#f0a74a">누르고 도망</tspan>을 반복한다</text>
+            <defs><marker id="ar2" markerWidth="12" markerHeight="12" refX="8" refY="4" orient="auto"><path d="M0 0 L9 4 L0 8 Z" fill="#7e8ea1"/></marker></defs>
+          </g></svg>
+        </div>
+
+        <!-- 장면2: 경비 탐지 -->
+        <div id="b2" class="scene clip" data-start="12" data-duration="7" data-track-index="10">
+          <svg viewBox="0 0 1728 340"><g class="sg">
+            <rect x="24" y="20" width="220" height="40" rx="9" fill="#111a28" stroke="#2a3a50"/><circle cx="46" cy="40" r="5" fill="#4aa8ff"/><text x="60" y="47" fill="#4aa8ff" font-size="20" font-weight="700">센서 탐지</text>
+            <g transform="translate(220,110)">
+              <rect x="-10" y="0" width="160" height="86" rx="12" fill="#152033" stroke="#4aa8ff" stroke-width="3"/>
+              <circle cx="70" cy="43" r="26" fill="#0d1726" stroke="#4aa8ff" stroke-width="3"/><circle id="eye2" cx="70" cy="43" r="10" fill="#4aa8ff"/>
+              <path d="M150 22 l42 -14 l0 72 l-42 -14 Z" fill="#152033" stroke="#4aa8ff" stroke-width="2"/>
+            </g>
+            <text x="290" y="240" fill="#4aa8ff" font-size="20" font-weight="700" text-anchor="middle">경비 · 센서</text>
+            <g id="alarm" transform="translate(820,120)"><rect width="520" height="100" rx="14" fill="rgba(240,167,74,0.1)" stroke="#f0a74a" stroke-width="3"/><text x="260" y="44" fill="#f0a74a" font-size="28" font-weight="800" text-anchor="middle">SYN 플러더 감지!</text><text x="260" y="78" fill="#e6edf3" font-size="21" font-weight="600" text-anchor="middle">172.28.0.172 · L4 · 100+ 패킷</text></g>
+            <text x="864" y="320" fill="#c9d4e3" font-size="24" font-weight="700" text-anchor="middle">경비가 벨 폭주를 <tspan fill="#4aa8ff">바로 알아챈다</tspan></text>
+          </g></svg>
+        </div>
+
+        <!-- 장면3: 서명 경보 -->
+        <div id="b3" class="scene clip" data-start="19" data-duration="7" data-track-index="10">
+          <svg viewBox="0 0 1728 340"><g class="sg">
+            <rect x="24" y="20" width="220" height="40" rx="9" fill="#111a28" stroke="#2a3a50"/><circle cx="46" cy="40" r="5" fill="#4ec97a"/><text x="60" y="47" fill="#4ec97a" font-size="20" font-weight="700">서명 경보</text>
+            <!-- 신고서 + 도장 -->
+            <g transform="translate(330,66)">
+              <rect width="260" height="210" rx="10" fill="#111a28" stroke="#33465f" stroke-width="3"/>
+              <line x1="30" y1="50" x2="230" y2="50" stroke="#2a3a50" stroke-width="4"/><line x1="30" y1="86" x2="230" y2="86" stroke="#22303f" stroke-width="3"/><line x1="30" y1="116" x2="180" y2="116" stroke="#22303f" stroke-width="3"/>
+              <text x="30" y="36" fill="#8b97a7" font-size="20" font-weight="700">SYN_FLOOD 신고서</text>
+              <g id="stamp" transform="translate(180,150) rotate(-12)"><circle r="46" fill="rgba(78,201,122,0.1)" stroke="#4ec97a" stroke-width="4"/><text y="-4" fill="#4ec97a" font-size="18" font-weight="900" text-anchor="middle">서명</text><text y="20" fill="#4ec97a" font-size="16" font-weight="900" text-anchor="middle">HMAC</text></g>
+            </g>
+            <path d="M620 170 L820 170" fill="none" stroke="#4ec97a" stroke-width="5" stroke-linecap="round" marker-end="url(#ar3)"/>
+            <g transform="translate(850,110)"><rect width="320" height="120" rx="12" fill="#152033" stroke="#4ec97a" stroke-width="2"/><text x="160" y="50" fill="#e6edf3" font-size="24" font-weight="800" text-anchor="middle">관리실 기록</text><text x="160" y="88" fill="#4ec97a" font-size="20" font-weight="700" text-anchor="middle">위·변조 불가</text></g>
+            <text x="864" y="320" fill="#c9d4e3" font-size="24" font-weight="700" text-anchor="middle">위조 못 하게 <tspan fill="#4ec97a">서명(HMAC)된 신고</tspan>를 남긴다</text>
+            <defs><marker id="ar3" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0 0 L7 3 L0 6 Z" fill="#4ec97a"/></marker></defs>
+          </g></svg>
+        </div>
+
+        <!-- 장면4+5: 잠시 출입 금지 (TTL) -->
+        <div id="b4" class="scene clip" data-start="26" data-duration="14" data-track-index="10">
+          <svg viewBox="0 0 1728 340"><g class="sg">
+            <rect x="24" y="20" width="260" height="40" rx="9" fill="#111a28" stroke="#2a3a50"/><circle cx="46" cy="40" r="5" fill="#f0a74a"/><text x="60" y="47" fill="#f0a74a" font-size="20" font-weight="700">TTL 차단</text>
+            <!-- 공격자(작게, 희미) -->
+            <g transform="translate(180,130) scale(1.9)" fill="#d9944a" opacity="0.5"><circle cx="20" cy="12" r="9"/><path d="M4 51A16 22 0 0 1 36 51Z"/></g>
+            <text x="220" y="258" fill="#8b97a7" font-size="18" text-anchor="middle">공격자 .172</text>
+            <!-- '잠시 출입 금지' 팻말 -->
+            <g transform="translate(560,70)">
+              <rect width="420" height="150" rx="14" fill="rgba(240,167,74,0.08)" stroke="#f0a74a" stroke-width="4"/>
+              <text x="210" y="60" fill="#f0a74a" font-size="34" font-weight="900" text-anchor="middle">잠시 출입 금지</text>
+              <text x="210" y="106" fill="#e6edf3" font-size="22" font-weight="600" text-anchor="middle">위장일 수 있어 영구 아님</text>
+              <path d="M200 150 L200 230 M110 230 L310 230" stroke="#7e8ea1" stroke-width="6" stroke-linecap="round"/>
+            </g>
+            <!-- 타이머 -->
+            <g transform="translate(1180,140)">
+              <circle r="78" fill="#152033" stroke="#f0a74a" stroke-width="5"/>
+              <circle id="tdot" r="78" fill="none" stroke="#f0a74a" stroke-width="5" stroke-dasharray="368 490" stroke-linecap="round" transform="rotate(-90)"/>
+              <line x1="0" y1="0" x2="0" y2="-48" stroke="#e6edf3" stroke-width="5" stroke-linecap="round"/>
+              <line x1="0" y1="0" x2="34" y2="10" stroke="#f0a74a" stroke-width="5" stroke-linecap="round"/>
+              <circle r="7" fill="#f0a74a"/>
+              <text y="118" fill="#f0a74a" font-size="26" font-weight="800" text-anchor="middle">56분 남음</text>
+            </g>
+            <text x="864" y="322" fill="#c9d4e3" font-size="24" font-weight="700" text-anchor="middle">위조될 수 있는 증거라 <tspan fill="#f0a74a">잠깐만(TTL) 막아 둔다</tspan> — 탐지→차단 약 3초</text>
+          </g></svg>
+        </div>
+      </div>
+
+      <div id="subs">
+        <div id="s1" class="sub clip" data-start="3.5" data-duration="8.5" data-track-index="4" data-track-kind="captions"><span class="cue">문을 두드리고 도망가길 반복합니다 <b>(SYN 3,000개)</b></span></div>
+        <div id="s2" class="sub clip" data-start="12" data-duration="7" data-track-index="4"><span class="cue">센서가 SYN 폭주를 <b>바로 탐지</b>합니다</span></div>
+        <div id="s3" class="sub clip" data-start="19" data-duration="7" data-track-index="4"><span class="cue">위·변조를 막기 위해 <b>서명(HMAC)된 경보</b>가 기록됩니다</span></div>
+        <div id="s4" class="sub clip" data-start="26" data-duration="9" data-track-index="4"><span class="cue">위조될 수 있는 증거라 <b>영구가 아닌 시간 제한(TTL)</b> 차단</span></div>
+        <div id="s5" class="sub clip" data-start="35" data-duration="5" data-track-index="4"><span class="cue">탐지에서 차단까지 <b>약 3초</b></span></div>
+      </div>
+
+      <div id="intro" class="clip" data-start="0" data-duration="3.5" data-track-index="5">
+        <div class="eye" id="in-eye">04 · DEMO</div>
+        <div class="big" id="in-big">시연 ② SYN 폭주</div>
+        <div class="sub2" id="in-sub">문만 두드리고 도망가길 반복하면 → 잠시 출입 금지</div>
+      </div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      tl.fromTo("#in-eye", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" }, 0.2);
+      tl.fromTo("#in-big", { opacity: 0, y: 20, filter: "blur(8px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.5, ease: "power3.out" }, 0.4);
+      tl.fromTo("#in-sub", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 0.9);
+      tl.to("#intro", { opacity: 0, duration: 0.45, ease: "power2.in" }, 3.1);
+
+      function enter(sel, at, stagger) { tl.fromTo(sel + " .row", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out", stagger: stagger || 0.14 }, at); }
+      enter("#t-syn", 3.7, 0.25); enter("#d-sensor", 12.3, 0.2); enter("#d-alert", 19.3, 0.25); enter("#d-block", 26.3, 0.25);
+      tl.to("#d-speed", { opacity: 1, duration: 0.4 }, 35.3);
+
+      function scn(sel, at) { tl.fromTo(sel + " .sg", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, at); }
+      scn("#b1", 3.7); scn("#b2", 12.3); scn("#b3", 19.3); scn("#b4", 26.3);
+
+      // 벨 누르는 팔 + 음파 깜빡 + 신고서 도장 + 타이머
+      tl.to("#b1arm", { rotation: 4, svgOrigin: "196 176", duration: 0.14, repeat: 24, yoyo: true, ease: "sine.inOut" }, 4.2);
+      tl.to("#waves", { opacity: 0.2, duration: 0.3, repeat: 12, yoyo: true, ease: "sine.inOut" }, 4.2);
+      tl.fromTo("#stamp", { scale: 1.7, opacity: 0, transformOrigin: "50% 50%" }, { scale: 1, opacity: 1, duration: 0.4, ease: "back.out(2)" }, 20.4);
+
+      const subs = [["#s1",3.5,12],["#s2",12,19],["#s3",19,26],["#s4",26,35],["#s5",35,40]];
+      subs.forEach(([id, a, b]) => { tl.fromTo(id, { opacity: 0 }, { opacity: 1, duration: 0.35, ease: "power2.out" }, a + 0.1); tl.to(id, { opacity: 0, duration: 0.3, ease: "power2.in" }, b - 0.3); });
+
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

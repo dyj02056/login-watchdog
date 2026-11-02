@@ -1,0 +1,2 @@
+# 대조 IP 172.28.0.181 — probe (열림, 촬영 스크린샷에서 복원)
+{"step":"probe","target":"http://172.28.0.10:8080","ok":true,"reachable":true}

@@ -1,0 +1,1530 @@
+{
+  "ok": true,
+  "strict": false,
+  "browserSkipped": false,
+  "lint": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 16,
+    "infoCount": 0,
+    "findings": [
+      {
+        "code": "timeline_track_too_dense",
+        "severity": "warning",
+        "message": "Track 10 has 5 timed elements in this HTML file. Smaller sub-compositions keep timelines easier to read, iterate on, and diff.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s4\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move coherent scene groups into separate .html files under compositions/ and mount them from the parent with data-composition-src so the timeline stays easier to inspect, revise, and validate."
+      },
+      {
+        "code": "timeline_track_too_dense",
+        "severity": "warning",
+        "message": "Track 8 has 6 timed elements in this HTML file. Smaller sub-compositions keep timelines easier to read, iterate on, and diff.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s4\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move coherent scene groups into separate .html files under compositions/ and mount them from the parent with data-composition-src so the timeline stays easier to inspect, revise, and validate."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"t-scan\"> is a timeline element that contains nested <div>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#t-scan",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s4\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"t-scan\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"t-brute\"> is a timeline element that contains nested <div>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#t-brute",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s4\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"t-brute\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"t-p180\"> is a timeline element that contains nested <div>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#t-p180",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s4\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"t-p180\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"t-p181\"> is a timeline element that contains nested <div>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#t-p181",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s4\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"t-p181\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"d-scan\"> is a timeline element that contains nested <div>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#d-scan",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s4\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"d-scan\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"d-brute\"> is a timeline element that contains nested <div>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#d-brute",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s4\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"d-brute\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"d-inc\"> is a timeline element that contains nested <div>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#d-inc",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s4\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"d-inc\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"d-block\"> is a timeline element that contains nested <div>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#d-block",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s4\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"d-block\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"b1\"> is a timeline element that contains nested <svg>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#b1",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s4\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"b1\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"b2\"> is a timeline element that contains nested <svg>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#b2",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s4\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"b2\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"b3\"> is a timeline element that contains nested <svg>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#b3",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s4\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"b3\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"b4\"> is a timeline element that contains nested <svg>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#b4",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s4\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"b4\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"b5\"> is a timeline element that contains nested <svg>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#b5",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s4\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"b5\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"intro\"> is a timeline element that contains nested <div id=\"in-eye\">. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#intro",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s4\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"intro\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      }
+    ],
+    "filesScanned": 1
+  },
+  "runtime": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": []
+  },
+  "layout": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "duration": 75,
+    "samples": [
+      4.167,
+      12.5,
+      20.833,
+      29.167,
+      37.5,
+      45.833,
+      54.167,
+      62.5,
+      70.833
+    ],
+    "transitionSamples": [],
+    "transitionSamplesDropped": 0,
+    "tolerance": 2,
+    "totalIssueCount": 0,
+    "truncated": false
+  },
+  "motion": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "enabled": false,
+    "samples": 0
+  },
+  "contrast": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "enabled": true,
+    "samples": [
+      4.167,
+      20.833,
+      37.5,
+      54.167,
+      70.833
+    ],
+    "checked": 159,
+    "passed": 159
+  },
+  "craft": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 8,
+    "infoCount": 0,
+    "findings": [
+      {
+        "code": "first_frame_empty",
+        "severity": "warning",
+        "message": "Frame 0 is covered by #intro: an opaque element over the canvas hides every other clip, and the first frame is the thumbnail on social players. Move it below the content; see canvas_covered.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0
+      },
+      {
+        "code": "film_silent",
+        "severity": "warning",
+        "message": "This 75 s film has no sound source (no <audio>, no <video> with sound): add a music bed and sounds on the visible actions unless the person asked for silence; see references/sound.md.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0
+      },
+      {
+        "code": "dead_stretch",
+        "severity": "warning",
+        "message": "Nothing on screen changes for 8.51 s (8.14–16.65 s): start the next move within 3 s, or put data-hold on the element whose stillness is deliberate; see references/motion.md.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 8.139,
+        "seconds": 8.514,
+        "floorSeconds": 3,
+        "until": 16.653
+      },
+      {
+        "code": "text_below_floor",
+        "severity": "warning",
+        "message": "Type floor is 28 px (2.6% of the 1080 px short side, what a phone can read) and 127 text elements stay under it for 0.5 s or more, the smallest \"medium\" at 14 px: set reading text to at least 28 px, or put data-layout-ignore on text that is texture rather than reading; see references/look.md.",
+        "text": "medium",
+        "selector": "span.badge.b-med",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 1683.75,
+          "y": 267.39,
+          "width": 51.31,
+          "height": 17
+        },
+        "time": 17.905,
+        "times": [
+          0,
+          0,
+          0,
+          0.376,
+          4.007,
+          4.007,
+          4.007,
+          4.007,
+          4.007,
+          4.382,
+          4.382,
+          4.382,
+          4.382,
+          4.508,
+          4.508,
+          4.508,
+          4.508,
+          4.508,
+          4.508,
+          4.508,
+          4.758,
+          4.758,
+          4.758,
+          4.883,
+          4.883,
+          5.008,
+          5.008,
+          5.008,
+          5.008,
+          5.008,
+          5.134,
+          5.134,
+          17.028,
+          17.028,
+          17.028,
+          17.028,
+          17.028,
+          17.404,
+          17.404,
+          17.404,
+          17.529,
+          17.529,
+          17.529,
+          17.529,
+          17.529,
+          17.529,
+          17.529,
+          17.529,
+          17.529,
+          17.654,
+          17.78,
+          17.78,
+          17.905,
+          17.905,
+          17.905,
+          17.905,
+          17.905,
+          17.905,
+          18.03,
+          18.155,
+          18.155,
+          18.155,
+          18.155,
+          18.155,
+          18.155,
+          18.28,
+          18.406,
+          18.406,
+          31.052,
+          31.052,
+          31.052,
+          31.052,
+          31.427,
+          31.553,
+          31.553,
+          31.553,
+          31.553,
+          31.553,
+          31.553,
+          31.553,
+          31.553,
+          31.678,
+          31.678,
+          31.678,
+          31.678,
+          31.928,
+          31.928,
+          44.073,
+          44.073,
+          44.073,
+          44.073,
+          44.073,
+          44.324,
+          44.324,
+          44.324,
+          44.324,
+          44.574,
+          44.574,
+          44.574,
+          44.574,
+          44.574,
+          44.825,
+          44.825,
+          44.825,
+          44.95,
+          44.95,
+          44.95,
+          44.95,
+          44.95,
+          45.075,
+          45.2,
+          45.2,
+          45.451,
+          45.451,
+          59.349,
+          59.349,
+          59.349,
+          59.349,
+          59.599,
+          59.599,
+          59.599,
+          59.599,
+          59.599,
+          59.599,
+          59.85,
+          59.85,
+          60.1
+        ],
+        "fontPx": 14,
+        "floorPx": 28,
+        "seconds": 13.147,
+        "elements": [
+          {
+            "selector": "span.badge.b-med",
+            "text": "medium",
+            "fontPx": 14,
+            "time": 17.905,
+            "seconds": 13.147
+          },
+          {
+            "selector": "#d-brute > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(3) > td:nth-of-type(5) > span:nth-of-type(1)",
+            "text": "critical",
+            "fontPx": 14,
+            "time": 18.155,
+            "seconds": 12.897
+          },
+          {
+            "selector": "#d-inc > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "critical",
+            "fontPx": 14,
+            "time": 31.678,
+            "seconds": 12.395
+          },
+          {
+            "selector": "#d-scan > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(1)",
+            "text": "시각",
+            "fontPx": 15,
+            "time": 4.007,
+            "seconds": 13.021
+          },
+          {
+            "selector": "#d-scan > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(2)",
+            "text": "출발지 IP",
+            "fontPx": 15,
+            "time": 4.007,
+            "seconds": 13.021
+          },
+          {
+            "selector": "#d-scan > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(3)",
+            "text": "계층",
+            "fontPx": 15,
+            "time": 4.007,
+            "seconds": 13.021
+          },
+          {
+            "selector": "#d-scan > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(4)",
+            "text": "종류",
+            "fontPx": 15,
+            "time": 4.007,
+            "seconds": 13.021
+          },
+          {
+            "selector": "#d-scan > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(5)",
+            "text": "패킷",
+            "fontPx": 15,
+            "time": 4.007,
+            "seconds": 13.021
+          },
+          {
+            "selector": "#d-brute > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(1)",
+            "text": "시각",
+            "fontPx": 15,
+            "time": 17.028,
+            "seconds": 14.024
+          },
+          {
+            "selector": "#d-brute > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(2)",
+            "text": "유형",
+            "fontPx": 15,
+            "time": 17.028,
+            "seconds": 14.024
+          },
+          {
+            "selector": "#d-brute > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(3)",
+            "text": "IP",
+            "fontPx": 15,
+            "time": 17.028,
+            "seconds": 14.024
+          },
+          {
+            "selector": "#d-brute > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(4)",
+            "text": "횟수",
+            "fontPx": 15,
+            "time": 17.028,
+            "seconds": 14.024
+          },
+          {
+            "selector": "#d-brute > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(5)",
+            "text": "조치",
+            "fontPx": 15,
+            "time": 17.028,
+            "seconds": 14.024
+          },
+          {
+            "selector": "#d-inc > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(1)",
+            "text": "등급",
+            "fontPx": 15,
+            "time": 31.052,
+            "seconds": 13.021
+          },
+          {
+            "selector": "#d-inc > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(2)",
+            "text": "관련 유형",
+            "fontPx": 15,
+            "time": 31.052,
+            "seconds": 13.021
+          },
+          {
+            "selector": "#d-inc > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(3)",
+            "text": "IP",
+            "fontPx": 15,
+            "time": 31.052,
+            "seconds": 13.021
+          },
+          {
+            "selector": "#d-inc > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(4)",
+            "text": "상태",
+            "fontPx": 15,
+            "time": 31.052,
+            "seconds": 13.021
+          },
+          {
+            "selector": "#d-block > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(1)",
+            "text": "IP",
+            "fontPx": 15,
+            "time": 44.073,
+            "seconds": 30.927
+          },
+          {
+            "selector": "#d-block > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(2)",
+            "text": "사유",
+            "fontPx": 15,
+            "time": 44.073,
+            "seconds": 30.927
+          },
+          {
+            "selector": "#d-block > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(3)",
+            "text": "증거",
+            "fontPx": 15,
+            "time": 44.073,
+            "seconds": 30.927
+          },
+          {
+            "selector": "#d-block > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(4)",
+            "text": "상태",
+            "fontPx": 15,
+            "time": 44.073,
+            "seconds": 30.927
+          },
+          {
+            "selector": "#d-block > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(5)",
+            "text": "남은 시간",
+            "fontPx": 15,
+            "time": 44.073,
+            "seconds": 30.927
+          },
+          {
+            "selector": "span.pill.p-block",
+            "text": "차단 중",
+            "fontPx": 15,
+            "time": 44.95,
+            "seconds": 30.05
+          },
+          {
+            "selector": "#d-scan > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(1)",
+            "text": "15:51:28",
+            "fontPx": 17,
+            "time": 5.008,
+            "seconds": 12.02
+          },
+          {
+            "selector": "#d-scan > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(2)",
+            "text": "172.28.0.180",
+            "fontPx": 17,
+            "time": 5.008,
+            "seconds": 12.02
+          },
+          {
+            "selector": "#d-scan > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(3)",
+            "text": "L4",
+            "fontPx": 17,
+            "time": 5.008,
+            "seconds": 12.02
+          },
+          {
+            "selector": "#d-scan > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(4)",
+            "text": "포트 스캔",
+            "fontPx": 17,
+            "time": 5.008,
+            "seconds": 12.02
+          },
+          {
+            "selector": "#d-scan > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(5)",
+            "text": "15",
+            "fontPx": 17,
+            "time": 5.008,
+            "seconds": 12.02
+          },
+          {
+            "selector": "#d-scan > div:nth-of-type(2)",
+            "text": "열린 포트를 찾는 행위가 감지됨",
+            "fontPx": 17,
+            "time": 5.134,
+            "seconds": 11.894
+          },
+          {
+            "selector": "#d-scan > div:nth-of-type(2) > b:nth-of-type(1)",
+            "text": "정찰",
+            "fontPx": 17,
+            "time": 5.134,
+            "seconds": 11.894
+          },
+          {
+            "selector": "#d-brute > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(1)",
+            "text": "15:51:28",
+            "fontPx": 17,
+            "time": 17.905,
+            "seconds": 13.147
+          },
+          {
+            "selector": "#d-brute > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(2)",
+            "text": "NET_PORT_SCAN",
+            "fontPx": 17,
+            "time": 17.905,
+            "seconds": 13.147
+          },
+          {
+            "selector": "#d-brute > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(3)",
+            "text": "172.28.0.180",
+            "fontPx": 17,
+            "time": 17.905,
+            "seconds": 13.147
+          },
+          {
+            "selector": "#d-brute > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(4)",
+            "text": "15",
+            "fontPx": 17,
+            "time": 17.905,
+            "seconds": 13.147
+          },
+          {
+            "selector": "#d-brute > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(3) > td:nth-of-type(1)",
+            "text": "15:52:20",
+            "fontPx": 17,
+            "time": 18.155,
+            "seconds": 12.897
+          },
+          {
+            "selector": "#d-brute > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(3) > td:nth-of-type(2)",
+            "text": "브루트포스",
+            "fontPx": 17,
+            "time": 18.155,
+            "seconds": 12.897
+          },
+          {
+            "selector": "#d-brute > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(3) > td:nth-of-type(3)",
+            "text": "172.28.0.180",
+            "fontPx": 17,
+            "time": 18.155,
+            "seconds": 12.897
+          },
+          {
+            "selector": "#d-brute > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(3) > td:nth-of-type(4)",
+            "text": "6",
+            "fontPx": 17,
+            "time": 18.155,
+            "seconds": 12.897
+          },
+          {
+            "selector": "#d-brute > div:nth-of-type(2)",
+            "text": "같은 IP가 로그인까지 반복 → 시도",
+            "fontPx": 17,
+            "time": 18.406,
+            "seconds": 12.646
+          },
+          {
+            "selector": "#d-brute > div:nth-of-type(2) > b:nth-of-type(1)",
+            "text": "침투",
+            "fontPx": 17,
+            "time": 18.406,
+            "seconds": 12.646
+          },
+          {
+            "selector": "#d-inc > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(2)",
+            "text": "브루트포스, NET_PORT_SCAN, 영구 잠금 전환",
+            "fontPx": 17,
+            "time": 31.678,
+            "seconds": 12.395
+          },
+          {
+            "selector": "#d-inc > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(3)",
+            "text": "172.28.0.180",
+            "fontPx": 17,
+            "time": 31.678,
+            "seconds": 12.395
+          },
+          {
+            "selector": "span.b-run",
+            "text": "진행 중",
+            "fontPx": 17,
+            "time": 31.678,
+            "seconds": 12.395
+          },
+          {
+            "selector": "#d-block > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(1)",
+            "text": "172.28.0.180",
+            "fontPx": 17,
+            "time": 44.95,
+            "seconds": 30.05
+          },
+          {
+            "selector": "#d-block > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(2)",
+            "text": "킬체인",
+            "fontPx": 17,
+            "time": 44.95,
+            "seconds": 30.05
+          },
+          {
+            "selector": "#d-block > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(3)",
+            "text": "연결 완성·영구 가능",
+            "fontPx": 17,
+            "time": 44.95,
+            "seconds": 30.05
+          },
+          {
+            "selector": "td.perm",
+            "text": "영구",
+            "fontPx": 17,
+            "time": 44.95,
+            "seconds": 30.05
+          },
+          {
+            "selector": "#d-contrast",
+            "text": "대조 IP 은 목록에 없음 — 정상 접속 유지",
+            "fontPx": 17,
+            "time": 45.451,
+            "seconds": 29.549
+          },
+          {
+            "selector": "#d-contrast > b:nth-of-type(1)",
+            "text": ".181",
+            "fontPx": 17,
+            "time": 45.451,
+            "seconds": 29.549
+          },
+          {
+            "selector": "#b5 > svg:nth-of-type(1) > g:nth-of-type(1) > text:nth-of-type(2)",
+            "text": "공격자 .180 (차단)",
+            "fontPx": 17.89,
+            "time": 59.599,
+            "seconds": 15.401
+          },
+          {
+            "selector": "div.pane.term > div:nth-of-type(1) > span:nth-of-type(4)",
+            "text": "공격 터미널",
+            "fontPx": 18,
+            "time": 0,
+            "seconds": 75
+          },
+          {
+            "selector": "div.pane.dash > div:nth-of-type(1) > span:nth-of-type(2)",
+            "text": "로그인 워치독 — 관제 화면",
+            "fontPx": 18,
+            "time": 0,
+            "seconds": 75
+          },
+          {
+            "selector": "#b1 > svg:nth-of-type(1) > g:nth-of-type(1) > text:nth-of-type(2)",
+            "text": "수상한 사람",
+            "fontPx": 18.89,
+            "time": 4.508,
+            "seconds": 12.52
+          },
+          {
+            "selector": "#b2 > svg:nth-of-type(1) > g:nth-of-type(1) > text:nth-of-type(2)",
+            "text": "수상한 사람",
+            "fontPx": 18.89,
+            "time": 17.529,
+            "seconds": 13.523
+          },
+          {
+            "selector": "#d-inc > div:nth-of-type(2)",
+            "text": "정찰 + 침투가 한 IP로 묶임 →",
+            "fontPx": 19,
+            "time": 31.928,
+            "seconds": 12.145
+          },
+          {
+            "selector": "#d-inc > div:nth-of-type(2) > span:nth-of-type(1)",
+            "text": "CR-01 킬체인",
+            "fontPx": 19,
+            "time": 31.928,
+            "seconds": 12.145
+          },
+          {
+            "selector": "#d-block > div:nth-of-type(2)",
+            "text": "확실한 공격(연결 완성) →",
+            "fontPx": 19,
+            "time": 45.2,
+            "seconds": 29.8
+          },
+          {
+            "selector": "#d-block > div:nth-of-type(2) > span:nth-of-type(1)",
+            "text": "정문에서 영구 차단",
+            "fontPx": 19,
+            "time": 45.2,
+            "seconds": 29.8
+          },
+          {
+            "selector": "#b1 > svg:nth-of-type(1) > g:nth-of-type(1) > text:nth-of-type(1)",
+            "text": "정찰",
+            "fontPx": 19.88,
+            "time": 4.508,
+            "seconds": 12.52
+          },
+          {
+            "selector": "#b2 > svg:nth-of-type(1) > g:nth-of-type(1) > text:nth-of-type(1)",
+            "text": "침투",
+            "fontPx": 19.88,
+            "time": 17.529,
+            "seconds": 13.523
+          },
+          {
+            "selector": "#b3 > svg:nth-of-type(1) > g:nth-of-type(1) > text:nth-of-type(1)",
+            "text": "판단",
+            "fontPx": 19.88,
+            "time": 31.553,
+            "seconds": 12.52
+          },
+          {
+            "selector": "#b3 > svg:nth-of-type(1) > g:nth-of-type(1) > text:nth-of-type(2)",
+            "text": "경비 · 관제",
+            "fontPx": 19.88,
+            "time": 31.553,
+            "seconds": 12.52
+          },
+          {
+            "selector": "#b4 > svg:nth-of-type(1) > g:nth-of-type(1) > text:nth-of-type(1)",
+            "text": "영구 차단",
+            "fontPx": 19.88,
+            "time": 44.574,
+            "seconds": 14.524
+          },
+          {
+            "selector": "#b4 > svg:nth-of-type(1) > g:nth-of-type(1) > text:nth-of-type(2)",
+            "text": "출입 거부 (.180)",
+            "fontPx": 19.88,
+            "time": 44.574,
+            "seconds": 14.524
+          },
+          {
+            "selector": "#b5 > svg:nth-of-type(1) > g:nth-of-type(1) > text:nth-of-type(1)",
+            "text": "대조 IP",
+            "fontPx": 19.88,
+            "time": 59.599,
+            "seconds": 15.401
+          },
+          {
+            "selector": "#b5 > svg:nth-of-type(1) > g:nth-of-type(1) > text:nth-of-type(3)",
+            "text": "정상 출입 (.181)",
+            "fontPx": 19.88,
+            "time": 59.599,
+            "seconds": 15.401
+          },
+          {
+            "selector": "#t-scan > div:nth-of-type(1)",
+            "text": "docker run --rm attacker",
+            "fontPx": 20,
+            "time": 4.382,
+            "seconds": 12.646
+          },
+          {
+            "selector": "#t-scan > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "$",
+            "fontPx": 20,
+            "time": 4.382,
+            "seconds": 12.646
+          },
+          {
+            "selector": "#t-scan > div:nth-of-type(1) > span:nth-of-type(2)",
+            "text": "scan",
+            "fontPx": 20,
+            "time": 4.382,
+            "seconds": 12.646
+          },
+          {
+            "selector": "#t-scan > div:nth-of-type(1) > span:nth-of-type(3)",
+            "text": "--ip .180",
+            "fontPx": 20,
+            "time": 4.382,
+            "seconds": 12.646
+          },
+          {
+            "selector": "#t-scan > div:nth-of-type(2)",
+            "text": "# Nmap 7.95 — 172.28.0.10 scanned",
+            "fontPx": 20,
+            "time": 4.508,
+            "seconds": 12.52
+          },
+          {
+            "selector": "#t-scan > div:nth-of-type(3)",
+            "text": "Ports: · Ignored: closed (90)",
+            "fontPx": 20,
+            "time": 4.758,
+            "seconds": 12.27
+          },
+          {
+            "selector": "span.k-warn",
+            "text": "8080/open/tcp",
+            "fontPx": 20,
+            "time": 4.758,
+            "seconds": 12.27
+          },
+          {
+            "selector": "#d-scan > div:nth-of-type(1)",
+            "text": "네트워크 이벤트 (L3/L4 탐지)",
+            "fontPx": 20,
+            "time": 4.758,
+            "seconds": 12.27
+          },
+          {
+            "selector": "#t-scan > div:nth-of-type(4)",
+            "text": "{\"step\":\"scan\",\"ok\":,\"open_ports\":[8080]}",
+            "fontPx": 20,
+            "time": 4.883,
+            "seconds": 12.145
+          },
+          {
+            "selector": "#t-scan > div:nth-of-type(4) > span:nth-of-type(1)",
+            "text": "true",
+            "fontPx": 20,
+            "time": 4.883,
+            "seconds": 12.145
+          },
+          {
+            "selector": "#t-brute > div:nth-of-type(1)",
+            "text": "docker run --rm attacker --attempts 6",
+            "fontPx": 20,
+            "time": 17.404,
+            "seconds": 26.669
+          },
+          {
+            "selector": "#t-brute > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "$",
+            "fontPx": 20,
+            "time": 17.404,
+            "seconds": 26.669
+          },
+          {
+            "selector": "#t-brute > div:nth-of-type(1) > span:nth-of-type(2)",
+            "text": "brute",
+            "fontPx": 20,
+            "time": 17.404,
+            "seconds": 26.669
+          },
+          {
+            "selector": "#t-brute > div:nth-of-type(2)",
+            "text": "[*] /login 에 틀린 비밀번호로 6회 연속 시도",
+            "fontPx": 20,
+            "time": 17.529,
+            "seconds": 26.544
+          },
+          {
+            "selector": "#t-brute > div:nth-of-type(3)",
+            "text": "시도 1/6 — 상태 코드 200",
+            "fontPx": 20,
+            "time": 17.654,
+            "seconds": 26.419
+          },
+          {
+            "selector": "#t-brute > div:nth-of-type(4)",
+            "text": "시도 2/6 — 상태 코드 200",
+            "fontPx": 20,
+            "time": 17.78,
+            "seconds": 26.293
+          },
+          {
+            "selector": "#d-brute > div:nth-of-type(1)",
+            "text": "보안 이벤트",
+            "fontPx": 20,
+            "time": 17.78,
+            "seconds": 13.272
+          },
+          {
+            "selector": "#t-brute > div:nth-of-type(5)",
+            "text": "시도 3/6 — 상태 코드 200",
+            "fontPx": 20,
+            "time": 17.905,
+            "seconds": 26.168
+          },
+          {
+            "selector": "#t-brute > div:nth-of-type(6)",
+            "text": "시도 4/6 — 상태 코드 200",
+            "fontPx": 20,
+            "time": 18.03,
+            "seconds": 26.043
+          },
+          {
+            "selector": "#t-brute > div:nth-of-type(7)",
+            "text": "시도 5/6 — 상태 코드 200",
+            "fontPx": 20,
+            "time": 18.155,
+            "seconds": 25.918
+          },
+          {
+            "selector": "#t-brute > div:nth-of-type(8)",
+            "text": "시도 6/6 — 차단 발동, 연결 끊김 (ReadTimeout)",
+            "fontPx": 20,
+            "time": 18.28,
+            "seconds": 25.793
+          },
+          {
+            "selector": "#d-inc > div:nth-of-type(1)",
+            "text": "연관 사건 (SIEM 상관분석)",
+            "fontPx": 20,
+            "time": 31.427,
+            "seconds": 12.646
+          },
+          {
+            "selector": "#t-p180 > div:nth-of-type(1)",
+            "text": "docker run --rm attacker",
+            "fontPx": 20,
+            "time": 44.324,
+            "seconds": 14.774
+          },
+          {
+            "selector": "#t-p180 > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "$",
+            "fontPx": 20,
+            "time": 44.324,
+            "seconds": 14.774
+          },
+          {
+            "selector": "#t-p180 > div:nth-of-type(1) > span:nth-of-type(2)",
+            "text": "probe",
+            "fontPx": 20,
+            "time": 44.324,
+            "seconds": 14.774
+          },
+          {
+            "selector": "#t-p180 > div:nth-of-type(1) > span:nth-of-type(3)",
+            "text": "--ip .180",
+            "fontPx": 20,
+            "time": 44.324,
+            "seconds": 14.774
+          },
+          {
+            "selector": "#t-p180 > div:nth-of-type(2)",
+            "text": "공격 IP에서 정문 접속 시도…",
+            "fontPx": 20,
+            "time": 44.574,
+            "seconds": 14.524
+          },
+          {
+            "selector": "#t-p180 > div:nth-of-type(3)",
+            "text": "{\"step\":\"probe\",\"reachable\":,\"error\":\"TimeoutError\"}",
+            "fontPx": 20,
+            "time": 44.825,
+            "seconds": 14.273
+          },
+          {
+            "selector": "span.k-no",
+            "text": "false",
+            "fontPx": 20,
+            "time": 44.825,
+            "seconds": 14.273
+          },
+          {
+            "selector": "#d-block > div:nth-of-type(1)",
+            "text": "L4 차단 목록 (정문 방화벽)",
+            "fontPx": 20,
+            "time": 44.825,
+            "seconds": 30.175
+          },
+          {
+            "selector": "#t-p180 > div:nth-of-type(4)",
+            "text": "차단됨 — 연결 불가",
+            "fontPx": 20,
+            "time": 45.075,
+            "seconds": 14.023
+          },
+          {
+            "selector": "#t-p181 > div:nth-of-type(1)",
+            "text": "docker run --rm attacker-2",
+            "fontPx": 20,
+            "time": 59.349,
+            "seconds": 15.651
+          },
+          {
+            "selector": "#t-p181 > div:nth-of-type(1) > span:nth-of-type(1)",
+            "text": "$",
+            "fontPx": 20,
+            "time": 59.349,
+            "seconds": 15.651
+          },
+          {
+            "selector": "#t-p181 > div:nth-of-type(1) > span:nth-of-type(2)",
+            "text": "probe",
+            "fontPx": 20,
+            "time": 59.349,
+            "seconds": 15.651
+          },
+          {
+            "selector": "#t-p181 > div:nth-of-type(1) > span:nth-of-type(3)",
+            "text": "--ip .181",
+            "fontPx": 20,
+            "time": 59.349,
+            "seconds": 15.651
+          },
+          {
+            "selector": "#t-p181 > div:nth-of-type(2)",
+            "text": "대조용 다른 IP에서 접속 시도…",
+            "fontPx": 20,
+            "time": 59.599,
+            "seconds": 15.401
+          },
+          {
+            "selector": "#t-p181 > div:nth-of-type(3)",
+            "text": "{\"step\":\"probe\",\"reachable\":}",
+            "fontPx": 20,
+            "time": 59.85,
+            "seconds": 15.15
+          },
+          {
+            "selector": "#t-p181 > div:nth-of-type(3) > span:nth-of-type(1)",
+            "text": "true",
+            "fontPx": 20,
+            "time": 59.85,
+            "seconds": 15.15
+          },
+          {
+            "selector": "div.row.k-ok",
+            "text": "정상 접속 — 영향 없음",
+            "fontPx": 20,
+            "time": 60.1,
+            "seconds": 14.9
+          },
+          {
+            "selector": "div.tag",
+            "text": "CR-01 · KILL CHAIN",
+            "fontPx": 21,
+            "time": 0,
+            "seconds": 75
+          },
+          {
+            "selector": "g.sg > g:nth-of-type(2) > g:nth-of-type(1) > text:nth-of-type(1)",
+            "text": "① 문 흔들기 (정찰)",
+            "fontPx": 21.87,
+            "time": 31.553,
+            "seconds": 12.52
+          },
+          {
+            "selector": "g.sg > g:nth-of-type(2) > g:nth-of-type(2) > text:nth-of-type(1)",
+            "text": "② 비번 시도 (침투)",
+            "fontPx": 21.87,
+            "time": 31.553,
+            "seconds": 12.52
+          },
+          {
+            "selector": "#b3 > svg:nth-of-type(1) > g:nth-of-type(1) > g:nth-of-type(4) > text:nth-of-type(2)",
+            "text": "CR-01 킬체인 판정",
+            "fontPx": 21.87,
+            "time": 31.553,
+            "seconds": 12.52
+          },
+          {
+            "selector": "#b1 > svg:nth-of-type(1) > g:nth-of-type(1) > text:nth-of-type(3)",
+            "text": "문을 하나씩 — 열려 있는 집(포트)을 찾는다",
+            "fontPx": 23.86,
+            "time": 4.508,
+            "seconds": 12.52
+          },
+          {
+            "selector": "#b1 > svg:nth-of-type(1) > g:nth-of-type(1) > text:nth-of-type(3) > tspan:nth-of-type(1)",
+            "text": "흔들어 본다",
+            "fontPx": 23.86,
+            "time": 4.508,
+            "seconds": 12.52
+          },
+          {
+            "selector": "#b2 > svg:nth-of-type(1) > g:nth-of-type(1) > text:nth-of-type(3)",
+            "text": "도어락에 (무차별 대입)",
+            "fontPx": 23.86,
+            "time": 17.529,
+            "seconds": 13.523
+          },
+          {
+            "selector": "#b2 > svg:nth-of-type(1) > g:nth-of-type(1) > text:nth-of-type(3) > tspan:nth-of-type(1)",
+            "text": "비밀번호를 계속 눌러 본다",
+            "fontPx": 23.86,
+            "time": 17.529,
+            "seconds": 13.523
+          },
+          {
+            "selector": "#b3 > svg:nth-of-type(1) > g:nth-of-type(1) > text:nth-of-type(3)",
+            "text": "경비가 를 같은 사람으로 알아챈다",
+            "fontPx": 23.86,
+            "time": 31.553,
+            "seconds": 12.52
+          },
+          {
+            "selector": "#b3 > svg:nth-of-type(1) > g:nth-of-type(1) > text:nth-of-type(3) > tspan:nth-of-type(1)",
+            "text": "문 흔들기 + 비번 시도",
+            "fontPx": 23.86,
+            "time": 31.553,
+            "seconds": 12.52
+          },
+          {
+            "selector": "#b4 > svg:nth-of-type(1) > g:nth-of-type(1) > text:nth-of-type(3)",
+            "text": "연결까지 완성된 확실한 침입 →",
+            "fontPx": 23.86,
+            "time": 44.574,
+            "seconds": 14.524
+          },
+          {
+            "selector": "#b4 > svg:nth-of-type(1) > g:nth-of-type(1) > text:nth-of-type(3) > tspan:nth-of-type(1)",
+            "text": "영구 출입 금지",
+            "fontPx": 23.86,
+            "time": 44.574,
+            "seconds": 14.524
+          },
+          {
+            "selector": "g.sg > text:nth-of-type(4)",
+            "text": "같은 건물의 — 필요한 곳만 막는다",
+            "fontPx": 23.86,
+            "time": 59.599,
+            "seconds": 15.401
+          },
+          {
+            "selector": "g.sg > text:nth-of-type(4) > tspan:nth-of-type(1)",
+            "text": "다른 주민(.181)은 평소처럼 출입",
+            "fontPx": 23.86,
+            "time": 59.599,
+            "seconds": 15.401
+          },
+          {
+            "selector": "g.sg > g:nth-of-type(5) > text:nth-of-type(1)",
+            "text": "열린 집(열린 포트)",
+            "fontPx": 24.85,
+            "time": 4.508,
+            "seconds": 12.52
+          },
+          {
+            "selector": "g.sg > g:nth-of-type(5) > text:nth-of-type(2)",
+            "text": "없나…?",
+            "fontPx": 24.85,
+            "time": 4.508,
+            "seconds": 12.52
+          },
+          {
+            "selector": "#in-eye",
+            "text": "04 · DEMO",
+            "fontPx": 25,
+            "time": 0.376,
+            "seconds": 3.63
+          },
+          {
+            "selector": "#b3 > svg:nth-of-type(1) > g:nth-of-type(1) > g:nth-of-type(4) > text:nth-of-type(1)",
+            "text": "같은 사람이다!",
+            "fontPx": 25.85,
+            "time": 31.553,
+            "seconds": 12.52
+          },
+          {
+            "selector": "#b2 > svg:nth-of-type(1) > g:nth-of-type(1) > g:nth-of-type(4) > text:nth-of-type(1)",
+            "text": "1234 ✗",
+            "fontPx": 26.84,
+            "time": 17.529,
+            "seconds": 13.523
+          },
+          {
+            "selector": "#b2 > svg:nth-of-type(1) > g:nth-of-type(1) > g:nth-of-type(4) > text:nth-of-type(2)",
+            "text": "0000 ✗",
+            "fontPx": 26.84,
+            "time": 17.529,
+            "seconds": 13.523
+          },
+          {
+            "selector": "g.sg > g:nth-of-type(4) > text:nth-of-type(3)",
+            "text": "1111 ✗",
+            "fontPx": 26.84,
+            "time": 17.529,
+            "seconds": 13.523
+          },
+          {
+            "selector": "g.sg > g:nth-of-type(4) > text:nth-of-type(4)",
+            "text": "admin ✗",
+            "fontPx": 26.84,
+            "time": 17.529,
+            "seconds": 13.523
+          }
+        ]
+      },
+      {
+        "code": "dead_stretch",
+        "severity": "warning",
+        "message": "Nothing on screen changes for 9.89 s (20.79–30.68 s): start the next move within 3 s, or put data-hold on the element whose stillness is deliberate; see references/motion.md.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 20.785,
+        "seconds": 9.891,
+        "floorSeconds": 3,
+        "until": 30.676
+      },
+      {
+        "code": "dead_stretch",
+        "severity": "warning",
+        "message": "Nothing on screen changes for 11.39 s (32.30–43.70 s): start the next move within 3 s, or put data-hold on the element whose stillness is deliberate; see references/motion.md.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 32.304,
+        "seconds": 11.394,
+        "floorSeconds": 3,
+        "until": 43.698
+      },
+      {
+        "code": "dead_stretch",
+        "severity": "warning",
+        "message": "Nothing on screen changes for 12.65 s (46.08–58.72 s): start the next move within 3 s, or put data-hold on the element whose stillness is deliberate; see references/motion.md.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 46.077,
+        "seconds": 12.646,
+        "floorSeconds": 3,
+        "until": 58.723
+      },
+      {
+        "code": "dead_stretch",
+        "severity": "warning",
+        "message": "Nothing on screen changes for 11.14 s (60.48–71.62 s): start the next move within 3 s, or put data-hold on the element whose stillness is deliberate; see references/motion.md.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 60.476,
+        "seconds": 11.143,
+        "floorSeconds": 3,
+        "until": 71.619
+      }
+    ],
+    "enabled": true,
+    "step": 0.125,
+    "samples": 599
+  },
+  "audio": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 1,
+    "findings": [
+      {
+        "code": "audio_none",
+        "severity": "info",
+        "message": "The film has no sound: no clip in it plays audio.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0
+      }
+    ]
+  },
+  "hdr": {
+    "autoPromotion": null,
+    "inspection": "available"
+  },
+  "snapshots": {
+    "enabled": false,
+    "files": [],
+    "times": [],
+    "findingFiles": []
+  }
+}

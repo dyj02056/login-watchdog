@@ -1,0 +1,1381 @@
+{
+  "ok": true,
+  "strict": false,
+  "browserSkipped": false,
+  "lint": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 6,
+    "infoCount": 0,
+    "findings": [
+      {
+        "code": "timeline_track_too_dense",
+        "severity": "warning",
+        "message": "Track 4 has 5 timed elements in this HTML file. Smaller sub-compositions keep timelines easier to read, iterate on, and diff.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s5\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move coherent scene groups into separate .html files under compositions/ and mount them from the parent with data-composition-src so the timeline stays easier to inspect, revise, and validate."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"t-syn\"> is a timeline element that contains nested <div>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#t-syn",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s5\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"t-syn\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"d-sensor\"> is a timeline element that contains nested <div>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#d-sensor",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s5\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"d-sensor\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"d-alert\"> is a timeline element that contains nested <div>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#d-alert",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s5\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"d-alert\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"d-block\"> is a timeline element that contains nested <div>. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#d-block",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s5\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"d-block\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      },
+      {
+        "code": "nested_structure_needs_subcomposition",
+        "severity": "warning",
+        "message": "<div id=\"intro\"> is a timeline element that contains nested <div id=\"in-eye\">. The timeline shows one row per top-level element, and the root composition is built only from sub-compositions.",
+        "selector": "#intro",
+        "dataAttributes": {},
+        "sourceFile": "C:\\Users\\User\\Documents\\login-watchdog\\presentation\\videos\\proj_s5\\index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0,
+        "fixHint": "Move <div id=\"intro\"> and its contents into a sub-composition file and mount it with data-composition-src."
+      }
+    ],
+    "filesScanned": 1
+  },
+  "runtime": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": []
+  },
+  "layout": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 15,
+    "findings": [
+      {
+        "code": "text_occluded",
+        "severity": "info",
+        "time": 2.222,
+        "selector": "div.t",
+        "message": "Text is hidden beneath an opaque element.",
+        "rect": {
+          "left": 96,
+          "top": 51,
+          "right": 231.94,
+          "bottom": 99,
+          "width": 135.94,
+          "height": 48
+        },
+        "containerSelector": "#intro",
+        "text": "시연 ②",
+        "fixHint": "Give the text its own zone, raise its stacking order above the covering element, or mark intentional layering with data-layout-allow-occlusion.",
+        "coveredFraction": 1,
+        "lifetime": {
+          "start": 0,
+          "end": 40
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 96,
+          "y": 51,
+          "width": 135.94,
+          "height": 48
+        },
+        "firstSeen": 2.222,
+        "lastSeen": 2.222,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          2.222
+        ]
+      },
+      {
+        "code": "text_occluded",
+        "severity": "info",
+        "time": 2.222,
+        "selector": "div.t > b:nth-of-type(1)",
+        "message": "Text is hidden beneath an opaque element.",
+        "rect": {
+          "left": 231.94,
+          "top": 51,
+          "right": 395.34,
+          "bottom": 99,
+          "width": 163.41,
+          "height": 48
+        },
+        "containerSelector": "#intro",
+        "text": "SYN 폭주",
+        "fixHint": "Give the text its own zone, raise its stacking order above the covering element, or mark intentional layering with data-layout-allow-occlusion.",
+        "coveredFraction": 1,
+        "lifetime": {
+          "start": 0,
+          "end": 40
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 231.94,
+          "y": 51,
+          "width": 163.41,
+          "height": 48
+        },
+        "firstSeen": 2.222,
+        "lastSeen": 2.222,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          2.222
+        ]
+      },
+      {
+        "code": "text_occluded",
+        "severity": "info",
+        "time": 2.222,
+        "selector": "div.tag",
+        "message": "Text is hidden beneath an opaque element.",
+        "rect": {
+          "left": 1569.39,
+          "top": 57.5,
+          "right": 1807,
+          "bottom": 86.5,
+          "width": 237.61,
+          "height": 29
+        },
+        "containerSelector": "#intro",
+        "text": "NET-01 · TTL BLOCK",
+        "fixHint": "Give the text its own zone, raise its stacking order above the covering element, or mark intentional layering with data-layout-allow-occlusion.",
+        "coveredFraction": 1,
+        "lifetime": {
+          "start": 0,
+          "end": 40
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 1569.39,
+          "y": 57.5,
+          "width": 237.61,
+          "height": 29
+        },
+        "firstSeen": 2.222,
+        "lastSeen": 2.222,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          2.222
+        ]
+      },
+      {
+        "code": "text_occluded",
+        "severity": "info",
+        "time": 2.222,
+        "selector": "div.pane.term > div:nth-of-type(1) > span:nth-of-type(4)",
+        "message": "Text is hidden beneath an opaque element.",
+        "rect": {
+          "left": 198,
+          "top": 145.5,
+          "right": 304.41,
+          "bottom": 171.5,
+          "width": 106.41,
+          "height": 26
+        },
+        "containerSelector": "#intro",
+        "text": "공격 터미널",
+        "fixHint": "Give the text its own zone, raise its stacking order above the covering element, or mark intentional layering with data-layout-allow-occlusion.",
+        "coveredFraction": 1,
+        "lifetime": {
+          "start": 0,
+          "end": 40
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 198,
+          "y": 145.5,
+          "width": 106.41,
+          "height": 26
+        },
+        "firstSeen": 2.222,
+        "lastSeen": 2.222,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          2.222
+        ]
+      },
+      {
+        "code": "text_occluded",
+        "severity": "info",
+        "time": 2.222,
+        "selector": "div.pane.dash > div:nth-of-type(1) > span:nth-of-type(2)",
+        "message": "Text is hidden beneath an opaque element.",
+        "rect": {
+          "left": 1032,
+          "top": 148,
+          "right": 1273.22,
+          "bottom": 172,
+          "width": 241.22,
+          "height": 24
+        },
+        "containerSelector": "#intro",
+        "text": "로그인 워치독 — 관제 화면",
+        "fixHint": "Give the text its own zone, raise its stacking order above the covering element, or mark intentional layering with data-layout-allow-occlusion.",
+        "coveredFraction": 1,
+        "lifetime": {
+          "start": 0,
+          "end": 40
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 1032,
+          "y": 148,
+          "width": 241.22,
+          "height": 24
+        },
+        "firstSeen": 2.222,
+        "lastSeen": 2.222,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          2.222
+        ]
+      },
+      {
+        "code": "canvas_overflow",
+        "severity": "info",
+        "time": 6.667,
+        "selector": "#s1 > span:nth-of-type(1)",
+        "message": "Text extends outside the composition canvas.",
+        "rect": {
+          "left": 577.61,
+          "top": 1044,
+          "right": 1121.42,
+          "bottom": 1085,
+          "width": 543.81,
+          "height": 41
+        },
+        "containerSelector": "#root",
+        "text": "문을 두드리고 도망가길 반복합니다",
+        "fixHint": "Move the text inward, reduce its size, or mark intentional off-canvas animation with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 0,
+          "top": 0,
+          "right": 1920,
+          "bottom": 1080,
+          "width": 1920,
+          "height": 1080
+        },
+        "overflow": {
+          "bottom": 5
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 577.61,
+          "y": 1044,
+          "width": 543.81,
+          "height": 41
+        },
+        "firstSeen": 6.667,
+        "lastSeen": 11.111,
+        "occurrences": 2,
+        "heldMs": 0,
+        "times": [
+          6.667,
+          11.111
+        ]
+      },
+      {
+        "code": "canvas_overflow",
+        "severity": "info",
+        "time": 6.667,
+        "selector": "#s1 > span:nth-of-type(1) > b:nth-of-type(1)",
+        "message": "Text extends outside the composition canvas.",
+        "rect": {
+          "left": 1121.42,
+          "top": 1044,
+          "right": 1342.38,
+          "bottom": 1085,
+          "width": 220.96,
+          "height": 41
+        },
+        "containerSelector": "#root",
+        "text": "(SYN 3,000개)",
+        "fixHint": "Move the text inward, reduce its size, or mark intentional off-canvas animation with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 0,
+          "top": 0,
+          "right": 1920,
+          "bottom": 1080,
+          "width": 1920,
+          "height": 1080
+        },
+        "overflow": {
+          "bottom": 5
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 1121.42,
+          "y": 1044,
+          "width": 220.96,
+          "height": 41
+        },
+        "firstSeen": 6.667,
+        "lastSeen": 11.111,
+        "occurrences": 2,
+        "heldMs": 0,
+        "times": [
+          6.667,
+          11.111
+        ]
+      },
+      {
+        "code": "canvas_overflow",
+        "severity": "info",
+        "time": 15.556,
+        "selector": "#s2 > span:nth-of-type(1)",
+        "message": "Text extends outside the composition canvas.",
+        "rect": {
+          "left": 689.09,
+          "top": 1044,
+          "right": 1230.89,
+          "bottom": 1085,
+          "width": 541.8,
+          "height": 41
+        },
+        "containerSelector": "#root",
+        "text": "센서가 SYN 폭주를 합니다",
+        "fixHint": "Move the text inward, reduce its size, or mark intentional off-canvas animation with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 0,
+          "top": 0,
+          "right": 1920,
+          "bottom": 1080,
+          "width": 1920,
+          "height": 1080
+        },
+        "overflow": {
+          "bottom": 5
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 689.09,
+          "y": 1044,
+          "width": 541.8,
+          "height": 41
+        },
+        "firstSeen": 15.556,
+        "lastSeen": 15.556,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          15.556
+        ]
+      },
+      {
+        "code": "canvas_overflow",
+        "severity": "info",
+        "time": 15.556,
+        "selector": "#s2 > span:nth-of-type(1) > b:nth-of-type(1)",
+        "message": "Text extends outside the composition canvas.",
+        "rect": {
+          "left": 984.42,
+          "top": 1044,
+          "right": 1128.89,
+          "bottom": 1085,
+          "width": 144.47,
+          "height": 41
+        },
+        "containerSelector": "#root",
+        "text": "바로 탐지",
+        "fixHint": "Move the text inward, reduce its size, or mark intentional off-canvas animation with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 0,
+          "top": 0,
+          "right": 1920,
+          "bottom": 1080,
+          "width": 1920,
+          "height": 1080
+        },
+        "overflow": {
+          "bottom": 5
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 984.42,
+          "y": 1044,
+          "width": 144.47,
+          "height": 41
+        },
+        "firstSeen": 15.556,
+        "lastSeen": 15.556,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          15.556
+        ]
+      },
+      {
+        "code": "canvas_overflow",
+        "severity": "info",
+        "time": 20,
+        "selector": "#s3 > span:nth-of-type(1)",
+        "message": "Text extends outside the composition canvas.",
+        "rect": {
+          "left": 549.17,
+          "top": 1044,
+          "right": 1370.83,
+          "bottom": 1085,
+          "width": 821.66,
+          "height": 41
+        },
+        "containerSelector": "#root",
+        "text": "위·변조를 막기 위해 가 기록됩니다",
+        "fixHint": "Move the text inward, reduce its size, or mark intentional off-canvas animation with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 0,
+          "top": 0,
+          "right": 1920,
+          "bottom": 1080,
+          "width": 1920,
+          "height": 1080
+        },
+        "overflow": {
+          "bottom": 5
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 549.17,
+          "y": 1044,
+          "width": 821.66,
+          "height": 41
+        },
+        "firstSeen": 20,
+        "lastSeen": 24.444,
+        "occurrences": 2,
+        "heldMs": 0,
+        "times": [
+          20,
+          24.444
+        ]
+      },
+      {
+        "code": "canvas_overflow",
+        "severity": "info",
+        "time": 20,
+        "selector": "#s3 > span:nth-of-type(1) > b:nth-of-type(1)",
+        "message": "Text extends outside the composition canvas.",
+        "rect": {
+          "left": 856.8,
+          "top": 1044,
+          "right": 1158.38,
+          "bottom": 1085,
+          "width": 301.58,
+          "height": 41
+        },
+        "containerSelector": "#root",
+        "text": "서명(HMAC)된 경보",
+        "fixHint": "Move the text inward, reduce its size, or mark intentional off-canvas animation with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 0,
+          "top": 0,
+          "right": 1920,
+          "bottom": 1080,
+          "width": 1920,
+          "height": 1080
+        },
+        "overflow": {
+          "bottom": 5
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 856.8,
+          "y": 1044,
+          "width": 301.58,
+          "height": 41
+        },
+        "firstSeen": 20,
+        "lastSeen": 24.444,
+        "occurrences": 2,
+        "heldMs": 0,
+        "times": [
+          20,
+          24.444
+        ]
+      },
+      {
+        "code": "canvas_overflow",
+        "severity": "info",
+        "time": 28.889,
+        "selector": "#s4 > span:nth-of-type(1)",
+        "message": "Text extends outside the composition canvas.",
+        "rect": {
+          "left": 543.38,
+          "top": 1044,
+          "right": 1376.63,
+          "bottom": 1085,
+          "width": 833.25,
+          "height": 41
+        },
+        "containerSelector": "#root",
+        "text": "위조될 수 있는 증거라 차단",
+        "fixHint": "Move the text inward, reduce its size, or mark intentional off-canvas animation with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 0,
+          "top": 0,
+          "right": 1920,
+          "bottom": 1080,
+          "width": 1920,
+          "height": 1080
+        },
+        "overflow": {
+          "bottom": 5
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 543.38,
+          "y": 1044,
+          "width": 833.25,
+          "height": 41
+        },
+        "firstSeen": 28.889,
+        "lastSeen": 33.333,
+        "occurrences": 2,
+        "heldMs": 0,
+        "times": [
+          28.889,
+          33.333
+        ]
+      },
+      {
+        "code": "canvas_overflow",
+        "severity": "info",
+        "time": 28.889,
+        "selector": "#s4 > span:nth-of-type(1) > b:nth-of-type(1)",
+        "message": "Text extends outside the composition canvas.",
+        "rect": {
+          "left": 883.19,
+          "top": 1044,
+          "right": 1300.17,
+          "bottom": 1085,
+          "width": 416.98,
+          "height": 41
+        },
+        "containerSelector": "#root",
+        "text": "영구가 아닌 시간 제한(TTL)",
+        "fixHint": "Move the text inward, reduce its size, or mark intentional off-canvas animation with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 0,
+          "top": 0,
+          "right": 1920,
+          "bottom": 1080,
+          "width": 1920,
+          "height": 1080
+        },
+        "overflow": {
+          "bottom": 5
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 883.19,
+          "y": 1044,
+          "width": 416.98,
+          "height": 41
+        },
+        "firstSeen": 28.889,
+        "lastSeen": 33.333,
+        "occurrences": 2,
+        "heldMs": 0,
+        "times": [
+          28.889,
+          33.333
+        ]
+      },
+      {
+        "code": "canvas_overflow",
+        "severity": "info",
+        "time": 37.778,
+        "selector": "#s5 > span:nth-of-type(1)",
+        "message": "Text extends outside the composition canvas.",
+        "rect": {
+          "left": 767.45,
+          "top": 1044,
+          "right": 1056.36,
+          "bottom": 1085,
+          "width": 288.91,
+          "height": 41
+        },
+        "containerSelector": "#root",
+        "text": "탐지에서 차단까지",
+        "fixHint": "Move the text inward, reduce its size, or mark intentional off-canvas animation with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 0,
+          "top": 0,
+          "right": 1920,
+          "bottom": 1080,
+          "width": 1920,
+          "height": 1080
+        },
+        "overflow": {
+          "bottom": 5
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 767.45,
+          "y": 1044,
+          "width": 288.91,
+          "height": 41
+        },
+        "firstSeen": 37.778,
+        "lastSeen": 37.778,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          37.778
+        ]
+      },
+      {
+        "code": "canvas_overflow",
+        "severity": "info",
+        "time": 37.778,
+        "selector": "#s5 > span:nth-of-type(1) > b:nth-of-type(1)",
+        "message": "Text extends outside the composition canvas.",
+        "rect": {
+          "left": 1056.36,
+          "top": 1044,
+          "right": 1152.55,
+          "bottom": 1085,
+          "width": 96.19,
+          "height": 41
+        },
+        "containerSelector": "#root",
+        "text": "약 3초",
+        "fixHint": "Move the text inward, reduce its size, or mark intentional off-canvas animation with data-layout-allow-overflow.",
+        "containerRect": {
+          "left": 0,
+          "top": 0,
+          "right": 1920,
+          "bottom": 1080,
+          "width": 1920,
+          "height": 1080
+        },
+        "overflow": {
+          "bottom": 5
+        },
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 1056.36,
+          "y": 1044,
+          "width": 96.19,
+          "height": 41
+        },
+        "firstSeen": 37.778,
+        "lastSeen": 37.778,
+        "occurrences": 1,
+        "heldMs": 0,
+        "times": [
+          37.778
+        ]
+      }
+    ],
+    "duration": 40,
+    "samples": [
+      2.222,
+      6.667,
+      11.111,
+      15.556,
+      20,
+      24.444,
+      28.889,
+      33.333,
+      37.778
+    ],
+    "transitionSamples": [],
+    "transitionSamplesDropped": 0,
+    "tolerance": 2,
+    "totalIssueCount": 15,
+    "truncated": false
+  },
+  "motion": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "enabled": false,
+    "samples": 0
+  },
+  "contrast": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 0,
+    "findings": [],
+    "enabled": true,
+    "samples": [
+      2.222,
+      11.111,
+      20,
+      28.889,
+      37.778
+    ],
+    "checked": 110,
+    "passed": 110
+  },
+  "craft": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 7,
+    "infoCount": 0,
+    "findings": [
+      {
+        "code": "first_frame_empty",
+        "severity": "warning",
+        "message": "Frame 0 is covered by #intro: an opaque element over the canvas hides every other clip, and the first frame is the thumbnail on social players. Move it below the content; see canvas_covered.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0
+      },
+      {
+        "code": "film_silent",
+        "severity": "warning",
+        "message": "This 40 s film has no sound source (no <audio>, no <video> with sound): add a music bed and sounds on the visible actions unless the person asked for silence; see references/sound.md.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0
+      },
+      {
+        "code": "dead_stretch",
+        "severity": "warning",
+        "message": "Nothing on screen changes for 6.38 s (5.25–11.63 s): start the next move within 3 s, or put data-hold on the element whose stillness is deliberate; see references/motion.md.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 5.25,
+        "seconds": 6.375,
+        "floorSeconds": 3,
+        "until": 11.625
+      },
+      {
+        "code": "dead_stretch",
+        "severity": "warning",
+        "message": "Nothing on screen changes for 5.38 s (13.25–18.63 s): start the next move within 3 s, or put data-hold on the element whose stillness is deliberate; see references/motion.md.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 13.25,
+        "seconds": 5.375,
+        "floorSeconds": 3,
+        "until": 18.625
+      },
+      {
+        "code": "text_below_floor",
+        "severity": "warning",
+        "message": "Type floor is 28 px (2.6% of the 1080 px short side, what a phone can read) and 51 text elements stay under it for 0.5 s or more, the smallest \"high\" at 15 px: set reading text to at least 28 px, or put data-layout-ignore on text that is texture rather than reading; see references/look.md.",
+        "text": "high",
+        "selector": "span.badge.b-high",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 1704.02,
+          "y": 323.48,
+          "width": 29.51,
+          "height": 18
+        },
+        "time": 19.75,
+        "times": [
+          0,
+          0,
+          0,
+          0.375,
+          3.875,
+          3.875,
+          3.875,
+          3.875,
+          4.125,
+          4.375,
+          4.625,
+          4.875,
+          4.875,
+          12,
+          12,
+          12,
+          12,
+          12,
+          12.5,
+          12.625,
+          12.625,
+          12.625,
+          12.625,
+          12.625,
+          12.875,
+          12.875,
+          19,
+          19,
+          19,
+          19,
+          19.5,
+          19.75,
+          19.75,
+          19.75,
+          19.75,
+          20,
+          26,
+          26,
+          26,
+          26,
+          26,
+          26.5,
+          26.75,
+          26.75,
+          26.75,
+          26.75,
+          26.75,
+          27,
+          27,
+          27.25,
+          27.25
+        ],
+        "fontPx": 15,
+        "floorPx": 28,
+        "seconds": 6.25,
+        "elements": [
+          {
+            "selector": "span.badge.b-high",
+            "text": "high",
+            "fontPx": 15,
+            "time": 19.75,
+            "seconds": 6.25
+          },
+          {
+            "selector": "span.pill.p-block",
+            "text": "차단 중",
+            "fontPx": 16,
+            "time": 26.75,
+            "seconds": 13.25
+          },
+          {
+            "selector": "#d-sensor > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(1)",
+            "text": "시각",
+            "fontPx": 17,
+            "time": 12,
+            "seconds": 7
+          },
+          {
+            "selector": "#d-sensor > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(2)",
+            "text": "출발지 IP",
+            "fontPx": 17,
+            "time": 12,
+            "seconds": 7
+          },
+          {
+            "selector": "#d-sensor > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(3)",
+            "text": "계층",
+            "fontPx": 17,
+            "time": 12,
+            "seconds": 7
+          },
+          {
+            "selector": "#d-sensor > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(4)",
+            "text": "종류",
+            "fontPx": 17,
+            "time": 12,
+            "seconds": 7
+          },
+          {
+            "selector": "#d-sensor > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(5)",
+            "text": "패킷",
+            "fontPx": 17,
+            "time": 12,
+            "seconds": 7
+          },
+          {
+            "selector": "#d-alert > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(1)",
+            "text": "시각",
+            "fontPx": 17,
+            "time": 19,
+            "seconds": 7
+          },
+          {
+            "selector": "#d-alert > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(2)",
+            "text": "유형",
+            "fontPx": 17,
+            "time": 19,
+            "seconds": 7
+          },
+          {
+            "selector": "#d-alert > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(3)",
+            "text": "IP",
+            "fontPx": 17,
+            "time": 19,
+            "seconds": 7
+          },
+          {
+            "selector": "#d-alert > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(4)",
+            "text": "조치",
+            "fontPx": 17,
+            "time": 19,
+            "seconds": 7
+          },
+          {
+            "selector": "#d-block > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(1)",
+            "text": "IP",
+            "fontPx": 17,
+            "time": 26,
+            "seconds": 14
+          },
+          {
+            "selector": "#d-block > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(2)",
+            "text": "사유",
+            "fontPx": 17,
+            "time": 26,
+            "seconds": 14
+          },
+          {
+            "selector": "#d-block > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(3)",
+            "text": "증거",
+            "fontPx": 17,
+            "time": 26,
+            "seconds": 14
+          },
+          {
+            "selector": "#d-block > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(4)",
+            "text": "상태",
+            "fontPx": 17,
+            "time": 26,
+            "seconds": 14
+          },
+          {
+            "selector": "#d-block > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(1) > th:nth-of-type(5)",
+            "text": "남은 시간",
+            "fontPx": 17,
+            "time": 26,
+            "seconds": 14
+          },
+          {
+            "selector": "#d-sensor > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(1)",
+            "text": "16:05:44",
+            "fontPx": 19,
+            "time": 12.625,
+            "seconds": 6.375
+          },
+          {
+            "selector": "#d-sensor > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(2)",
+            "text": "172.28.0.172",
+            "fontPx": 19,
+            "time": 12.625,
+            "seconds": 6.375
+          },
+          {
+            "selector": "#d-sensor > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(3)",
+            "text": "L4",
+            "fontPx": 19,
+            "time": 12.625,
+            "seconds": 6.375
+          },
+          {
+            "selector": "#d-sensor > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(4)",
+            "text": "SYN 플러더",
+            "fontPx": 19,
+            "time": 12.625,
+            "seconds": 6.375
+          },
+          {
+            "selector": "#d-sensor > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(5)",
+            "text": "100",
+            "fontPx": 19,
+            "time": 12.625,
+            "seconds": 6.375
+          },
+          {
+            "selector": "#d-sensor > div:nth-of-type(2)",
+            "text": "센서가 SYN 폭주를",
+            "fontPx": 19,
+            "time": 12.875,
+            "seconds": 6.125
+          },
+          {
+            "selector": "#d-sensor > div:nth-of-type(2) > b:nth-of-type(1)",
+            "text": "즉시 탐지",
+            "fontPx": 19,
+            "time": 12.875,
+            "seconds": 6.125
+          },
+          {
+            "selector": "#d-alert > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(1)",
+            "text": "16:05:44",
+            "fontPx": 19,
+            "time": 19.75,
+            "seconds": 6.25
+          },
+          {
+            "selector": "#d-alert > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(2)",
+            "text": "NET_SYN_FLOOD",
+            "fontPx": 19,
+            "time": 19.75,
+            "seconds": 6.25
+          },
+          {
+            "selector": "#d-alert > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(3)",
+            "text": "172.28.0.172",
+            "fontPx": 19,
+            "time": 19.75,
+            "seconds": 6.25
+          },
+          {
+            "selector": "#d-block > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(1)",
+            "text": "172.28.0.172",
+            "fontPx": 19,
+            "time": 26.75,
+            "seconds": 13.25
+          },
+          {
+            "selector": "#d-block > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(2)",
+            "text": "네트워크 폭주",
+            "fontPx": 19,
+            "time": 26.75,
+            "seconds": 13.25
+          },
+          {
+            "selector": "#d-block > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(3)",
+            "text": "위조 가능 · 시간 제한",
+            "fontPx": 19,
+            "time": 26.75,
+            "seconds": 13.25
+          },
+          {
+            "selector": "td.ttl",
+            "text": "56분 남음",
+            "fontPx": 19,
+            "time": 26.75,
+            "seconds": 13.25
+          },
+          {
+            "selector": "#d-speed",
+            "text": "탐지 → 차단까지",
+            "fontPx": 19,
+            "time": 27.25,
+            "seconds": 12.75
+          },
+          {
+            "selector": "#d-speed > b:nth-of-type(1)",
+            "text": "약 3초",
+            "fontPx": 19,
+            "time": 27.25,
+            "seconds": 12.75
+          },
+          {
+            "selector": "div.pane.term > div:nth-of-type(1) > span:nth-of-type(4)",
+            "text": "공격 터미널",
+            "fontPx": 20,
+            "time": 0,
+            "seconds": 40
+          },
+          {
+            "selector": "div.pane.dash > div:nth-of-type(1) > span:nth-of-type(2)",
+            "text": "로그인 워치독 — 관제 화면",
+            "fontPx": 20,
+            "time": 0,
+            "seconds": 40
+          },
+          {
+            "selector": "div.row.sig",
+            "text": "🔏 HMAC 서명된 경보 — 위·변조 방지",
+            "fontPx": 20,
+            "time": 20,
+            "seconds": 6
+          },
+          {
+            "selector": "div.tag",
+            "text": "NET-01 · TTL BLOCK",
+            "fontPx": 22,
+            "time": 0,
+            "seconds": 40
+          },
+          {
+            "selector": "#d-sensor > div:nth-of-type(1)",
+            "text": "네트워크 이벤트 (L3/L4 탐지)",
+            "fontPx": 22,
+            "time": 12.5,
+            "seconds": 6.5
+          },
+          {
+            "selector": "#d-alert > div:nth-of-type(1)",
+            "text": "보안 이벤트",
+            "fontPx": 22,
+            "time": 19.5,
+            "seconds": 6.5
+          },
+          {
+            "selector": "#d-block > div:nth-of-type(1)",
+            "text": "L4 차단 목록 (정문 방화벽)",
+            "fontPx": 22,
+            "time": 26.5,
+            "seconds": 13.5
+          },
+          {
+            "selector": "div.row.big",
+            "text": "위조될 수 있는 증거 → 영구가 아닌",
+            "fontPx": 22,
+            "time": 27,
+            "seconds": 13
+          },
+          {
+            "selector": "span.ttl",
+            "text": "시간 제한(TTL) 차단",
+            "fontPx": 22,
+            "time": 27,
+            "seconds": 13
+          },
+          {
+            "selector": "div.row.cmd",
+            "text": "docker run --rm attacker-3 --count 3000",
+            "fontPx": 24,
+            "time": 3.875,
+            "seconds": 36.125
+          },
+          {
+            "selector": "span.p",
+            "text": "$",
+            "fontPx": 24,
+            "time": 3.875,
+            "seconds": 36.125
+          },
+          {
+            "selector": "span.d",
+            "text": "synflood",
+            "fontPx": 24,
+            "time": 3.875,
+            "seconds": 36.125
+          },
+          {
+            "selector": "div.row.cmd > span:nth-of-type(3)",
+            "text": "--ip .172",
+            "fontPx": 24,
+            "time": 3.875,
+            "seconds": 36.125
+          },
+          {
+            "selector": "#t-syn > div:nth-of-type(2)",
+            "text": "[*] 172.28.0.10:8080 에 SYN 다발 전송…",
+            "fontPx": 24,
+            "time": 4.125,
+            "seconds": 35.875
+          },
+          {
+            "selector": "div.row.flood",
+            "text": "SYN → SYN → SYN → SYN → SYN → … (위조 가능)",
+            "fontPx": 24,
+            "time": 4.375,
+            "seconds": 35.625
+          },
+          {
+            "selector": "#t-syn > div:nth-of-type(4)",
+            "text": "3000 packets transmitted, 1742 received, 42% loss",
+            "fontPx": 24,
+            "time": 4.625,
+            "seconds": 35.375
+          },
+          {
+            "selector": "div.row.json",
+            "text": "{\"step\":\"synflood\",\"ok\":,\"sent\":3000}",
+            "fontPx": 24,
+            "time": 4.875,
+            "seconds": 35.125
+          },
+          {
+            "selector": "span.k-ok",
+            "text": "true",
+            "fontPx": 24,
+            "time": 4.875,
+            "seconds": 35.125
+          },
+          {
+            "selector": "#in-eye",
+            "text": "04 · DEMO",
+            "fontPx": 26,
+            "time": 0.375,
+            "seconds": 3.125
+          }
+        ]
+      },
+      {
+        "code": "dead_stretch",
+        "severity": "warning",
+        "message": "Nothing on screen changes for 5.38 s (20.25–25.63 s): start the next move within 3 s, or put data-hold on the element whose stillness is deliberate; see references/motion.md.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 20.25,
+        "seconds": 5.375,
+        "floorSeconds": 3,
+        "until": 25.625
+      },
+      {
+        "code": "dead_stretch",
+        "severity": "warning",
+        "message": "Nothing on screen changes for 7.13 s (27.50–34.63 s): start the next move within 3 s, or put data-hold on the element whose stillness is deliberate; see references/motion.md.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 27.5,
+        "seconds": 7.125,
+        "floorSeconds": 3,
+        "until": 34.625
+      }
+    ],
+    "enabled": true,
+    "step": 0.125,
+    "samples": 320
+  },
+  "audio": {
+    "ok": true,
+    "errorCount": 0,
+    "warningCount": 0,
+    "infoCount": 1,
+    "findings": [
+      {
+        "code": "audio_none",
+        "severity": "info",
+        "message": "The film has no sound: no clip in it plays audio.",
+        "selector": "[data-composition-id]",
+        "dataAttributes": {},
+        "sourceFile": "index.html",
+        "bbox": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "time": 0
+      }
+    ]
+  },
+  "hdr": {
+    "autoPromotion": null,
+    "inspection": "available"
+  },
+  "snapshots": {
+    "enabled": false,
+    "files": [],
+    "times": [],
+    "findingFiles": []
+  }
+}

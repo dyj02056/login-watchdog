@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1760 380" font-family="'Segoe UI', system-ui, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0e141f"/><stop offset="1" stop-color="#0b111b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 띠 배경 -->
+  <rect x="2" y="2" width="1756" height="376" rx="18" fill="url(#bg)" stroke="#1e2a3a" stroke-width="2"/>
+
+  <!-- 좌상단 라벨 -->
+  <rect x="34" y="28" width="250" height="46" rx="10" fill="#111a28" stroke="#2a3a50"/>
+  <circle cx="60" cy="51" r="6" fill="#f0a74a"/>
+  <text x="78" y="58" fill="#f0a74a" font-size="24" font-weight="700">정찰 · 포트 스캔</text>
+
+  <!-- ===== 수상한 사람 (유스케이스 액터 모형 + 팔) ===== -->
+  <!-- 팔: 어깨에서 문 손잡이로 뻗음 (흔드는 팔) -->
+  <path d="M398 252 Q560 243 700 260 T 846 276" fill="none" stroke="#d9944a" stroke-width="26" stroke-linecap="round"/>
+  <!-- 손 -->
+  <circle cx="852" cy="278" r="18" fill="#d9944a"/>
+  <!-- 액터 본체 (유스케이스와 동일한 path, 색만 amber) -->
+  <g transform="translate(296,140) scale(3.2)" fill="#d9944a" stroke="none">
+    <circle cx="20" cy="12" r="9"/>
+    <path d="M4 51A16 22 0 0 1 36 51Z"/>
+  </g>
+  <text x="360" y="344" fill="#8b97a7" font-size="20" text-anchor="middle">수상한 사람</text>
+
+  <!-- 흔들림 아크 (손 주변) -->
+  <g stroke="#f0a74a" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.9">
+    <path d="M872 262 q22 16 0 32"/>
+    <path d="M884 252 q34 26 0 52"/>
+  </g>
+
+  <!-- ===== 공동현관 문 3개 ===== -->
+  <!-- 문1 (흔드는 중) -->
+  <g transform="translate(760,70)">
+    <rect x="0" y="0" width="190" height="252" rx="8" fill="#152033" stroke="#33465f" stroke-width="3"/>
+    <rect x="14" y="16" width="162" height="150" rx="6" fill="#0f1a2a" stroke="#28384d"/>
+    <!-- 손잡이 -->
+    <circle cx="150" cy="200" r="9" fill="none" stroke="#f0a74a" stroke-width="4"/>
+    <!-- 잠김 자물쇠 -->
+    <g transform="translate(78,70)" stroke="#8b97a7" stroke-width="3" fill="none">
+      <rect x="0" y="14" width="34" height="26" rx="4" fill="#1b2635"/><path d="M7 14 v-7 a10 10 0 0 1 20 0 v7"/>
+    </g>
+    <text x="95" y="-14" fill="#f0a74a" font-size="40" font-weight="800" text-anchor="middle">?</text>
+  </g>
+
+  <!-- 문2 -->
+  <g transform="translate(1010,70)">
+    <rect x="0" y="0" width="190" height="252" rx="8" fill="#152033" stroke="#2a3a50" stroke-width="3"/>
+    <rect x="14" y="16" width="162" height="150" rx="6" fill="#0f1a2a" stroke="#22354a"/>
+    <circle cx="150" cy="200" r="9" fill="none" stroke="#8b97a7" stroke-width="4"/>
+    <g transform="translate(78,70)" stroke="#8b97a7" stroke-width="3" fill="none">
+      <rect x="0" y="14" width="34" height="26" rx="4" fill="#1b2635"/><path d="M7 14 v-7 a10 10 0 0 1 20 0 v7"/>
+    </g>
+    <text x="95" y="-14" fill="#5a6676" font-size="40" font-weight="800" text-anchor="middle">?</text>
+  </g>
+
+  <!-- 문3 -->
+  <g transform="translate(1260,70)">
+    <rect x="0" y="0" width="190" height="252" rx="8" fill="#152033" stroke="#2a3a50" stroke-width="3"/>
+    <rect x="14" y="16" width="162" height="150" rx="6" fill="#0f1a2a" stroke="#22354a"/>
+    <circle cx="150" cy="200" r="9" fill="none" stroke="#8b97a7" stroke-width="4"/>
+    <g transform="translate(78,70)" stroke="#8b97a7" stroke-width="3" fill="none">
+      <rect x="0" y="14" width="34" height="26" rx="4" fill="#1b2635"/><path d="M7 14 v-7 a10 10 0 0 1 20 0 v7"/>
+    </g>
+    <text x="95" y="-14" fill="#5a6676" font-size="40" font-weight="800" text-anchor="middle">?</text>
+  </g>
+
+  <!-- 말풍선 -->
+  <g transform="translate(1510,116)">
+    <rect x="0" y="0" width="216" height="88" rx="14" fill="#111a28" stroke="#33465f" stroke-width="2"/>
+    <path d="M-16 44 l18 -12 l0 24 Z" fill="#111a28" stroke="#33465f" stroke-width="2"/>
+    <text x="108" y="40" fill="#e6edf3" font-size="26" font-weight="700" text-anchor="middle">열린 집</text>
+    <text x="108" y="70" fill="#e6edf3" font-size="26" font-weight="700" text-anchor="middle">없나…?</text>
+  </g>
+
+  <!-- 하단 비유 한마디 -->
+  <text x="880" y="368" fill="#c9d4e3" font-size="24" font-weight="700" text-anchor="middle">🚪 문을 하나씩 <tspan fill="#f0a74a">흔들어 본다</tspan> — 열려 있는 집(포트)을 찾는다</text>
+</svg>
