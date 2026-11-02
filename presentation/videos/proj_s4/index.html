@@ -19,46 +19,54 @@
       #hdr .t b { color: var(--crit); }
       #hdr .tag { font-family: var(--mono); font-size: 21px; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: 7px 15px; }
 
-      /* 상단 패널 영역 (축소) */
-      .stage { position: absolute; top: 108px; left: 96px; right: 96px; height: 430px; display: flex; gap: 30px; }
-      .pane { flex: 1; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; position: relative; }
-      .pane-head { height: 46px; display: flex; align-items: center; gap: 9px; padding: 0 20px; border-bottom: 1px solid var(--border); background: #0c1220; }
-      .pane-head .dot { width: 12px; height: 12px; border-radius: 50%; }
-      .pane-head .label { margin-left: 9px; font-size: 18px; color: var(--muted); font-weight: 600; }
+      /* 패널 영역 — 하단 비유 그림을 없애고 화면 대부분을 코드·관제 화면에 준다 */
+      .stage { position: absolute; top: 112px; left: 96px; right: 96px; height: 806px; display: flex; gap: 30px; }
+      .pane { flex: 1; background: var(--panel); border: 2px solid var(--border); border-radius: 16px; overflow: hidden; position: relative;
+              box-shadow: 0 0 0 1px rgba(0,0,0,0), 0 0 40px rgba(0,0,0,0); }
+      .pane-head { height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 24px; border-bottom: 1px solid var(--border); background: #0c1220; }
+      .pane-head .dot { width: 14px; height: 14px; border-radius: 50%; }
+      .pane-head .label { margin-left: 10px; font-size: 22px; color: var(--muted); font-weight: 700; }
 
-      .term { font-family: var(--mono); font-size: 20px; line-height: 1.6; }
-      .term .blk { position: absolute; left: 0; right: 0; top: 46px; padding: 18px 24px; }
+      .term { font-family: var(--mono); font-size: 28px; line-height: 1.65; }
+      .term .blk { position: absolute; left: 0; right: 0; top: 56px; padding: 26px 30px; }
       .term .cmd { color: #c9d4e3; } .term .cmd .p { color: var(--green); } .term .cmd .d { color: var(--blue); }
       .term .out { color: #9fb0c3; } .term .json { color: var(--muted); word-break: break-all; }
       .term .k-ok { color: var(--ok); font-weight: 700; } .term .k-no { color: var(--red); font-weight: 700; } .term .k-warn { color: var(--amber); }
       .term .row { opacity: 0; }
+      /* 결정적인 줄 — 형광펜처럼 배경을 칠해 시선을 잡는다 */
+      .term .hit { margin: 0 -12px; padding: 0 12px; border-radius: 8px; }
 
-      .dash .card { position: absolute; left: 0; right: 0; top: 46px; bottom: 0; padding: 18px 24px; }
-      .dash .ctitle { font-size: 20px; font-weight: 700; color: var(--blue); margin-bottom: 12px; display: flex; align-items: center; gap: 9px; }
-      .dash .ctitle::before { content: ""; width: 5px; height: 20px; background: var(--blue); border-radius: 3px; }
-      table { width: 100%; border-collapse: collapse; font-size: 17px; }
-      th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 15px; }
-      td { padding: 10px 10px; border-bottom: 1px solid #141d2b; color: #d7e0ec; }
-      td.ip, td.num { font-family: var(--mono); }
+      .dash .card { position: absolute; left: 0; right: 0; top: 56px; bottom: 0; padding: 26px 30px; }
+      .dash .ctitle { font-size: 28px; font-weight: 800; color: var(--blue); margin-bottom: 18px; display: flex; align-items: center; gap: 12px; }
+      .dash .ctitle::before { content: ""; width: 6px; height: 28px; background: var(--blue); border-radius: 3px; }
+      table { width: 100%; border-collapse: collapse; font-size: 23px; }
+      th { text-align: left; color: var(--muted); font-weight: 600; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 19px; }
+      td { padding: 14px 12px; border-bottom: 1px solid #141d2b; color: #d7e0ec; line-height: 1.35; word-break: keep-all; }
+      td.ip, td.num { font-family: var(--mono); white-space: nowrap; }
       tr.hl td { background: rgba(255,92,92,0.08); }
-      .badge { font-size: 14px; font-weight: 800; padding: 3px 9px; border-radius: 6px; }
+      .badge { font-size: 18px; font-weight: 800; padding: 4px 10px; border-radius: 6px; white-space: nowrap; }
       .b-crit { background: rgba(255,92,92,0.16); color: #ff8a8a; border: 1px solid rgba(255,92,92,0.4); }
       .b-med { background: rgba(240,167,74,0.16); color: var(--amber); border: 1px solid rgba(240,167,74,0.4); }
-      .b-run { color: var(--red); font-weight: 800; }
-      .pill { font-size: 15px; font-weight: 800; padding: 4px 11px; border-radius: 6px; }
+      .b-run { color: var(--red); font-weight: 800; white-space: nowrap; }
+      .pill { font-size: 19px; font-weight: 800; padding: 5px 12px; border-radius: 6px; white-space: nowrap; }
       .p-block { background: rgba(255,92,92,0.16); color: #ff8a8a; border: 1px solid rgba(255,92,92,0.45); }
-      .dash .note { margin-top: 14px; font-size: 17px; color: var(--muted); }
-      .dash .big { margin-top: 8px; font-size: 19px; }
+      .dash .note { margin-top: 20px; font-size: 23px; color: var(--muted); }
+      .dash .note b { color: var(--ink); }
+      .dash .big { margin-top: 18px; font-size: 26px; font-weight: 600; }
       .dash .perm { color: var(--crit); font-weight: 800; }
       .dash .card .row { opacity: 0; }
 
-      /* 하단 비유 그림 띠 */
-      .band { position: absolute; left: 96px; right: 96px; top: 556px; height: 340px; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
-      .scene { position: absolute; inset: 0; }
-      .scene svg { width: 100%; height: 100%; display: block; }
-      .band .sg { opacity: 0; }
+      /* 관제 화면 아래 빈 자리에 띄우는 핵심 값 카드 — 그림 칸이 하던 '결론' 역할 */
+      .kpis { position: absolute; left: 30px; right: 30px; bottom: 30px; display: flex; gap: 20px; }
+      .kpi { flex: 1; opacity: 0; border: 2px solid; border-radius: 16px; padding: 22px 28px; }
+      .kpi .k-lab { font-size: 22px; font-weight: 700; color: var(--muted); }
+      .kpi .k-val { font-size: 58px; font-weight: 900; letter-spacing: -0.02em; line-height: 1.2; margin-top: 6px; }
+      .kpi .k-sub { font-size: 22px; color: #c9d4e3; margin-top: 4px; font-family: var(--mono); }
+      .k-amber { border-color: rgba(240,167,74,0.6); background: rgba(240,167,74,0.08); } .k-amber .k-val { color: var(--amber); }
+      .k-red { border-color: rgba(255,92,92,0.65); background: rgba(255,92,92,0.09); } .k-red .k-val { color: var(--crit); }
+      .k-green { border-color: rgba(78,201,122,0.6); background: rgba(78,201,122,0.08); } .k-green .k-val { color: var(--ok); }
 
-      #subs { position: absolute; left: 10%; right: 10%; bottom: 52px; text-align: center; height: 0; }
+      #subs { position: absolute; left: 10%; right: 10%; bottom: 40px; text-align: center; height: 0; }
       .sub { position: absolute; left: 0; right: 0; bottom: 0; opacity: 0; }
       .sub .cue { display: inline-block; font-size: 30px; font-weight: 700; line-height: 1.4; color: #fff; background: rgba(8,12,20,0.85); border: 1px solid var(--border); border-radius: 12px; padding: 12px 26px; }
       .sub .cue b { color: var(--amber); }
@@ -77,180 +85,74 @@
         <div class="tag">CR-01 · KILL CHAIN</div>
       </div>
 
-      <!-- ===== 상단 패널 ===== -->
       <div class="stage">
-        <div class="pane term">
+        <div class="pane term" id="p-term">
           <div class="pane-head"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="label">공격 터미널</span></div>
           <div id="t-scan" class="blk clip" data-start="4" data-duration="13" data-track-index="0">
             <div class="row cmd"><span class="p">$</span> docker run --rm attacker <span class="d">scan</span> <span style="color:#7e8ea1">--ip .180</span></div>
             <div class="row out"># Nmap 7.95 — 172.28.0.10 scanned</div>
-            <div class="row out">Ports: <span class="k-warn">8080/open/tcp</span> · Ignored: closed (90)</div>
+            <div class="row out hit" id="h-scan">Ports: <span class="k-warn">8080/open/tcp</span> · Ignored: closed (90)</div>
             <div class="row json">{"step":"scan","ok":<span class="k-ok">true</span>,"open_ports":[8080]}</div>
           </div>
           <div id="t-brute" class="blk clip" data-start="17" data-duration="27" data-track-index="1">
             <div class="row cmd"><span class="p">$</span> docker run --rm attacker <span class="d">brute</span> --attempts 6</div>
             <div class="row out">[*] /login 에 틀린 비밀번호로 6회 연속 시도</div>
-            <div class="row out">    시도 1/6 — 상태 코드 200</div>
-            <div class="row out">    시도 2/6 — 상태 코드 200</div>
-            <div class="row out">    시도 3/6 — 상태 코드 200</div>
-            <div class="row out">    시도 4/6 — 상태 코드 200</div>
-            <div class="row out">    시도 5/6 — 상태 코드 200</div>
-            <div class="row k-no">    시도 6/6 — 차단 발동, 연결 끊김 (ReadTimeout)</div>
+            <div class="row out">시도 1/6 — 상태 코드 200</div>
+            <div class="row out">시도 2/6 — 상태 코드 200</div>
+            <div class="row out">시도 3/6 — 상태 코드 200</div>
+            <div class="row out">시도 4/6 — 상태 코드 200</div>
+            <div class="row out">시도 5/6 — 상태 코드 200</div>
+            <div class="row k-no hit" id="h-brute">시도 6/6 — 차단 발동, 연결 끊김 (ReadTimeout)</div>
           </div>
           <div id="t-p180" class="blk clip" data-start="44" data-duration="15" data-track-index="2">
             <div class="row cmd"><span class="p">$</span> docker run --rm attacker <span class="d">probe</span> <span style="color:#7e8ea1">--ip .180</span></div>
             <div class="row out">공격 IP에서 정문 접속 시도…</div>
             <div class="row json">{"step":"probe","reachable":<span class="k-no">false</span>,"error":"TimeoutError"}</div>
-            <div class="row k-no" style="margin-top:8px">차단됨 — 연결 불가</div>
+            <div class="row k-no hit" id="h-p180" style="margin-top:12px">⛔ 차단됨 — 연결 불가</div>
           </div>
           <div id="t-p181" class="blk clip" data-start="59" data-duration="16" data-track-index="3">
             <div class="row cmd"><span class="p">$</span> docker run --rm attacker-2 <span class="d">probe</span> <span style="color:#7e8ea1">--ip .181</span></div>
             <div class="row out">대조용 다른 IP에서 접속 시도…</div>
             <div class="row json">{"step":"probe","reachable":<span class="k-ok">true</span>}</div>
-            <div class="row k-ok" style="margin-top:8px">정상 접속 — 영향 없음</div>
+            <div class="row k-ok hit" id="h-p181" style="margin-top:12px">✅ 정상 접속 — 영향 없음</div>
           </div>
         </div>
 
-        <div class="pane dash">
+        <div class="pane dash" id="p-dash">
           <div class="pane-head"><span class="dot" style="background:var(--blue)"></span><span class="label">로그인 워치독 — 관제 화면</span></div>
           <div id="d-scan" class="card clip" data-start="4" data-duration="13" data-track-index="4">
             <div class="row ctitle">네트워크 이벤트 (L3/L4 탐지)</div>
-            <table><tr><th>시각</th><th>출발지 IP</th><th>계층</th><th>종류</th><th>패킷</th></tr>
-              <tr class="row"><td class="num">15:51:28</td><td class="ip">172.28.0.180</td><td>L4</td><td>포트 스캔</td><td class="num">15</td></tr></table>
+            <table><tr class="row"><th>시각</th><th>출발지 IP</th><th>계층</th><th>종류</th><th>패킷</th></tr>
+              <tr class="row" id="r-scan"><td class="num">15:51:28</td><td class="ip">172.28.0.180</td><td>L4</td><td>포트 스캔</td><td class="num">15</td></tr></table>
             <div class="row note">열린 포트를 찾는 <b>정찰</b> 행위가 감지됨</div>
+            <div class="kpis"><div class="kpi k-amber" id="k-scan"><div class="k-lab">정찰 감지</div><div class="k-val">포트 스캔</div><div class="k-sub">172.28.0.180 · 15 패킷</div></div></div>
           </div>
           <div id="d-brute" class="card clip" data-start="17" data-duration="14" data-track-index="5">
             <div class="row ctitle">보안 이벤트</div>
-            <table><tr><th>시각</th><th>유형</th><th>IP</th><th>횟수</th><th>조치</th></tr>
+            <table><tr class="row"><th>시각</th><th>유형</th><th>IP</th><th>횟수</th><th>조치</th></tr>
               <tr class="row"><td class="num">15:51:28</td><td>NET_PORT_SCAN</td><td class="ip">172.28.0.180</td><td class="num">15</td><td><span class="badge b-med">medium</span></td></tr>
-              <tr class="row"><td class="num">15:52:20</td><td>브루트포스</td><td class="ip">172.28.0.180</td><td class="num">6</td><td><span class="badge b-crit">critical</span></td></tr></table>
+              <tr class="row" id="r-brute"><td class="num">15:52:20</td><td>브루트포스</td><td class="ip">172.28.0.180</td><td class="num">6</td><td><span class="badge b-crit">critical</span></td></tr></table>
             <div class="row note">같은 IP가 로그인까지 반복 → <b>침투</b> 시도</div>
+            <div class="kpis"><div class="kpi k-red" id="k-brute"><div class="k-lab">침투 시도</div><div class="k-val">브루트포스 6회</div><div class="k-sub">같은 IP 172.28.0.180 · critical</div></div></div>
           </div>
           <div id="d-inc" class="card clip" data-start="31" data-duration="13" data-track-index="6">
             <div class="row ctitle">연관 사건 (SIEM 상관분석)</div>
-            <table><tr><th>등급</th><th>관련 유형</th><th>IP</th><th>상태</th></tr>
-              <tr class="row hl"><td><span class="badge b-crit">critical</span></td><td>브루트포스, NET_PORT_SCAN, 영구 잠금 전환</td><td class="ip">172.28.0.180</td><td><span class="b-run">진행 중</span></td></tr></table>
+            <table><tr class="row"><th>등급</th><th>관련 유형</th><th>IP</th><th>상태</th></tr>
+              <tr class="row hl" id="r-inc"><td><span class="badge b-crit">critical</span></td><td>브루트포스, NET_PORT_SCAN, 영구&nbsp;잠금&nbsp;전환</td><td class="ip">172.28.0.180</td><td><span class="b-run">진행 중</span></td></tr></table>
             <div class="row big">정찰 + 침투가 한 IP로 묶임 → <span class="perm">CR-01 킬체인</span></div>
+            <div class="kpis"><div class="kpi k-red" id="k-inc"><div class="k-lab">상관분석 판정</div><div class="k-val">CR-01 킬체인</div><div class="k-sub">정찰 + 침투 = 같은 IP</div></div></div>
           </div>
           <div id="d-block" class="card clip" data-start="44" data-duration="31" data-track-index="7">
             <div class="row ctitle">L4 차단 목록 (정문 방화벽)</div>
-            <table><tr><th>IP</th><th>사유</th><th>증거</th><th>상태</th><th>남은 시간</th></tr>
-              <tr class="row hl"><td class="ip">172.28.0.180</td><td>킬체인</td><td>연결 완성·영구 가능</td><td><span class="pill p-block">차단 중</span></td><td class="perm">영구</td></tr></table>
+            <table><tr class="row"><th>IP</th><th>사유</th><th>증거</th><th>상태</th><th>남은 시간</th></tr>
+              <tr class="row hl" id="r-block"><td class="ip">172.28.0.180</td><td>킬체인</td><td>연결 완성·영구 가능</td><td><span class="pill p-block">차단 중</span></td><td class="perm">영구</td></tr></table>
             <div class="row big">확실한 공격(연결 완성) → <span class="perm">정문에서 영구 차단</span></div>
-            <div class="row note" id="d-contrast" style="opacity:0">대조 IP <b>.181</b>은 목록에 없음 — 정상 접속 유지</div>
+            <div class="note" id="d-contrast" style="opacity:0">대조 IP <b>.181</b>은 목록에 없음 — 정상 접속 유지</div>
+            <div class="kpis">
+              <div class="kpi k-red" id="k-block"><div class="k-lab">공격 IP</div><div class="k-val">영구 차단</div><div class="k-sub">172.28.0.180</div></div>
+              <div class="kpi k-green" id="k-ok"><div class="k-lab">대조 IP</div><div class="k-val">정상 접속</div><div class="k-sub">172.28.0.181</div></div>
+            </div>
           </div>
-        </div>
-      </div>
-
-      <!-- ===== 하단 비유 그림 띠 (아파트 공동현관) ===== -->
-      <div class="band">
-        <!-- 장면1: 문 흔들기 -->
-        <div id="b1" class="scene clip" data-start="4" data-duration="13" data-track-index="10">
-          <svg viewBox="0 0 1728 340"><g class="sg">
-            <rect x="24" y="20" width="200" height="40" rx="9" fill="#111a28" stroke="#2a3a50"/><circle cx="46" cy="40" r="5" fill="#f0a74a"/><text x="60" y="47" fill="#f0a74a" font-size="20" font-weight="700">정찰</text>
-            <g id="b1arm"><path d="M196 176 Q380 170 490 180 T 592 190" fill="none" stroke="#d9944a" stroke-width="22" stroke-linecap="round"/><circle cx="596" cy="192" r="15" fill="#d9944a"/></g>
-            <g transform="translate(120,96) scale(2.4)" fill="#d9944a"><circle cx="20" cy="12" r="9"/><path d="M4 51A16 22 0 0 1 36 51Z"/></g>
-            <text x="168" y="252" fill="#8b97a7" font-size="19" text-anchor="middle">수상한 사람</text>
-            <g stroke="#f0a74a" stroke-width="4" fill="none" stroke-linecap="round"><path d="M612 176 q16 14 0 28"/><path d="M624 168 q28 22 0 44"/></g>
-            <g text-anchor="middle">
-              <g transform="translate(628,66)"><rect width="150" height="190" rx="8" fill="#152033" stroke="#33465f" stroke-width="3"/><rect x="12" y="12" width="126" height="104" rx="6" fill="#0f1a2a" stroke="#28384d"/><circle cx="18" cy="150" r="7" fill="none" stroke="#f0a74a" stroke-width="4"/><g transform="translate(58,50)" stroke="#8b97a7" stroke-width="3" fill="none"><rect x="0" y="12" width="30" height="22" rx="4" fill="#1b2635"/><path d="M6 12 v-6 a9 9 0 0 1 18 0 v6"/></g><text x="75" y="-14" fill="#f0a74a" font-size="36" font-weight="800">?</text></g>
-              <g transform="translate(848,66)"><rect width="150" height="190" rx="8" fill="#152033" stroke="#2a3a50" stroke-width="3"/><rect x="12" y="12" width="126" height="104" rx="6" fill="#0f1a2a" stroke="#22354a"/><g transform="translate(58,50)" stroke="#8b97a7" stroke-width="3" fill="none"><rect x="0" y="12" width="30" height="22" rx="4" fill="#1b2635"/><path d="M6 12 v-6 a9 9 0 0 1 18 0 v6"/></g><text x="75" y="-14" fill="#7e8ea1" font-size="36" font-weight="800">?</text></g>
-              <g transform="translate(1068,66)"><rect width="150" height="190" rx="8" fill="#152033" stroke="#2a3a50" stroke-width="3"/><rect x="12" y="12" width="126" height="104" rx="6" fill="#0f1a2a" stroke="#22354a"/><g transform="translate(58,50)" stroke="#8b97a7" stroke-width="3" fill="none"><rect x="0" y="12" width="30" height="22" rx="4" fill="#1b2635"/><path d="M6 12 v-6 a9 9 0 0 1 18 0 v6"/></g><text x="75" y="-14" fill="#7e8ea1" font-size="36" font-weight="800">?</text></g>
-            </g>
-            <g transform="translate(1300,60)"><rect width="330" height="88" rx="14" fill="#111a28" stroke="#33465f" stroke-width="2"/><path d="M-16 46 l18 -12 l0 24 Z" fill="#111a28" stroke="#33465f" stroke-width="2"/><text x="165" y="38" fill="#e6edf3" font-size="25" font-weight="700" text-anchor="middle">열린 집(열린 포트)</text><text x="165" y="70" fill="#e6edf3" font-size="25" font-weight="700" text-anchor="middle">없나…?</text></g>
-            <text x="864" y="320" fill="#c9d4e3" font-size="24" font-weight="700" text-anchor="middle">문을 하나씩 <tspan fill="#f0a74a">흔들어 본다</tspan> — 열려 있는 집(포트)을 찾는다</text>
-          </g></svg>
-        </div>
-
-        <!-- 장면2: 비번 누르기 -->
-        <div id="b2" class="scene clip" data-start="17" data-duration="14" data-track-index="10">
-          <svg viewBox="0 0 1728 340"><g class="sg">
-            <rect x="24" y="20" width="220" height="40" rx="9" fill="#111a28" stroke="#2a3a50"/><circle cx="46" cy="40" r="5" fill="#ff6b6b"/><text x="60" y="47" fill="#ff8a8a" font-size="20" font-weight="700">침투</text>
-            <g id="b2arm"><path d="M196 176 Q430 180 620 186 T 806 196" fill="none" stroke="#d9944a" stroke-width="22" stroke-linecap="round"/><circle cx="810" cy="198" r="15" fill="#d9944a"/></g>
-            <g transform="translate(120,96) scale(2.4)" fill="#d9944a"><circle cx="20" cy="12" r="9"/><path d="M4 51A16 22 0 0 1 36 51Z"/></g>
-            <text x="168" y="252" fill="#8b97a7" font-size="19" text-anchor="middle">수상한 사람</text>
-            <!-- 도어락 달린 문 -->
-            <g transform="translate(830,50)">
-              <rect width="240" height="210" rx="10" fill="#152033" stroke="#33465f" stroke-width="3"/>
-              <rect x="150" y="60" width="76" height="120" rx="8" fill="#0d1726" stroke="#f0a74a" stroke-width="2"/>
-              <g fill="#1b2635" stroke="#33465f">
-                <rect x="158" y="70" width="18" height="16" rx="3"/><rect x="180" y="70" width="18" height="16" rx="3"/><rect x="202" y="70" width="18" height="16" rx="3"/>
-                <rect x="158" y="92" width="18" height="16" rx="3"/><rect x="180" y="92" width="18" height="16" rx="3" fill="#f0a74a"/><rect x="202" y="92" width="18" height="16" rx="3"/>
-                <rect x="158" y="114" width="18" height="16" rx="3"/><rect x="180" y="114" width="18" height="16" rx="3"/><rect x="202" y="114" width="18" height="16" rx="3"/>
-              </g>
-              <rect x="150" y="36" width="76" height="16" rx="4" fill="#0d1726" stroke="#28384d"/>
-            </g>
-            <!-- 틀린 코드 -->
-            <g font-family="Consolas, monospace" font-size="27" font-weight="700" text-anchor="start">
-              <text x="1180" y="84" fill="#ff6b6b">1234  ✗</text>
-              <text x="1180" y="130" fill="#ff6b6b">0000  ✗</text>
-              <text x="1180" y="176" fill="#ff6b6b">1111  ✗</text>
-              <text x="1180" y="222" fill="#8b97a7">admin ✗</text>
-            </g>
-            <text x="864" y="320" fill="#c9d4e3" font-size="24" font-weight="700" text-anchor="middle">도어락에 <tspan fill="#f0a74a">비밀번호를 계속 눌러 본다</tspan> (무차별 대입)</text>
-          </g></svg>
-        </div>
-
-        <!-- 장면3: 경비 발견(판단) -->
-        <div id="b3" class="scene clip" data-start="31" data-duration="13" data-track-index="10">
-          <svg viewBox="0 0 1728 340"><g class="sg">
-            <rect x="24" y="20" width="240" height="40" rx="9" fill="#111a28" stroke="#2a3a50"/><circle cx="46" cy="40" r="5" fill="#4aa8ff"/><text x="60" y="47" fill="#4aa8ff" font-size="20" font-weight="700">판단</text>
-            <!-- CCTV + 경비 -->
-            <g transform="translate(150,120)">
-              <rect x="-10" y="0" width="150" height="80" rx="12" fill="#152033" stroke="#4aa8ff" stroke-width="3"/>
-              <circle cx="65" cy="40" r="24" fill="#0d1726" stroke="#4aa8ff" stroke-width="3"/><circle cx="65" cy="40" r="9" fill="#4aa8ff"/>
-              <path d="M140 20 l40 -14 l0 68 l-40 -14 Z" fill="#152033" stroke="#4aa8ff" stroke-width="2"/>
-            </g>
-            <text x="215" y="235" fill="#4aa8ff" font-size="20" font-weight="700" text-anchor="middle">경비 · 관제</text>
-            <!-- 두 단서 칩이 합쳐짐 -->
-            <g font-size="22" font-weight="700" text-anchor="middle">
-              <g transform="translate(470,70)"><rect width="300" height="54" rx="12" fill="#1a1410" stroke="#d9944a" stroke-width="2"/><text x="150" y="35" fill="#f0a74a">① 문 흔들기 (정찰)</text></g>
-              <g transform="translate(470,160)"><rect width="300" height="54" rx="12" fill="#1a1012" stroke="#ff6b6b" stroke-width="2"/><text x="150" y="35" fill="#ff8a8a">② 비번 시도 (침투)</text></g>
-              <path d="M770 97 Q860 97 900 140 L940 150" fill="none" stroke="#8b97a7" stroke-width="3"/>
-              <path d="M770 187 Q860 187 900 160 L940 150" fill="none" stroke="#8b97a7" stroke-width="3"/>
-            </g>
-            <!-- 돋보기 + 결론 -->
-            <g transform="translate(980,108)"><circle cx="30" cy="30" r="26" fill="none" stroke="#4aa8ff" stroke-width="5"/><path d="M50 50 l24 24" stroke="#4aa8ff" stroke-width="7" stroke-linecap="round"/></g>
-            <g transform="translate(1120,96)"><rect width="470" height="100" rx="14" fill="rgba(255,92,92,0.1)" stroke="#ff5c5c" stroke-width="3"/><text x="235" y="44" fill="#ff8a8a" font-size="26" font-weight="800" text-anchor="middle">같은 사람이다!</text><text x="235" y="78" fill="#e6edf3" font-size="22" font-weight="700" text-anchor="middle">CR-01 킬체인 판정</text></g>
-            <text x="864" y="320" fill="#c9d4e3" font-size="24" font-weight="700" text-anchor="middle">경비가 <tspan fill="#4aa8ff">문 흔들기 + 비번 시도</tspan>를 같은 사람으로 알아챈다</text>
-          </g></svg>
-        </div>
-
-        <!-- 장면4: 영구 출입 금지 -->
-        <div id="b4" class="scene clip" data-start="44" data-duration="15" data-track-index="10">
-          <svg viewBox="0 0 1728 340"><g class="sg">
-            <rect x="24" y="20" width="240" height="40" rx="9" fill="#111a28" stroke="#2a3a50"/><circle cx="46" cy="40" r="5" fill="#ff5c5c"/><text x="60" y="47" fill="#ff8a8a" font-size="20" font-weight="700">영구 차단</text>
-            <!-- 쫓겨난 공격자 + 빨간 X -->
-            <g transform="translate(150,110) scale(2.2)" fill="#d9944a" opacity="0.6"><circle cx="20" cy="12" r="9"/><path d="M4 51A16 22 0 0 1 36 51Z"/></g>
-            <g id="b4x" stroke="#ff5c5c" stroke-width="12" stroke-linecap="round"><path d="M150 120 L270 250"/><path d="M270 120 L150 250"/></g>
-            <text x="210" y="290" fill="#ff8a8a" font-size="20" font-weight="700" text-anchor="middle">출입 거부 (.180)</text>
-            <!-- 잠긴 문 + 영구 금지 도장 -->
-            <g transform="translate(720,46)">
-              <rect width="250" height="230" rx="10" fill="#152033" stroke="#ff5c5c" stroke-width="3"/>
-              <g transform="translate(108,96)" stroke="#ff8a8a" stroke-width="5" fill="none"><rect x="0" y="22" width="52" height="40" rx="6" fill="#2a1416"/><path d="M10 22 v-10 a16 16 0 0 1 32 0 v10"/></g>
-            </g>
-            <g id="b4seal" transform="translate(1180,140) rotate(-14)"><circle r="92" fill="rgba(255,92,92,0.1)" stroke="#ff5c5c" stroke-width="6"/><circle r="74" fill="none" stroke="#ff5c5c" stroke-width="2"/><text y="-14" fill="#ff5c5c" font-size="34" font-weight="900" text-anchor="middle">출입</text><text y="30" fill="#ff5c5c" font-size="34" font-weight="900" text-anchor="middle">영구 금지</text></g>
-            <text x="864" y="322" fill="#c9d4e3" font-size="24" font-weight="700" text-anchor="middle">연결까지 완성된 확실한 침입 → <tspan fill="#ff5c5c">영구 출입 금지</tspan></text>
-          </g></svg>
-        </div>
-
-        <!-- 장면5: 주민 정상 출입 -->
-        <div id="b5" class="scene clip" data-start="59" data-duration="16" data-track-index="10">
-          <svg viewBox="0 0 1728 340"><g class="sg">
-            <rect x="24" y="20" width="240" height="40" rx="9" fill="#111a28" stroke="#2a3a50"/><circle cx="46" cy="40" r="5" fill="#4ec97a"/><text x="60" y="47" fill="#4ec97a" font-size="20" font-weight="700">대조 IP</text>
-            <!-- 막힌 공격자(작게) -->
-            <g transform="translate(150,130) scale(1.7)" fill="#d9944a" opacity="0.45"><circle cx="20" cy="12" r="9"/><path d="M4 51A16 22 0 0 1 36 51Z"/></g>
-            <g stroke="#ff5c5c" stroke-width="8" stroke-linecap="round"><path d="M150 130 L228 220"/><path d="M228 130 L150 220"/></g>
-            <text x="188" y="258" fill="#8b97a7" font-size="18" text-anchor="middle">공격자 .180 (차단)</text>
-            <!-- 열린 문 + 주민 통과 -->
-            <g transform="translate(900,52)"><rect width="230" height="220" rx="10" fill="#0f1a2a" stroke="#2a3a50" stroke-width="3"/><rect x="18" y="14" width="150" height="192" rx="6" fill="#152033" stroke="#33465f" stroke-width="3" transform="rotate(-10 18 110)"/></g>
-            <g transform="translate(680,112) scale(2.2)" fill="#4ec97a"><circle cx="20" cy="12" r="9"/><path d="M4 51A16 22 0 0 1 36 51Z"/></g>
-            <path d="M760 160 L900 160" stroke="#4ec97a" stroke-width="5" stroke-linecap="round" marker-end="url(#ar)"/>
-            <g transform="translate(1210,120)"><circle r="46" fill="rgba(78,201,122,0.12)" stroke="#4ec97a" stroke-width="5"/><path d="M-20 2 l14 16 l28 -34" fill="none" stroke="#4ec97a" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></g>
-            <text x="1210" y="210" fill="#4ec97a" font-size="20" font-weight="700" text-anchor="middle">정상 출입 (.181)</text>
-            <text x="864" y="322" fill="#c9d4e3" font-size="24" font-weight="700" text-anchor="middle">같은 건물의 <tspan fill="#4ec97a">다른 주민(.181)은 평소처럼 출입</tspan> — 필요한 곳만 막는다</text>
-            <defs><marker id="ar" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0 0 L7 3 L0 6 Z" fill="#4ec97a"/></marker></defs>
-          </g></svg>
         </div>
       </div>
 
@@ -280,20 +182,74 @@
       tl.fromTo("#in-sub", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 0.9);
       tl.to("#intro", { opacity: 0, duration: 0.5, ease: "power2.in" }, 3.5);
 
+      // 지금 봐야 할 패널만 밝히고 테두리를 빛나게, 반대쪽은 흐리게 — 공격(주황) → 탐지(파랑) 순서가 눈에 보이게
+      const NONE = "0 0 0 1px rgba(0,0,0,0), 0 0 40px rgba(0,0,0,0)";
+      const FOCUS = {
+        term: { on: "#p-term", off: "#p-dash", c: "#f0a74a", glow: "0 0 0 1px rgba(240,167,74,0.9), 0 0 40px rgba(240,167,74,0.28)" },
+        dash: { on: "#p-dash", off: "#p-term", c: "#4aa8ff", glow: "0 0 0 1px rgba(74,168,255,0.9), 0 0 40px rgba(74,168,255,0.28)" },
+      };
+      function focus(which, at) {
+        const f = FOCUS[which];
+        tl.to(f.on, { opacity: 1, borderColor: f.c, boxShadow: f.glow, duration: 0.4, ease: "power2.out" }, at);
+        tl.to(f.off, { opacity: 0.45, borderColor: "#1e2a3a", boxShadow: NONE, duration: 0.4, ease: "power2.out" }, at);
+      }
+      function unfocus(at) { tl.to("#p-term, #p-dash", { opacity: 1, borderColor: "#1e2a3a", boxShadow: NONE, duration: 0.5, ease: "power2.out" }, at); }
+
       function enter(sel, at, stagger) { tl.fromTo(sel + " .row", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out", stagger: stagger || 0.12 }, at); }
-      enter("#t-scan", 4.2, 0.18); enter("#t-brute", 17.2, 0.14); enter("#t-p180", 44.2, 0.25); enter("#t-p181", 59.2, 0.25);
-      enter("#d-scan", 4.6, 0.2); enter("#d-brute", 17.6, 0.2); enter("#d-inc", 31.3, 0.25); enter("#d-block", 44.6, 0.25);
-      tl.to("#d-contrast", { opacity: 1, duration: 0.4 }, 59.5);
+      // 터미널의 결정적 줄: 형광펜 배경 + 한 번 커졌다 돌아오기
+      function hit(sel, rgb, at) {
+        tl.fromTo(sel, { backgroundColor: `rgba(${rgb},0)` }, { backgroundColor: `rgba(${rgb},0.2)`, duration: 0.3, ease: "power2.out" }, at);
+        tl.fromTo(sel, { scale: 1 }, { scale: 1.05, transformOrigin: "0% 50%", duration: 0.22, yoyo: true, repeat: 1, ease: "power2.out" }, at);
+      }
+      // 표에 새로 들어온 행: 진하게 번쩍였다가 평소 색으로
+      function flash(sel, rgb, rest, at) { tl.fromTo(sel + " td", { backgroundColor: `rgba(${rgb},0.4)` }, { backgroundColor: rest, duration: 1.2, ease: "power2.out" }, at); }
+      function kpi(sel, at) { tl.fromTo(sel, { opacity: 0, y: 26, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: "back.out(1.6)" }, at); }
+      function punch(sel, at) { tl.to(sel, { scale: 1.025, duration: 0.25, yoyo: true, repeat: 1, ease: "power2.out" }, at); }
 
-      // 비유 그림 띠 — 장면 등장
-      function scn(sel, at) { tl.fromTo(sel + " .sg", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, at); }
-      scn("#b1", 4.4); scn("#b2", 17.4); scn("#b3", 31.4); scn("#b4", 44.4); scn("#b5", 59.4);
+      // ① 포트 스캔: 공격 → 탐지
+      focus("term", 4.0);
+      enter("#t-scan", 4.2, 0.3);
+      hit("#h-scan", "240,167,74", 5.4);
+      focus("dash", 6.8);
+      enter("#d-scan", 7.0, 0.3);
+      flash("#r-scan", "240,167,74", "rgba(240,167,74,0)", 7.3);
+      kpi("#k-scan", 8.2);
 
-      // 동작: 팔 흔들기 / 도장 쾅 / X 팝
-      tl.to("#b1arm", { rotation: 5, svgOrigin: "196 176", duration: 0.22, repeat: 11, yoyo: true, ease: "sine.inOut" }, 5.4);
-      tl.to("#b2arm", { rotation: 4, svgOrigin: "196 176", duration: 0.16, repeat: 15, yoyo: true, ease: "sine.inOut" }, 18.2);
-      tl.fromTo("#b4seal", { scale: 1.6, opacity: 0, transformOrigin: "50% 50%" }, { scale: 1, opacity: 1, duration: 0.4, ease: "back.out(2)" }, 45.6);
-      tl.fromTo("#b4x", { scale: 0, transformOrigin: "50% 50%", svgOrigin: "210 185" }, { scale: 1, duration: 0.35, ease: "back.out(2.5)" }, 45.2);
+      // ② 무차별 대입: 시도가 한 줄씩 쌓이다 6번째에 끊김
+      focus("term", 17.0);
+      enter("#t-brute", 17.2, 0.5);
+      hit("#h-brute", "255,92,92", 21.2);
+      focus("dash", 22.4);
+      enter("#d-brute", 22.6, 0.3);
+      flash("#r-brute", "255,92,92", "rgba(255,92,92,0)", 23.5);
+      kpi("#k-brute", 24.0);
+
+      // ③ 킬체인 판정
+      enter("#d-inc", 31.3, 0.3);
+      flash("#r-inc", "255,92,92", "rgba(255,92,92,0.08)", 31.6);
+      kpi("#k-inc", 32.6);
+      punch("#p-dash", 32.6);
+
+      // ④ 공격 IP 재접속 → 막힘 → 차단 목록
+      focus("term", 44.0);
+      enter("#t-p180", 44.2, 0.4);
+      hit("#h-p180", "255,92,92", 45.8);
+      focus("dash", 47.0);
+      enter("#d-block", 47.2, 0.3);
+      flash("#r-block", "255,92,92", "rgba(255,92,92,0.08)", 47.5);
+      kpi("#k-block", 48.4);
+      punch("#p-dash", 48.4);
+
+      // ⑤ 대조 IP는 정상
+      focus("term", 59.0);
+      enter("#t-p181", 59.2, 0.4);
+      hit("#h-p181", "78,201,122", 60.8);
+      focus("dash", 62.0);
+      tl.fromTo("#d-contrast", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 62.2);
+      kpi("#k-ok", 62.6);
+
+      // 마무리: 두 패널을 함께 보여 준다
+      unfocus(72.0);
 
       const subs = [["#s1",4,17],["#s2",17,31],["#s3",31,44],["#s4",44,59],["#s5",59,72],["#s6",72,75]];
       subs.forEach(([id, a, b]) => { tl.fromTo(id, { opacity: 0 }, { opacity: 1, duration: 0.35, ease: "power2.out" }, a + 0.1); tl.to(id, { opacity: 0, duration: 0.3, ease: "power2.in" }, b - 0.3); });

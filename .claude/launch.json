@@ -28,6 +28,13 @@
       ],
       "port": 5077,
       "autoPort": false
+    },
+    {
+      "name": "presentation",
+      "runtimeExecutable": "venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "presentation"],
+      "port": 8765,
+      "autoPort": false
     }
   ]
 }

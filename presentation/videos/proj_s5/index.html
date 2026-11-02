@@ -19,42 +19,56 @@
       #hdr .t b { color: var(--amber); }
       #hdr .tag { font-family: var(--mono); font-size: 21px; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: 7px 15px; }
 
-      .stage { position: absolute; top: 108px; left: 96px; right: 96px; height: 430px; display: flex; gap: 30px; }
-      .pane { flex: 1; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; position: relative; }
-      .pane-head { height: 46px; display: flex; align-items: center; gap: 9px; padding: 0 20px; border-bottom: 1px solid var(--border); background: #0c1220; }
-      .pane-head .dot { width: 12px; height: 12px; border-radius: 50%; }
-      .pane-head .label { margin-left: 9px; font-size: 18px; color: var(--muted); font-weight: 600; }
+      /* 패널 영역 — 하단 비유 그림을 없애고 화면 대부분을 코드·관제 화면에 준다 */
+      .stage { position: absolute; top: 112px; left: 96px; right: 96px; height: 806px; display: flex; gap: 30px; }
+      .pane { flex: 1; background: var(--panel); border: 2px solid var(--border); border-radius: 16px; overflow: hidden; position: relative;
+              box-shadow: 0 0 0 1px rgba(0,0,0,0), 0 0 40px rgba(0,0,0,0); }
+      .pane-head { height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 24px; border-bottom: 1px solid var(--border); background: #0c1220; }
+      .pane-head .dot { width: 14px; height: 14px; border-radius: 50%; }
+      .pane-head .label { margin-left: 10px; font-size: 22px; color: var(--muted); font-weight: 700; }
 
-      .term { font-family: var(--mono); font-size: 20px; line-height: 1.6; }
-      .term .blk { position: absolute; left: 0; right: 0; top: 46px; padding: 18px 24px; }
+      .term { font-family: var(--mono); font-size: 26px; line-height: 1.65; }
+      .term .blk { position: absolute; left: 0; right: 0; top: 56px; padding: 26px 30px; }
       .term .cmd { color: #c9d4e3; } .term .cmd .p { color: var(--green); } .term .cmd .d { color: var(--blue); }
       .term .out { color: #9fb0c3; } .term .json { color: var(--muted); word-break: break-all; }
-      .term .k-ok { color: var(--ok); font-weight: 700; } .term .flood { color: var(--amber); } .term .row { opacity: 0; }
+      .term .k-ok { color: var(--ok); font-weight: 700; } .term .flood { color: var(--amber); font-weight: 700; } .term .row { opacity: 0; }
+      /* 결정적인 줄 — 형광펜처럼 배경을 칠해 시선을 잡는다 */
+      .term .hit { margin: 0 -12px; padding: 0 12px; border-radius: 8px; }
 
-      .dash .card { position: absolute; left: 0; right: 0; top: 46px; bottom: 0; padding: 18px 24px; }
-      .dash .ctitle { font-size: 20px; font-weight: 700; color: var(--blue); margin-bottom: 12px; display: flex; align-items: center; gap: 9px; }
-      .dash .ctitle::before { content: ""; width: 5px; height: 20px; background: var(--blue); border-radius: 3px; }
-      table { width: 100%; border-collapse: collapse; font-size: 17px; }
-      th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 15px; }
-      td { padding: 10px 10px; border-bottom: 1px solid #141d2b; color: #d7e0ec; }
-      td.ip, td.num { font-family: var(--mono); }
+      .dash .card { position: absolute; left: 0; right: 0; top: 56px; bottom: 0; padding: 26px 30px; }
+      .dash .ctitle { font-size: 28px; font-weight: 800; color: var(--blue); margin-bottom: 18px; display: flex; align-items: center; gap: 12px; }
+      .dash .ctitle::before { content: ""; width: 6px; height: 28px; background: var(--blue); border-radius: 3px; }
+      table { width: 100%; border-collapse: collapse; font-size: 23px; }
+      th { text-align: left; color: var(--muted); font-weight: 600; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 19px; }
+      td { padding: 14px 12px; border-bottom: 1px solid #141d2b; color: #d7e0ec; line-height: 1.35; word-break: keep-all; }
+      td.ip, td.num { font-family: var(--mono); white-space: nowrap; }
       tr.hl td { background: rgba(240,167,74,0.08); }
-      .badge { font-size: 14px; font-weight: 800; padding: 3px 9px; border-radius: 6px; }
+      .badge { font-size: 18px; font-weight: 800; padding: 4px 10px; border-radius: 6px; white-space: nowrap; }
       .b-high { background: rgba(240,167,74,0.16); color: var(--amber); border: 1px solid rgba(240,167,74,0.4); }
-      .pill { font-size: 15px; font-weight: 800; padding: 4px 11px; border-radius: 6px; }
+      .pill { font-size: 19px; font-weight: 800; padding: 5px 12px; border-radius: 6px; white-space: nowrap; }
       .p-block { background: rgba(240,167,74,0.16); color: var(--amber); border: 1px solid rgba(240,167,74,0.45); }
-      .dash .note { margin-top: 14px; font-size: 17px; color: var(--muted); }
-      .dash .big { margin-top: 8px; font-size: 19px; }
-      .ttl { color: var(--amber); font-weight: 800; }
-      .sig { margin-top: 14px; display: inline-flex; align-items: center; gap: 9px; font-size: 18px; color: var(--ok); border: 1px solid rgba(78,201,122,0.4); background: rgba(78,201,122,0.08); border-radius: 10px; padding: 9px 14px; }
+      .dash .note { margin-top: 20px; font-size: 23px; color: var(--muted); }
+      .dash .note b { color: var(--ink); }
+      .dash .big { margin-top: 18px; font-size: 26px; font-weight: 600; }
+      .ttl { color: var(--amber); font-weight: 800; white-space: nowrap; }
+      .sig { margin-top: 20px; display: inline-flex; align-items: center; gap: 10px; font-size: 23px; font-weight: 600; color: var(--ok); border: 1px solid rgba(78,201,122,0.4); background: rgba(78,201,122,0.08); border-radius: 10px; padding: 10px 16px; }
+      .watch { font-size: 24px; color: #c9d4e3; display: flex; align-items: center; gap: 14px; }
+      .watch .live { width: 14px; height: 14px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 12px rgba(74,168,255,0.8); }
+      .watch .mono { font-family: var(--mono); color: var(--muted); }
       .dash .card .row { opacity: 0; }
 
-      .band { position: absolute; left: 96px; right: 96px; top: 556px; height: 340px; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
-      .scene { position: absolute; inset: 0; }
-      .scene svg { width: 100%; height: 100%; display: block; }
-      .band .sg { opacity: 0; }
+      /* 관제 화면 아래 빈 자리에 띄우는 핵심 값 카드 — 그림 칸이 하던 '결론' 역할 */
+      .kpis { position: absolute; left: 30px; right: 30px; bottom: 30px; display: flex; gap: 20px; }
+      .kpi { flex: 1; opacity: 0; border: 2px solid; border-radius: 16px; padding: 22px 28px; }
+      .kpi .k-lab { font-size: 22px; font-weight: 700; color: var(--muted); }
+      .kpi .k-val { font-size: 58px; font-weight: 900; letter-spacing: -0.02em; line-height: 1.2; margin-top: 6px; }
+      .kpi .k-sub { font-size: 22px; color: #c9d4e3; margin-top: 4px; font-family: var(--mono); }
+      .kpi .mono { font-family: var(--mono); }
+      .k-amber { border-color: rgba(240,167,74,0.6); background: rgba(240,167,74,0.08); } .k-amber .k-val { color: var(--amber); }
+      .k-blue { border-color: rgba(74,168,255,0.6); background: rgba(74,168,255,0.08); } .k-blue .k-val { color: var(--blue); }
+      .k-green { border-color: rgba(78,201,122,0.6); background: rgba(78,201,122,0.08); } .k-green .k-val { color: var(--ok); }
 
-      #subs { position: absolute; left: 10%; right: 10%; bottom: 52px; text-align: center; height: 0; }
+      #subs { position: absolute; left: 10%; right: 10%; bottom: 40px; text-align: center; height: 0; }
       .sub { position: absolute; left: 0; right: 0; bottom: 0; opacity: 0; }
       .sub .cue { display: inline-block; font-size: 30px; font-weight: 700; line-height: 1.4; color: #fff; background: rgba(8,12,20,0.85); border: 1px solid var(--border); border-radius: 12px; padding: 12px 26px; }
       .sub .cue b { color: var(--amber); }
@@ -74,121 +88,50 @@
       </div>
 
       <div class="stage">
-        <div class="pane term">
+        <div class="pane term" id="p-term">
           <div class="pane-head"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="label">공격 터미널</span></div>
           <div id="t-syn" class="blk clip" data-start="3.5" data-duration="36.5" data-track-index="0">
-            <div class="row cmd"><span class="p">$</span> docker run --rm attacker-3 <span class="d">synflood</span> --count 3000 <span style="color:#7e8ea1">--ip .172</span></div>
+            <div class="row cmd"><span class="p">$</span> docker run --rm attacker-3 <span class="d">synflood</span> \<br>&nbsp;&nbsp;&nbsp;&nbsp;--count 3000 <span style="color:#7e8ea1">--ip .172</span></div>
             <div class="row out">[*] 172.28.0.10:8080 에 SYN 다발 전송…</div>
-            <div class="row flood">    SYN → SYN → SYN → SYN → SYN → …  (위조 가능)</div>
-            <div class="row out">3000 packets transmitted, 1742 received, 42% loss</div>
+            <div class="row flood hit" id="h-flood">SYN → SYN → SYN → SYN → SYN → …  (위조 가능)</div>
+            <div class="row out hit" id="h-count">3000 packets transmitted, 1742 received, 42% loss</div>
             <div class="row json">{"step":"synflood","ok":<span class="k-ok">true</span>,"sent":3000}</div>
           </div>
         </div>
 
-        <div class="pane dash">
+        <div class="pane dash" id="p-dash">
           <div class="pane-head"><span class="dot" style="background:var(--blue)"></span><span class="label">로그인 워치독 — 관제 화면</span></div>
+          <!-- 탐지 전: 빈 화면 대신 센서가 패킷을 세고 있는 모습 -->
+          <div id="d-idle" class="card clip" data-start="3.5" data-duration="8.5" data-track-index="6">
+            <div class="row ctitle">네트워크 센서</div>
+            <div class="row watch"><span class="live" id="live"></span>정문 감시 중 <span class="mono">172.28.0.10:8080</span></div>
+            <div class="kpis"><div class="kpi k-blue" id="k-idle"><div class="k-lab">들어오는 SYN 패킷</div><div class="k-val mono" id="syn-n">0</div><div class="k-sub">판정 중…</div></div></div>
+          </div>
           <div id="d-sensor" class="card clip" data-start="12" data-duration="7" data-track-index="1">
             <div class="row ctitle">네트워크 이벤트 (L3/L4 탐지)</div>
-            <table><tr><th>시각</th><th>출발지 IP</th><th>계층</th><th>종류</th><th>패킷</th></tr>
-              <tr class="row hl"><td class="num">16:05:44</td><td class="ip">172.28.0.172</td><td>L4</td><td>SYN 플러더</td><td class="num">100</td></tr></table>
+            <table><tr class="row"><th>시각</th><th>출발지 IP</th><th>계층</th><th>종류</th><th>패킷</th></tr>
+              <tr class="row hl" id="r-sensor"><td class="num">16:05:44</td><td class="ip">172.28.0.172</td><td>L4</td><td>SYN 플러더</td><td class="num">100</td></tr></table>
             <div class="row note">센서가 SYN 폭주를 <b>즉시 탐지</b></div>
+            <div class="kpis"><div class="kpi k-amber" id="k-sensor"><div class="k-lab">L4 탐지</div><div class="k-val">SYN 폭주</div><div class="k-sub">172.28.0.172 · 100 패킷</div></div></div>
           </div>
           <div id="d-alert" class="card clip" data-start="19" data-duration="7" data-track-index="2">
             <div class="row ctitle">보안 이벤트</div>
-            <table><tr><th>시각</th><th>유형</th><th>IP</th><th>조치</th></tr>
-              <tr class="row"><td class="num">16:05:44</td><td>NET_SYN_FLOOD</td><td class="ip">172.28.0.172</td><td><span class="badge b-high">high</span></td></tr></table>
-            <div class="row sig">HMAC 서명된 경보 — 위·변조 방지</div>
+            <table><tr class="row"><th>시각</th><th>유형</th><th>IP</th><th>조치</th></tr>
+              <tr class="row" id="r-alert"><td class="num">16:05:44</td><td>NET_SYN_FLOOD</td><td class="ip">172.28.0.172</td><td><span class="badge b-high">high</span></td></tr></table>
+            <div class="row sig">🔒 HMAC 서명된 경보 — 위·변조 방지</div>
+            <div class="kpis"><div class="kpi k-green" id="k-alert"><div class="k-lab">경보 기록</div><div class="k-val">HMAC 서명</div><div class="k-sub">NET_SYN_FLOOD · high</div></div></div>
           </div>
           <div id="d-block" class="card clip" data-start="26" data-duration="14" data-track-index="3">
             <div class="row ctitle">L4 차단 목록 (정문 방화벽)</div>
-            <table><tr><th>IP</th><th>사유</th><th>증거</th><th>상태</th><th>남은 시간</th></tr>
-              <tr class="row hl"><td class="ip">172.28.0.172</td><td>네트워크 폭주</td><td>위조 가능 · 시간 제한</td><td><span class="pill p-block">차단 중</span></td><td class="ttl">56분 남음</td></tr></table>
+            <table><tr class="row"><th>IP</th><th>사유</th><th>증거</th><th>상태</th><th>남은 시간</th></tr>
+              <tr class="row hl" id="r-block"><td class="ip">172.28.0.172</td><td>네트워크&nbsp;폭주</td><td>위조&nbsp;가능&nbsp;· 시간&nbsp;제한</td><td><span class="pill p-block">차단 중</span></td><td class="ttl">56분 남음</td></tr></table>
             <div class="row big">위조될 수 있는 증거 → 영구가 아닌 <span class="ttl">시간 제한(TTL) 차단</span></div>
-            <div class="row note" id="d-speed" style="opacity:0">탐지 → 차단까지 <b>약 3초</b></div>
+            <div class="note" id="d-speed" style="opacity:0">탐지 → 차단까지 <b>약 3초</b></div>
+            <div class="kpis">
+              <div class="kpi k-amber" id="k-ttl"><div class="k-lab">TTL 차단 (영구 아님)</div><div class="k-val">56분 남음</div><div class="k-sub">172.28.0.172</div></div>
+              <div class="kpi k-blue" id="k-speed"><div class="k-lab">탐지 → 차단</div><div class="k-val">약 3초</div><div class="k-sub">자동 처리</div></div>
+            </div>
           </div>
-        </div>
-      </div>
-
-      <!-- ===== 하단 비유 그림 띠 ===== -->
-      <div class="band">
-        <!-- 장면1: 초인종 연타 + 도망 -->
-        <div id="b1" class="scene clip" data-start="3.5" data-duration="8.5" data-track-index="10">
-          <svg viewBox="0 0 1728 340"><g class="sg">
-            <rect x="24" y="20" width="220" height="40" rx="9" fill="#111a28" stroke="#2a3a50"/><circle cx="46" cy="40" r="5" fill="#f0a74a"/><text x="60" y="47" fill="#f0a74a" font-size="20" font-weight="700">SYN 폭주</text>
-            <g id="b1arm"><path d="M196 176 Q380 172 500 180 T 596 190" fill="none" stroke="#d9944a" stroke-width="22" stroke-linecap="round"/><circle cx="600" cy="192" r="15" fill="#d9944a"/></g>
-            <g transform="translate(120,96) scale(2.4)" fill="#d9944a"><circle cx="20" cy="12" r="9"/><path d="M4 51A16 22 0 0 1 36 51Z"/></g>
-            <text x="168" y="252" fill="#8b97a7" font-size="19" text-anchor="middle">수상한 사람</text>
-            <!-- 인터폰(초인종) -->
-            <g transform="translate(628,96)"><rect width="120" height="150" rx="10" fill="#152033" stroke="#33465f" stroke-width="3"/><rect x="18" y="16" width="84" height="48" rx="5" fill="#0d1726" stroke="#28384d"/><circle id="bell" cx="60" cy="110" r="18" fill="#2a1f10" stroke="#f0a74a" stroke-width="3"/></g>
-            <!-- 벨 음파 -->
-            <g id="waves" stroke="#f0a74a" fill="none" stroke-width="4" stroke-linecap="round"><path d="M706 206 q24 0 24 -24"/><path d="M722 222 q40 0 40 -40"/><path d="M738 238 q56 0 56 -56"/></g>
-            <text x="820" y="150" fill="#f0a74a" font-size="30" font-weight="800">딩동! 딩동! 딩동!</text>
-            <text x="820" y="196" fill="#8b97a7" font-size="22">SYN ×3000 — 눌러만 놓고 도망</text>
-            <!-- 도망 화살표 -->
-            <g id="runaway"><path d="M300 250 q140 70 360 40" fill="none" stroke="#7e8ea1" stroke-width="4" stroke-dasharray="10 9" marker-end="url(#ar2)"/><text x="470" y="320" fill="#8b97a7" font-size="20" text-anchor="middle">누르고 → 바로 도망</text></g>
-            <text x="1180" y="190" fill="#c9d4e3" font-size="24" font-weight="700" text-anchor="middle">초인종만 <tspan fill="#f0a74a">누르고 도망</tspan>을 반복한다</text>
-            <defs><marker id="ar2" markerWidth="12" markerHeight="12" refX="8" refY="4" orient="auto"><path d="M0 0 L9 4 L0 8 Z" fill="#7e8ea1"/></marker></defs>
-          </g></svg>
-        </div>
-
-        <!-- 장면2: 경비 탐지 -->
-        <div id="b2" class="scene clip" data-start="12" data-duration="7" data-track-index="10">
-          <svg viewBox="0 0 1728 340"><g class="sg">
-            <rect x="24" y="20" width="220" height="40" rx="9" fill="#111a28" stroke="#2a3a50"/><circle cx="46" cy="40" r="5" fill="#4aa8ff"/><text x="60" y="47" fill="#4aa8ff" font-size="20" font-weight="700">센서 탐지</text>
-            <g transform="translate(220,110)">
-              <rect x="-10" y="0" width="160" height="86" rx="12" fill="#152033" stroke="#4aa8ff" stroke-width="3"/>
-              <circle cx="70" cy="43" r="26" fill="#0d1726" stroke="#4aa8ff" stroke-width="3"/><circle id="eye2" cx="70" cy="43" r="10" fill="#4aa8ff"/>
-              <path d="M150 22 l42 -14 l0 72 l-42 -14 Z" fill="#152033" stroke="#4aa8ff" stroke-width="2"/>
-            </g>
-            <text x="290" y="240" fill="#4aa8ff" font-size="20" font-weight="700" text-anchor="middle">경비 · 센서</text>
-            <g id="alarm" transform="translate(820,120)"><rect width="520" height="100" rx="14" fill="rgba(240,167,74,0.1)" stroke="#f0a74a" stroke-width="3"/><text x="260" y="44" fill="#f0a74a" font-size="28" font-weight="800" text-anchor="middle">SYN 플러더 감지!</text><text x="260" y="78" fill="#e6edf3" font-size="21" font-weight="600" text-anchor="middle">172.28.0.172 · L4 · 100+ 패킷</text></g>
-            <text x="864" y="320" fill="#c9d4e3" font-size="24" font-weight="700" text-anchor="middle">경비가 벨 폭주를 <tspan fill="#4aa8ff">바로 알아챈다</tspan></text>
-          </g></svg>
-        </div>
-
-        <!-- 장면3: 서명 경보 -->
-        <div id="b3" class="scene clip" data-start="19" data-duration="7" data-track-index="10">
-          <svg viewBox="0 0 1728 340"><g class="sg">
-            <rect x="24" y="20" width="220" height="40" rx="9" fill="#111a28" stroke="#2a3a50"/><circle cx="46" cy="40" r="5" fill="#4ec97a"/><text x="60" y="47" fill="#4ec97a" font-size="20" font-weight="700">서명 경보</text>
-            <!-- 신고서 + 도장 -->
-            <g transform="translate(330,66)">
-              <rect width="260" height="210" rx="10" fill="#111a28" stroke="#33465f" stroke-width="3"/>
-              <line x1="30" y1="50" x2="230" y2="50" stroke="#2a3a50" stroke-width="4"/><line x1="30" y1="86" x2="230" y2="86" stroke="#22303f" stroke-width="3"/><line x1="30" y1="116" x2="180" y2="116" stroke="#22303f" stroke-width="3"/>
-              <text x="30" y="36" fill="#8b97a7" font-size="20" font-weight="700">SYN_FLOOD 신고서</text>
-              <g id="stamp" transform="translate(180,150) rotate(-12)"><circle r="46" fill="rgba(78,201,122,0.1)" stroke="#4ec97a" stroke-width="4"/><text y="-4" fill="#4ec97a" font-size="18" font-weight="900" text-anchor="middle">서명</text><text y="20" fill="#4ec97a" font-size="16" font-weight="900" text-anchor="middle">HMAC</text></g>
-            </g>
-            <path d="M620 170 L820 170" fill="none" stroke="#4ec97a" stroke-width="5" stroke-linecap="round" marker-end="url(#ar3)"/>
-            <g transform="translate(850,110)"><rect width="320" height="120" rx="12" fill="#152033" stroke="#4ec97a" stroke-width="2"/><text x="160" y="50" fill="#e6edf3" font-size="24" font-weight="800" text-anchor="middle">관리실 기록</text><text x="160" y="88" fill="#4ec97a" font-size="20" font-weight="700" text-anchor="middle">위·변조 불가</text></g>
-            <text x="864" y="320" fill="#c9d4e3" font-size="24" font-weight="700" text-anchor="middle">위조 못 하게 <tspan fill="#4ec97a">서명(HMAC)된 신고</tspan>를 남긴다</text>
-            <defs><marker id="ar3" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0 0 L7 3 L0 6 Z" fill="#4ec97a"/></marker></defs>
-          </g></svg>
-        </div>
-
-        <!-- 장면4+5: 잠시 출입 금지 (TTL) -->
-        <div id="b4" class="scene clip" data-start="26" data-duration="14" data-track-index="10">
-          <svg viewBox="0 0 1728 340"><g class="sg">
-            <rect x="24" y="20" width="260" height="40" rx="9" fill="#111a28" stroke="#2a3a50"/><circle cx="46" cy="40" r="5" fill="#f0a74a"/><text x="60" y="47" fill="#f0a74a" font-size="20" font-weight="700">TTL 차단</text>
-            <!-- 공격자(작게, 희미) -->
-            <g transform="translate(180,130) scale(1.9)" fill="#d9944a" opacity="0.5"><circle cx="20" cy="12" r="9"/><path d="M4 51A16 22 0 0 1 36 51Z"/></g>
-            <text x="220" y="258" fill="#8b97a7" font-size="18" text-anchor="middle">공격자 .172</text>
-            <!-- '잠시 출입 금지' 팻말 -->
-            <g transform="translate(560,70)">
-              <rect width="420" height="150" rx="14" fill="rgba(240,167,74,0.08)" stroke="#f0a74a" stroke-width="4"/>
-              <text x="210" y="60" fill="#f0a74a" font-size="34" font-weight="900" text-anchor="middle">잠시 출입 금지</text>
-              <text x="210" y="106" fill="#e6edf3" font-size="22" font-weight="600" text-anchor="middle">위장일 수 있어 영구 아님</text>
-              <path d="M200 150 L200 230 M110 230 L310 230" stroke="#7e8ea1" stroke-width="6" stroke-linecap="round"/>
-            </g>
-            <!-- 타이머 -->
-            <g transform="translate(1180,140)">
-              <circle r="78" fill="#152033" stroke="#f0a74a" stroke-width="5"/>
-              <circle id="tdot" r="78" fill="none" stroke="#f0a74a" stroke-width="5" stroke-dasharray="368 490" stroke-linecap="round" transform="rotate(-90)"/>
-              <line x1="0" y1="0" x2="0" y2="-48" stroke="#e6edf3" stroke-width="5" stroke-linecap="round"/>
-              <line x1="0" y1="0" x2="34" y2="10" stroke="#f0a74a" stroke-width="5" stroke-linecap="round"/>
-              <circle r="7" fill="#f0a74a"/>
-              <text y="118" fill="#f0a74a" font-size="26" font-weight="800" text-anchor="middle">56분 남음</text>
-            </g>
-            <text x="864" y="322" fill="#c9d4e3" font-size="24" font-weight="700" text-anchor="middle">위조될 수 있는 증거라 <tspan fill="#f0a74a">잠깐만(TTL) 막아 둔다</tspan> — 탐지→차단 약 3초</text>
-          </g></svg>
         </div>
       </div>
 
@@ -216,17 +159,68 @@
       tl.fromTo("#in-sub", { opacity: 0 }, { opacity: 1, duration: 0.5 }, 0.9);
       tl.to("#intro", { opacity: 0, duration: 0.45, ease: "power2.in" }, 3.1);
 
+      // 지금 봐야 할 패널만 밝히고 테두리를 빛나게, 반대쪽은 흐리게 — 공격(주황) → 탐지(파랑) 순서가 눈에 보이게
+      const NONE = "0 0 0 1px rgba(0,0,0,0), 0 0 40px rgba(0,0,0,0)";
+      const FOCUS = {
+        term: { on: "#p-term", off: "#p-dash", c: "#f0a74a", glow: "0 0 0 1px rgba(240,167,74,0.9), 0 0 40px rgba(240,167,74,0.28)" },
+        dash: { on: "#p-dash", off: "#p-term", c: "#4aa8ff", glow: "0 0 0 1px rgba(74,168,255,0.9), 0 0 40px rgba(74,168,255,0.28)" },
+      };
+      function focus(which, at) {
+        const f = FOCUS[which];
+        tl.to(f.on, { opacity: 1, borderColor: f.c, boxShadow: f.glow, duration: 0.4, ease: "power2.out" }, at);
+        tl.to(f.off, { opacity: 0.45, borderColor: "#1e2a3a", boxShadow: NONE, duration: 0.4, ease: "power2.out" }, at);
+      }
+      function unfocus(at) { tl.to("#p-term, #p-dash", { opacity: 1, borderColor: "#1e2a3a", boxShadow: NONE, duration: 0.5, ease: "power2.out" }, at); }
+
       function enter(sel, at, stagger) { tl.fromTo(sel + " .row", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out", stagger: stagger || 0.14 }, at); }
-      enter("#t-syn", 3.7, 0.25); enter("#d-sensor", 12.3, 0.2); enter("#d-alert", 19.3, 0.25); enter("#d-block", 26.3, 0.25);
-      tl.to("#d-speed", { opacity: 1, duration: 0.4 }, 35.3);
+      // 터미널의 결정적 줄: 형광펜 배경 + 한 번 커졌다 돌아오기
+      function hit(sel, rgb, at) {
+        tl.fromTo(sel, { backgroundColor: `rgba(${rgb},0)` }, { backgroundColor: `rgba(${rgb},0.2)`, duration: 0.3, ease: "power2.out" }, at);
+        tl.fromTo(sel, { scale: 1 }, { scale: 1.05, transformOrigin: "0% 50%", duration: 0.22, yoyo: true, repeat: 1, ease: "power2.out" }, at);
+      }
+      // 표에 새로 들어온 행: 진하게 번쩍였다가 평소 색으로
+      function flash(sel, rgb, rest, at) { tl.fromTo(sel + " td", { backgroundColor: `rgba(${rgb},0.4)` }, { backgroundColor: rest, duration: 1.2, ease: "power2.out" }, at); }
+      function kpi(sel, at) { tl.fromTo(sel, { opacity: 0, y: 26, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: "back.out(1.6)" }, at); }
+      function punch(sel, at) { tl.to(sel, { scale: 1.025, duration: 0.25, yoyo: true, repeat: 1, ease: "power2.out" }, at); }
 
-      function scn(sel, at) { tl.fromTo(sel + " .sg", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, at); }
-      scn("#b1", 3.7); scn("#b2", 12.3); scn("#b3", 19.3); scn("#b4", 26.3);
+      // ① SYN 다발 전송
+      focus("term", 3.5);
+      enter("#t-syn", 3.7, 0.4);
+      hit("#h-flood", "240,167,74", 4.9);
+      hit("#h-count", "240,167,74", 5.8);
 
-      // 벨 누르는 팔 + 음파 깜빡 + 신고서 도장 + 타이머
-      tl.to("#b1arm", { rotation: 4, svgOrigin: "196 176", duration: 0.14, repeat: 24, yoyo: true, ease: "sine.inOut" }, 4.2);
-      tl.to("#waves", { opacity: 0.2, duration: 0.3, repeat: 12, yoyo: true, ease: "sine.inOut" }, 4.2);
-      tl.fromTo("#stamp", { scale: 1.7, opacity: 0, transformOrigin: "50% 50%" }, { scale: 1, opacity: 1, duration: 0.4, ease: "back.out(2)" }, 20.4);
+      // 센서가 SYN을 세는 동안 관제 화면으로 시선 이동 (시간에만 의존하는 카운터라 탐색해도 같은 값)
+      focus("dash", 7.2);
+      enter("#d-idle", 7.0, 0.25);
+      kpi("#k-idle", 7.4);
+      tl.to("#live", { opacity: 0.2, duration: 0.4, repeat: 9, yoyo: true, ease: "sine.inOut" }, 7.4);
+      const synEl = document.getElementById("syn-n");
+      const syn = { n: 0 };
+      tl.to(syn, { n: 3000, duration: 3.8, ease: "power1.in", onUpdate: () => {
+        synEl.textContent = String(Math.round(syn.n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      } }, 7.8);
+
+      // ② 탐지
+      enter("#d-sensor", 12.3, 0.25);
+      flash("#r-sensor", "240,167,74", "rgba(240,167,74,0.08)", 12.6);
+      kpi("#k-sensor", 13.4);
+      punch("#p-dash", 13.4);
+
+      // ③ 서명된 경보
+      enter("#d-alert", 19.3, 0.3);
+      flash("#r-alert", "78,201,122", "rgba(78,201,122,0)", 19.6);
+      kpi("#k-alert", 20.6);
+
+      // ④ TTL 차단
+      enter("#d-block", 26.3, 0.3);
+      flash("#r-block", "240,167,74", "rgba(240,167,74,0.08)", 26.6);
+      kpi("#k-ttl", 27.6);
+      punch("#p-dash", 27.6);
+
+      // ⑤ 탐지→차단 약 3초, 마무리는 두 패널을 함께
+      tl.fromTo("#d-speed", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out" }, 35.3);
+      kpi("#k-speed", 35.6);
+      unfocus(36.4);
 
       const subs = [["#s1",3.5,12],["#s2",12,19],["#s3",19,26],["#s4",26,35],["#s5",35,40]];
       subs.forEach(([id, a, b]) => { tl.fromTo(id, { opacity: 0 }, { opacity: 1, duration: 0.35, ease: "power2.out" }, a + 0.1); tl.to(id, { opacity: 0, duration: 0.3, ease: "power2.in" }, b - 0.3); });
