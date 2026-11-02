@@ -11,3 +11,6 @@ scripts/demo/output/
 /plan-excerpt (1).md
 /Codex-요청서 (1).md
 /설명서 (1).md
+
+# HyperFrames 도구가 검사·캡처할 때마다 자동으로 남기는 상태·기록 파일 — 영상 원본(index.html)과 mp4만 저장소에 둔다.
+presentation/videos/*/.hyperframes/
