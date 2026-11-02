@@ -68,6 +68,44 @@ def list_security_events(page: int = 1, page_size: int = 20) -> tuple[list[dict]
     return res.data, res.count or 0
 
 
+def get_latest_security_event_id() -> int | None:
+    """가장 최근 보안 이벤트의 id만 돌려준다. 표가 비어 있으면 None.
+
+    관리자 미니 창(크롬 확장, /api/pip/check)이 처음 열릴 때 "여기부터 새 공격으로 본다"는
+    기준점을 잡는 데 쓴다. id 한 칸만 한 줄 가져오므로 가장 가벼운 조회다.
+    """
+    res = (
+        db.get_client()
+        .table("security_events")
+        .select("id")
+        .order("id", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0]["id"] if res.data else None
+
+
+def list_security_events_after(after_id: int, limit: int) -> list[dict]:
+    """id가 `after_id`보다 큰(= 그 뒤에 기록된) 보안 이벤트를 오래된 순으로 최대 `limit`건 가져온다.
+
+    관리자 미니 창이 10초마다 "새 공격이 있나"만 물어볼 때 쓴다. 대시보드 집계(/api/stats)는
+    한 번에 조회를 열 몇 번 하고 며칠 치 원본을 내려받아서, 하루 종일 떠 있는 창이 그걸 계속
+    부르면 무료 Supabase의 전송량을 갉아먹는다. 그래서 평소에는 이 조회 한 번(대부분 빈 결과)만
+    하고, 새 이벤트가 있을 때만 화면이 집계를 다시 받는다. 오래된 순인 이유: 다음 기준점을
+    마지막 줄의 id로 잡아야 limit을 넘게 몰려도 빠짐없이 이어서 가져올 수 있다.
+    """
+    res = (
+        db.get_client()
+        .table("security_events")
+        .select("id,severity,event_type,ip_address,path,count,action,detected_at")
+        .gt("id", after_id)
+        .order("id")
+        .limit(limit)
+        .execute()
+    )
+    return res.data
+
+
 def list_resolved_critical_events_since(hours: int) -> list[dict]:
     """지난 `hours`시간 동안 발생했고 이미 해결된(resolved_at이 채워진)
     CRITICAL 이벤트 전체를 가져온다 (Track C guide30, 임계값 튜닝 리포트).
