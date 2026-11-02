@@ -40,7 +40,7 @@ login-watchdog/
 │   ├── auth.py                    #   auth_bp: /signup, /login
 │   ├── admin/                     #   admin_bp: /admin/*, /api/*(관리자용, RBAC로 세분화)
 │   │   ├── login.py               #     /admin/login, /admin/logout
-│   │   ├── status.py              #     /admin/dashboard, /api/status(대시보드 폴링)
+│   │   ├── status.py              #     /admin/dashboard, /api/status(대시보드 폴링), /api/pip/check(미니 관제창의 새 공격 확인)
 │   │   ├── locks.py               #     잠금 해제, 영구 잠금, IP 예외·복구 요청 회수
 │   │   ├── incidents.py           #     AI 조기 경보 승인/반려, 보안 이벤트·연관 사건 처리
 │   │   └── manage.py              #     회원·회원가입 설정·게시판·관리자 계정 관리
@@ -72,7 +72,7 @@ login-watchdog/
 │   ├── geoip_cache.py             #   ip_locations (IP 위치 조회 캐시)
 │   ├── board.py                   #   posts, comments, post_attempts, comment_attempts (게시판)
 │   ├── access_logs.py             #   not_found/unauthorized/page_access_attempts (요청 로그)
-│   ├── security_events.py         #   security_events (위험등급 이벤트)
+│   ├── security_events.py         #   security_events (위험등급 이벤트, 미니 관제창용 최신 id·새 이벤트 조회 포함)
 │   ├── incidents.py               #   security_incidents (SIEM 상관분석)
 │   ├── access_requests.py         #   access_requests (AI 조기 경보 승인 대기)
 │   ├── email_tokens.py            #   email_tokens (이메일 인증·변경·비밀번호 재설정 링크)
@@ -94,6 +94,14 @@ login-watchdog/
 ├── templates/                     # 예전 Jinja2 화면 — spa/가 없거나 SPA_ENABLED=false일 때 폴백 (admin_dashboard/ — 대시보드 표 조각)
 ├── public/_next/                  # Next.js 빌드 결과 JS·CSS·폰트(해시 이름, 길게 캐시) — 커밋 대상
 ├── public/css, public/js/dashboard/ # 폴백용 Jinja 화면의 스타일 및 대시보드 자바스크립트(ES 모듈 — api.js 조회, actions.js 변경, render/ 표 그리기)
+├── extension/                     # 미니 관제창 크롬 확장(항상 위 PiP, Manifest V3) — 크롬에 직접 설치, 배포와 무관 (docs/pip-extension.md)
+│   ├── manifest.json              #   권한(storage·alarms·notifications·tabs·declarativeNetRequest, 대시보드 주소는 설정 때 요청), 단축키 Alt+Shift+W
+│   ├── background.js              #   아이콘·단축키 → 고정 탭 열기, 창이 닫혀 있을 때 30초 확인·배지·알림, HTTPS 로그인용 Referer 규칙
+│   ├── host.html, host.js         #   고정 탭(호스트) — 버튼으로 PiP 창을 열고 붙잡아 둠, 창 안 화면과 10초 확인 담당
+│   ├── options.html, options.js   #   대시보드 주소·확인 간격 설정, 그 주소 하나의 권한 요청
+│   ├── pip/                       #   PiP 창 화면(view.js — 로그인·관제·연결 실패, pip.css)
+│   ├── lib/                       #   core.js(최근 30분 등급·그래프·한국어 공격 이름) · monitor.js(확인 흐름) · api.js(서버 요청)
+│   └── test/                      #   Node 내장 테스트(node --test extension/test/core.test.mjs extension/test/monitor.test.mjs)
 ├── tests/                         # pytest 단위 테스트
 ├── scripts/                       # 터미널 도구 — docs/scripts.md 참고
 │   ├── simulation/                #   공격 시뮬레이터: critical/(브루트포스·분산·관리자·영구 잠금·사건화) · high/(도배·HTTP 플러딩·복구 폭주) · medium/(웹 스캐닝·허니팟·매크로 등), _sim_common.py(공용 부품)

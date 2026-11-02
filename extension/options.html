@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Watchdog 미니 창 설정</title>
+  <link rel="icon" href="icons/icon32.png">
+  <link rel="stylesheet" href="host.css">
+</head>
+<body>
+  <main class="card">
+    <h1>미니 창 설정</h1>
+    <form id="form">
+      <label class="field">관리자 대시보드 주소
+        <input id="baseUrl" class="text" placeholder="예: http://localhost:5000" required>
+      </label>
+      <label class="field">새 공격 확인 간격(초, 미니 창이 열려 있을 때)
+        <input id="checkSeconds" class="text" type="number" min="5" max="120" step="1">
+      </label>
+      <button class="btn" type="submit">저장</button>
+      <p id="status" class="status"></p>
+    </form>
+    <ul class="tips">
+      <li>주소는 크롬 주소창에서 관리자 대시보드를 열 때의 앞부분(<b>https://도메인</b> 또는 <b>http://localhost:5000</b>)만 적습니다.</li>
+      <li>저장을 누르면 크롬이 "이 사이트의 데이터 읽기·변경" 권한을 묻습니다. <b>허용</b>해야 미니 창이 로그인 상태를 같이 쓸 수 있습니다.</li>
+      <li>간격을 짧게 할수록 빨리 알지만 서버에 묻는 횟수가 늘어납니다. 기본 10초를 권장합니다.</li>
+    </ul>
+  </main>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

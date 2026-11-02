@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Watchdog 미니 창</title>
+  <link rel="icon" href="icons/icon32.png">
+  <link rel="stylesheet" href="host.css">
+</head>
+<body>
+  <main class="card">
+    <h1>Login Watchdog 미니 관제창</h1>
+    <p id="status" class="status">아래 버튼을 누르면 항상 위에 떠 있는 작은 창이 열립니다.</p>
+    <button id="open" class="btn" type="button" autofocus>미니 창 열기</button>
+    <ul class="tips">
+      <li>이 탭은 미니 창을 붙잡고 있는 탭입니다. <b>닫으면 미니 창도 같이 닫힙니다.</b> 고정 탭(왼쪽 끝 작은 탭)으로 두세요.</li>
+      <li>미니 창은 처음에 화면 오른쪽 아래에 뜰 수 있습니다. 제목 줄을 끌어 <b>왼쪽 위</b>로 옮겨 두면 크롬이 위치를 기억합니다.</li>
+      <li>미니 창이 닫혀 있어도 30초마다 새 공격을 확인해 아이콘 숫자와 알림으로 알려 줍니다.</li>
+    </ul>
+    <p class="links"><a id="options" href="options.html" target="_blank">대시보드 주소 설정</a></p>
+  </main>
+  <script type="module" src="host.js"></script>
+</body>
+</html>

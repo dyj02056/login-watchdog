@@ -1,0 +1,67 @@
+/* pip.css — PiP 미니 창 화면. 관리자 대시보드와 어울리는 어두운 관제 화면 느낌으로 맞췄다.
+   --level은 view.js가 지금 위협 등급 색으로 바꿔 넣는다(정상 초록 / MEDIUM 노랑 / HIGH 주황 / CRITICAL 빨강). */
+:root {
+  --bg: #0b1220;
+  --panel: #111a2e;
+  --line: #1f2a44;
+  --text: #e2e8f0;
+  --muted: #8b9ab5;
+  --accent: #22d3ee;
+  --level: #22c55e;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+body { font: 12px/1.4 "Segoe UI", "Malgun Gothic", system-ui, sans-serif; overflow: hidden; }
+
+.app { display: flex; flex-direction: column; height: 100%; border-top: 3px solid var(--level); }
+.top { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: center; gap: 6px; font-weight: 700; letter-spacing: .04em; flex: 1; font-size: 11px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.level { padding: 1px 8px; border: 1px solid var(--level); color: var(--level); border-radius: 4px; font-weight: 700; font-size: 11px; }
+.clock { font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
+
+main { flex: 1; overflow: hidden; padding: 10px 12px 4px; }
+footer { padding: 8px 12px 10px; }
+
+.btn { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 6px; padding: 7px 10px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn:disabled { opacity: .6; cursor: default; }
+.btn.primary { background: #0e7490; border-color: #0e7490; font-weight: 600; }
+.btn.primary:hover { background: #0891b2; }
+.btn.wide { width: 100%; }
+.btn.link { background: none; border: none; color: var(--accent); text-decoration: underline; padding: 2px 0; }
+.hidden { display: none !important; }
+.muted { color: var(--muted); }
+
+/* 로그인 */
+.login { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; }
+.login h1 { font-size: 14px; margin: 0 0 4px; }
+.input { font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line); background: #0a1020; color: var(--text); }
+.input:focus { outline: none; border-color: var(--accent); }
+.message { color: #fca5a5; margin: 0; min-height: 1.4em; }
+
+/* 관제 */
+.status { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.status-light { width: 14px; height: 14px; border-radius: 50%; background: var(--level); box-shadow: 0 0 10px var(--level); flex: none; }
+.app:not([data-level="NORMAL"]) .status-light { animation: pulse 1.2s infinite; }
+.status-title { display: block; font-size: 13px; color: var(--level); }
+.status-sub { color: var(--muted); font-size: 11px; }
+.kpis { display: flex; justify-content: space-between; margin: 8px 2px; color: var(--muted); }
+.kpis b { color: var(--text); font-variant-numeric: tabular-nums; }
+.chart-head { display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; margin-bottom: 2px; }
+.chart { display: block; width: 100%; height: 64px; background: #0a1020; border: 1px solid var(--line); border-radius: 6px; }
+
+.events { list-style: none; margin: 8px 0 0; padding: 0; }
+.events li { display: grid; grid-template-columns: 44px 38px 1fr auto; gap: 6px; align-items: center; padding: 4px 2px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.events li.empty { display: block; color: var(--muted); text-align: center; border: none; padding-top: 10px; }
+.events li.flash { animation: flash 1s 3; }
+.tag { font-size: 10px; font-weight: 700; border: 1px solid; border-radius: 3px; text-align: center; padding: 0 2px; }
+.time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.type { overflow: hidden; text-overflow: ellipsis; }
+.ip { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.offline { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; height: 100%; text-align: center; }
+
+@keyframes pulse { 50% { opacity: .35; } }
+@keyframes flash { 50% { background: color-mix(in srgb, var(--level) 25%, transparent); } }

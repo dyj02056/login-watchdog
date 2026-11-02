@@ -20,7 +20,7 @@
 | **판단 방식** | 위험등급 4단계(CRITICAL/HIGH/MEDIUM/LOW), SIEM 상관분석(사건으로 묶기), 교차 규칙 NET-01·CR-01~03, LLM 조기 경보 |
 | **대응** | IP/계정 임시 잠금 → 반복 시 영구 잠금, SOAR 플레이북, 정문에서 L4 차단(탐지→차단 2~3초대, 10/29 S5 중앙값 2.7초), L3 경보(ICMP·위조 출발지)는 주소 차단 없이 알림·속도 제한, Slack·메일 알림 |
 | **복구** | 이메일 인증으로 본인 잠금 해제, 비밀번호 찾기·변경, 관리자 해제(역할별 권한) |
-| **관제** | Next.js 관제 보드 3개(위협 현황·공격 상세·처리 작업대), RBAC 3역할 |
+| **관제** | Next.js 관제 보드 3개(위협 현황·공격 상세·처리 작업대), RBAC 3역할, 항상 위에 떠 있는 미니 관제창(크롬 확장) |
 | **규모** | Supabase 표 35개 · pytest 1,484개 통과 · 시연 시나리오 S4~S9 7개 모두 PASS(S7 위조 출발지·S9 ICMP 폭주 포함) — S4는 차단 적용(`APPLIED`)과 실제 접속 차단까지 확인 (2026-10-29 기준) |
 
 ## 구조
@@ -55,6 +55,7 @@
 | | 비밀번호 찾기·변경 | 인증된 이메일로만 재설정, 바꾸면 다른 기기 로그인 해제 | [41](docs/beginner-guide/guide41_password_reset.md) · [35](docs/beginner-guide/guide35_password_change.md) |
 | | 계정 존재 노출 방지 | 잠금·복구 응답의 문구와 응답 시간을 똑같이 맞춤 | [39](docs/beginner-guide/guide39_account_enumeration.md) |
 | **관제** | Next.js 관제 보드 | 위협 현황·공격 상세·처리 작업대, 보이는 탭만 폴링·표 단위 갱신 | [48](docs/beginner-guide/guide48_nextjs_dashboard.md) · [45](docs/beginner-guide/guide45_visible_tab_polling.md) · [46](docs/beginner-guide/guide46_dashboard_responsiveness.md) |
+| | 미니 관제창 (크롬 확장) | 항상 위 작은 창(PiP)에 최근 30분 공격의 위협 등급·1분 그래프·최근 공격을 띄우고, 버튼으로 대시보드 이동. 평소엔 10초마다 새 공격만 확인(조회 1번) | [pip-extension.md](docs/pip-extension.md) |
 | | 관리자 RBAC | `security_viewer` / `security_admin` / `super_admin` 액션 단위 권한 | [26](docs/beginner-guide/guide26_rbac_foundation.md) · [37](docs/beginner-guide/guide37_session_and_code_hardening.md) |
 | | 회원 화면·게시판 | 회원 대시보드(로그인 기록·위치), 게시판·댓글 | [13](docs/beginner-guide/guide13_member.md) · [14](docs/beginner-guide/guide14_geoip.md) · [20](docs/beginner-guide/guide20_board.md) |
 | **운영** | 로그 정리·일별 요약 | pg_cron이 매일 어제 요약 후 보관 기간 지난 기록 삭제 | [44](docs/beginner-guide/guide44_log_retention.md) · [47](docs/beginner-guide/guide47_daily_log_summary.md) |
@@ -109,6 +110,7 @@ python app.py          # http://localhost:5000
 1. Supabase SQL Editor에서 [docs/schema.sql](docs/schema.sql)을 실행합니다. 기존 DB라면 [docs/migrations/](docs/migrations)를 순서대로 실행해야 하며, **배포 전에** 실행해야 하는 파일이 있습니다.
 2. Supabase 없이 관제 화면만 보려면 `python scripts/demo/generate_demo_logs.py` 다음 `python scripts/demo/demo_server.py`를 실행하고 http://127.0.0.1:5077/__demo_login 을 엽니다.
 3. Track D(L3/L4)까지 켜려면 [netwatch/README.md](netwatch/README.md)를 따릅니다.
+4. 미니 관제창을 쓰려면 크롬 `chrome://extensions` → 개발자 모드 → **압축해제된 확장 프로그램을 로드합니다** → `extension` 폴더를 고른 뒤, 설정에 대시보드 주소를 적습니다 → [docs/pip-extension.md](docs/pip-extension.md)
 
 마이그레이션 순서, 환경변수 전체 표, 접속 주소 목록은 **[docs/setup.md](docs/setup.md)** 에 있습니다.
 
@@ -116,9 +118,11 @@ python app.py          # http://localhost:5000
 
 ```bash
 pytest tests/ -q
+node --test extension/test/core.test.mjs extension/test/monitor.test.mjs   # 미니 관제창(크롬 확장)
 ```
 
-- **단위 테스트**: 실제 Supabase에 접속하지 않고 monkeypatch로 판정 로직만 검증합니다. 1,484개가 통과합니다(Track D는 `tests/track_d/`).
+- **단위 테스트**: 실제 Supabase에 접속하지 않고 monkeypatch로 판정 로직만 검증합니다. 1,492개가 통과합니다(2026-11-02, Track D는 `tests/track_d/`).
+- **미니 관제창**: 크롬 없이 Node로 계산·확인 흐름 25개를 검사합니다. GitHub Actions에서는 돌지 않으니 확장을 고치면 직접 실행합니다.
 - **공격 시뮬레이터**: `scripts/simulation/{critical,high,medium}/`, 일괄 점검은 `scripts/demo/check_simulations.py`
 - **Track D 시나리오 채점**: `scripts/net/run_all.py`가 S4~S9를 채점합니다(S4 해제 후 재접속까지 보려면 `--with-release`), 측정 결과는 [measurements.md](docs/track-d/measurements.md)와 [scenario-results.md](docs/track-d/scenario-results.md)
 
@@ -138,6 +142,7 @@ login-watchdog/
 ├── web/                 # Next.js 화면 소스 → 빌드 결과 spa/ · public/_next/ (커밋 대상)
 ├── templates/           # 예전 Jinja 화면 (폴백)
 ├── netwatch/            # Track D 컨테이너: nginx, suricata, l4_detector, shipper, fw_agent, attacker
+├── extension/           # 미니 관제창 크롬 확장(항상 위 PiP) — 크롬에 직접 설치, 배포와 무관
 ├── scripts/             # 터미널 도구: simulation/ · management/ · demo/ · net/ · docs/
 ├── tests/               # pytest (track_d/ 포함)
 └── docs/                # 해설서·기능 레퍼런스·스키마·마이그레이션·Track D 계약서
@@ -157,6 +162,7 @@ login-watchdog/
 | DB 표를 보려는 분 | [db-schema-guide.md](docs/feature-reference/db-schema-guide.md) · [ERD.svg](docs/feature-reference/ERD.svg) (ERD에는 Track D 표가 아직 없음) |
 | Track D와 연동하려는 분 | [contracts.md](docs/track-d/contracts.md) (함수·주소·데이터 모양의 기준) |
 | 화면을 고치려는 분 | [PRODUCT.md](PRODUCT.md) (디자인 원칙) · [web/README.md](web/README.md) (빌드) |
+| 대시보드를 작은 창으로 띄워 두려는 분 | [docs/pip-extension.md](docs/pip-extension.md) (미니 관제창 설치·사용·동작 방식) |
 | 설계 이유가 궁금한 분 | [plan.md](plan.md) · [research.md](research.md) · [게시판 설계](docs/board-comment) · [리팩터링 기록](docs/refactor) · [폴더 지도](docs/architecture-map.html) |
 | 시연을 준비하는 분 | [scenario.md](docs/scenario.md) · [VPN 시연](docs/vpn-demo-guide.md) · [웹 스캐닝 재현](docs/web-scanning-demo.md) |
 
@@ -167,6 +173,7 @@ login-watchdog/
 - **L3/L4 대응은 로컬 Docker 단지에서만** 동작합니다. Vercel 배포에서는 L7 방어만 동작합니다.
 - **위조될 수 있는 증거로는 주소를 영구로 막지 않습니다**: SYN·포트 스캔은 시간 제한 L4 차단까지, L3 경보(ICMP 폭주·위조 출발지·출발지를 바꾸는 SYN 폭주)는 기록·알림과 ICMP 속도 제한까지만 합니다. 우리 인프라 주소(core·gateway)는 어떤 경보로도 막지 않습니다.
 - **대시보드는 실시간이 아니라 폴링**(기본 5초)이고, 자동 잠금 해제는 다음 요청이 올 때 처리됩니다.
+- **미니 관제창은 최근 30분 공격만 봅니다**: 처리 안 된 예전 공격은 대시보드에서 봅니다. 공격이 와도 창이 저절로 열리지는 않습니다(크롬 정책). 닫혀 있으면 아이콘 숫자·알림만 뜹니다.
 - **`web/`을 고치면 빌드 결과(`spa/`, `public/_next/`)도 함께 커밋**해야 배포에 반영됩니다.
 
 영구 잠금 해제 조건, 관리자 계정 예외, 게시판 범위 등 전체 목록은 **[docs/known-limitations.md](docs/known-limitations.md)** 에 있습니다.
