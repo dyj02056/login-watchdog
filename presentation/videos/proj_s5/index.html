@@ -5,78 +5,85 @@
     <meta name="viewport" content="width=1920, height=1080" />
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
     <style>
+      /* 발표자료 본문과 같은 글씨체 — 이 PC에 설치된 Noto Sans KR(가변 굵기)을 이름으로 불러 쓴다 */
+      @font-face { font-family: "Noto Sans KR"; src: local("Noto Sans KR"), local("NotoSansKR-Regular"); font-weight: 100 900; }
       :root {
         --ground: #0a0e16; --panel: #0e141f; --border: #1e2a3a; --ink: #e6edf3; --muted: #8b97a7;
-        --mono: Consolas, "Courier New", monospace; --sans: "Segoe UI", system-ui, sans-serif;
+        /* 코드·숫자는 발표자료 --font-num 첫 글꼴(JetBrains Mono), 그 안의 한글은 Noto Sans KR로 받는다 */
+        --mono: "JetBrains Mono", "Noto Sans KR", monospace; --sans: "Noto Sans KR", sans-serif;
         --green: #7ee787; --red: #ff6b6b; --amber: #f0a74a; --ok: #4ec97a; --blue: #4aa8ff; --crit: #ff5c5c; --att: #d9944a;
       }
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--ground); }
       #root { width: 100%; height: 100%; font-family: var(--sans); color: var(--ink); position: relative; }
 
-      #hdr { position: absolute; top: 34px; left: 96px; right: 96px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
-      #hdr .t { font-size: 38px; font-weight: 800; letter-spacing: -0.02em; }
+      /*
+        발표 화면에서는 이 영상이 약 0.55배로 줄어 보인다. 그래서 글씨를 옆 그림 설명(18~30px)과 비슷하게 보이도록
+        영상 안에서 34~40px로 키우고, 그만큼 바깥 여백을 줄여 패널 폭을 늘렸다.
+      */
+      #hdr { position: absolute; top: 20px; left: 40px; right: 40px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+      #hdr .t { font-size: 42px; font-weight: 800; letter-spacing: -0.02em; }
       #hdr .t b { color: var(--amber); }
-      #hdr .tag { font-family: var(--mono); font-size: 21px; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: 7px 15px; }
+      #hdr .tag { font-family: var(--mono); font-size: 28px; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: 4px 15px; }
 
       /* 패널 영역 — 하단 비유 그림을 없애고 화면 대부분을 코드·관제 화면에 준다 */
-      .stage { position: absolute; top: 112px; left: 96px; right: 96px; height: 806px; display: flex; gap: 30px; }
-      .pane { flex: 1; background: var(--panel); border: 2px solid var(--border); border-radius: 16px; overflow: hidden; position: relative;
+      .stage { position: absolute; top: 90px; left: 40px; right: 40px; height: 858px; display: flex; gap: 24px; }
+      .pane { flex: 1; min-width: 0; background: var(--panel); border: 2px solid var(--border); border-radius: 16px; overflow: hidden; position: relative;
               box-shadow: 0 0 0 1px rgba(0,0,0,0), 0 0 40px rgba(0,0,0,0); }
-      .pane-head { height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 24px; border-bottom: 1px solid var(--border); background: #0c1220; }
-      .pane-head .dot { width: 14px; height: 14px; border-radius: 50%; }
-      .pane-head .label { margin-left: 10px; font-size: 22px; color: var(--muted); font-weight: 700; }
+      .pane-head { height: 60px; display: flex; align-items: center; gap: 10px; padding: 0 22px; border-bottom: 1px solid var(--border); background: #0c1220; }
+      .pane-head .dot { width: 16px; height: 16px; border-radius: 50%; }
+      .pane-head .label { margin-left: 10px; font-size: 30px; color: var(--muted); font-weight: 700; }
 
-      .term { font-family: var(--mono); font-size: 26px; line-height: 1.65; }
-      .term .blk { position: absolute; left: 0; right: 0; top: 56px; padding: 26px 30px; }
+      .term { font-family: var(--mono); font-size: 38px; line-height: 1.5; }
+      .term .blk { position: absolute; left: 0; right: 0; top: 60px; padding: 22px 26px; }
       .term .cmd { color: #c9d4e3; } .term .cmd .p { color: var(--green); } .term .cmd .d { color: var(--blue); }
       .term .out { color: #9fb0c3; } .term .json { color: var(--muted); word-break: break-all; }
       .term .k-ok { color: var(--ok); font-weight: 700; } .term .flood { color: var(--amber); font-weight: 700; } .term .row { opacity: 0; }
       /* 결정적인 줄 — 형광펜처럼 배경을 칠해 시선을 잡는다 */
       .term .hit { margin: 0 -12px; padding: 0 12px; border-radius: 8px; }
 
-      .dash .card { position: absolute; left: 0; right: 0; top: 56px; bottom: 0; padding: 26px 30px; }
-      .dash .ctitle { font-size: 28px; font-weight: 800; color: var(--blue); margin-bottom: 18px; display: flex; align-items: center; gap: 12px; }
-      .dash .ctitle::before { content: ""; width: 6px; height: 28px; background: var(--blue); border-radius: 3px; }
-      table { width: 100%; border-collapse: collapse; font-size: 23px; }
-      th { text-align: left; color: var(--muted); font-weight: 600; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 19px; }
-      td { padding: 14px 12px; border-bottom: 1px solid #141d2b; color: #d7e0ec; line-height: 1.35; word-break: keep-all; }
+      .dash .card { position: absolute; left: 0; right: 0; top: 60px; bottom: 0; padding: 22px 26px; }
+      .dash .ctitle { font-size: 38px; font-weight: 800; color: var(--blue); margin-bottom: 14px; display: flex; align-items: center; gap: 12px; }
+      .dash .ctitle::before { content: ""; width: 7px; height: 38px; background: var(--blue); border-radius: 3px; }
+      table { width: 100%; border-collapse: collapse; font-size: 34px; }
+      th { text-align: left; color: var(--muted); font-weight: 600; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 28px; white-space: nowrap; }
+      td { padding: 12px 10px; border-bottom: 1px solid #141d2b; color: #d7e0ec; line-height: 1.3; word-break: keep-all; }
       td.ip, td.num { font-family: var(--mono); white-space: nowrap; }
       tr.hl td { background: rgba(240,167,74,0.08); }
-      .badge { font-size: 18px; font-weight: 800; padding: 4px 10px; border-radius: 6px; white-space: nowrap; }
+      .badge { font-size: 28px; font-weight: 800; padding: 3px 10px; border-radius: 6px; white-space: nowrap; }
       .b-high { background: rgba(240,167,74,0.16); color: var(--amber); border: 1px solid rgba(240,167,74,0.4); }
-      .pill { font-size: 19px; font-weight: 800; padding: 5px 12px; border-radius: 6px; white-space: nowrap; }
+      .pill { font-size: 28px; font-weight: 800; padding: 3px 12px; border-radius: 6px; white-space: nowrap; }
       .p-block { background: rgba(240,167,74,0.16); color: var(--amber); border: 1px solid rgba(240,167,74,0.45); }
-      .dash .note { margin-top: 20px; font-size: 23px; color: var(--muted); }
+      .dash .note { margin-top: 18px; font-size: 32px; color: var(--muted); }
       .dash .note b { color: var(--ink); }
-      .dash .big { margin-top: 18px; font-size: 26px; font-weight: 600; }
+      .dash .big { margin-top: 16px; font-size: 34px; font-weight: 600; }
       .ttl { color: var(--amber); font-weight: 800; white-space: nowrap; }
-      .sig { margin-top: 20px; display: inline-flex; align-items: center; gap: 10px; font-size: 23px; font-weight: 600; color: var(--ok); border: 1px solid rgba(78,201,122,0.4); background: rgba(78,201,122,0.08); border-radius: 10px; padding: 10px 16px; }
-      .watch { font-size: 24px; color: #c9d4e3; display: flex; align-items: center; gap: 14px; }
-      .watch .live { width: 14px; height: 14px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 12px rgba(74,168,255,0.8); }
+      .sig { margin-top: 18px; display: inline-flex; align-items: center; gap: 10px; font-size: 32px; font-weight: 600; color: var(--ok); border: 1px solid rgba(78,201,122,0.4); background: rgba(78,201,122,0.08); border-radius: 10px; padding: 8px 16px; }
+      .watch { font-size: 32px; color: #c9d4e3; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+      .watch .live { width: 16px; height: 16px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 12px rgba(74,168,255,0.8); }
       .watch .mono { font-family: var(--mono); color: var(--muted); }
       .dash .card .row { opacity: 0; }
 
       /* 관제 화면 아래 빈 자리에 띄우는 핵심 값 카드 — 그림 칸이 하던 '결론' 역할 */
-      .kpis { position: absolute; left: 30px; right: 30px; bottom: 30px; display: flex; gap: 20px; }
-      .kpi { flex: 1; opacity: 0; border: 2px solid; border-radius: 16px; padding: 22px 28px; }
-      .kpi .k-lab { font-size: 22px; font-weight: 700; color: var(--muted); }
-      .kpi .k-val { font-size: 58px; font-weight: 900; letter-spacing: -0.02em; line-height: 1.2; margin-top: 6px; }
-      .kpi .k-sub { font-size: 22px; color: #c9d4e3; margin-top: 4px; font-family: var(--mono); }
+      .kpis { position: absolute; left: 26px; right: 26px; bottom: 26px; display: flex; gap: 18px; }
+      .kpi { flex: 1; opacity: 0; border: 2px solid; border-radius: 16px; padding: 18px 24px; }
+      .kpi .k-lab { font-size: 30px; font-weight: 700; color: var(--muted); }
+      .kpi .k-val { font-size: 62px; font-weight: 900; letter-spacing: -0.02em; line-height: 1.2; margin-top: 4px; white-space: nowrap; }
+      .kpi .k-sub { font-size: 30px; color: #c9d4e3; margin-top: 4px; font-family: var(--mono); }
       .kpi .mono { font-family: var(--mono); }
       .k-amber { border-color: rgba(240,167,74,0.6); background: rgba(240,167,74,0.08); } .k-amber .k-val { color: var(--amber); }
       .k-blue { border-color: rgba(74,168,255,0.6); background: rgba(74,168,255,0.08); } .k-blue .k-val { color: var(--blue); }
       .k-green { border-color: rgba(78,201,122,0.6); background: rgba(78,201,122,0.08); } .k-green .k-val { color: var(--ok); }
 
-      #subs { position: absolute; left: 10%; right: 10%; bottom: 40px; text-align: center; height: 0; }
+      #subs { position: absolute; left: 10%; right: 10%; bottom: 18px; text-align: center; height: 0; }
       .sub { position: absolute; left: 0; right: 0; bottom: 0; opacity: 0; }
-      .sub .cue { display: inline-block; font-size: 30px; font-weight: 700; line-height: 1.4; color: #fff; background: rgba(8,12,20,0.85); border: 1px solid var(--border); border-radius: 12px; padding: 12px 26px; }
+      .sub .cue { display: inline-block; font-size: 38px; font-weight: 700; line-height: 1.4; color: #fff; background: rgba(8,12,20,0.85); border: 1px solid var(--border); border-radius: 12px; padding: 8px 26px; white-space: nowrap; }
       .sub .cue b { color: var(--amber); }
 
       #intro { position: absolute; inset: 0; background: var(--ground); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; z-index: 50; }
-      #intro .eye { font-family: var(--mono); font-size: 25px; color: var(--amber); letter-spacing: 0.2em; opacity: 0; }
-      #intro .big { font-size: 92px; font-weight: 800; letter-spacing: -0.03em; opacity: 0; }
-      #intro .sub2 { font-size: 29px; color: var(--muted); opacity: 0; }
+      #intro .eye { font-family: var(--mono); font-size: 32px; color: var(--amber); letter-spacing: 0.2em; opacity: 0; }
+      #intro .big { font-size: 96px; font-weight: 800; letter-spacing: -0.03em; opacity: 0; }
+      #intro .sub2 { font-size: 40px; color: var(--muted); opacity: 0; }
     </style>
   </head>
   <body>
@@ -91,11 +98,11 @@
         <div class="pane term" id="p-term">
           <div class="pane-head"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span><span class="label">공격 터미널</span></div>
           <div id="t-syn" class="blk clip" data-start="3.5" data-duration="36.5" data-track-index="0">
-            <div class="row cmd"><span class="p">$</span> docker run --rm attacker-3 <span class="d">synflood</span> \<br>&nbsp;&nbsp;&nbsp;&nbsp;--count 3000 <span style="color:#7e8ea1">--ip .172</span></div>
+            <div class="row cmd"><span class="p">$</span> docker run --rm attacker-3 \<br>&nbsp;&nbsp;<span class="d">synflood</span> --count 3000 \<br>&nbsp;&nbsp;<span style="color:#7e8ea1">--ip .172</span></div>
             <div class="row out">[*] 172.28.0.10:8080 에 SYN 다발 전송…</div>
             <div class="row flood hit" id="h-flood">SYN → SYN → SYN → SYN → SYN → …  (위조 가능)</div>
             <div class="row out hit" id="h-count">3000 packets transmitted, 1742 received, 42% loss</div>
-            <div class="row json">{"step":"synflood","ok":<span class="k-ok">true</span>,"sent":3000}</div>
+            <div class="row json">{"step":"synflood","ok":<span class="k-ok">true</span>,<br>&nbsp;"sent":3000}</div>
           </div>
         </div>
 
@@ -123,8 +130,9 @@
           </div>
           <div id="d-block" class="card clip" data-start="26" data-duration="14" data-track-index="3">
             <div class="row ctitle">L4 차단 목록 (정문 방화벽)</div>
-            <table><tr class="row"><th>IP</th><th>사유</th><th>증거</th><th>상태</th><th>남은 시간</th></tr>
-              <tr class="row hl" id="r-block"><td class="ip">172.28.0.172</td><td>네트워크&nbsp;폭주</td><td>위조&nbsp;가능&nbsp;· 시간&nbsp;제한</td><td><span class="pill p-block">차단 중</span></td><td class="ttl">56분 남음</td></tr></table>
+            <table><tr class="row"><th>IP</th><th>사유</th><th>증거</th><th>상태</th><th>남은<br>시간</th></tr>
+              <!-- 글씨를 키우며 다섯 칸이 한 줄에 안 들어가서, 사유·남은 시간은 두 줄로 접는다 -->
+              <tr class="row hl" id="r-block"><td class="ip">172.28.0.172</td><td>네트워크<br>폭주</td><td>위조&nbsp;가능&nbsp;·<br>시간&nbsp;제한</td><td><span class="pill p-block">차단 중</span></td><td class="ttl">56분<br>남음</td></tr></table>
             <div class="row big">위조될 수 있는 증거 → 영구가 아닌 <span class="ttl">시간 제한(TTL) 차단</span></div>
             <div class="note" id="d-speed" style="opacity:0">탐지 → 차단까지 <b>약 3초</b></div>
             <div class="kpis">
